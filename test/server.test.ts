@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { GameServer } from '../src/server/server.ts';
-import { Btn, CMD_DT, CMDS_PER_TICK, WALK_SPEED } from '../src/shared/constants.ts';
+import { Btn, CMD_DT, CMDS_PER_TICK } from '../src/shared/constants.ts';
 import type { InputCmd, ServerMsg } from '../src/shared/protocol.ts';
+import { applyCmd, copyState } from '../src/shared/sim.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 function setup() {
@@ -31,6 +32,14 @@ describe('GameServer', () => {
     expect(y).toBeCloseTo(server.world.groundHeight(x, z, y));
   });
 
+  /** The state the server should reach by applying `cmds` to `before`'s player. */
+  function expected(server: GameServer, before: ServerMsg, cmds: InputCmd[]) {
+    if (before.t !== 'snapshot') throw new Error();
+    const s = copyState(before.you);
+    for (const cmd of cmds) applyCmd(server.world, s, cmd, CMD_DT);
+    return s;
+  }
+
   it('moves a player by exactly the commands it simulated and acks them', () => {
     const { server, id, lastSnapshot } = setup();
     server.step();
@@ -40,7 +49,9 @@ describe('GameServer', () => {
     const snap = lastSnapshot();
     if (snap.t !== 'snapshot' || before.t !== 'snapshot') throw new Error();
     expect(snap.ack).toBe(2);
-    expect(snap.players[0].z - before.players[0].z).toBeCloseTo(-WALK_SPEED * CMD_DT * 2);
+    expect(snap.you).toEqual(expected(server, before, [fwd(1), fwd(2)]));
+    expect(snap.you.z).toBeLessThan(before.you.z);
+    expect(snap.players[0].z).toBe(snap.you.z);
   });
 
   it('ignores redundant resends of commands it already has', () => {
@@ -51,9 +62,9 @@ describe('GameServer', () => {
     server.receive(id, { t: 'input', cmds: [fwd(1), fwd(2), fwd(3)] });
     for (let i = 0; i < 3; i++) server.step();
     const snap = lastSnapshot();
-    if (snap.t !== 'snapshot' || before.t !== 'snapshot') throw new Error();
+    if (snap.t !== 'snapshot') throw new Error();
     expect(snap.ack).toBe(3);
-    expect(snap.players[0].z - before.players[0].z).toBeCloseTo(-WALK_SPEED * CMD_DT * 3);
+    expect(snap.you).toEqual(expected(server, before, [fwd(1), fwd(2), fwd(3)]));
   });
 
   it('is deterministic for the same input stream', () => {
@@ -63,7 +74,7 @@ describe('GameServer', () => {
       for (let tick = 0; tick < 90; tick++) {
         const cmds = [];
         for (let i = 0; i < CMDS_PER_TICK; i++) {
-          cmds.push({ seq: ++seq, buttons: (seq * 7919) % 64, yaw: Math.sin(seq) * 3, pitch: 0 });
+          cmds.push({ seq: ++seq, buttons: (seq * 7919) % 512, yaw: Math.sin(seq) * 3, pitch: 0 });
         }
         server.receive(id, { t: 'input', cmds });
         server.step();

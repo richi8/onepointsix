@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Btn, CMD_DT, PLAYER_RADIUS } from '../src/shared/constants.ts';
-import { applyCmd, type PlayerState } from '../src/shared/sim.ts';
+import { applyCmd, spawnState } from '../src/shared/sim.ts';
 import { World } from '../src/shared/world.ts';
 
 const w1 = new World(1);
@@ -58,14 +58,14 @@ describe('applyCmd with collision', () => {
     const wall = w1.props.find((p) => p.style === 'wall' && p.box.maxY - p.box.minY > 2.5 && p.box.maxX - p.box.minX > 3)!.box;
     const x = (wall.minX + wall.maxX) / 2;
     const z = wall.maxZ + 2;
-    const p: PlayerState = { x, y: w1.groundHeight(x, z, w1.terrainHeight(x, z)), z, vx: 0, vz: 0, yaw: 0 };
+    const p = spawnState(x, w1.groundHeight(x, z, w1.terrainHeight(x, z)), z);
     for (let i = 0; i < 120; i++) applyCmd(w1, p, { seq: i, buttons: Btn.Forward, yaw: 0, pitch: 0 }, CMD_DT);
     expect(p.z).toBeGreaterThanOrEqual(wall.maxZ + PLAYER_RADIUS - 1e-6);
   });
 
   it('follows the terrain while walking', () => {
     const { x, z } = w1.outposts[0];
-    const p: PlayerState = { x: x + 60, y: 0, z: z + 60, vx: 0, vz: 0, yaw: 0 };
+    const p = spawnState(x + 60, 0, z + 60);
     p.y = w1.groundHeight(p.x, p.z, w1.terrainHeight(p.x, p.z));
     for (let i = 0; i < 60; i++) {
       applyCmd(w1, p, { seq: i, buttons: Btn.Right, yaw: 0, pitch: 0 }, CMD_DT);

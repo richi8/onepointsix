@@ -21,12 +21,17 @@ export const WATER_FLOOR_DEPTH = 0.9;
 export const PLAYER_RADIUS = 0.4;
 export const PLAYER_HEIGHT = 1.8;
 export const EYE_HEIGHT = 1.6;
+export const CROUCH_HEIGHT = 1.2;
+export const CROUCH_EYE_HEIGHT = 1.0;
+/** Crouch transitions per second, for the eye height and speed blend. */
+export const DUCK_RATE = 8;
 export const STEP_HEIGHT = 0.55;
 export const MAX_PITCH = 1.5;
 
 // Movement (Quake/GoldSrc style acceleration, so air strafing works)
 export const WALK_SPEED = 6;
 export const SPRINT_SPEED = 9.5;
+export const CROUCH_SPEED = 2.4;
 export const WATER_SPEED_MUL = 0.55;
 export const GROUND_ACCEL = 10;
 export const AIR_ACCEL = 10;
@@ -36,6 +41,8 @@ export const STOP_SPEED = 2;
 export const GRAVITY = 20;
 export const JUMP_SPEED = 7.5;
 export const MAX_HORIZONTAL_SPEED = 20;
+/** Must stay below STEP_HEIGHT / CMD_DT so falling bodies can't skip past a ledge. */
+export const MAX_FALL_SPEED = 30;
 
 // Combat
 export const MAX_HP = 100;
@@ -64,4 +71,5 @@ export const Btn = {
   Sprint: 32,
   Fire: 64,
   Reload: 128,
+  Crouch: 256,
 } as const;

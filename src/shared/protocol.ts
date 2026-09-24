@@ -2,6 +2,7 @@
 // Worker; later it is a WebSocket. Everything here must survive structured
 // cloning and JSON, so only plain data.
 
+import type { PlayerState } from './sim.ts';
 import type { WorldConfig } from './worldconfig.ts';
 
 /** One fixed CMD_DT step of player intent. Bots produce these too. */
@@ -18,6 +19,8 @@ export interface PlayerSnap {
   y: number;
   z: number;
   yaw: number;
+  /** 0 standing to 1 crouched. */
+  duck: number;
 }
 
 export type ClientMsg =
@@ -29,8 +32,10 @@ export type ClientMsg =
 
 export type ServerMsg =
   | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number }
-  // `ack` is the highest command seq the server has simulated for the recipient.
-  | { t: 'snapshot'; tick: number; ack: number; players: PlayerSnap[] }
+  // `ack` is the highest command seq the server has simulated for the recipient,
+  // and `you` its full movement state right after that command, which the
+  // client replays its unacknowledged commands on top of.
+  | { t: 'snapshot'; tick: number; ack: number; you: PlayerState; players: PlayerSnap[] }
   | { t: 'pong'; time: number };
 
 /**

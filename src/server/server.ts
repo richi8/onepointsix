@@ -1,7 +1,7 @@
 import { CMD_DT, MAX_CMDS_PER_TICK, SERVER_TICK_RATE } from '../shared/constants.ts';
 import type { ClientMsg, InputCmd, ServerMsg } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
-import { applyCmd, type PlayerState } from '../shared/sim.ts';
+import { applyCmd, copyState, spawnState, type PlayerState } from '../shared/sim.ts';
 import { World } from '../shared/world.ts';
 
 /** Commands buffered beyond this are dropped; the client is too far ahead. */
@@ -40,7 +40,7 @@ export class GameServer {
   connect(send: (msg: ServerMsg) => void): number {
     const id = this.nextId++;
     const { x, y, z } = this.world.randomLandPoint(this.spawnRng);
-    this.players.set(id, { id, send, joined: false, queue: [], lastRecv: 0, lastSim: 0, x, y, z, vx: 0, vz: 0, yaw: 0 });
+    this.players.set(id, { ...spawnState(x, y, z), id, send, joined: false, queue: [], lastRecv: 0, lastSim: 0 });
     return id;
   }
 
@@ -84,9 +84,9 @@ export class GameServer {
     }
 
     const joined = [...this.players.values()].filter((p) => p.joined);
-    const players = joined.map(({ id, x, y, z, yaw }) => ({ id, x, y, z, yaw }));
+    const players = joined.map(({ id, x, y, z, yaw, duck }) => ({ id, x, y, z, yaw, duck }));
     for (const p of joined) {
-      p.send({ t: 'snapshot', tick: this.tick, ack: p.lastSim, players });
+      p.send({ t: 'snapshot', tick: this.tick, ack: p.lastSim, you: copyState(p), players });
     }
   }
 }

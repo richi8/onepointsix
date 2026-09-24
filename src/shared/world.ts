@@ -184,11 +184,11 @@ export class World {
   }
 
   /** Push a body horizontally out of any obstacle taller than a step. */
-  collide(b: Body): void {
+  collide(b: Body, height = PLAYER_HEIGHT): void {
     const R = PLAYER_RADIUS;
     for (let iter = 0; iter < 2; iter++) {
       for (const c of this.query(b.x, b.z, R + 0.1)) {
-        if (topOf(c) <= b.y + STEP_HEIGHT || bottomOf(c) >= b.y + PLAYER_HEIGHT) continue;
+        if (topOf(c) <= b.y + STEP_HEIGHT || bottomOf(c) >= b.y + height) continue;
         let nx = 0;
         let nz = 0;
         let pen = 0;

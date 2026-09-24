@@ -1,4 +1,3 @@
-import type { PlayerSnap } from '../shared/protocol.ts';
 import type { NetConditions } from '../shared/transport.ts';
 import type { Connection } from './connection.ts';
 
@@ -63,14 +62,19 @@ export class NetPanel {
     });
   }
 
-  update(me: PlayerSnap | undefined): void {
+  update(): void {
     if (this.root.hidden) return;
     const c = this.conn;
+    const pr = c.predictor;
+    const me = pr.state;
     const pos = me ? `${me.x.toFixed(1)}, ${me.y.toFixed(1)}, ${me.z.toFixed(1)}` : '-';
+    const speed = me ? Math.hypot(me.vx, me.vz).toFixed(1) : '-';
+    const state = me ? (me.onGround ? 'ground' : 'air') + (me.crouched ? ' crouched' : '') : '-';
     this.stats.textContent =
       `id ${c.id}  tick ${c.lastTick}  pos ${pos}\n` +
-      `rtt ${c.rtt.toFixed(0)} ms\n` +
-      `unacked cmds ${c.pendingCmds}`;
+      `speed ${speed} m/s  ${state}\n` +
+      `rtt ${c.rtt.toFixed(0)} ms  unacked cmds ${c.pendingCmds}\n` +
+      `corrections ${pr.corrections}  last ${pr.lastError.toFixed(3)} m`;
   }
 
   private apply(preset: NetConditions): void {

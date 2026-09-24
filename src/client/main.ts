@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { CMD_DT, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
+import { CMD_DT, CROUCH_EYE_HEIGHT, CROUCH_HEIGHT, EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
+import { lerp } from '../shared/geom.ts';
 import { FixedLoop } from '../shared/loop.ts';
-import type { PlayerSnap } from '../shared/protocol.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD, parseWorldParam } from '../shared/worldconfig.ts';
 import { Connection } from './connection.ts';
@@ -12,6 +12,8 @@ import './style.css';
 
 const MENU_ORBIT_RADIUS = 360;
 const MENU_ORBIT_SPEED = 0.025;
+const MENU_FOV = 60;
+const PLAY_FOV = 75;
 
 const config = parseWorldParam(new URLSearchParams(location.search).get('world'));
 const world = new World(config.seed);
@@ -25,7 +27,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.prepend(renderer.domElement);
 
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 2000);
+const camera = new THREE.PerspectiveCamera(MENU_FOV, 1, 0.05, 2000);
+camera.rotation.order = 'YXZ';
 
 function resize(): void {
   renderer.setSize(innerWidth, innerHeight);
@@ -39,24 +42,37 @@ resize();
 
 const menu = document.getElementById('menu')!;
 const hint = document.getElementById('hint')!;
+const crosshair = document.getElementById('crosshair')!;
+const paused = document.getElementById('paused')!;
 const playButton = document.getElementById('play') as HTMLButtonElement;
 document.getElementById('world-label')!.textContent =
   config.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${config.seed}`;
 
 let conn: Connection | null = null;
 let panel: NetPanel | null = null;
-const input = new Input(window);
+const input = new Input(window, renderer.domElement);
 
 // Sample input at the fixed command rate, independent of frame rate.
-const inputLoop = new FixedLoop(CMD_DT, () => conn?.sendCmd(input.buttons, 0, 0), 8);
+const inputLoop = new FixedLoop(CMD_DT, () => conn?.sendCmd(input.buttons, input.yaw, input.pitch), 8);
 
 function play(): void {
   if (conn) return;
   menu.hidden = true;
   hint.hidden = false;
-  conn = new Connection(config);
+  crosshair.hidden = false;
+  camera.fov = PLAY_FOV;
+  camera.updateProjectionMatrix();
+  conn = new Connection(config, world);
   panel = new NetPanel(conn);
+  // Shown until the lock succeeds, so a refused lock still leaves a way in.
+  paused.hidden = false;
+  input.lock();
 }
+
+input.onLockChange = (locked) => {
+  if (conn) paused.hidden = locked;
+};
+paused.onclick = () => input.lock();
 
 playButton.onclick = play;
 window.addEventListener('keydown', (e) => {
@@ -94,12 +110,10 @@ function orbitCamera(now: number): void {
   view.update(camera, focus, world.half);
 }
 
-function followCamera(x: number, y: number, z: number): void {
-  const cx = x;
-  const cz = z + 10;
-  const cy = Math.max(y + 6, world.floorHeight(cx, cz) + 2);
-  camera.position.set(cx, cy, cz);
-  camera.lookAt(x, y + 1.2, z);
+function eyeCamera(x: number, y: number, z: number, duck: number): void {
+  // Look uses the live mouse, not the last command, so aiming has no latency.
+  camera.position.set(x, y + lerp(EYE_HEIGHT, CROUCH_EYE_HEIGHT, duck), z);
+  camera.rotation.set(input.pitch, input.yaw, 0);
   focus.set(x, y, z);
   view.update(camera, focus, 70);
 }
@@ -111,13 +125,12 @@ renderer.setAnimationLoop(() => {
 
   const players = conn ? (conn.update(dt), inputLoop.advance(now), conn.interpolated()) : [];
   const seen = new Set<number>();
-  let me: PlayerSnap | undefined;
   for (const p of players) {
     seen.add(p.id);
-    const box = boxFor(p.id, p.id === conn!.id);
+    const box = boxFor(p.id, false);
     box.position.set(p.x, p.y, p.z);
     box.rotation.y = p.yaw;
-    if (p.id === conn!.id) me = p;
+    box.scale.y = lerp(1, CROUCH_HEIGHT / PLAYER_HEIGHT, p.duck);
   }
   for (const [id, box] of boxes) {
     if (seen.has(id)) continue;
@@ -125,9 +138,10 @@ renderer.setAnimationLoop(() => {
     boxes.delete(id);
   }
 
-  if (me) followCamera(me.x, me.y, me.z);
+  const me = conn?.predictor.render(inputLoop.alpha);
+  if (me) eyeCamera(me.x, me.y, me.z, me.duck);
   else orbitCamera(now);
 
-  panel?.update(me);
+  panel?.update();
   renderer.render(scene, camera);
 });
