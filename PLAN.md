@@ -162,7 +162,7 @@ Everything runs locally in the browser; there is no backend.
 | 7 | **Destructible cover** | Panel-based walls, fences and crates with HP, debris, collision updates, destruction events, grenades | You can blow a hole in a wall and shoot through it |
 | 8 | **Contracts and noise** | Objectives per run (intel, cache, commander), noise events that attract bots, suppressors | Runs feel different from each other |
 | 9 | **Look and sound** | Realistic assets (glTF, PBR, animations), positional audio, footsteps, muzzle flash, performance pass | It looks and sounds like a real game |
-| 10 | **Shareable worlds** | World config in the URL, per-world local leaderboard, share button, death cam from recorded inputs | You send a link and a friend gets the same island and can try to beat your score |
+| 10 | **Shareable worlds** | World config and sharer name + score in the URL, per-world local leaderboard, share button, static hosting, death cam from recorded inputs | You send a link and a friend gets the same island with your score to beat |
 
 ## Future
 - **Multiplayer**
@@ -183,3 +183,14 @@ Everything runs locally in the browser; there is no backend.
 - **Weapons for the proof of concept:** assault rifle, pistol and bolt-action rifle
 - **Capacity:** 12 operators and about 24 guards per game (tunable constant)
 - **Backend:** none for now; the game is local only. Multiplayer is a future feature.
+- **Platform:** desktop only (keyboard and mouse) in current Chrome, Firefox and Safari. Target
+  is 60 fps on a mid-range laptop. No touch or mobile support for now.
+- **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
+  ambientCG, Quaternius) plus Mixamo animations.
+- **Share links carry the sharer's score.** With no backend, leaderboards live in each browser,
+  so the link encodes the world config plus the sharer's name and score as the target to beat.
+- **Hosting:** a static site (e.g. GitHub Pages or Cloudflare Pages) is needed in chunk 10 so
+  that links can be shared. It serves files only; there is still no game server.
+- **Existing scaffold:** the uncommitted setup and `src/shared` world generator get reused and
+  reviewed in chunks 0 and 1.
+- **Testing:** Vitest for the shared simulation (determinism, movement, collision).
