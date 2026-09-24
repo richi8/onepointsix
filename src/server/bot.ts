@@ -4,15 +4,18 @@ import {
   CMDS_PER_TICK,
   CROUCH_EYE_HEIGHT,
   CROUCH_SPEED,
+  EXTRACT_RADIUS,
   EYE_HEIGHT,
   WALK_SPEED,
 } from '../shared/constants.ts';
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { hitboxes, rayBody } from '../shared/hitbox.ts';
-import type { InputCmd, Team } from '../shared/protocol.ts';
+import { ITEMS } from '../shared/loot.ts';
+import type { InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import type { Point, World } from '../shared/world.ts';
+import type { ExtractPoint } from './extracts.ts';
 import type { NavGrid, Waypoint } from './nav.ts';
 import type { Skill } from './skill.ts';
 
@@ -40,8 +43,9 @@ export type Role =
   // does. Never strays more than `leash` from home, or without a home, from
   // where it was when called away.
   | { kind: 'guard'; route: Point[]; leash: number; home?: Point; leader?: number }
-  // Plays a run: search each loot spot, then leave at the extraction point.
-  | { kind: 'operator'; loot: LootSpot[]; extract: Point };
+  // Plays a run: search the crate at each loot spot, taking what it can carry
+  // up to `greed` kg, then leave at the nearest open extraction point.
+  | { kind: 'operator'; loot: LootSpot[]; greed: number };
 
 export interface LootSpot extends Point {
   /** What to look at while searching, such as the crate. */
@@ -69,6 +73,10 @@ export interface BotContext {
   pathBudget: number;
   /** A guard spotted an enemy at a point and tells the guards around. */
   callout(from: Agent, at: Point): void;
+  /** The island's extraction points and whether they're open. */
+  extracts: readonly ExtractPoint[];
+  /** The container an agent faces within reach, as a player would see it. */
+  lootView(self: Agent): LootView | null;
 }
 
 /** Whether a would shoot b. Operators are each on their own side; guards stick together. */
@@ -98,10 +106,8 @@ const COVER_TIME: [number, number] = [1.5, 3];
 const FLANK_TIME = 14;
 const INVESTIGATE_TIME = 25;
 const LOOK_AROUND: [number, number] = [4, 7];
-const SEARCH_TIME: [number, number] = [3, 5];
-const EXTRACT_HOLD = 5;
-/** Loot found per search, kg. */
-const LOOT_MASS: [number, number] = [4, 9];
+/** Seconds spent at a crate before moving on regardless. */
+const LOOT_TIMEOUT = 15;
 const PATROL_WAIT: [number, number] = [2, 6];
 /** Distance a follower keeps behind its leader. */
 const FOLLOW_GAP = 3;
@@ -149,8 +155,8 @@ export class Bot {
   state: BotState;
   /** Id of the agent being fought, or 0. */
   target = 0;
-  /** Set once an operator has left the island; the server removes it. */
-  extracted = false;
+  /** Set once an operator has nowhere left to go; the server removes it. */
+  done = false;
   private readonly rand: () => number;
   /** Server time as of the last think. */
   private now = 0;
@@ -197,6 +203,8 @@ export class Bot {
   /** The last path search found no way to the goal. */
   private noPath = false;
   private jump = false;
+  /** Interact this command: held down, or pressed again and again. */
+  private use: 'hold' | 'tap' | null = null;
 
   // Plans.
   private step = 0;
@@ -209,6 +217,9 @@ export class Bot {
   private lastCover = -Infinity;
   /** Where it last was during its routine; guards without a home stay leashed to it. */
   private anchor: Point | null = null;
+  /** Extraction point it's heading for, and those it couldn't reach. */
+  private exit = -1;
+  private readonly unreachable = new Set<number>();
 
   constructor(role: Role, skill: Skill, primary: number, yaw: number, rand: () => number) {
     this.role = role;
@@ -410,6 +421,7 @@ export class Bot {
     this.pace = 'walk';
     this.focus = null;
     this.idleLook = false;
+    this.use = null;
     const role = this.role;
     const sentry = role.kind === 'sentry';
 
@@ -462,31 +474,35 @@ export class Bot {
         this.goTo(null);
         this.crouch = true;
         this.focus = spot.look;
-        if (this.waitUntil === 0) this.waitUntil = now + this.between(SEARCH_TIME);
-        if (now >= this.waitUntil) {
-          // Stand-in for the inventory of chunk 6: what was found only weighs.
-          self.carry += this.between(LOOT_MASS);
-          self.reserve = spawnWeapons().reserve;
-          this.step++;
-          this.waitUntil = 0;
-        }
+        if (this.waitUntil === 0) this.waitUntil = now + LOOT_TIMEOUT;
+        // Search it, then take supplies and whatever else it can carry.
+        const view = ctx.lootView(self);
+        const next = view?.items[0];
+        if (now >= this.waitUntil) this.nextStop();
+        else if (!view || !view.searched) this.use = 'hold';
+        else if (next !== undefined && (ITEMS[next].use || self.carry + ITEMS[next].mass <= role.greed)) this.use = 'tap';
+        else this.nextStop();
         break;
       }
 
       case 'extract': {
         if (role.kind !== 'operator') break;
-        const e = role.extract;
+        const e = this.chooseExit(ctx, self);
+        if (!e) {
+          this.done = true;
+          break;
+        }
         const d = Math.hypot(e.x - self.x, e.z - self.z);
-        if (d > ARRIVE * 2) {
+        if (d > EXTRACT_RADIUS / 2) {
           this.goTo(e);
           if (d > 30 && self.stamina > 0.4) this.pace = 'sprint';
           break;
         }
+        // In the zone: keep low and wait for it to open, or call the pickup.
         this.goTo(null);
         this.crouch = true;
         this.lookAround(now, this.yaw);
-        if (this.waitUntil === 0) this.waitUntil = now + EXTRACT_HOLD;
-        if (now >= this.waitUntil) this.extracted = true;
+        if (e.kind === 'call' && e.open && e.pickup < 0) this.use = 'tap';
         break;
       }
 
@@ -586,6 +602,31 @@ export class Bot {
       if (this.state === 'patrol' && self.team === 'guard') self.reserve = spawnWeapons().reserve;
       if (this.weapon !== this.primary && self.mag[this.primary] + self.reserve[this.primary] > 0) this.weapon = this.primary;
     }
+  }
+
+  private nextStop(): void {
+    this.step++;
+    this.waitUntil = 0;
+    this.enter(this.routine(), true);
+  }
+
+  /** The nearest open extraction point it can reach, or the nearest shut one to wait at. */
+  private chooseExit(ctx: BotContext, self: Agent): ExtractPoint | null {
+    const current = ctx.extracts[this.exit];
+    let best = -1;
+    let bestD = Infinity;
+    ctx.extracts.forEach((e, i) => {
+      if (this.unreachable.has(i)) return;
+      // Prefer open ones by counting shut ones as much farther away; stick with the current one a little.
+      const d = Math.hypot(e.x - self.x, e.z - self.z) + (e.open ? 0 : 400) - (i === this.exit ? 20 : 0);
+      if (d < bestD) (best = i), (bestD = d);
+    });
+    if (best !== this.exit && current) {
+      this.path = [];
+      this.pathGoal = null;
+    }
+    this.exit = best;
+    return ctx.extracts[best] ?? null;
   }
 
   /** Start fighting a new target: the first shot waits for a reaction, and the aim starts off. */
@@ -763,8 +804,10 @@ export class Bot {
   private giveUp(): void {
     this.goTo(null);
     this.pathGoal = null;
-    if (this.state === 'extract') this.extracted = true;
-    else if (this.isRoutine(this.state)) {
+    if (this.state === 'extract') {
+      if (this.exit >= 0) this.unreachable.add(this.exit);
+      this.exit = -1;
+    } else if (this.isRoutine(this.state)) {
       this.step++;
       this.waitUntil = 0;
       this.enter(this.routine());
@@ -842,6 +885,8 @@ export class Bot {
       this.jump = false;
       buttons |= Btn.Jump | Btn.Forward;
     }
+    // Tapping presses for four commands and lets go for four.
+    if (this.use === 'hold' || (this.use === 'tap' && (seq & 4) === 0)) buttons |= Btn.Interact;
 
     // Shooting.
     const w = WEAPONS[self.weapon];

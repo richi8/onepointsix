@@ -98,7 +98,7 @@ export interface PlayerState extends Body, WeaponState {
   mantleZ: number;
   /** -1 leaning left to 1 leaning right, eased. */
   lean: number;
-  /** Carried weight in kg. Set by the server; inventory arrives in chunk 6. */
+  /** Carried weight in kg: the loot carried, set by the server. */
   carry: number;
   /** Health, set by the server. */
   hp: number;

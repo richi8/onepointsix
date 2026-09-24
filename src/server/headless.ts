@@ -2,16 +2,17 @@
 // browser, to prove the server has no browser dependencies and to see how the
 // bots play and what they cost. Usage: npm run sim [seconds] [seed]
 
-import { OPERATOR_CAPACITY, SERVER_TICK_RATE } from '../shared/constants.ts';
+import { SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
+import { MODES } from './directory.ts';
 import { GameServer } from './server.ts';
 
 declare const process: { argv: string[] };
 
 const seconds = Number(process.argv[2] ?? 60);
 const seed = Number(process.argv[3] ?? DEFAULT_WORLD.seed);
-const server = new GameServer(seed, { guards: true, operators: OPERATOR_CAPACITY });
-const counts = { kills: 0, headshots: 0, extracts: 0 };
+const server = new GameServer(seed, MODES.mixed.options);
+const counts = { kills: 0, headshots: 0, extracts: 0, calls: 0 };
 const killers = new Map<string, number>();
 server.onEvent = (e) => {
   if (e.k === 'kill') {
@@ -24,7 +25,11 @@ server.onEvent = (e) => {
   }
   if (e.k === 'extract') {
     counts.extracts++;
-    console.log(`${(server.tick / SERVER_TICK_RATE).toFixed(0).padStart(4)}s  ${e.name} extracted with ${e.carry} kg`);
+    console.log(`${(server.tick / SERVER_TICK_RATE).toFixed(0).padStart(4)}s  ${e.name} extracted with $${e.value}`);
+  }
+  if (e.k === 'call') {
+    counts.calls++;
+    console.log(`${(server.tick / SERVER_TICK_RATE).toFixed(0).padStart(4)}s  ${e.name} called a pickup`);
   }
 };
 
@@ -43,6 +48,6 @@ for (const b of server.bots()) states.set(b.bot.state, (states.get(b.bot.state) 
 console.log(`simulated ${seconds} s (${ticks} ticks) of seed ${seed} in ${(total / 1000).toFixed(1)} s`);
 console.log(`tick: ${(total / ticks).toFixed(2)} ms average, ${worst.toFixed(1)} ms worst, budget ${(1000 / SERVER_TICK_RATE).toFixed(1)} ms`);
 console.log(`bots: ${server.bots().length}; path searches: ${server.nav.searches}`);
-console.log(`kills: ${counts.kills} (${counts.headshots} headshots); extractions: ${counts.extracts}`);
+console.log(`kills: ${counts.kills} (${counts.headshots} headshots); extractions: ${counts.extracts}; calls: ${counts.calls}`);
 for (const [k, n] of killers) console.log(`  ${k}: ${n}`);
 console.log(`states now: ${[...states].map(([s, n]) => `${s} ${n}`).join(', ')}`);

@@ -1,11 +1,11 @@
 import { INTERP_DELAY, SERVER_DT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp } from '../shared/geom.ts';
-import {
-  isReliable, type ClientMsg, type GameEvent, type InputCmd, type PlayerSnap, type ServerMsg,
+import type {
+  BagSnap, ClientMsg, ExtractView, GameEvent, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
 } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
-import { LagTransport, type Transport } from '../shared/transport.ts';
+import type { LagTransport, Transport } from '../shared/transport.ts';
 import type { World } from '../shared/world.ts';
 import type { WorldConfig } from '../shared/worldconfig.ts';
 import { Predictor } from './prediction.ts';
@@ -16,7 +16,8 @@ const SNAPSHOT_BUFFER = 32;
 const MAX_UNACKED = 256;
 const PING_INTERVAL = 1;
 
-class WorkerTransport implements Transport<ClientMsg, ServerMsg> {
+/** The local game host, running in a Web Worker. */
+export class WorkerTransport implements Transport<ClientMsg, ServerMsg> {
   onMessage: ((msg: ServerMsg) => void) | null = null;
   private readonly worker: Worker;
 
@@ -36,14 +37,22 @@ interface Snapshot {
 }
 
 /**
- * The client's view of the server: sends commands and predicts their effect on
- * the local player, and buffers and interpolates snapshots of everyone else.
+ * The client's view of the server for one run: sends commands and predicts
+ * their effect on the local player, and buffers and interpolates snapshots of
+ * everyone else.
  */
 export class Connection {
   readonly transport: LagTransport<ClientMsg, ServerMsg>;
   readonly predictor: Predictor;
   id = 0;
   seed = 0;
+  mode: Mode = 'range';
+  /** The local player's run, the extraction points and the bags on the ground, as of the latest snapshot. */
+  run: RunView | null = null;
+  extracts: ExtractView[] = [];
+  bags: BagSnap[] = [];
+  /** Set once the run has ended: no more commands are sent. */
+  over = false;
   /** Round-trip time in ms, smoothed. */
   rtt = 0;
   lastTick = 0;
@@ -62,11 +71,19 @@ export class Connection {
   private clock = -1;
   private sincePing = PING_INTERVAL;
 
-  constructor(config: WorldConfig, world: World) {
+  /** Quick-joins a game of `mode` on the island; the transport is shared by every run. */
+  constructor(config: WorldConfig, world: World, mode: Mode, transport: LagTransport<ClientMsg, ServerMsg>) {
     this.predictor = new Predictor(world);
-    this.transport = new LagTransport(new WorkerTransport(), isReliable);
+    this.transport = transport;
     this.transport.onMessage = (msg) => this.handle(msg);
-    this.transport.send({ t: 'hello', name: 'player', world: config });
+    this.transport.send({ t: 'hello', name: 'player', world: config, mode });
+  }
+
+  /** Back to the menu. */
+  leave(): void {
+    this.over = true;
+    this.transport.onMessage = null;
+    this.transport.send({ t: 'leave' });
   }
 
   get connected(): boolean {
@@ -75,17 +92,12 @@ export class Connection {
 
   /** Queue one CMD_DT step of input and send it with its unacked predecessors. */
   sendCmd(buttons: number, yaw: number, pitch: number, weapon: number): void {
-    if (!this.connected) return;
+    if (!this.connected || this.over) return;
     const cmd = { seq: ++this.seq, buttons, yaw, pitch, weapon, view: this.renderTime() / SERVER_DT };
     this.unacked.push(cmd);
     this.predictor.predict(cmd, (fx) => this.onFx?.(fx));
     if (this.unacked.length > MAX_UNACKED) this.unacked.shift();
     this.transport.send({ t: 'input', cmds: this.unacked.slice(-REDUNDANT_CMDS) });
-  }
-
-  /** Debug: set the carried weight in kg on the server. */
-  setCarry(kg: number): void {
-    this.transport.send({ t: 'debug', carry: kg });
   }
 
   /** Advance local clocks; call once per rendered frame. */
@@ -151,6 +163,7 @@ export class Connection {
       case 'welcome':
         this.id = msg.id;
         this.seed = msg.seed;
+        this.mode = msg.mode;
         this.clock = msg.tick * SERVER_DT;
         break;
       case 'pong': {
@@ -159,7 +172,11 @@ export class Connection {
         break;
       }
       case 'snapshot':
-        this.receiveSnapshot(msg.tick, msg.ack, msg.you, msg.players);
+        if (this.receiveSnapshot(msg.tick, msg.ack, msg.you, msg.players)) {
+          this.run = msg.run;
+          this.extracts = msg.extracts;
+          this.bags = msg.bags;
+        }
         break;
       case 'events':
         this.onEvents?.(msg.events);
@@ -167,8 +184,9 @@ export class Connection {
     }
   }
 
-  private receiveSnapshot(tick: number, ack: number, you: PlayerState, players: PlayerSnap[]): void {
-    if (!this.connected || tick <= this.lastTick) return; // not welcomed yet, or stale/reordered
+  /** Returns false for a snapshot that was ignored. */
+  private receiveSnapshot(tick: number, ack: number, you: PlayerState, players: PlayerSnap[]): boolean {
+    if (!this.connected || tick <= this.lastTick) return false; // not welcomed yet, or stale/reordered
     this.lastTick = tick;
     if (ack > this.ack) {
       this.ack = ack;
@@ -188,5 +206,6 @@ export class Connection {
     const drift = time - this.clock;
     if (Math.abs(drift) > 0.25) this.clock = time;
     else this.clock += drift * 0.1;
+    return true;
   }
 }

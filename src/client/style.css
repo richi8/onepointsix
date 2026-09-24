@@ -483,3 +483,344 @@ canvas {
   font-size: 16px;
   opacity: 0.9;
 }
+
+/* ------------------------------------------------------------------ modes */
+
+.menu .modes {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 3px;
+  background: rgb(0 0 0 / 0.35);
+  border-radius: 6px;
+}
+
+.menu .modes button {
+  padding: 6px 16px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: #eee;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 4px;
+}
+
+.menu .modes button:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.menu .modes button.on {
+  color: #1b1b1b;
+  background: #e8c35a;
+}
+
+.menu .mode-note {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+/* ------------------------------------------------------------------ run */
+
+.clock {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  font-size: 22px;
+  font-weight: 800;
+  background: rgb(0 0 0 / 0.4);
+  border-radius: 4px;
+}
+
+.clock.low {
+  color: #ff5a3c;
+}
+
+.extracts {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.extracts div {
+  display: grid;
+  grid-template-columns: 1.2em 1fr auto;
+  gap: 0 8px;
+  min-width: 220px;
+  padding: 3px 8px;
+  background: rgb(0 0 0 / 0.45);
+  border-left: 3px solid #c4453a;
+  border-radius: 3px;
+}
+
+.extracts div.open {
+  border-color: #4fd06b;
+}
+
+.extracts div.called {
+  border-color: #f2b33d;
+}
+
+.extracts div.here {
+  background: rgb(40 60 40 / 0.7);
+}
+
+.extracts b {
+  grid-row: span 2;
+  align-self: center;
+  font-size: 15px;
+}
+
+.extracts em {
+  font-style: normal;
+  opacity: 0.8;
+}
+
+.extracts i {
+  grid-column: 2 / 4;
+  font-style: normal;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.extracts .shut i {
+  color: #ff8a7a;
+}
+
+.prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 48px);
+  transform: translateX(-50%);
+  min-width: 220px;
+  padding: 6px 10px;
+  font-size: 14px;
+  text-align: center;
+  background: rgb(0 0 0 / 0.5);
+  border-radius: 4px;
+}
+
+.prompt kbd,
+.pack kbd {
+  display: inline-block;
+  padding: 0 5px;
+  font: inherit;
+  font-weight: 800;
+  color: #1b1b1b;
+  background: #e8c35a;
+  border-radius: 3px;
+}
+
+.prompt ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+  font-size: 13px;
+}
+
+.prompt li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 1px 4px;
+  opacity: 0.7;
+}
+
+.prompt li:first-child {
+  opacity: 1;
+  color: #e8c35a;
+  background: rgb(232 195 90 / 0.12);
+  border-radius: 2px;
+}
+
+.prompt li em {
+  font-style: normal;
+  opacity: 0.8;
+}
+
+.prompt .bar {
+  height: 4px;
+  margin-top: 6px;
+  background: rgb(255 255 255 / 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.prompt .bar div {
+  height: 100%;
+  background: #e8c35a;
+}
+
+.pack {
+  position: absolute;
+  left: 24px;
+  bottom: 64px;
+  font-size: 13px;
+}
+
+.pack .sum b {
+  color: #7fd98f;
+}
+
+.pack .heavy {
+  color: #ff5a3c;
+  font-weight: 700;
+}
+
+.pack ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.pack .hint {
+  margin-top: 2px;
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------------ results */
+
+.results {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: #fff;
+  background: rgb(20 0 0 / 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.results.good {
+  background: rgb(0 20 8 / 0.5);
+}
+
+.results[hidden] {
+  display: none;
+}
+
+.results .card {
+  width: min(380px, 100%);
+  padding: 24px 28px;
+  background: rgb(14 16 18 / 0.88);
+  border-top: 4px solid #d9534f;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+
+.results.good .card {
+  border-color: #4fd06b;
+}
+
+.results h2 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.results .why {
+  margin: 4px 0 16px;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.results .score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.results .score span {
+  font-size: 44px;
+  font-weight: 800;
+  color: #e8c35a;
+}
+
+.results .score small {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.results dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.results dt {
+  opacity: 0.75;
+}
+
+.results dd {
+  margin: 0;
+  text-align: right;
+}
+
+.results dd s {
+  opacity: 0.6;
+}
+
+.results .items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.results .items li {
+  padding: 2px 8px;
+  background: rgb(255 255 255 / 0.08);
+  border-radius: 3px;
+}
+
+.results .buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.results button {
+  flex: 1;
+  padding: 10px 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1b1b1b;
+  background: #e8c35a;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.results button:hover {
+  background: #f2d27a;
+}
+
+.results button.secondary {
+  color: #eee;
+  background: rgb(255 255 255 / 0.12);
+}
+
+.results button.secondary:hover {
+  background: rgb(255 255 255 / 0.2);
+}

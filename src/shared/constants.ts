@@ -123,6 +123,32 @@ export const BODY_TIME = 5;
 /** Seconds before an empty operator slot is filled by a new bot dropping in. */
 export const OPERATOR_REFILL = 12;
 
+// Runs. Every operator plays one: drop in, loot, extract before the clock runs out.
+/** Seconds before a run ends missing in action. */
+export const RUN_TIME = 600;
+/** How far from a container's edge it can be searched, metres. */
+export const INTERACT_REACH = 1.6;
+/** Seconds of holding Interact to search a crate. */
+export const SEARCH_TIME = 2.5;
+/** Seconds after a crate is searched before it is stocked again. */
+export const CRATE_RESTOCK = 300;
+/** Seconds a dropped bag or a body's bag stays on the ground. */
+export const BAG_TIME = 300;
+/** Standing within this of an extraction point counts as being in it, metres. */
+export const EXTRACT_RADIUS = 6;
+/** Seconds to stay in an open walk-in extraction. */
+export const EXTRACT_TIME = 8;
+/** Seconds from calling an extraction to the pickup. */
+export const CALL_TIME = 20;
+/** Guards sent toward a called extraction. */
+export const RESPONSE_SQUAD = 3;
+/** Seconds an extraction stays open, and closed, between changes. */
+export const EXTRACT_OPEN: [number, number] = [70, 160];
+export const EXTRACT_CLOSED: [number, number] = [40, 110];
+/** Score for each operator and guard killed, on top of the loot's value, if you get out. */
+export const KILL_SCORE_OPERATOR = 500;
+export const KILL_SCORE_GUARD = 150;
+
 export const Btn = {
   Forward: 1,
   Back: 2,
@@ -136,4 +162,8 @@ export const Btn = {
   LeanLeft: 512,
   LeanRight: 1024,
   Aim: 2048,
+  /** Search a crate, take an item, or call an extraction. */
+  Interact: 4096,
+  /** Drop the last item taken. */
+  Drop: 8192,
 } as const;

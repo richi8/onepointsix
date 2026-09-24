@@ -95,6 +95,24 @@ export class Sfx {
     this.click(2200, 0.12, 0.2);
   }
 
+  /** An item taken from a container. */
+  pickup(): void {
+    this.click(900, 0, 0.3);
+    this.burst(2500, 0.08, 0.12, 0.03);
+  }
+
+  /** A pickup was called in. */
+  call(): void {
+    this.tone(660, 0.18, 0.18, 'square');
+    this.tone(990, 0.3, 0.18, 'square', 0.2);
+  }
+
+  /** The run ended: rising if out safely, falling otherwise. */
+  runEnd(good: boolean): void {
+    const notes = good ? [523, 659, 784] : [392, 311, 262];
+    notes.forEach((f, i) => this.tone(f, 0.4, 0.2, 'triangle', i * 0.14));
+  }
+
   private get ready(): boolean {
     return this.ctx !== null && this.ctx.state === 'running';
   }

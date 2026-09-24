@@ -10,6 +10,12 @@
       <h1>onepointsix</h1>
       <p class="world" id="world-label"></p>
       <button id="play" type="button">Play</button>
+      <div class="modes" id="modes" role="radiogroup" aria-label="Mode">
+        <button type="button" role="radio" data-mode="mixed">Mixed</button>
+        <button type="button" role="radio" data-mode="pve">PvE</button>
+        <button type="button" role="radio" data-mode="range">Range</button>
+      </div>
+      <p class="mode-note" id="mode-note"></p>
     </div>
     <div class="hud" id="hud" hidden>
       <div class="scope" id="scope"></div>
@@ -19,6 +25,10 @@
       <div class="hitmarker" id="hitmarker"><i></i><i></i><i></i><i></i></div>
       <div class="numbers" id="numbers"></div>
       <div class="killfeed" id="killfeed"></div>
+      <div class="clock" id="clock" hidden></div>
+      <div class="extracts" id="extracts" hidden></div>
+      <div class="prompt" id="prompt" hidden><div class="title"></div><ul></ul><div class="bar"><div></div></div></div>
+      <div class="pack" id="pack" hidden><div class="sum"></div><ul></ul></div>
       <div class="health" id="health"><span></span><div><div></div></div></div>
       <div class="ammo" id="ammo">
         <div class="slots"></div>
@@ -30,10 +40,23 @@
       <div class="death" id="death" hidden><h2>You were killed</h2><p></p></div>
       <div class="hint" id="hint">
         WASD move · Shift sprint · Space jump / mantle · C crouch (slide while sprinting) · Q/E lean · LMB fire ·
-        RMB aim · R reload · 1/2/3 or wheel switch · Esc free mouse · F3 net panel
+        RMB aim · R reload · 1/2/3 or wheel switch · F search / take / call · G drop · Esc free mouse · F3 net panel
       </div>
     </div>
     <div class="paused" id="paused" hidden>Click to resume</div>
+    <div class="results" id="results" hidden>
+      <div class="card">
+        <h2></h2>
+        <p class="why"></p>
+        <div class="score"><span></span><small>score</small></div>
+        <dl></dl>
+        <ul class="items"></ul>
+        <div class="buttons">
+          <button type="button" id="again">Play again</button>
+          <button type="button" id="to-menu" class="secondary">Menu</button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

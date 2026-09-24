@@ -114,7 +114,7 @@ export class World {
   readonly rocks: Rock[] = [];
   readonly props: Prop[] = [];
   readonly outposts: Outpost[] = [];
-  /** Where operators leave the island. Chunk 6 opens and closes them. */
+  /** Where operators leave the island; the server opens and closes them. */
   readonly extracts: Point[] = [];
   readonly colliders: Collider[] = [];
   readonly maxHeight: number;

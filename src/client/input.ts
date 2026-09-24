@@ -13,6 +13,8 @@ const KEYS: Record<string, number> = {
   KeyQ: Btn.LeanLeft,
   KeyE: Btn.LeanRight,
   KeyR: Btn.Reload,
+  KeyF: Btn.Interact,
+  KeyG: Btn.Drop,
 };
 
 const MOUSE: Record<number, number> = { 0: Btn.Fire, 2: Btn.Aim };

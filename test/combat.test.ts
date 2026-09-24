@@ -11,7 +11,7 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 function client(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD });
+  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'range' });
   let seq = 0;
   let yaw = 0;
   let pitch = 0;

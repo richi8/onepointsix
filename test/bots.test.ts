@@ -42,6 +42,7 @@ function watch(self: Agent, others: Agent[], yaw: number, seconds: number, befor
   const all = [self, ...others];
   const ctx: BotContext = {
     world, nav, time: 0, agents: all, agent: (id) => all.find((a) => a.id === id), pathBudget: 10, callout: () => {},
+    extracts: [], lootView: () => null,
   };
   before?.(bot, ctx);
   for (let t = 0; t < seconds; t += 0.1) {
@@ -120,7 +121,7 @@ function body(server: GameServer, id: number): PlayerState {
 function human(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: 'human', world: DEFAULT_WORLD });
+  server.receive(id, { t: 'hello', name: 'human', world: DEFAULT_WORLD, mode: 'range' });
   return { id, events: (): GameEvent[] => inbox.flatMap((m) => (m.t === 'events' ? m.events : [])) };
 }
 
@@ -178,11 +179,12 @@ describe('operator bots', () => {
     server.onEvent = (e) => (extract ??= e.k === 'extract' ? e : undefined);
     for (let t = 0; t < SERVER_TICK_RATE * 300 && !extract; t++) server.step();
     expect(extract).toMatchObject({ k: 'extract', id: op.id });
-    expect(extract?.k === 'extract' && extract.carry).toBeGreaterThan(0);
-    expect(server.bots()).toHaveLength(0);
+    expect(extract?.k === 'extract' && extract.value).toBeGreaterThan(0);
+    const operators = () => server.bots().filter((b) => b.team === 'operator');
+    expect(operators()).toHaveLength(0);
     for (let t = 0; t < SERVER_TICK_RATE * OPERATOR_REFILL + 1; t++) server.step();
-    expect(server.bots()).toHaveLength(1);
-    expect(server.bots()[0].id).not.toBe(op.id);
+    expect(operators()).toHaveLength(1);
+    expect(operators()[0].id).not.toBe(op.id);
   });
 });
 

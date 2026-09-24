@@ -22,6 +22,9 @@ export interface InputCmd {
   view?: number;
 }
 
+/** How a game is played: runs against bots and other operators, runs against guards alone, or practice on the range. */
+export type Mode = 'mixed' | 'pve' | 'range';
+
 /** Operators are players and fill bots, each on their own side; guards defend outposts together; dummies stand on the range. */
 export type Team = 'operator' | 'guard' | 'dummy';
 
@@ -49,8 +52,24 @@ export type GameEvent =
   | { k: 'hurt'; damage: number; x: number; z: number }
   // To everyone.
   | { k: 'kill'; killer: number; victim: number; killerName: string; victimName: string; weapon: number; head: boolean }
-  // To everyone: an operator left the island carrying `carry` kg.
-  | { k: 'extract'; id: number; name: string; carry: number }
+  // To everyone: an operator left the island with loot worth `value`.
+  | { k: 'extract'; id: number; name: string; value: number }
+  // To everyone: someone called in a pickup at extraction point `index`.
+  | { k: 'call'; id: number; index: number; name: string }
+  // To the taker: they took an item from a container.
+  | { k: 'took'; item: number }
+  // To the player: their run is over.
+  | {
+      k: 'runEnd'; outcome: 'extracted' | 'killed' | 'mia';
+      /** Zero unless extracted. */
+      score: number;
+      /** What the loot carried was worth, and the items. */
+      value: number; items: number[];
+      kills: number; guardKills: number;
+      /** Seconds the run lasted. */
+      time: number;
+      killer: string;
+    }
   // To everyone but the shooter, who predicted it: a round from (ox, oy, oz) that stopped at (ex, ey, ez).
   | {
       k: 'shot'; id: number; weapon: number;
@@ -61,19 +80,66 @@ export type GameEvent =
 
 export type ClientMsg =
   // `world` is the island the client wants to join; the server may ignore it.
-  | { t: 'hello'; name: string; world: WorldConfig }
+  // Quick join: the client wants to play `mode` on this island. Sent again for another run.
+  | { t: 'hello'; name: string; world: WorldConfig; mode: Mode }
+  // Back to the menu.
+  | { t: 'leave' }
   // Carries the last few unacknowledged commands so a lost packet costs nothing.
   | { t: 'input'; cmds: InputCmd[] }
-  | { t: 'ping'; time: number }
-  // Debug only: sets the sender's carried weight in kg until there is an inventory.
-  | { t: 'debug'; carry: number };
+  | { t: 'ping'; time: number };
+
+/** An extraction point, as everyone sees it. Where it is comes from the world. */
+export interface ExtractView {
+  open: boolean;
+  /** Seconds until it opens or closes. */
+  next: number;
+  /** Seconds until a called pickup lands, or -1. */
+  call: number;
+}
+
+/** A container the player is facing within reach. */
+export interface LootView {
+  id: number;
+  kind: 'crate' | 'bag';
+  searched: boolean;
+  /** How far along the player's search is, 0 to 1. */
+  progress: number;
+  /** What's inside, in the order it will be taken; empty until searched. */
+  items: number[];
+}
+
+/** The recipient's own run. */
+export interface RunView {
+  /** Seconds left on the run clock. */
+  time: number;
+  /** Carried loot, in the order taken. */
+  items: number[];
+  kills: number;
+  guardKills: number;
+  loot: LootView | null;
+  /** Extraction point the player stands in, or -1, and seconds held there. */
+  zone: number;
+  hold: number;
+}
+
+/** A bag on the ground, left by a body or dropped. */
+export interface BagSnap {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+}
 
 export type ServerMsg =
-  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number }
+  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number; mode: Mode }
   // `ack` is the highest command seq the server has simulated for the recipient,
   // and `you` its full movement state right after that command, which the
   // client replays its unacknowledged commands on top of.
-  | { t: 'snapshot'; tick: number; ack: number; you: PlayerState; players: PlayerSnap[] }
+  // `run` is null outside runs, such as on the range.
+  | {
+      t: 'snapshot'; tick: number; ack: number; you: PlayerState; players: PlayerSnap[];
+      run: RunView | null; extracts: ExtractView[]; bags: BagSnap[];
+    }
   | { t: 'events'; tick: number; events: GameEvent[] }
   | { t: 'pong'; time: number };
 

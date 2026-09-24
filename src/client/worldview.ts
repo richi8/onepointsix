@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WATER_LEVEL } from '../shared/constants.ts';
+import type { ExtractView } from '../shared/protocol.ts';
 import { smoothstep } from '../shared/geom.ts';
 import { fbm, mulberry32 } from '../shared/rng.ts';
 import type { PropStyle, World } from '../shared/world.ts';
@@ -21,6 +22,10 @@ const DIRT = new THREE.Color(0x76674c);
 const ROCK = new THREE.Color(0x6f6b63);
 const SEABED = new THREE.Color(0x6b6450);
 
+const FLAG_OPEN = 0x4fd06b;
+const FLAG_SHUT = 0xc4453a;
+const FLAG_CALLED = 0xf2b33d;
+
 const PROP_COLORS: Record<PropStyle, number[]> = {
   crate: [0x8b6b3e, 0x7a5c33, 0x94784a],
   wall: [0x8d8a82],
@@ -33,6 +38,8 @@ export class WorldView {
   readonly scene = new THREE.Scene();
   private readonly sun: THREE.DirectionalLight;
   private readonly sky: THREE.Mesh;
+  /** Each extraction point's flag, coloured by whether it's open. */
+  private readonly flags: THREE.MeshStandardMaterial[];
 
   constructor(world: World) {
     const scene = this.scene;
@@ -50,7 +57,21 @@ export class WorldView {
     this.sun.shadow.normalBias = 0.04;
     scene.add(this.sun, this.sun.target);
 
-    scene.add(makeTerrain(world), makeWater(), makeProps(world), makeTrees(world), makeRocks(world), makeExtracts(world));
+    const extracts = makeExtracts(world);
+    this.flags = extracts.flags;
+    scene.add(makeTerrain(world), makeWater(), makeProps(world), makeTrees(world), makeRocks(world), extracts.group);
+  }
+
+  /** Green flags fly over open extraction points, red over shut ones; a called pickup flashes amber. */
+  setExtracts(views: readonly ExtractView[], time: number): void {
+    views.forEach((v, i) => {
+      const m = this.flags[i];
+      if (!m) return;
+      const called = v.call >= 0 && Math.floor(time * 3) % 2 === 0;
+      const hex = called ? FLAG_CALLED : v.open ? FLAG_OPEN : FLAG_SHUT;
+      m.color.setHex(hex);
+      m.emissive.setHex(hex).multiplyScalar(0.55);
+    });
   }
 
   /** Keep the sky around the camera and the shadow frustum over what matters. */
@@ -195,13 +216,15 @@ function makeProps(world: World): THREE.InstancedMesh {
 }
 
 /** A tall pole with a bright flag at each extraction point, visible from far off. */
-function makeExtracts(world: World): THREE.Group {
+function makeExtracts(world: World): { group: THREE.Group; flags: THREE.MeshStandardMaterial[] } {
   const group = new THREE.Group();
+  const flags: THREE.MeshStandardMaterial[] = [];
   const pole = new THREE.CylinderGeometry(0.06, 0.08, 8, 6).translate(0, 4, 0);
   const flag = new THREE.BoxGeometry(1.6, 1, 0.04).translate(0.8, 7.4, 0);
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x9a9a92, roughness: 0.6, metalness: 0.4 });
-  const flagMat = new THREE.MeshStandardMaterial({ color: 0x4fd06b, emissive: 0x2a8c3e, emissiveIntensity: 0.8, roughness: 0.9 });
   for (const e of world.extracts) {
+    const flagMat = new THREE.MeshStandardMaterial({ color: FLAG_OPEN, emissive: 0x2a8c3e, emissiveIntensity: 0.8, roughness: 0.9 });
+    flags.push(flagMat);
     const marker = new THREE.Group();
     const p = new THREE.Mesh(pole, poleMat);
     const f = new THREE.Mesh(flag, flagMat);
@@ -212,7 +235,7 @@ function makeExtracts(world: World): THREE.Group {
     marker.position.x += 1.5;
     group.add(marker);
   }
-  return group;
+  return { group, flags };
 }
 
 function makeTrees(world: World): THREE.Group {

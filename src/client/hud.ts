@@ -51,6 +51,8 @@ export class Hud {
   private hurt = 0;
   private killer = '';
   private respawnIn = 0;
+  /** Playing a run, where the dead don't respawn. */
+  runs = false;
 
   constructor() {
     const slotsRoot = $('ammo').querySelector('.slots')!;
@@ -102,7 +104,8 @@ export class Hud {
     this.death.hidden = !s.dead;
     if (s.dead) {
       this.respawnIn = Math.max(this.respawnIn - dt, 0);
-      this.deathText.textContent = `${this.killer ? `by ${this.killer} · ` : ''}respawning in ${this.respawnIn.toFixed(1)}`;
+      const by = this.killer ? `by ${this.killer}` : '';
+      this.deathText.textContent = this.runs ? by : `${by ? `${by} · ` : ''}respawning in ${this.respawnIn.toFixed(1)}`;
     }
   }
 
@@ -148,10 +151,29 @@ export class Hud {
     const row = document.createElement('div');
     row.append(e.id === me ? 'You' : e.name);
     const how = document.createElement('em');
-    how.textContent = `extracted · ${e.carry} kg`;
+    how.textContent = `extracted · $${e.value.toLocaleString('en-US')}`;
     row.append(how);
     row.className = e.id === me ? 'you extract' : 'extract';
     this.pushFeed(row);
+  }
+
+  /** Someone called in a pickup at a landing zone. */
+  call(e: Extract<GameEvent, { k: 'call' }>, where: string, me: number): void {
+    const row = document.createElement('div');
+    row.append(e.id === me ? 'You' : e.name);
+    const how = document.createElement('em');
+    how.textContent = `called a pickup · ${where}`;
+    row.append(how);
+    row.className = 'extract';
+    this.pushFeed(row);
+  }
+
+  /** Clear what's left over from the last run. */
+  reset(): void {
+    this.death.hidden = true;
+    this.killer = '';
+    this.feed.replaceChildren();
+    this.hurt = 0;
   }
 
   private pushFeed(row: HTMLElement): void {

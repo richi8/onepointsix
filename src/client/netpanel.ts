@@ -1,5 +1,5 @@
-import { CARRY_MAX } from '../shared/constants.ts';
-import type { NetConditions } from '../shared/transport.ts';
+import type { ClientMsg, ServerMsg } from '../shared/protocol.ts';
+import type { LagTransport, NetConditions } from '../shared/transport.ts';
 import { WEAPONS } from '../shared/weapons.ts';
 import type { Connection } from './connection.ts';
 
@@ -10,18 +10,24 @@ const PRESETS: Record<string, NetConditions> = {
   bad: { latency: 100, jitter: 40, loss: 0.05 },
 };
 
-/** Debug overlay (toggle with F3) showing net stats and fake-lag controls. */
+/**
+ * Debug overlay (toggle with F3) showing net stats and fake-lag controls. The
+ * fake lag belongs to the transport, so it carries over from run to run.
+ */
 export class NetPanel {
+  /** The run being played, if any. */
+  conn: Connection | null = null;
   private readonly root = document.createElement('div');
   private readonly stats = document.createElement('pre');
-  private readonly conn: Connection;
+  private readonly net: NetConditions;
 
-  constructor(conn: Connection) {
-    this.conn = conn;
+  constructor(transport: LagTransport<ClientMsg, ServerMsg>) {
+    this.net = transport.net;
     this.root.className = 'netpanel';
+    this.root.hidden = true;
     this.root.append(this.stats);
 
-    const net = conn.transport.net;
+    const net = transport.net;
     for (const [key, label, max, scale] of [
       ['latency', 'Latency (one-way, ms)', 300, 1],
       ['jitter', 'Jitter (ms)', 100, 1],
@@ -47,23 +53,6 @@ export class NetPanel {
       this.root.append(row);
     }
 
-    // Debug until chunk 6 adds an inventory: carried weight in kg.
-    const carry = document.createElement('label');
-    const carryName = document.createElement('div');
-    const carryInput = document.createElement('input');
-    const carryValue = document.createElement('span');
-    carryName.textContent = 'Carry weight (kg, debug)';
-    carryInput.type = 'range';
-    carryInput.min = '0';
-    carryInput.max = String(CARRY_MAX);
-    carryInput.value = carryValue.textContent = '0';
-    carryInput.oninput = () => {
-      carryValue.textContent = carryInput.value;
-      conn.setCarry(Number(carryInput.value));
-    };
-    carry.append(carryName, carryInput, carryValue);
-    this.root.append(carry);
-
     const presets = document.createElement('div');
     for (const [name, preset] of Object.entries(PRESETS)) {
       const b = document.createElement('button');
@@ -82,8 +71,8 @@ export class NetPanel {
   }
 
   update(): void {
-    if (this.root.hidden) return;
     const c = this.conn;
+    if (this.root.hidden || !c) return;
     const pr = c.predictor;
     const me = pr.state;
     const pos = me ? `${me.x.toFixed(1)}, ${me.y.toFixed(1)}, ${me.z.toFixed(1)}` : '-';
@@ -108,7 +97,7 @@ export class NetPanel {
   }
 
   private apply(preset: NetConditions): void {
-    Object.assign(this.conn.transport.net, preset);
+    Object.assign(this.net, preset);
     for (const input of this.root.querySelectorAll<HTMLInputElement>('input[data-key]')) {
       const key = input.dataset.key as keyof NetConditions;
       input.value = String(preset[key] * Number(input.dataset.scale));

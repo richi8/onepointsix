@@ -3,19 +3,23 @@ import { CMD_DT, WALK_SPEED } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
-import type { GameEvent } from '../shared/protocol.ts';
+import { extractName } from '../shared/loot.ts';
+import { isReliable, type ClientMsg, type GameEvent, type Mode, type ServerMsg } from '../shared/protocol.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { BOLT, spreadOf, WEAPONS, type Shot } from '../shared/weapons.ts';
+import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD, parseWorldParam } from '../shared/worldconfig.ts';
 import { Sfx } from './audio.ts';
+import { Bags } from './bags.ts';
 import { Bodies } from './bodies.ts';
-import { Connection } from './connection.ts';
+import { Connection, WorkerTransport } from './connection.ts';
 import { Effects, type Struck } from './effects.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
 import { NetPanel } from './netpanel.ts';
 import type { Rendered } from './prediction.ts';
+import { RunHud, type RunEnd } from './runhud.ts';
 import { ViewModel } from './viewmodel.ts';
 import { WorldView } from './worldview.ts';
 import './style.css';
@@ -28,6 +32,13 @@ const PLAY_FOV = 75;
 const MUZZLE_REACH = 0.7;
 /** Seconds for the death camera to sink to the ground. */
 const DEATH_FALL = 0.6;
+/** Seconds of the death camera before the results come up. */
+const RESULTS_DELAY_DEAD = 2.2;
+const MODE_NOTES: Record<Mode, string> = {
+  mixed: 'Loot and get out, against guards and eleven other operators.',
+  pve: 'Loot and get out. Just you against the guards.',
+  range: 'Target practice. No clock, and you respawn.',
+};
 
 const config = parseWorldParam(new URLSearchParams(location.search).get('world'));
 const world = new World(config.seed);
@@ -58,8 +69,11 @@ resize();
 
 const effects = new Effects(scene);
 const bodies = new Bodies(scene);
+const bags = new Bags(scene);
 const hud = new Hud();
+const runHud = new RunHud(world);
 const sfx = new Sfx();
+const extractNames = world.extracts.map((_, i) => extractName(world, i));
 
 // ------------------------------------------------------------------ menu
 
@@ -71,17 +85,49 @@ document.getElementById('world-label')!.textContent =
 
 let conn: Connection | null = null;
 let panel: NetPanel | null = null;
+/** One pipe to the local game host for the whole session; each run joins through it. */
+let transport: LagTransport<ClientMsg, ServerMsg> | null = null;
 const input = new Input(window, renderer.domElement);
 
 // Sample input at the fixed command rate, independent of frame rate.
 const inputLoop = new FixedLoop(CMD_DT, () => conn?.sendCmd(input.sample(), input.yaw, input.pitch, input.weapon), 8);
 
-function play(): void {
-  if (conn) return;
-  sfx.unlock();
-  menu.hidden = true;
-  hud.show();
-  conn = new Connection(config, world);
+// ------------------------------------------------------------------ modes
+
+const modeNote = document.getElementById('mode-note')!;
+const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
+let mode: Mode = 'mixed';
+try {
+  const saved = localStorage.getItem('mode');
+  if (saved === 'mixed' || saved === 'pve' || saved === 'range') mode = saved;
+} catch {
+  // Storage may be blocked; the default will do.
+}
+
+function selectMode(m: Mode): void {
+  mode = m;
+  for (const b of modeButtons) {
+    const on = b.dataset.mode === m;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+  modeNote.textContent = MODE_NOTES[m];
+  try {
+    localStorage.setItem('mode', m);
+  } catch {
+    // Not remembered, that's all.
+  }
+}
+for (const b of modeButtons) b.onclick = () => selectMode(b.dataset.mode as Mode);
+selectMode(mode);
+
+// ------------------------------------------------------------------ runs
+
+/** Quick join: a new connection, and so a new run, through the shared transport. */
+function join(): void {
+  transport ??= new LagTransport(new WorkerTransport(), isReliable);
+  panel ??= new NetPanel(transport);
+  conn = new Connection(config, world, mode, transport);
   conn.onFx = (fx) => {
     if (fx.k === 'shot') ownShot(fx.shot);
     else if (fx.k === 'dry') sfx.dry();
@@ -94,14 +140,58 @@ function play(): void {
     input.yaw = s.yaw;
     input.pitch = s.pitch;
   };
-  panel = new NetPanel(conn);
+  panel.conn = conn;
+  hud.runs = mode !== 'range';
+  hud.reset();
+  hud.show();
+  runHud.hideResults();
   // Shown until the lock succeeds, so a refused lock still leaves a way in.
   paused.hidden = false;
   input.lock();
 }
 
+function play(): void {
+  if (conn) return;
+  sfx.unlock();
+  menu.hidden = true;
+  join();
+}
+
+/** The run ended: let the death camera play out, then show the results. */
+function endRun(e: RunEnd): void {
+  if (!conn) return;
+  conn.over = true;
+  sfx.runEnd(e.outcome === 'extracted');
+  const shown = conn;
+  setTimeout(() => {
+    if (conn !== shown) return;
+    document.exitPointerLock();
+    paused.hidden = true;
+    runHud.showResults(e);
+  }, e.outcome === 'killed' ? RESULTS_DELAY_DEAD * 1000 : 300);
+}
+
+function toMenu(): void {
+  conn?.leave();
+  conn = null;
+  if (panel) panel.conn = null;
+  runHud.hideResults();
+  document.getElementById('hud')!.hidden = true;
+  paused.hidden = true;
+  menu.hidden = false;
+  bodies.update([], 0);
+  bags.update([]);
+  playButton.focus();
+}
+
+document.getElementById('again')!.onclick = () => {
+  conn?.leave();
+  join();
+};
+document.getElementById('to-menu')!.onclick = toMenu;
+
 input.onLockChange = (locked) => {
-  if (conn) paused.hidden = locked;
+  if (conn && !conn.over) paused.hidden = locked;
 };
 paused.onclick = () => input.lock();
 
@@ -166,6 +256,16 @@ function onEvent(e: GameEvent): void {
       break;
     case 'extract':
       hud.extract(e, conn!.id);
+      break;
+    case 'call':
+      hud.call(e, extractNames[e.index], conn!.id);
+      sfx.call();
+      break;
+    case 'took':
+      sfx.pickup();
+      break;
+    case 'runEnd':
+      endRun(e);
       break;
     case 'shot': {
       const d = Math.hypot(e.ex - e.ox, e.ey - e.oy, e.ez - e.oz) || 1;
@@ -246,6 +346,8 @@ renderer.setAnimationLoop(() => {
 
   const players = conn ? (conn.update(dt), inputLoop.advance(now), conn.interpolated()) : [];
   bodies.update(players, dt);
+  bags.update(conn?.bags ?? []);
+  if (conn) view.setExtracts(conn.extracts, now);
 
   const me = conn?.predictor.render(inputLoop.alpha);
   const state = conn?.predictor.state ?? null;
@@ -257,6 +359,8 @@ renderer.setAnimationLoop(() => {
     const spread = state ? spreadOf(state) : 0;
     const spreadPx = (Math.tan(spread) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2);
     hud.update(dt, state, me?.aim ?? 0, clamp(spreadPx, 0, innerHeight / 3), !!state && sprinting(state), camera);
+    if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw);
+    else runHud.update(null, [], 0, 0, 0);
   }
   panel?.update();
 

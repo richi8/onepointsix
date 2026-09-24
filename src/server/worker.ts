@@ -1,27 +1,30 @@
 /// <reference lib="webworker" />
-// The local game server. Runs in a Web Worker so the page talks to it only
+// The local game host. Runs in a Web Worker so the page talks to it only
 // through messages, exactly as it will talk to a remote server later.
 
-import { OPERATOR_CAPACITY, SERVER_DT } from '../shared/constants.ts';
+import { SERVER_DT } from '../shared/constants.ts';
 import { FixedLoop, runLoop } from '../shared/loop.ts';
 import type { ClientMsg, ServerMsg } from '../shared/protocol.ts';
-import { GameServer } from './server.ts';
+import { Directory } from './directory.ts';
+import type { GameServer } from './server.ts';
 
 declare const self: DedicatedWorkerGlobalScope;
 
-// There is one local game, created for whichever world the first hello asks
-// for. Chunk 6 replaces this with a game directory that quick join searches.
-let server: GameServer | null = null;
-let id = 0;
+const directory = new Directory();
+runLoop(new FixedLoop(SERVER_DT, () => directory.step()));
+
+/** The game the page is playing in, and its player there. */
+let current: { game: GameServer; id: number } | null = null;
 
 self.onmessage = (e: MessageEvent<ClientMsg>) => {
   const msg = e.data;
-  if (!server) {
-    if (msg.t !== 'hello') return;
-    const game = new GameServer(msg.world.seed, { guards: true, operators: OPERATOR_CAPACITY });
-    id = game.connect((m: ServerMsg) => self.postMessage(m));
-    runLoop(new FixedLoop(SERVER_DT, () => game.step()));
-    server = game;
+  if (msg.t === 'hello') {
+    // Each hello is a quick join for a new run; leave the last game first.
+    if (current) current.game.disconnect(current.id);
+    const game = directory.quickJoin(msg.world, msg.mode);
+    current = { game, id: game.connect((m: ServerMsg) => self.postMessage(m)) };
   }
-  server.receive(id, msg);
+  if (!current) return;
+  current.game.receive(current.id, msg);
+  if (msg.t === 'leave') current = null;
 };
