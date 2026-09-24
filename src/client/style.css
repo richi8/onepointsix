@@ -531,6 +531,123 @@ canvas {
   opacity: 0.85;
 }
 
+/* ------------------------------------------------------------------ what's new */
+
+.menu .news-button {
+  position: relative;
+  margin-top: 10px;
+  padding: 6px 14px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #eee;
+  background: rgb(0 0 0 / 0.35);
+  box-shadow: none;
+}
+
+.menu .news-button:hover {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.menu .news-button .dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  background: #e8c35a;
+  border-radius: 50%;
+}
+
+.news {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.news[hidden] {
+  display: none;
+}
+
+.news .card {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(640px, 100%);
+  background: rgb(14 16 18 / 0.92);
+  border-top: 4px solid #e8c35a;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+
+.news header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px 10px;
+}
+
+.news h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.news header button {
+  width: 32px;
+  height: 32px;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  color: #eee;
+  background: rgb(255 255 255 / 0.1);
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.news header button:hover {
+  background: rgb(255 255 255 / 0.2);
+}
+
+.news .entries {
+  overflow-y: auto;
+  padding: 0 24px 20px;
+}
+
+.news section + section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.news h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #e8c35a;
+}
+
+.news time {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.news ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.news li + li {
+  margin-top: 4px;
+}
+
 /* ------------------------------------------------------------------ run */
 
 .clock {

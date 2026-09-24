@@ -13,6 +13,7 @@ import { DEFAULT_WORLD, parseWorldParam } from '../shared/worldconfig.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies } from './bodies.ts';
+import { CHANGELOG } from './changelog.ts';
 import { Connection, WorkerTransport } from './connection.ts';
 import { Effects, type Struck } from './effects.ts';
 import { Grenades } from './grenades.ts';
@@ -126,6 +127,59 @@ function selectMode(m: Mode): void {
 for (const b of modeButtons) b.onclick = () => selectMode(b.dataset.mode as Mode);
 selectMode(mode);
 
+// ------------------------------------------------------------- what's new
+
+const news = document.getElementById('news')!;
+const newsOpen = document.getElementById('news-open') as HTMLButtonElement;
+const newsDot = newsOpen.querySelector('.dot') as HTMLElement;
+/** Updates seen are remembered by how many there were, so a new one lights the dot. */
+let seenUpdates = CHANGELOG.length;
+try {
+  const saved = localStorage.getItem('seenUpdates');
+  seenUpdates = saved === null ? 0 : Number(saved) || 0;
+} catch {
+  // Storage may be blocked; no dot then.
+}
+newsDot.hidden = seenUpdates >= CHANGELOG.length;
+
+news.querySelector('.entries')!.replaceChildren(...CHANGELOG.map((entry) => {
+  const section = document.createElement('section');
+  const title = document.createElement('h3');
+  title.textContent = entry.title;
+  const date = document.createElement('time');
+  date.dateTime = entry.date;
+  date.textContent = new Date(`${entry.date}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  const list = document.createElement('ul');
+  list.append(...entry.notes.map((note) => {
+    const li = document.createElement('li');
+    li.textContent = note;
+    return li;
+  }));
+  section.append(title, date, list);
+  return section;
+}));
+
+function showNews(open: boolean): void {
+  news.hidden = !open;
+  if (open) {
+    newsDot.hidden = true;
+    try {
+      localStorage.setItem('seenUpdates', String(CHANGELOG.length));
+    } catch {
+      // Not remembered, that's all.
+    }
+    (document.getElementById('news-close') as HTMLButtonElement).focus();
+  } else newsOpen.focus();
+}
+newsOpen.onclick = () => showNews(true);
+document.getElementById('news-close')!.onclick = () => showNews(false);
+news.onclick = (e) => {
+  if (e.target === news) showNews(false);
+};
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && !news.hidden) showNews(false);
+});
+
 // ------------------------------------------------------------------ runs
 
 /** Quick join: a new connection, and so a new run, through the shared transport. */
@@ -208,7 +262,7 @@ paused.onclick = () => input.lock();
 
 playButton.onclick = play;
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Enter' && !conn) play();
+  if (e.code === 'Enter' && !conn && news.hidden && document.activeElement !== newsOpen) play();
 });
 playButton.focus();
 

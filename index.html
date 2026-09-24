@@ -16,6 +16,16 @@
         <button type="button" role="radio" data-mode="range">Range</button>
       </div>
       <p class="mode-note" id="mode-note"></p>
+      <button type="button" class="news-button" id="news-open">What's new<span class="dot" hidden></span></button>
+    </div>
+    <div class="news" id="news" hidden role="dialog" aria-modal="true" aria-labelledby="news-title">
+      <div class="card">
+        <header>
+          <h2 id="news-title">What's new</h2>
+          <button type="button" id="news-close" aria-label="Close">×</button>
+        </header>
+        <div class="entries"></div>
+      </div>
     </div>
     <div class="hud" id="hud" hidden>
       <div class="scope" id="scope"></div>
