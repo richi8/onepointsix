@@ -23,11 +23,11 @@ describe('GameServer', () => {
   });
 
   it('spawns players standing on dry land', () => {
-    const { server, lastSnapshot } = setup();
+    const { server, id, lastSnapshot } = setup();
     server.step();
     const snap = lastSnapshot();
     if (snap.t !== 'snapshot') throw new Error();
-    const { x, y, z } = snap.players[0];
+    const { x, y, z } = snap.players.find((p) => p.id === id)!;
     expect(server.world.terrainHeight(x, z)).toBeGreaterThan(1);
     expect(y).toBeCloseTo(server.world.groundHeight(x, z, y));
   });
@@ -51,7 +51,7 @@ describe('GameServer', () => {
     expect(snap.ack).toBe(2);
     expect(snap.you).toEqual(expected(server, before, [fwd(1), fwd(2)]));
     expect(snap.you.z).toBeLessThan(before.you.z);
-    expect(snap.players[0].z).toBe(snap.you.z);
+    expect(snap.players.find((p) => p.id === id)!.z).toBe(snap.you.z);
   });
 
   it('ignores redundant resends of commands it already has', () => {
@@ -74,7 +74,7 @@ describe('GameServer', () => {
       for (let tick = 0; tick < 90; tick++) {
         const cmds = [];
         for (let i = 0; i < CMDS_PER_TICK; i++) {
-          cmds.push({ seq: ++seq, buttons: (seq * 7919) % 2048, yaw: Math.sin(seq) * 3, pitch: 0 });
+          cmds.push({ seq: ++seq, buttons: (seq * 7919) % 4096, yaw: Math.sin(seq) * 3, pitch: 0, weapon: (seq >> 6) % 3 });
         }
         server.receive(id, { t: 'input', cmds });
         server.step();

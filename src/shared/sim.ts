@@ -21,6 +21,7 @@ import {
   LEAN_RATE,
   LEAN_ROLL,
   LEAN_SPEED_MUL,
+  MAX_HP,
   MANTLE_AIR_HEIGHT,
   MANTLE_EXIT_SPEED,
   MANTLE_FORWARD_SPEED,
@@ -53,6 +54,7 @@ import {
 } from './constants.ts';
 import { clamp, lerp } from './geom.ts';
 import type { InputCmd } from './protocol.ts';
+import { blocksSprint, spawnWeapons, stepWeapon, WEAPONS, type WeaponFx, type WeaponState } from './weapons.ts';
 import type { Body, World } from './world.ts';
 
 /** Feet this far below the surface count as wading. */
@@ -66,7 +68,7 @@ const LEAN_MARGIN = 0.15;
  * Everything applyCmd reads or writes. The server sends it back to the owning
  * client so prediction can restart from exactly the authoritative state.
  */
-export interface PlayerState extends Body {
+export interface PlayerState extends Body, WeaponState {
   vy: number;
   yaw: number;
   pitch: number;
@@ -98,6 +100,12 @@ export interface PlayerState extends Body {
   lean: number;
   /** Carried weight in kg. Set by the server; inventory arrives in chunk 6. */
   carry: number;
+  /** Health, set by the server. */
+  hp: number;
+  /** Dead players ignore input until the server respawns them. */
+  dead: boolean;
+  /** Counts spawns, so the client can tell when it has been respawned. */
+  life: number;
 }
 
 export function spawnState(x: number, y: number, z: number): PlayerState {
@@ -106,18 +114,23 @@ export function spawnState(x: number, y: number, z: number): PlayerState {
     crouched: false, duck: 0, jumpHeld: false, crouchHeld: false,
     stamina: 1, staminaDelay: 0, winded: false, slide: 0, slideCooldown: 0,
     mantling: false, mantleX: 0, mantleY: 0, mantleZ: 0, lean: 0, carry: 0,
+    hp: MAX_HP, dead: false, life: 0, ...spawnWeapons(),
   };
 }
 
-/** A plain copy of just the movement fields, safe to send or snapshot. */
+/** A plain copy of just the player state fields, safe to send or snapshot. */
 export function copyState(p: PlayerState): PlayerState {
   const {
     x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld, crouchHeld,
     stamina, staminaDelay, winded, slide, slideCooldown, mantling, mantleX, mantleY, mantleZ, lean, carry,
+    hp, dead, life, weapon, mag, reserve, cooldown, reload, draw, triggerHeld, aim,
+    recoilPitch, recoilYaw, burst, sinceShot,
   } = p;
   return {
     x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld, crouchHeld,
     stamina, staminaDelay, winded, slide, slideCooldown, mantling, mantleX, mantleY, mantleZ, lean, carry,
+    hp, dead, life, weapon, mag: [...mag], reserve: [...reserve], cooldown, reload, draw, triggerHeld, aim,
+    recoilPitch, recoilYaw, burst, sinceShot,
   };
 }
 
@@ -141,13 +154,19 @@ export function overweight(p: PlayerState): boolean {
  *
  * Quake/GoldSrc-style movement: ground friction and acceleration toward the
  * wished velocity, and weak capped air acceleration so air strafing works.
- * On top of that: stamina, sliding, mantling, leaning and carry weight.
+ * On top of that: stamina, sliding, mantling, leaning and carry weight, and
+ * then the weapon (see stepWeapon), whose shots and effects go to `onFx`.
  * Yaw 0 faces -z, matching Three.js cameras.
  */
-export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number): void {
+export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number, onFx?: (fx: WeaponFx) => void): void {
   const b = cmd.buttons;
   p.yaw = cmd.yaw;
   p.pitch = clamp(cmd.pitch, -MAX_PITCH, MAX_PITCH);
+  if (p.dead) {
+    p.vx = p.vy = p.vz = 0;
+    return;
+  }
+  const eye = () => eyePosition(world, p.x, p.y, p.z, p.yaw, p.duck, p.lean);
   p.slideCooldown = Math.max(p.slideCooldown - dt, 0);
 
   const jump = (b & Btn.Jump) !== 0;
@@ -170,6 +189,8 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
     mantleStep(p, dt);
     ease(p, 0, dt);
     regenStamina(p, dt);
+    // Both hands are on the ledge: the weapon can't fire or aim.
+    stepWeapon(p, cmd, dt, true, eye, onFx);
     return;
   }
 
@@ -212,7 +233,7 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
 
   const load = loadFactor(p.carry);
   const len = Math.hypot(fwd, side);
-  const sprint = (b & Btn.Sprint) !== 0 && fwd > 0 && !p.crouched && !p.winded && len > 0;
+  const sprint = (b & Btn.Sprint) !== 0 && fwd > 0 && !p.crouched && !p.winded && len > 0 && !blocksSprint(b);
   const leanTarget = sprint || sliding ? 0 : ((b & Btn.LeanRight) !== 0 ? 1 : 0) - ((b & Btn.LeanLeft) !== 0 ? 1 : 0);
   ease(p, leanTarget, dt);
 
@@ -224,6 +245,7 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
     let wishSpeed = sprint ? SPRINT_SPEED : WALK_SPEED;
     wishSpeed += (CROUCH_SPEED - wishSpeed) * p.duck;
     wishSpeed *= lerp(1, LEAN_SPEED_MUL, Math.abs(p.lean));
+    wishSpeed *= lerp(1, WEAPONS[p.weapon].aimSpeed, p.aim);
     wishSpeed *= 1 - CARRY_SLOWDOWN * load;
     if (p.y < WATER_LEVEL - WADE_DEPTH) wishSpeed *= WATER_SPEED_MUL;
     if (p.onGround) accelerate(p, wx, wz, wishSpeed, wishSpeed, GROUND_ACCEL, dt);
@@ -265,6 +287,8 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
   } else {
     p.onGround = false;
   }
+
+  stepWeapon(p, cmd, dt, sprint, eye, onFx);
 }
 
 /**

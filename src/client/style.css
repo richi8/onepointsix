@@ -11,16 +11,6 @@ canvas {
   display: block;
 }
 
-.hint {
-  position: fixed;
-  left: 12px;
-  bottom: 12px;
-  color: #fff;
-  font-size: 13px;
-  text-shadow: 0 1px 2px #000;
-  pointer-events: none;
-}
-
 .netpanel {
   position: fixed;
   top: 12px;
@@ -112,27 +102,10 @@ canvas {
   background: #f2d27a;
 }
 
-.crosshair {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  width: 4px;
-  height: 4px;
-  margin: -2px 0 0 -2px;
-  background: #fff;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6);
-  pointer-events: none;
-}
-
-.crosshair[hidden] {
-  display: none;
-}
-
 .stamina {
   position: fixed;
   left: 50%;
-  bottom: 40px;
+  bottom: 28px;
   width: 180px;
   height: 4px;
   margin-left: -90px;
@@ -173,4 +146,335 @@ canvas {
 
 .paused[hidden] {
   display: none;
+}
+
+/* ------------------------------------------------------------------ HUD */
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud[hidden],
+.hud [hidden] {
+  display: none;
+}
+
+.hint {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  max-width: 560px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  --gap: 6px;
+  transition: opacity 0.08s;
+}
+
+.crosshair i,
+.crosshair b {
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+}
+
+.crosshair i {
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+}
+
+.crosshair i:nth-child(1) {
+  bottom: var(--gap);
+}
+
+.crosshair i:nth-child(2) {
+  top: var(--gap);
+}
+
+.crosshair i:nth-child(3),
+.crosshair i:nth-child(4) {
+  width: 8px;
+  height: 2px;
+  margin: -1px 0 0;
+}
+
+.crosshair i:nth-child(3) {
+  right: var(--gap);
+}
+
+.crosshair i:nth-child(4) {
+  left: var(--gap);
+}
+
+.crosshair b {
+  width: 2px;
+  height: 2px;
+  margin: -1px 0 0 -1px;
+}
+
+.hitmarker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  opacity: 0;
+}
+
+.hitmarker i {
+  position: absolute;
+  width: 10px;
+  height: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4);
+}
+
+.hitmarker i:nth-child(1) {
+  transform: translate(-16px, -12px) rotate(45deg);
+}
+
+.hitmarker i:nth-child(2) {
+  transform: translate(6px, -12px) rotate(-45deg);
+}
+
+.hitmarker i:nth-child(3) {
+  transform: translate(-16px, 10px) rotate(-45deg);
+}
+
+.hitmarker i:nth-child(4) {
+  transform: translate(6px, 10px) rotate(45deg);
+}
+
+.hitmarker.head i {
+  background: #ffd84a;
+}
+
+.hitmarker.kill i {
+  background: #ff3a24;
+  width: 14px;
+}
+
+.numbers span {
+  position: absolute;
+  font-size: 15px;
+  font-weight: 800;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+.numbers .head {
+  color: #ffd84a;
+  font-size: 18px;
+}
+
+.numbers .legs {
+  color: #cfcfcf;
+}
+
+.numbers .kill {
+  color: #ff5a3c;
+}
+
+.killfeed {
+  position: absolute;
+  left: 12px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.killfeed div {
+  padding: 3px 8px;
+  background: rgb(0 0 0 / 0.45);
+  border-radius: 3px;
+  transition: opacity 0.4s;
+}
+
+.killfeed .you {
+  color: #e8c35a;
+}
+
+.killfeed em {
+  font-style: normal;
+  opacity: 0.7;
+  margin: 0 6px;
+}
+
+.health {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.health span {
+  width: 2.2em;
+  font-size: 26px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.health > div {
+  width: 180px;
+  height: 6px;
+  background: rgb(0 0 0 / 0.45);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.health > div div {
+  height: 100%;
+  background: #e8e3d4;
+  transition: width 0.15s;
+}
+
+.health.low span {
+  color: #ff5a3c;
+}
+
+.health.low > div div {
+  background: #d9534f;
+}
+
+.ammo {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  text-align: right;
+}
+
+.ammo .slots {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.ammo .slots span {
+  padding: 1px 6px;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  border-radius: 2px;
+  opacity: 0.55;
+}
+
+.ammo .slots .on {
+  opacity: 1;
+  border-color: #e8c35a;
+  color: #e8c35a;
+}
+
+.ammo .name {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.ammo .mag {
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.ammo .mag.low {
+  color: #ff5a3c;
+}
+
+.ammo .reserve {
+  margin-left: 6px;
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+.ammo .reloadbar {
+  height: 3px;
+  margin-top: 4px;
+  background: rgb(0 0 0 / 0.45);
+  visibility: hidden;
+}
+
+.ammo .reloadbar.on {
+  visibility: visible;
+}
+
+.ammo .reloadbar div {
+  height: 100%;
+  background: #e8c35a;
+}
+
+.hurt {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgb(170 0 0 / 0.55) 100%);
+}
+
+.hurtdir i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 90px;
+  height: 90px;
+  margin: -45px 0 0 -45px;
+  border-top: 5px solid rgb(255 60 40 / 0.9);
+  border-radius: 50%;
+  transition: opacity 0.6s;
+}
+
+.scope {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background:
+    linear-gradient(#000, #000) center / 100% 1px no-repeat,
+    linear-gradient(#000, #000) center / 1px 100% no-repeat,
+    radial-gradient(circle at center, transparent 0, transparent 34vmin, #000 34.3vmin);
+}
+
+.scope::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: #ff2a1a;
+}
+
+.death {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgb(60 0 0 / 0.3);
+}
+
+.death h2 {
+  margin: 0 0 6px;
+  font-size: 34px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.death p {
+  margin: 0;
+  font-size: 16px;
+  opacity: 0.9;
 }

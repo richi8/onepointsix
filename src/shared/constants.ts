@@ -8,7 +8,6 @@ export const CMD_DT = 1 / CMD_RATE;
 export const CMDS_PER_TICK = CMD_RATE / SERVER_TICK_RATE;
 export const MAX_CMDS_PER_TICK = 8;
 export const INTERP_DELAY = 0.1;
-export const MAX_REWIND = 0.3;
 
 // World
 export const DEFAULT_SEED = 1;
@@ -96,18 +95,20 @@ export const CARRY_DRAIN = 1;
 // Combat
 export const MAX_HP = 100;
 export const RESPAWN_TIME = 3;
+/** Seconds after spawning during which a player takes no damage. */
 export const SPAWN_PROTECTION = 1.5;
-export const WEAPON = {
-  damage: 24,
-  headshotMultiplier: 2.5,
-  fireIntervalTicks: 6, // in CMD_DT steps -> 600 rpm
-  magSize: 30,
-  reloadTicks: 120,
-  range: 400,
-  spread: 0.003,
-  moveSpread: 0.02,
-  airSpread: 0.06,
-} as const;
+export const HEADSHOT_MUL = 2.5;
+export const LEGS_MUL = 0.7;
+/** Spread multiple while crouched. */
+export const CROUCH_SPREAD_MUL = 0.7;
+/** Recoil starts recovering this long after the last shot. */
+export const RECOIL_RECOVER_DELAY = 0.12;
+/** Recoil recovery, as an exponential rate per second. */
+export const RECOIL_RECOVER_RATE = 7;
+/** A burst (which drives the recoil pattern) ends this long after the last shot. */
+export const BURST_RESET = 0.3;
+/** How far back the server rewinds other players to where a shooter saw them. */
+export const MAX_REWIND = 0.5;
 
 export const BOT_TARGET_COUNT = 12;
 
@@ -123,4 +124,5 @@ export const Btn = {
   Crouch: 256,
   LeanLeft: 512,
   LeanRight: 1024,
+  Aim: 2048,
 } as const;

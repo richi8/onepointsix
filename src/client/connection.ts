@@ -1,7 +1,10 @@
 import { INTERP_DELAY, SERVER_DT } from '../shared/constants.ts';
-import { lerp } from '../shared/geom.ts';
-import { isReliable, type ClientMsg, type InputCmd, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
+import { angleDiff, clamp, lerp } from '../shared/geom.ts';
+import {
+  isReliable, type ClientMsg, type GameEvent, type InputCmd, type PlayerSnap, type ServerMsg,
+} from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
+import type { WeaponFx } from '../shared/weapons.ts';
 import { LagTransport, type Transport } from '../shared/transport.ts';
 import type { World } from '../shared/world.ts';
 import type { WorldConfig } from '../shared/worldconfig.ts';
@@ -44,6 +47,13 @@ export class Connection {
   /** Round-trip time in ms, smoothed. */
   rtt = 0;
   lastTick = 0;
+  /** Predicted effects of the local player's own commands: shots, reloads, switches. */
+  onFx: ((fx: WeaponFx) => void) | null = null;
+  /** Events from the server: hits, damage taken, kills and other players' shots. */
+  onEvents: ((events: GameEvent[]) => void) | null = null;
+  /** The server (re)spawned the local player; `state` is where and facing which way. */
+  onSpawn: ((state: PlayerState) => void) | null = null;
+  private life = 0;
   private seq = 0;
   private ack = 0;
   private readonly unacked: InputCmd[] = [];
@@ -64,11 +74,11 @@ export class Connection {
   }
 
   /** Queue one CMD_DT step of input and send it with its unacked predecessors. */
-  sendCmd(buttons: number, yaw: number, pitch: number): void {
+  sendCmd(buttons: number, yaw: number, pitch: number, weapon: number): void {
     if (!this.connected) return;
-    const cmd = { seq: ++this.seq, buttons, yaw, pitch };
+    const cmd = { seq: ++this.seq, buttons, yaw, pitch, weapon, view: this.renderTime() / SERVER_DT };
     this.unacked.push(cmd);
-    this.predictor.predict(cmd);
+    this.predictor.predict(cmd, (fx) => this.onFx?.(fx));
     if (this.unacked.length > MAX_UNACKED) this.unacked.shift();
     this.transport.send({ t: 'input', cmds: this.unacked.slice(-REDUNDANT_CMDS) });
   }
@@ -89,11 +99,22 @@ export class Connection {
     }
   }
 
-  /** Other players as they were INTERP_DELAY ago, blended between buffered snapshots. */
+  /**
+   * The server time, in seconds, that other players are drawn at: INTERP_DELAY
+   * behind the server, within the snapshots buffered. Commands carry it so the
+   * server can judge shots against what the player saw.
+   */
+  renderTime(): number {
+    const snaps = this.snapshots;
+    if (snaps.length === 0) return this.lastTick * SERVER_DT;
+    return clamp(this.clock - INTERP_DELAY, snaps[0].time, snaps[snaps.length - 1].time);
+  }
+
+  /** Other players as they were at renderTime, blended between buffered snapshots. */
   interpolated(): PlayerSnap[] {
     const snaps = this.snapshots;
     if (snaps.length === 0) return [];
-    const t = this.clock - INTERP_DELAY;
+    const t = this.renderTime();
     let i = snaps.length - 1;
     while (i > 0 && snaps[i - 1].time > t) i--;
     if (i === 0) return snaps[0].players;
@@ -103,15 +124,18 @@ export class Connection {
     const f = (t - a.time) / (b.time - a.time);
     return b.players.map((pb) => {
       const pa = a.players.find((p) => p.id === pb.id);
-      if (!pa) return pb;
+      // Don't slide a body across the map when it respawns.
+      if (!pa || pa.dead !== pb.dead) return pb;
       return {
         id: pb.id,
         x: lerp(pa.x, pb.x, f),
         y: lerp(pa.y, pb.y, f),
         z: lerp(pa.z, pb.z, f),
-        yaw: pb.yaw,
+        yaw: pa.yaw + angleDiff(pb.yaw, pa.yaw) * f,
         duck: lerp(pa.duck, pb.duck, f),
         lean: lerp(pa.lean, pb.lean, f),
+        dead: pb.dead,
+        weapon: pb.weapon,
       };
     });
   }
@@ -136,6 +160,9 @@ export class Connection {
       case 'snapshot':
         this.receiveSnapshot(msg.tick, msg.ack, msg.you, msg.players);
         break;
+      case 'events':
+        this.onEvents?.(msg.events);
+        break;
     }
   }
 
@@ -147,6 +174,10 @@ export class Connection {
       while (this.unacked.length && this.unacked[0].seq <= ack) this.unacked.shift();
     }
     this.predictor.reconcile(you, this.unacked);
+    if (you.life !== this.life) {
+      this.life = you.life;
+      this.onSpawn?.(you);
+    }
 
     const time = tick * SERVER_DT;
     this.snapshots.push({ time, players: players.filter((p) => p.id !== this.id) });

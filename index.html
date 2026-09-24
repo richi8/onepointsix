@@ -11,12 +11,28 @@
       <p class="world" id="world-label"></p>
       <button id="play" type="button">Play</button>
     </div>
-    <div class="hint" id="hint" hidden>
-      WASD move · Shift sprint · Space jump / mantle · C crouch (slide while sprinting) · Q/E lean · Esc free mouse ·
-      F3 net panel
+    <div class="hud" id="hud" hidden>
+      <div class="scope" id="scope"></div>
+      <div class="hurt" id="hurt"></div>
+      <div class="hurtdir" id="hurtdir"></div>
+      <div class="crosshair" id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+      <div class="hitmarker" id="hitmarker"><i></i><i></i><i></i><i></i></div>
+      <div class="numbers" id="numbers"></div>
+      <div class="killfeed" id="killfeed"></div>
+      <div class="health" id="health"><span></span><div><div></div></div></div>
+      <div class="ammo" id="ammo">
+        <div class="slots"></div>
+        <div class="name"></div>
+        <div class="count"><span class="mag"></span><span class="reserve"></span></div>
+        <div class="reloadbar"><div></div></div>
+      </div>
+      <div class="stamina" id="stamina" hidden><div></div></div>
+      <div class="death" id="death" hidden><h2>You were killed</h2><p></p></div>
+      <div class="hint" id="hint">
+        WASD move · Shift sprint · Space jump / mantle · C crouch (slide while sprinting) · Q/E lean · LMB fire ·
+        RMB aim · R reload · 1/2/3 or wheel switch · Esc free mouse · F3 net panel
+      </div>
     </div>
-    <div class="stamina" id="stamina" hidden><div></div></div>
-    <div class="crosshair" id="crosshair" hidden></div>
     <div class="paused" id="paused" hidden>Click to resume</div>
     <script type="module" src="/src/client/main.ts"></script>
   </body>

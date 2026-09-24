@@ -283,6 +283,34 @@ export class World {
     return best;
   }
 
+  /** Outward normal of the solid surface at a point on it, such as a raycast hit. */
+  surfaceNormal(x: number, y: number, z: number): [number, number, number] {
+    const e = 0.02;
+    for (const c of this.query(x, z, e)) {
+      if (c.kind === 'box') {
+        if (x < c.minX - e || x > c.maxX + e || y < c.minY - e || y > c.maxY + e || z < c.minZ - e || z > c.maxZ + e) continue;
+        const faces: [number, number, number, number][] = [
+          [Math.abs(x - c.minX), -1, 0, 0], [Math.abs(c.maxX - x), 1, 0, 0],
+          [Math.abs(y - c.minY), 0, -1, 0], [Math.abs(c.maxY - y), 0, 1, 0],
+          [Math.abs(z - c.minZ), 0, 0, -1], [Math.abs(c.maxZ - z), 0, 0, 1],
+        ];
+        const [, nx, ny, nz] = faces.reduce((a, b) => (b[0] < a[0] ? b : a));
+        return [nx, ny, nz];
+      }
+      const dx = x - c.x;
+      const dz = z - c.z;
+      const d = Math.hypot(dx, dz);
+      if (d > c.r + e || y < c.y0 - e || y > c.y1 + e) continue;
+      if (Math.abs(y - c.y1) < e || d < 1e-6) return [0, 1, 0];
+      return [dx / d, 0, dz / d];
+    }
+    const s = 0.5;
+    const hx = this.terrainHeight(x + s, z) - this.terrainHeight(x - s, z);
+    const hz = this.terrainHeight(x, z + s) - this.terrainHeight(x, z - s);
+    const len = Math.hypot(hx, 2 * s, hz);
+    return [-hx / len, (2 * s) / len, -hz / len];
+  }
+
   hasLineOfSight(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
     const dx = bx - ax;
     const dy = by - ay;

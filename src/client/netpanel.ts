@@ -1,5 +1,6 @@
 import { CARRY_MAX } from '../shared/constants.ts';
 import type { NetConditions } from '../shared/transport.ts';
+import { WEAPONS } from '../shared/weapons.ts';
 import type { Connection } from './connection.ts';
 
 const PRESETS: Record<string, NetConditions> = {
@@ -93,10 +94,15 @@ export class NetPanel {
         (me.lean !== 0 ? ` lean ${me.lean.toFixed(1)}` : '')
       : '-';
     const stamina = me ? `stamina ${(me.stamina * 100).toFixed(0)}%${me.winded ? ' winded' : ''}  carry ${me.carry} kg` : '';
+    const weapon = me
+      ? `hp ${me.hp}${me.dead ? ' dead' : ''}  ${WEAPONS[me.weapon].name} ${me.mag[me.weapon]}/${me.reserve[me.weapon]}` +
+        (me.reload > 0 ? ' reloading' : me.draw > 0 ? ' drawing' : '') + `  aim ${me.aim.toFixed(2)}`
+      : '';
     this.stats.textContent =
       `id ${c.id}  tick ${c.lastTick}  pos ${pos}\n` +
       `speed ${speed} m/s  ${state}\n` +
       `${stamina}\n` +
+      `${weapon}\n` +
       `rtt ${c.rtt.toFixed(0)} ms  unacked cmds ${c.pendingCmds}\n` +
       `corrections ${pr.corrections}  last ${pr.lastError.toFixed(3)} m`;
   }

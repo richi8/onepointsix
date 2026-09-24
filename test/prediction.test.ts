@@ -25,13 +25,15 @@ function session(delayTicks: number, loss: number) {
   let seq = 0;
   let buttons = 0;
   let yaw = 0;
+  let weapon = 0;
 
   const tick = (driveInput: boolean) => {
     if (driveInput) {
       for (let i = 0; i < CMDS_PER_TICK; i++) {
-        if (rand() < 0.1) buttons = Math.floor(rand() * 2048);
+        if (rand() < 0.1) buttons = Math.floor(rand() * 4096);
+        if (rand() < 0.01) weapon = Math.floor(rand() * 3);
         yaw += (rand() - 0.5) * 0.2;
-        const cmd = { seq: ++seq, buttons, yaw, pitch: 0 };
+        const cmd = { seq: ++seq, buttons, yaw, pitch: 0, weapon, view: server.tick - delayTicks - 3 };
         unacked.push(cmd);
         predictor.predict(cmd);
         if (rand() >= loss) toServer.push({ at: server.tick + delayTicks, cmds: unacked.slice(-8) });
