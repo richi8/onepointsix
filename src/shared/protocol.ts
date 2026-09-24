@@ -70,6 +70,12 @@ export type GameEvent =
       time: number;
       killer: string;
     }
+  // To everyone: panels broke, knocked from around (x, y, z).
+  | { k: 'break'; panels: number[]; x: number; y: number; z: number }
+  // To everyone: broken panels were rebuilt.
+  | { k: 'repair'; panels: number[] }
+  // To everyone: a grenade went off.
+  | { k: 'boom'; x: number; y: number; z: number }
   // To everyone but the shooter, who predicted it: a round from (ox, oy, oz) that stopped at (ex, ey, ez).
   | {
       k: 'shot'; id: number; weapon: number;
@@ -122,6 +128,14 @@ export interface RunView {
   hold: number;
 }
 
+/** A live grenade. */
+export interface GrenadeSnap {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
 /** A bag on the ground, left by a body or dropped. */
 export interface BagSnap {
   id: number;
@@ -131,14 +145,15 @@ export interface BagSnap {
 }
 
 export type ServerMsg =
-  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number; mode: Mode }
+  // `broken` lists the panels down right now; the client's world starts from it.
+  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number; mode: Mode; broken: number[] }
   // `ack` is the highest command seq the server has simulated for the recipient,
   // and `you` its full movement state right after that command, which the
   // client replays its unacknowledged commands on top of.
   // `run` is null outside runs, such as on the range.
   | {
       t: 'snapshot'; tick: number; ack: number; you: PlayerState; players: PlayerSnap[];
-      run: RunView | null; extracts: ExtractView[]; bags: BagSnap[];
+      run: RunView | null; extracts: ExtractView[]; bags: BagSnap[]; grenades: GrenadeSnap[];
     }
   | { t: 'events'; tick: number; events: GameEvent[] }
   | { t: 'pong'; time: number };

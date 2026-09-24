@@ -19,7 +19,7 @@ const fwd = (seq: number): InputCmd => ({ seq, buttons: Btn.Forward, yaw: 0, pit
 describe('GameServer', () => {
   it('welcomes a client with its id and the world seed', () => {
     const { inbox, id } = setup();
-    expect(inbox[0]).toEqual({ t: 'welcome', id, seed: 1, tick: 0, tickRate: 30, mode: 'range' });
+    expect(inbox[0]).toEqual({ t: 'welcome', id, seed: 1, tick: 0, tickRate: 30, mode: 'range', broken: [] });
   });
 
   it('spawns players standing on dry land', () => {

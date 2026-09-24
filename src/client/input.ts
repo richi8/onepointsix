@@ -14,7 +14,8 @@ const KEYS: Record<string, number> = {
   KeyE: Btn.LeanRight,
   KeyR: Btn.Reload,
   KeyF: Btn.Interact,
-  KeyG: Btn.Drop,
+  KeyG: Btn.Throw,
+  KeyX: Btn.Drop,
 };
 
 const MOUSE: Record<number, number> = { 0: Btn.Fire, 2: Btn.Aim };

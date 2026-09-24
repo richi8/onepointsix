@@ -15,6 +15,7 @@ import { Bags } from './bags.ts';
 import { Bodies } from './bodies.ts';
 import { Connection, WorkerTransport } from './connection.ts';
 import { Effects, type Struck } from './effects.ts';
+import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
 import { NetPanel } from './netpanel.ts';
@@ -34,6 +35,9 @@ const MUZZLE_REACH = 0.7;
 const DEATH_FALL = 0.6;
 /** Seconds of the death camera before the results come up. */
 const RESULTS_DELAY_DEAD = 2.2;
+/** Camera shake from a blast this close, fading out to nothing at SHAKE_RANGE. */
+const SHAKE_RANGE = 30;
+const SHAKE_DECAY = 5;
 const MODE_NOTES: Record<Mode, string> = {
   mixed: 'Loot and get out, against guards and eleven other operators.',
   pve: 'Loot and get out. Just you against the guards.',
@@ -67,7 +71,8 @@ function resize(): void {
 window.addEventListener('resize', resize);
 resize();
 
-const effects = new Effects(scene);
+const effects = new Effects(scene, (x, z) => world.floorHeight(x, z));
+const grenades = new Grenades(scene);
 const bodies = new Bodies(scene);
 const bags = new Bags(scene);
 const hud = new Hud();
@@ -130,12 +135,17 @@ function join(): void {
   conn = new Connection(config, world, mode, transport);
   conn.onFx = (fx) => {
     if (fx.k === 'shot') ownShot(fx.shot);
+    else if (fx.k === 'throw') sfx.toss();
     else if (fx.k === 'dry') sfx.dry();
     else if (fx.k === 'reload') sfx.reload(fx.weapon);
     else if (fx.k === 'reloaded') sfx.reloaded();
     else sfx.draw();
   };
   conn.onEvents = (events) => events.forEach(onEvent);
+  conn.onWelcome = (broken) => {
+    world.syncPanels(broken);
+    view.syncPanels();
+  };
   conn.onSpawn = (s) => {
     input.yaw = s.yaw;
     input.pitch = s.pitch;
@@ -181,6 +191,7 @@ function toMenu(): void {
   menu.hidden = false;
   bodies.update([], 0);
   bags.update([]);
+  grenades.update([]);
   playButton.focus();
 }
 
@@ -267,6 +278,34 @@ function onEvent(e: GameEvent): void {
     case 'runEnd':
       endRun(e);
       break;
+    case 'break': {
+      const color = new THREE.Color();
+      for (const id of e.panels) {
+        world.setPanel(id, false);
+        view.updatePanel(id);
+        effects.shatter(world.panels[id].box, view.panelColor(id, color), e.x, e.y, e.z);
+      }
+      const first = world.panels[e.panels[0]];
+      if (first) {
+        const b = first.box;
+        const d = me ? Math.hypot((b.minX + b.maxX) / 2 - me.x, (b.minZ + b.maxZ) / 2 - me.z) : 0;
+        sfx.crumble(first.kind !== 'wall', d);
+      }
+      break;
+    }
+    case 'repair':
+      for (const id of e.panels) {
+        world.setPanel(id, true);
+        view.updatePanel(id);
+      }
+      break;
+    case 'boom': {
+      const d = me ? Math.hypot(e.x - me.x, e.y - me.y, e.z - me.z) : Infinity;
+      effects.explosion(to.set(e.x, e.y, e.z));
+      sfx.boom(Number.isFinite(d) ? d : 0);
+      shake = Math.max(shake, clamp(1 - d / SHAKE_RANGE, 0, 1));
+      break;
+    }
     case 'shot': {
       const d = Math.hypot(e.ex - e.ox, e.ey - e.oy, e.ez - e.oz) || 1;
       const dx = (e.ex - e.ox) / d;
@@ -289,6 +328,8 @@ let last = start;
 let lastYaw = 0;
 let lastPitch = 0;
 let deadFor = 0;
+/** Camera shake, 0 to 1, decaying. */
+let shake = 0;
 
 function orbitCamera(now: number): void {
   const a = (now - start) * MENU_ORBIT_SPEED + 0.6;
@@ -315,6 +356,13 @@ function eyeCamera(me: Rendered, s: PlayerState, dt: number): void {
   const down = smoothstep(0, DEATH_FALL, deadFor);
   camera.position.set(eye.x, lerp(eye.y, me.y + 0.3, down), eye.z);
   camera.rotation.set(input.pitch + me.recoilPitch, input.yaw + me.recoilYaw, eye.roll + down * 0.5);
+  shake = Math.max(shake - SHAKE_DECAY * dt * shake - dt * 0.2, 0);
+  if (shake > 0) {
+    const k = shake * shake * 0.05;
+    camera.rotation.x += (Math.random() - 0.5) * k;
+    camera.rotation.y += (Math.random() - 0.5) * k;
+    camera.rotation.z += (Math.random() - 0.5) * k * 0.5;
+  }
   focus.set(me.x, me.y, me.z);
   view.update(camera, focus, 70);
 
@@ -327,7 +375,7 @@ function eyeCamera(me: Rendered, s: PlayerState, dt: number): void {
     weapon: s.weapon,
     aim: me.aim,
     reload: s.reload > 0 ? 1 - s.reload / w.reloadTime : 0,
-    draw: s.draw / w.drawTime,
+    draw: Math.min(s.draw / w.drawTime, 1),
     speed,
     onGround: s.onGround,
     sprinting: sprinting(s),
@@ -347,6 +395,7 @@ renderer.setAnimationLoop(() => {
   const players = conn ? (conn.update(dt), inputLoop.advance(now), conn.interpolated()) : [];
   bodies.update(players, dt);
   bags.update(conn?.bags ?? []);
+  grenades.update(conn?.grenades() ?? []);
   if (conn) view.setExtracts(conn.extracts, now);
 
   const me = conn?.predictor.render(inputLoop.alpha);

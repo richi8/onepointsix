@@ -95,6 +95,34 @@ export class Sfx {
     this.click(2200, 0.12, 0.2);
   }
 
+  /** A grenade leaving the hand: the pin, then a whoosh. */
+  toss(): void {
+    this.click(3000, 0, 0.3);
+    this.burst(1400, 0.2, 0.15, 0.12);
+  }
+
+  /** A grenade going off `distance` metres away: a deep blast, then rumble. */
+  boom(distance: number): void {
+    const far = distance / (distance + HALF_DISTANCE * 2);
+    const gain = 1 - far * 0.8;
+    this.thump(90, 28, 0.6, gain * 1.6);
+    this.burst(2600 * (1 - far * 0.7), 0.35, gain * 0.9, 0);
+    this.burst(500, 1.6, gain * 0.35, 0.05);
+  }
+
+  /** Cover breaking `distance` metres away: wood splinters, masonry crumbles. */
+  crumble(wood: boolean, distance: number): void {
+    const gain = 1 - (distance / (distance + HALF_DISTANCE)) * 0.85;
+    if (wood) {
+      this.click(1800, 0, 0.3 * gain);
+      this.burst(3200, 0.18, 0.35 * gain, 0.01);
+      this.click(1100, 0.07, 0.25 * gain);
+    } else {
+      this.thump(140, 45, 0.3, 0.6 * gain);
+      this.burst(1200, 0.6, 0.4 * gain, 0);
+    }
+  }
+
   /** An item taken from a container. */
   pickup(): void {
     this.click(900, 0, 0.3);

@@ -59,14 +59,13 @@ function crate(height: number, topped: boolean): Box {
 
 /** An outpost perimeter wall along x, `height` tall, that you can walk up to from +z. */
 function wall(height: number): Box {
-  return w.props.find((q) => {
-    const b = q.box;
-    if (q.style !== 'wall' || b.maxZ - b.minZ > 1 || b.maxX - b.minX < 3) return false;
+  return w.walls.find((b) => {
+    if (b.maxZ - b.minZ > 1 || b.maxX - b.minX < 3) return false;
     const op = w.outposts.find((a) => Math.abs(b.maxY - a.y - height) < 1e-6);
     if (!op) return false;
     const x = (b.minX + b.maxX) / 2;
     return w.fits(x, op.y, b.maxZ + 0.6, 1.8) && w.fits(x, op.y, b.minZ - 1.5, 1.8);
-  })!.box;
+  })!;
 }
 
 /** Standing `gap` metres in front of the +z face of `box`, facing it. */

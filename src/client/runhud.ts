@@ -69,7 +69,7 @@ export class RunHud {
       (kills ? ` · ${kills} kill${kills > 1 ? 's' : ''}` : '');
     this.set('pack', this.pack, `${sum}|${lines.join('')}`, () => {
       this.packSum.innerHTML = sum;
-      this.packList.innerHTML = lines.join('') + (run.items.length ? '<li class="hint">G drop last</li>' : '');
+      this.packList.innerHTML = lines.join('') + (run.items.length ? '<li class="hint">X drop last</li>' : '');
     });
   }
 

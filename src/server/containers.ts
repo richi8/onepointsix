@@ -21,6 +21,10 @@ export interface Container {
   searched: boolean;
   /** When a searched crate is stocked again, or a bag disappears. */
   until: number;
+  /** A crate's panel in the world, or -1 for a bag. */
+  panel: number;
+  /** A crate that's been smashed, until it's rebuilt. */
+  broken: boolean;
 }
 
 const BAG_SIZE = 0.6;
@@ -39,16 +43,55 @@ const REACH_UP = 2.2;
  */
 export class Containers {
   private readonly all = new Map<number, Container>();
+  private readonly byPanel = new Map<number, Container>();
+  private readonly world: World;
   private readonly rand: () => number;
   private nextId = 0;
 
   constructor(world: World, rand: () => number) {
+    this.world = world;
     this.rand = rand;
     for (const { box, rich } of lootCrates(world)) {
       const { minX, minY, minZ, maxX, maxY, maxZ } = box;
       const id = this.nextId++;
-      this.all.set(id, { id, kind: 'crate', minX, minY, minZ, maxX, maxY, maxZ, rich, items: rollItems(rand, rich), searched: false, until: 0 });
+      const c: Container = {
+        id, kind: 'crate', minX, minY, minZ, maxX, maxY, maxZ, rich, items: rollItems(rand, rich), searched: false, until: 0,
+        panel: box.panel ?? -1, broken: false,
+      };
+      this.all.set(id, c);
+      if (c.panel >= 0) this.byPanel.set(c.panel, c);
     }
+  }
+
+  /** A panel broke: if it was a crate, whatever was in it spills out into a bag. */
+  broke(panel: number, now: number): void {
+    const c = this.byPanel.get(panel);
+    if (!c || c.broken) return;
+    c.broken = true;
+    c.searched = true;
+    c.until = Infinity;
+    const x = (c.minX + c.maxX) / 2;
+    const z = (c.minZ + c.maxZ) / 2;
+    this.drop(x, this.world.groundHeight(x, z, this.world.floorHeight(x, z)), z, c.items, now);
+    c.items = [];
+  }
+
+  /** A crate's panel was rebuilt: it's a fresh crate. */
+  repaired(panel: number): void {
+    const c = this.byPanel.get(panel);
+    if (!c || !c.broken) return;
+    c.broken = false;
+    c.searched = false;
+    c.until = 0;
+    c.items = rollItems(this.rand, c.rich);
+  }
+
+  /** Whether a bag lies inside the box. */
+  bagIn(minX: number, minZ: number, maxX: number, maxZ: number): boolean {
+    for (const c of this.all.values()) {
+      if (c.kind === 'bag' && c.maxX > minX && c.minX < maxX && c.maxZ > minZ && c.minZ < maxZ) return true;
+    }
+    return false;
   }
 
   get(id: number): Container | undefined {
@@ -64,7 +107,7 @@ export class Containers {
     let best: Container | null = null;
     let bestOff = FACING;
     for (const c of this.all.values()) {
-      if (c.maxY < y - REACH_DOWN || c.minY > y + REACH_UP) continue;
+      if (c.broken || c.maxY < y - REACH_DOWN || c.minY > y + REACH_UP) continue;
       const dx = x - clamp(x, c.minX, c.maxX);
       const dz = z - clamp(z, c.minZ, c.maxZ);
       const d = Math.hypot(dx, dz);
@@ -102,7 +145,7 @@ export class Containers {
     const id = this.nextId++;
     this.all.set(id, {
       id, kind: 'bag', minX: x - h, minY: y, minZ: z - h, maxX: x + h, maxY: y + BAG_HEIGHT, maxZ: z + h,
-      rich: false, items: sortForTaking([...items]), searched: true, until: now + BAG_TIME,
+      rich: false, items: sortForTaking([...items]), searched: true, until: now + BAG_TIME, panel: -1, broken: false,
     });
   }
 

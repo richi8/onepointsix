@@ -149,6 +149,34 @@ export const EXTRACT_CLOSED: [number, number] = [40, 110];
 export const KILL_SCORE_OPERATOR = 500;
 export const KILL_SCORE_GUARD = 150;
 
+// Destructible cover. Walls, fences and crates are made of panels that break
+// once their health runs out, taking whatever rests on them down too.
+export const PANEL_HP = { wall: 500, fence: 60, crate: 150 } as const;
+/** Seconds before a broken panel is rebuilt, once nothing is in the way. */
+export const PANEL_REPAIR = 180;
+
+// Grenades, thrown with a fresh press of Throw.
+export const GRENADES = 2;
+/** Seconds the weapon is down for a throw. */
+export const THROW_TIME = 0.7;
+export const THROW_SPEED = 16;
+/** Throws go this much above the aim, in radians. */
+export const THROW_LOFT = 0.15;
+/** Seconds from the throw to the blast. */
+export const GRENADE_FUSE = 3.2;
+/** Share of the speed kept off a bounce, along the surface normal. */
+export const GRENADE_BOUNCE = 0.35;
+/** Share of the speed kept along the surface on each bounce. */
+export const GRENADE_FRICTION = 0.7;
+/** Damage to a body at the centre of the blast, falling off to nothing at GRENADE_RADIUS. */
+export const GRENADE_DAMAGE = 200;
+export const GRENADE_RADIUS = 8;
+/** Damage to a panel touching the blast, falling off to nothing GRENADE_PANEL_RADIUS from it. */
+export const GRENADE_PANEL_DAMAGE = 700;
+export const GRENADE_PANEL_RADIUS = 2.2;
+/** How far away a blast can be heard, in metres. */
+export const GRENADE_NOISE = 320;
+
 export const Btn = {
   Forward: 1,
   Back: 2,
@@ -166,4 +194,6 @@ export const Btn = {
   Interact: 4096,
   /** Drop the last item taken. */
   Drop: 8192,
+  /** Throw a grenade. */
+  Throw: 16384,
 } as const;

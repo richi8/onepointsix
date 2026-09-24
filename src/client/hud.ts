@@ -4,7 +4,7 @@ import { wrapAngle } from '../shared/geom.ts';
 import type { Zone } from '../shared/hitbox.ts';
 import type { GameEvent } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
-import { BOLT, WEAPONS } from '../shared/weapons.ts';
+import { BOLT, WEAPONS, weaponName } from '../shared/weapons.ts';
 
 const HITMARKER_TIME = 0.15;
 const KILLMARKER_TIME = 0.35;
@@ -38,6 +38,7 @@ export class Hud {
   private readonly reserve = $('ammo').querySelector('.reserve')!;
   private readonly reloadBar = $('ammo').querySelector('.reloadbar') as HTMLElement;
   private readonly reloadFill = this.reloadBar.firstElementChild as HTMLElement;
+  private readonly nades = $('ammo').querySelector('.nades') as HTMLElement;
   private readonly hurtFlash = $('hurt');
   private readonly hurtDir = $('hurtdir');
   private readonly scope = $('scope');
@@ -96,6 +97,8 @@ export class Hud {
     this.reserve.textContent = `/ ${s.reserve[s.weapon]}`;
     this.reloadBar.classList.toggle('on', s.reload > 0);
     this.reloadFill.style.width = `${(1 - s.reload / w.reloadTime) * 100}%`;
+    this.nades.textContent = `G grenade × ${s.grenades}`;
+    this.nades.classList.toggle('none', s.grenades === 0);
 
     this.stamina.hidden = s.stamina >= 1 && !s.winded;
     this.staminaFill.style.width = `${s.stamina * 100}%`;
@@ -136,7 +139,7 @@ export class Hud {
     const victim = e.victim === me ? 'you' : e.victimName;
     row.append(killer);
     const how = document.createElement('em');
-    how.textContent = `${WEAPONS[e.weapon].name}${e.head ? ' · headshot' : ''}`;
+    how.textContent = `${weaponName(e.weapon)}${e.head ? ' · headshot' : ''}`;
     row.append(how, victim);
     if (e.killer === me || e.victim === me) row.className = 'you';
     this.pushFeed(row);

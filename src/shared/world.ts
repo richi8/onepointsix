@@ -18,6 +18,7 @@ export interface Cyl {
   y0: number;
   y1: number;
   stamp: number;
+  gone?: boolean;
 }
 
 export interface Box {
@@ -29,15 +30,37 @@ export interface Box {
   maxY: number;
   maxZ: number;
   stamp: number;
+  /** Index into World.panels if it can be broken. */
+  panel?: number;
+  /** Broken and out of the world: nothing collides with it or hits it. */
+  gone?: boolean;
 }
 
 export type Collider = Cyl | Box;
-export type PropStyle = 'crate' | 'wall' | 'wood' | 'metal';
+export type PropStyle = 'crate' | 'wall' | 'wood' | 'metal' | 'fence';
+export type PanelKind = 'wall' | 'fence' | 'crate';
 
 export interface Prop {
   box: Box;
   style: PropStyle;
   tint: number;
+  /** Index into World.panels, or -1 if it can't be broken. */
+  panel: number;
+}
+
+/**
+ * A breakable piece of cover: one column or row of a wall, a fence section or
+ * a crate. Its health lives on the server; the world only knows if it stands.
+ */
+export interface Panel {
+  box: Box;
+  kind: PanelKind;
+  /** Index into World.props, for drawing it. */
+  prop: number;
+  /** Panels resting on this one, which come down with it. */
+  carries: number[];
+  /** Panels this one rests on; it can only be rebuilt while they stand. */
+  restsOn: number[];
 }
 
 export interface Tree {
@@ -82,6 +105,14 @@ const GRID_CELL = 8;
 const GRID_OFFSET = 1024;
 const OUTPOST_NAMES = ['Fort Ash', 'Radio Hill', 'Quarry', 'Old Mill', 'Pinecrest', 'Lookout'];
 const EXTRACT_COUNT = 4;
+/** Walls are split into columns about this wide. */
+const WALL_PANEL = 1.6;
+/** Tall walls are split into rows this far above the ground: crouch cover below, a window above. */
+const WALL_SPLIT = 1.3;
+const FENCE_RUNS = 40;
+const FENCE_PANEL = 2;
+const FENCE_HEIGHT = 1.1;
+const FENCE_THICK = 0.1;
 /** Longest ray the collider walk follows, past which nothing is left to hit. */
 const MAX_RAY = WORLD_SIZE * 1.5;
 
@@ -117,10 +148,15 @@ export class World {
   /** Where operators leave the island; the server opens and closes them. */
   readonly extracts: Point[] = [];
   readonly colliders: Collider[] = [];
+  readonly panels: Panel[] = [];
+  /** Each wall's whole outline; the wall itself is its panels. */
+  readonly walls: Box[] = [];
   readonly maxHeight: number;
   private readonly grid = new Map<number, Collider[]>();
   private readonly nearby: Collider[] = [];
   private stamp = 0;
+  /** The collider the last raycast stopped at, if it was one. */
+  private hit: Collider | null = null;
 
   constructor(seed: number) {
     this.seed = seed >>> 0;
@@ -145,6 +181,7 @@ export class World {
     for (const c of this.colliders) this.insert(c);
     // Its own random stream, so adding extraction points moved nothing else.
     this.placeExtracts(mulberry32(this.seed ^ 0x6a09e667));
+    this.placeFences(mulberry32(this.seed ^ 0x3c6ef372));
   }
 
   // ---------------------------------------------------------------- queries
@@ -278,8 +315,59 @@ export class World {
 
   /** Distance along a normalized ray to the first solid hit, or Infinity. */
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+    this.hit = null;
     const terrain = this.raycastTerrain(ox, oy, oz, dx, dy, dz, maxT);
     return this.raycastColliders(ox, oy, oz, dx, dy, dz, Math.min(terrain, maxT, MAX_RAY), terrain);
+  }
+
+  /** Like raycast, and also which panel the ray stopped at, or -1 for anything else. */
+  raycastPanel(
+    ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number,
+  ): { t: number; panel: number } {
+    const t = this.raycast(ox, oy, oz, dx, dy, dz, maxT);
+    const hit = this.hit;
+    return { t, panel: t <= maxT && hit?.kind === 'box' ? (hit.panel ?? -1) : -1 };
+  }
+
+  // ----------------------------------------------------------------- panels
+
+  /** Break a panel and everything resting on it. Returns what broke, that panel first; nothing if it was already down. */
+  breakPanel(id: number): number[] {
+    const out: number[] = [];
+    const stack = [id];
+    while (stack.length) {
+      const i = stack.pop()!;
+      const panel = this.panels[i];
+      if (!panel || panel.box.gone) continue;
+      panel.box.gone = true;
+      out.push(i);
+      stack.push(...panel.carries);
+    }
+    return out;
+  }
+
+  /** Stand a single panel back up, or knock it down, exactly as told. */
+  setPanel(id: number, standing: boolean): void {
+    const panel = this.panels[id];
+    if (panel) panel.box.gone = !standing;
+  }
+
+  /** Whether a panel is standing and everything it rests on too, so it could be rebuilt. */
+  supported(id: number): boolean {
+    return this.panels[id].restsOn.every((i) => !this.panels[i].box.gone);
+  }
+
+  /** Panels broken right now. */
+  brokenPanels(): number[] {
+    const out: number[] = [];
+    this.panels.forEach((p, i) => p.box.gone && out.push(i));
+    return out;
+  }
+
+  /** Stand everything up except `broken`, as a joining client is told. */
+  syncPanels(broken: readonly number[]): void {
+    const down = new Set(broken);
+    this.panels.forEach((p, i) => (p.box.gone = down.has(i)));
   }
 
   /** Outward normal of the solid surface at a point on it, such as a raycast hit. */
@@ -367,12 +455,12 @@ export class World {
       const cell = this.grid.get((gx + GRID_OFFSET) * 4096 + gz + GRID_OFFSET);
       if (cell) {
         for (const c of cell) {
-          if (c.stamp === stamp) continue;
+          if (c.stamp === stamp || c.gone) continue;
           c.stamp = stamp;
           const t = c.kind === 'cyl'
             ? rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
             : rayAabb(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
-          if (t < best) best = t;
+          if (t < best) (best = t), (this.hit = c);
         }
       }
       const exit = Math.min(nextX, nextZ);
@@ -426,7 +514,7 @@ export class World {
         const cell = this.grid.get((gx + GRID_OFFSET) * 4096 + gz + GRID_OFFSET);
         if (!cell) continue;
         for (const c of cell) {
-          if (c.stamp === stamp) continue;
+          if (c.stamp === stamp || c.gone) continue;
           c.stamp = stamp;
           out.push(c);
         }
@@ -488,10 +576,51 @@ export class World {
     minX: number, minY: number, minZ: number,
     maxX: number, maxY: number, maxZ: number,
     style: PropStyle, tint = 0,
-  ): void {
+  ): Box {
     const box: Box = { kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0 };
-    this.props.push({ box, style, tint });
+    this.props.push({ box, style, tint, panel: -1 });
     this.colliders.push(box);
+    return box;
+  }
+
+  /** A breakable prop, resting on panel `on` if not -1. Returns its panel id. */
+  private addPanel(
+    minX: number, minY: number, minZ: number,
+    maxX: number, maxY: number, maxZ: number,
+    kind: PanelKind, on = -1, tint = 0,
+  ): number {
+    const box = this.addProp(minX, minY, minZ, maxX, maxY, maxZ, kind, tint);
+    const id = this.panels.length;
+    box.panel = id;
+    this.props[this.props.length - 1].panel = id;
+    this.panels.push({ box, kind, prop: this.props.length - 1, carries: [], restsOn: on >= 0 ? [on] : [] });
+    if (on >= 0) this.panels[on].carries.push(id);
+    return id;
+  }
+
+  /**
+   * A wall of breakable panels: columns about WALL_PANEL wide, and a second
+   * row above WALL_SPLIT over `groundY` when it's tall enough. Top panels rest
+   * on the ones below, so blowing out the bottom leaves a hole to walk through.
+   */
+  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, groundY: number): void {
+    this.walls.push({ kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0 });
+    const alongX = maxX - minX >= maxZ - minZ;
+    const a0 = alongX ? minX : minZ;
+    const len = alongX ? maxX - minX : maxZ - minZ;
+    const cols = Math.max(1, Math.round(len / WALL_PANEL));
+    const split = groundY + WALL_SPLIT;
+    const rows = maxY - split > 0.5 ? [minY, split, maxY] : [minY, maxY];
+    for (let i = 0; i < cols; i++) {
+      const a = a0 + (len * i) / cols;
+      const b = a0 + (len * (i + 1)) / cols;
+      let below = -1;
+      for (let r = 0; r + 1 < rows.length; r++) {
+        below = alongX
+          ? this.addPanel(a, rows[r], minZ, b, rows[r + 1], maxZ, 'wall', below)
+          : this.addPanel(minX, rows[r], a, maxX, rows[r + 1], b, 'wall', below);
+      }
+    }
   }
 
   private placeOutposts(rng: () => number): void {
@@ -542,10 +671,10 @@ export class World {
         const roll = rng();
         if (roll < 0.2) continue;
         const h = roll < 0.4 ? 1.2 : 3;
-        if (side === 0) this.addProp(o.x + a, y - 0.5, o.z - S - T, o.x + b, y + h, o.z - S + T, 'wall');
-        if (side === 1) this.addProp(o.x + a, y - 0.5, o.z + S - T, o.x + b, y + h, o.z + S + T, 'wall');
-        if (side === 2) this.addProp(o.x - S - T, y - 0.5, o.z + a, o.x - S + T, y + h, o.z + b, 'wall');
-        if (side === 3) this.addProp(o.x + S - T, y - 0.5, o.z + a, o.x + S + T, y + h, o.z + b, 'wall');
+        if (side === 0) this.addWall(o.x + a, y - 0.5, o.z - S - T, o.x + b, y + h, o.z - S + T, y);
+        if (side === 1) this.addWall(o.x + a, y - 0.5, o.z + S - T, o.x + b, y + h, o.z + S + T, y);
+        if (side === 2) this.addWall(o.x - S - T, y - 0.5, o.z + a, o.x - S + T, y + h, o.z + b, y);
+        if (side === 3) this.addWall(o.x + S - T, y - 0.5, o.z + a, o.x + S + T, y + h, o.z + b, y);
       }
     }
 
@@ -590,12 +719,12 @@ export class World {
       const h = s / 2;
       if (!free(cx - h, cz - h, cx + h, cz + h)) continue;
       taken.push([cx - h, cz - h, cx + h, cz + h]);
-      this.addProp(cx - h, y - 0.2, cz - h, cx + h, y + s, cz + h, 'crate', rng());
+      const base = this.addPanel(cx - h, y - 0.2, cz - h, cx + h, y + s, cz + h, 'crate', -1, rng());
       if (rng() < 0.35) {
         const s2 = 1.1;
         const ox = cx + (rng() - 0.5) * 0.3;
         const oz = cz + (rng() - 0.5) * 0.3;
-        this.addProp(ox - s2 / 2, y + s, oz - s2 / 2, ox + s2 / 2, y + s + s2, oz + s2 / 2, 'crate', rng());
+        this.addPanel(ox - s2 / 2, y + s, oz - s2 / 2, ox + s2 / 2, y + s + s2, oz + s2 / 2, 'crate', base, rng());
       }
       placed++;
     }
@@ -616,7 +745,7 @@ export class World {
         const hx = alongX ? len / 2 : 0.3;
         const hz = alongX ? 0.3 : len / 2;
         const [lo, hi] = this.heightRange(x - hx, z - hz, x + hx, z + hz);
-        this.addProp(x - hx, lo - 0.3, z - hz, x + hx, hi + h, z + hz, 'wall');
+        this.addWall(x - hx, lo - 0.3, z - hz, x + hx, hi + h, z + hz, hi);
       } else {
         const count = 1 + Math.floor(rng() * 3);
         for (let k = 0; k < count; k++) {
@@ -624,7 +753,7 @@ export class World {
           const cx = x + k * 1.9;
           const cz = z + (rng() - 0.5) * 0.8;
           const [lo, hi] = this.heightRange(cx - s / 2, cz - s / 2, cx + s / 2, cz + s / 2);
-          this.addProp(cx - s / 2, lo - 0.3, cz - s / 2, cx + s / 2, hi + s, cz + s / 2, 'crate', rng());
+          this.addPanel(cx - s / 2, lo - 0.3, cz - s / 2, cx + s / 2, hi + s, cz + s / 2, 'crate', -1, rng());
         }
       }
     }
@@ -650,6 +779,37 @@ export class World {
         if (d > bestD) (best = i), (bestD = d);
       });
       this.extracts.push(candidates.splice(best, 1)[0]);
+    }
+  }
+
+  /**
+   * Runs of wooden fence out in the fields, placed last from their own random
+   * stream so nothing else moved when they were added.
+   */
+  private placeFences(rng: () => number): void {
+    for (let placed = 0, tries = 0; placed < FENCE_RUNS && tries < 1500; tries++) {
+      const x = (rng() - 0.5) * this.size * 0.8;
+      const z = (rng() - 0.5) * this.size * 0.8;
+      const alongX = rng() < 0.5;
+      const count = 2 + Math.floor(rng() * 4);
+      if (this.nearOutpost(x, z, 40) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 20)) continue;
+      const sections: [number, number, number, number, number, number][] = [];
+      for (let i = 0; i < count; i++) {
+        const a = (i - count / 2) * FENCE_PANEL;
+        const [x0, z0, x1, z1] = alongX
+          ? [x + a, z - FENCE_THICK / 2, x + a + FENCE_PANEL, z + FENCE_THICK / 2]
+          : [x - FENCE_THICK / 2, z + a, x + FENCE_THICK / 2, z + a + FENCE_PANEL];
+        const [lo, hi] = this.heightRange(x0, z0, x1, z1);
+        if (lo < 1.5 || hi > 38 || hi - lo > 0.8) break;
+        if (this.blocked((x0 + x1) / 2, (z0 + z1) / 2, FENCE_PANEL / 2 + 0.6)) break;
+        sections.push([x0, lo - 0.3, z0, x1, hi + FENCE_HEIGHT, z1]);
+      }
+      if (sections.length < count) continue;
+      placed++;
+      for (const [x0, y0, z0, x1, y1, z1] of sections) {
+        this.addPanel(x0, y0, z0, x1, y1, z1, 'fence', -1, rng());
+        this.insert(this.colliders[this.colliders.length - 1]);
+      }
     }
   }
 

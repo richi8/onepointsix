@@ -124,13 +124,13 @@ export function copyState(p: PlayerState): PlayerState {
     x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld, crouchHeld,
     stamina, staminaDelay, winded, slide, slideCooldown, mantling, mantleX, mantleY, mantleZ, lean, carry,
     hp, dead, life, weapon, mag, reserve, cooldown, reload, draw, triggerHeld, aim,
-    recoilPitch, recoilYaw, burst, sinceShot,
+    recoilPitch, recoilYaw, burst, sinceShot, grenades, throwHeld,
   } = p;
   return {
     x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld, crouchHeld,
     stamina, staminaDelay, winded, slide, slideCooldown, mantling, mantleX, mantleY, mantleZ, lean, carry,
     hp, dead, life, weapon, mag: [...mag], reserve: [...reserve], cooldown, reload, draw, triggerHeld, aim,
-    recoilPitch, recoilYaw, burst, sinceShot,
+    recoilPitch, recoilYaw, burst, sinceShot, grenades, throwHeld,
   };
 }
 

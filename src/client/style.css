@@ -415,6 +415,17 @@ canvas {
   visibility: visible;
 }
 
+.ammo .nades {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+}
+
+.ammo .nades.none {
+  opacity: 0.35;
+}
+
 .ammo .reloadbar div {
   height: 100%;
   background: #e8c35a;

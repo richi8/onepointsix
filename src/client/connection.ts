@@ -1,7 +1,7 @@
 import { INTERP_DELAY, SERVER_DT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp } from '../shared/geom.ts';
 import type {
-  BagSnap, ClientMsg, ExtractView, GameEvent, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
+  BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
 } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
@@ -34,6 +34,7 @@ export class WorkerTransport implements Transport<ClientMsg, ServerMsg> {
 interface Snapshot {
   time: number;
   players: PlayerSnap[];
+  grenades: GrenadeSnap[];
 }
 
 /**
@@ -62,6 +63,8 @@ export class Connection {
   onEvents: ((events: GameEvent[]) => void) | null = null;
   /** The server (re)spawned the local player; `state` is where and facing which way. */
   onSpawn: ((state: PlayerState) => void) | null = null;
+  /** Joined: these panels are broken right now. */
+  onWelcome: ((broken: number[]) => void) | null = null;
   private life = 0;
   private seq = 0;
   private ack = 0;
@@ -153,6 +156,23 @@ export class Connection {
     });
   }
 
+  /** Live grenades as they were at renderTime. */
+  grenades(): GrenadeSnap[] {
+    const snaps = this.snapshots;
+    if (snaps.length === 0) return [];
+    const t = this.renderTime();
+    let i = snaps.length - 1;
+    while (i > 0 && snaps[i - 1].time > t) i--;
+    const b = snaps[i];
+    const a = snaps[i - 1];
+    if (!a || t >= b.time) return b.grenades;
+    const f = (t - a.time) / (b.time - a.time);
+    return b.grenades.map((gb) => {
+      const ga = a.grenades.find((g) => g.id === gb.id);
+      return ga ? { id: gb.id, x: lerp(ga.x, gb.x, f), y: lerp(ga.y, gb.y, f), z: lerp(ga.z, gb.z, f) } : gb;
+    });
+  }
+
   /** Commands sent but not yet simulated by the server. */
   get pendingCmds(): number {
     return this.unacked.length;
@@ -165,6 +185,7 @@ export class Connection {
         this.seed = msg.seed;
         this.mode = msg.mode;
         this.clock = msg.tick * SERVER_DT;
+        this.onWelcome?.(msg.broken);
         break;
       case 'pong': {
         const sample = performance.now() - msg.time;
@@ -172,7 +193,7 @@ export class Connection {
         break;
       }
       case 'snapshot':
-        if (this.receiveSnapshot(msg.tick, msg.ack, msg.you, msg.players)) {
+        if (this.receiveSnapshot(msg.tick, msg.ack, msg.you, msg.players, msg.grenades)) {
           this.run = msg.run;
           this.extracts = msg.extracts;
           this.bags = msg.bags;
@@ -185,7 +206,7 @@ export class Connection {
   }
 
   /** Returns false for a snapshot that was ignored. */
-  private receiveSnapshot(tick: number, ack: number, you: PlayerState, players: PlayerSnap[]): boolean {
+  private receiveSnapshot(tick: number, ack: number, you: PlayerState, players: PlayerSnap[], grenades: GrenadeSnap[]): boolean {
     if (!this.connected || tick <= this.lastTick) return false; // not welcomed yet, or stale/reordered
     this.lastTick = tick;
     if (ack > this.ack) {
@@ -199,7 +220,7 @@ export class Connection {
     }
 
     const time = tick * SERVER_DT;
-    this.snapshots.push({ time, players: players.filter((p) => p.id !== this.id) });
+    this.snapshots.push({ time, players: players.filter((p) => p.id !== this.id), grenades });
     if (this.snapshots.length > SNAPSHOT_BUFFER) this.snapshots.shift();
 
     // Keep the local clock locked to the server's, jumping only on big drift.

@@ -138,7 +138,7 @@ describe('hits', () => {
     const c = client(server);
     const target = dummyId(server, 'still');
     const world = server.world;
-    const wall = world.props.find((p) => p.style === 'wall' && world.outposts.some((o) => Math.abs(p.box.maxY - o.y - 3) < 1e-6) && p.box.maxX - p.box.minX > 5)!.box;
+    const wall = world.walls.find((b) => world.outposts.some((o) => Math.abs(b.maxY - o.y - 3) < 1e-6) && b.maxX - b.minX > 5)!;
     const x = (wall.minX + wall.maxX) / 2;
     const put = (s: PlayerState, z: number) => {
       s.x = x;

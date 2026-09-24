@@ -95,7 +95,7 @@ describe('World', () => {
 
 describe('applyCmd with collision', () => {
   it('cannot walk through a tall wall', () => {
-    const wall = w1.props.find((p) => p.style === 'wall' && p.box.maxY - p.box.minY > 2.5 && p.box.maxX - p.box.minX > 3)!.box;
+    const wall = w1.walls.find((b) => b.maxY - b.minY > 2.5 && b.maxX - b.minX > 3)!;
     const x = (wall.minX + wall.maxX) / 2;
     const z = wall.maxZ + 2;
     const p = spawnState(x, w1.groundHeight(x, z, w1.terrainHeight(x, z)), z);

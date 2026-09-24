@@ -2,11 +2,15 @@ import {
   BURST_RESET,
   Btn,
   CROUCH_SPREAD_MUL,
+  GRENADES,
   HEADSHOT_MUL,
   LEGS_MUL,
   MAX_PITCH,
   RECOIL_RECOVER_DELAY,
   RECOIL_RECOVER_RATE,
+  THROW_LOFT,
+  THROW_SPEED,
+  THROW_TIME,
   WALK_SPEED,
 } from './constants.ts';
 import { clamp, lerp } from './geom.ts';
@@ -136,6 +140,13 @@ export const WEAPONS: readonly WeaponDef[] = [
 export const RIFLE = 0;
 export const PISTOL = 1;
 export const BOLT = 2;
+/** Not a weapon in hand, but kills are credited to it like one. */
+export const GRENADE = WEAPONS.length;
+
+/** What killed someone, for the kill feed. */
+export function weaponName(weapon: number): string {
+  return weapon === GRENADE ? 'Grenade' : (WEAPONS[weapon]?.name ?? '');
+}
 
 /** Timers at or below this count as expired, so float drift can't cost a step. */
 const EPS = 1e-6;
@@ -152,9 +163,21 @@ export interface Shot {
   dz: number;
 }
 
+/** A thrown grenade: where it left the hand and how fast. */
+export interface Toss {
+  seq: number;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+}
+
 /** Things worth showing or playing when they happen, predicted on the client. */
 export type WeaponFx =
   | { k: 'shot'; shot: Shot }
+  | { k: 'throw'; toss: Toss }
   | { k: 'dry'; weapon: number }
   | { k: 'reload'; weapon: number }
   | { k: 'reloaded'; weapon: number }
@@ -183,6 +206,10 @@ export interface WeaponState {
   burst: number;
   /** Seconds since the last shot. */
   sinceShot: number;
+  /** Grenades left. */
+  grenades: number;
+  /** Throw was held last command; each throw needs a fresh press. */
+  throwHeld: boolean;
 }
 
 export function spawnWeapons(): WeaponState {
@@ -191,7 +218,7 @@ export function spawnWeapons(): WeaponState {
     mag: WEAPONS.map((w) => w.magSize),
     reserve: WEAPONS.map((w) => w.reserve),
     cooldown: 0, reload: 0, draw: 0, triggerHeld: false, aim: 0,
-    recoilPitch: 0, recoilYaw: 0, burst: 0, sinceShot: 1,
+    recoilPitch: 0, recoilYaw: 0, burst: 0, sinceShot: 1, grenades: GRENADES, throwHeld: false,
   };
 }
 
@@ -286,6 +313,25 @@ export function stepWeapon(
   }
   const w = WEAPONS[p.weapon];
   const i = p.weapon;
+
+  // A throw puts the weapon down for a moment, like switching away and back.
+  const toss = (b & Btn.Throw) !== 0;
+  if (toss && !p.throwHeld && p.grenades > 0 && p.draw <= EPS && !p.mantling) {
+    p.grenades--;
+    p.draw = THROW_TIME;
+    p.reload = 0;
+    p.burst = 0;
+    const o = eye();
+    const [dx, dy, dz] = shotDirection(p.yaw, clamp(p.pitch + THROW_LOFT, -MAX_PITCH, MAX_PITCH), 0, cmd.seq);
+    onFx?.({
+      k: 'throw',
+      toss: {
+        seq: cmd.seq, x: o.x + dx * 0.3, y: o.y + dy * 0.3, z: o.z + dz * 0.3,
+        vx: dx * THROW_SPEED + p.vx, vy: dy * THROW_SPEED + Math.max(p.vy, 0), vz: dz * THROW_SPEED + p.vz,
+      },
+    });
+  }
+  p.throwHeld = toss;
 
   const aimWanted = (b & Btn.Aim) !== 0 && !sprinting && p.draw <= EPS;
   p.aim = clamp(p.aim + (aimWanted ? dt : -dt) / w.aimTime, 0, 1);

@@ -3,12 +3,18 @@ import {
   Btn,
   CMD_DT,
   EXTRACT_TIME,
+  GRENADE_DAMAGE,
+  GRENADE_FUSE,
+  GRENADE_NOISE,
+  GRENADE_RADIUS,
+  GRENADES,
   GUARD_RESPAWN,
   MAX_CMDS_PER_TICK,
   MAX_HP,
   MAX_REWIND,
   OPERATOR_REFILL,
   PLAYER_HEIGHT,
+  PLAYER_RADIUS,
   RESPAWN_TIME,
   RESPONSE_SQUAD,
   RUN_TIME,
@@ -18,17 +24,19 @@ import {
   SPAWN_PROTECTION,
 } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, yawToward } from '../shared/geom.ts';
-import { rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
+import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
+import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
 import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loot.ts';
 import type {
-  BagSnap, ClientMsg, ExtractView, GameEvent, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
+  BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { applyCmd, copyState, spawnState, type PlayerState } from '../shared/sim.ts';
-import { damageAt, spawnWeapons, WEAPONS, type Shot } from '../shared/weapons.ts';
-import { World, type Point } from '../shared/world.ts';
+import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
+import { World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise } from './bot.ts';
 import { Containers } from './containers.ts';
+import { Cover } from './cover.ts';
 import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
 import { insertionPoint, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
@@ -50,6 +58,8 @@ const CALLOUT_RANGE = 60;
 const CALL_NOISE = 180;
 /** Seconds after a pickup lands before its response squad is recalled. */
 const RESPONSE_STAY = 60;
+/** Bots this close to where a hostile grenade settles take it as incoming fire. */
+const GRENADE_SCARE = 8;
 
 /** An operator's run: from dropping in to extracting, dying or running out of time. */
 interface Run {
@@ -134,6 +144,9 @@ export class GameServer {
   readonly nav: NavGrid;
   readonly containers: Containers;
   readonly extracts: Extracts;
+  readonly cover: Cover;
+  /** Grenades in flight or on the ground. */
+  readonly grenades: Grenade[] = [];
   tick = 0;
   /** Hears everything sent to everyone: kills, calls and extractions. */
   onEvent: ((e: GameEvent) => void) | null = null;
@@ -148,6 +161,7 @@ export class GameServer {
   /** Where everyone stood at the end of each recent tick, oldest first, for rewinding shots. */
   private readonly history: { tick: number; poses: PoseRecord[] }[] = [];
   private nextId = 1;
+  private nextGrenade = 1;
 
   constructor(seed: number, options: ServerOptions = {}) {
     this.seed = seed >>> 0;
@@ -159,6 +173,7 @@ export class GameServer {
     this.nav = new NavGrid(this.world);
     this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f));
     this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1));
+    this.cover = new Cover(this.world);
     this.operatorSlots = options.operators ?? 0;
     this.runs = options.runs ?? false;
     const players = this.players;
@@ -225,7 +240,10 @@ export class GameServer {
       case 'hello':
         p.joined = true;
         p.name = msg.name.slice(0, 24) || 'player';
-        p.send({ t: 'welcome', id, seed: this.seed, tick: this.tick, tickRate: SERVER_TICK_RATE, mode: this.mode });
+        p.send({
+          t: 'welcome', id, seed: this.seed, tick: this.tick, tickRate: SERVER_TICK_RATE, mode: this.mode,
+          broken: this.world.brokenPanels(),
+        });
         break;
       case 'ping':
         p.send({ t: 'pong', time: msg.time });
@@ -273,6 +291,7 @@ export class GameServer {
         const cmd = p.queue[i];
         applyCmd(this.world, p, cmd, CMD_DT, (fx) => {
           if (fx.k === 'shot') this.fire(p, fx.shot, cmd.view);
+          else if (fx.k === 'throw') this.toss(p, fx.toss);
         });
         if (p.run && !p.dead) this.use(p, cmd.buttons);
         p.lastSim = cmd.seq;
@@ -280,6 +299,15 @@ export class GameServer {
       p.queue.splice(0, n);
     }
 
+    this.stepGrenades();
+    const rebuilt = this.cover.repair(now, (box) => this.inTheWay(box));
+    if (rebuilt.length) {
+      for (const i of rebuilt) {
+        this.nav.refresh(this.world.panels[i].box);
+        this.containers.repaired(i);
+      }
+      this.broadcast({ k: 'repair', panels: rebuilt });
+    }
     this.containers.step(now);
     const landed = this.extracts.step(now);
     for (const p of [...this.players.values()]) {
@@ -310,6 +338,7 @@ export class GameServer {
     ));
     let extracts: ExtractView[] | null = null;
     let bags: BagSnap[] | null = null;
+    const grenades: GrenadeSnap[] = this.grenades.map(({ id, x, y, z }) => ({ id, x, y, z }));
     for (const p of joined) {
       // Bots and dummies see the game directly.
       if (p.plan || p.dummy) {
@@ -318,7 +347,9 @@ export class GameServer {
       }
       extracts ??= this.extracts.views(now);
       bags ??= this.containers.bags();
-      p.send({ t: 'snapshot', tick: this.tick, ack: p.lastSim, you: copyState(p), players, run: this.runView(p), extracts, bags });
+      p.send({
+        t: 'snapshot', tick: this.tick, ack: p.lastSim, you: copyState(p), players, run: this.runView(p), extracts, bags, grenades,
+      });
       if (p.events.length) p.send({ t: 'events', tick: this.tick, events: p.events });
       p.events = [];
     }
@@ -363,7 +394,10 @@ export class GameServer {
       const item = this.containers.take(c);
       if (item === undefined) return;
       const def = ITEMS[item];
-      if (def.use === 'ammo') p.reserve = spawnWeapons().reserve;
+      if (def.use === 'ammo') {
+        p.reserve = spawnWeapons().reserve;
+        p.grenades = Math.max(p.grenades, GRENADES);
+      }
       else if (def.use === 'heal') p.hp = Math.min(p.hp + MEDKIT_HEAL, MAX_HP);
       else {
         run.items.push(item);
@@ -551,7 +585,7 @@ export class GameServer {
     shooter.protection = 0;
     const w = WEAPONS[shot.weapon];
     const { ox, oy, oz, dx, dy, dz } = shot;
-    const wall = this.world.raycast(ox, oy, oz, dx, dy, dz, w.range);
+    const { t: wall, panel } = this.world.raycastPanel(ox, oy, oz, dx, dy, dz, w.range);
     let t = Math.min(wall, w.range);
     let victim: Player | null = null;
     let zone: Zone = 'torso';
@@ -582,16 +616,103 @@ export class GameServer {
       if (p !== victim && hostile(p, shooter) && Bot.nearMiss(p, ox, oy, oz, dx, dy, dz, t)) p.bot.underFire(shooter, now);
     }
     if (victim) this.damage(victim, shooter, damageAt(shot.weapon, t, zone), zone, shot.weapon, ex, ey, ez);
+    else if (panel >= 0) this.panelsBroke(this.cover.damage(panel, damageAt(shot.weapon, t, 'torso'), now), ox, oy, oz);
   }
 
-  private damage(victim: Player, attacker: Player, amount: number, zone: Zone, weapon: number, x: number, y: number, z: number): void {
+  /** Panels broke: everyone sees them come down, bots path around the change, and crates spill their loot. */
+  private panelsBroke(panels: number[], x: number, y: number, z: number): void {
+    if (!panels.length) return;
+    for (const i of panels) {
+      this.nav.refresh(this.world.panels[i].box);
+      this.containers.broke(i, this.time);
+    }
+    this.broadcast({ k: 'break', panels, x, y, z });
+  }
+
+  /** Whether rebuilding a panel here would trap someone or bury a bag. */
+  private inTheWay(box: Box): boolean {
+    const r = PLAYER_RADIUS;
+    for (const p of this.players.values()) {
+      if (p.x > box.minX - r && p.x < box.maxX + r && p.z > box.minZ - r && p.z < box.maxZ + r
+        && p.y < box.maxY && p.y + PLAYER_HEIGHT > box.minY) return true;
+    }
+    for (const g of this.grenades) {
+      if (g.x > box.minX && g.x < box.maxX && g.z > box.minZ && g.z < box.maxZ && g.y > box.minY && g.y < box.maxY) return true;
+    }
+    return this.containers.bagIn(box.minX, box.minZ, box.maxX, box.maxZ);
+  }
+
+  // -------------------------------------------------------------- grenades
+
+  private toss(p: Player, toss: Toss): void {
+    p.protection = 0;
+    this.grenades.push(launchGrenade(this.nextGrenade++, p.id, toss, GRENADE_FUSE));
+  }
+
+  private stepGrenades(): void {
+    const now = this.time;
+    for (let i = this.grenades.length - 1; i >= 0; i--) {
+      const g = this.grenades[i];
+      const resting = g.rest;
+      stepGrenade(this.world, g, SERVER_DT);
+      if (g.fuse <= 0) {
+        this.grenades.splice(i, 1);
+        this.explode(g);
+        continue;
+      }
+      if (resting || !g.rest) continue;
+      // It settled: bots nearby see it and get away from whoever threw it.
+      const owner = this.players.get(g.owner);
+      if (!owner) continue;
+      for (const p of this.players.values()) {
+        if (!p.bot || p.dead || !hostile(p, owner) || Math.hypot(p.x - g.x, p.z - g.z) > GRENADE_SCARE) continue;
+        p.bot.underFire(owner, now);
+      }
+    }
+  }
+
+  /**
+   * A grenade goes off: it hurts every body it can see, falling off with
+   * distance, breaks the panels around it and is heard far away.
+   */
+  private explode(g: Grenade): void {
+    const { x, y, z } = g;
+    const now = this.time;
+    const owner = this.players.get(g.owner);
+    this.broadcast({ k: 'boom', x, y, z });
+    for (const p of [...this.players.values()]) {
+      if (p.dead) continue;
+      const h = hitboxes(p);
+      const chest = (h.hipY + h.neckY) / 2;
+      const d = Math.hypot(h.torsoX - x, chest - y, h.torsoZ - z);
+      if (d < GRENADE_RADIUS && (
+        this.world.hasLineOfSight(x, y + 0.1, z, h.torsoX, chest, h.torsoZ) ||
+        this.world.hasLineOfSight(x, y + 0.1, z, h.headX, h.headY, h.headZ) ||
+        this.world.hasLineOfSight(x, y + 0.1, z, p.x, p.y + 0.3, p.z)
+      )) {
+        const f = 1 - d / GRENADE_RADIUS;
+        const amount = Math.round(GRENADE_DAMAGE * f * f);
+        if (amount > 0) this.damage(p, owner ?? p, amount, 'torso', GRENADE, h.torsoX, chest, h.torsoZ, { x, z });
+      }
+      if (p.bot && !p.dead && Math.hypot(p.x - x, p.z - z) <= GRENADE_NOISE) {
+        p.bot.hear(p, { x, y, z, radius: GRENADE_NOISE, source: g.owner }, now);
+      }
+    }
+    this.panelsBroke(this.cover.blast(x, y, z, now), x, y, z);
+  }
+
+  /** `from` is where the damage came from, if not the attacker, such as a grenade. */
+  private damage(
+    victim: Player, attacker: Player, amount: number, zone: Zone, weapon: number, x: number, y: number, z: number,
+    from: { x: number; z: number } = attacker,
+  ): void {
     if (victim.protection > 0) amount = 0;
     amount = Math.min(amount, victim.hp);
     victim.hp -= amount;
     const killed = victim.hp <= 0;
     attacker.events.push({ k: 'hit', target: victim.id, zone, damage: amount, killed, x, y, z });
-    victim.events.push({ k: 'hurt', damage: amount, x: attacker.x, z: attacker.z });
-    victim.bot?.hurt(attacker, this.time);
+    victim.events.push({ k: 'hurt', damage: amount, x: from.x, z: from.z });
+    if (attacker !== victim) victim.bot?.hurt(attacker, this.time);
     if (!killed) return;
     victim.dead = true;
     victim.respawn = victim.run || victim.plan?.temporary ? BODY_TIME : victim.team === 'guard' ? GUARD_RESPAWN : RESPAWN_TIME;

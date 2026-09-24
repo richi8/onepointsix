@@ -1,5 +1,5 @@
 import { PLAYER_HEIGHT, PLAYER_RADIUS, WATER_LEVEL } from '../shared/constants.ts';
-import type { World } from '../shared/world.ts';
+import type { Box, World } from '../shared/world.ts';
 
 // Where bots can walk: a 1 m grid over the island, each cell open, wet
 // (walkable but slow, so paths avoid it) or blocked by something taller than a
@@ -55,6 +55,22 @@ export class NavGrid {
     this.cells = new Uint8Array(this.n * this.n);
     this.tilesPerSide = Math.ceil(this.n / TILE);
     this.tiles = new Uint8Array(this.tilesPerSide * this.tilesPerSide);
+  }
+
+  /** Something in the box changed, such as cover breaking: survey the cells around it again. */
+  refresh(box: Box): void {
+    const pad = PLAYER_RADIUS + MARGIN + CELL;
+    const x0 = Math.max(this.cellX(box.minX - pad), 0);
+    const x1 = Math.min(this.cellX(box.maxX + pad), this.n - 1);
+    const z0 = Math.max(this.cellX(box.minZ - pad), 0);
+    const z1 = Math.min(this.cellX(box.maxZ + pad), this.n - 1);
+    for (let iz = z0; iz <= z1; iz++) {
+      for (let ix = x0; ix <= x1; ix++) {
+        // Cells not surveyed yet will see the change when they are.
+        const i = iz * this.n + ix;
+        if (this.cells[i] !== UNKNOWN) this.cells[i] = this.survey(ix, iz);
+      }
+    }
   }
 
   /** Whether a body can stand at (x, z), wading included. */
@@ -237,18 +253,18 @@ export class NavGrid {
     const t = tz * this.tilesPerSide + tx;
     if (this.tiles[t]) return;
     this.tiles[t] = 1;
-    const w = this.world;
-    const pad = PLAYER_RADIUS + MARGIN;
     for (let iz = tz * TILE; iz < Math.min((tz + 1) * TILE, this.n); iz++) {
-      const z = this.center(iz);
-      for (let ix = tx * TILE; ix < Math.min((tx + 1) * TILE, this.n); ix++) {
-        const x = this.center(ix);
-        const y = w.groundHeight(x, z, w.floorHeight(x, z));
-        let s: number = w.terrainHeight(x, z) < WET_BELOW ? WET : OPEN;
-        if (!w.clear(x, y, z, PLAYER_HEIGHT, pad)) s = BLOCKED;
-        this.cells[iz * this.n + ix] = s;
-      }
+      for (let ix = tx * TILE; ix < Math.min((tx + 1) * TILE, this.n); ix++) this.cells[iz * this.n + ix] = this.survey(ix, iz);
     }
+  }
+
+  private survey(ix: number, iz: number): number {
+    const w = this.world;
+    const x = this.center(ix);
+    const z = this.center(iz);
+    const y = w.groundHeight(x, z, w.floorHeight(x, z));
+    if (!w.clear(x, y, z, PLAYER_HEIGHT, PLAYER_RADIUS + MARGIN)) return BLOCKED;
+    return w.terrainHeight(x, z) < WET_BELOW ? WET : OPEN;
   }
 }
 

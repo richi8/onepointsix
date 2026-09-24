@@ -38,7 +38,7 @@ describe('NavGrid', () => {
   });
 
   it('goes around a wall rather than through it', () => {
-    const wall = world.props.find((p) => p.style === 'wall' && p.box.maxX - p.box.minX > 6 && p.box.maxZ - p.box.minZ < 1)!.box;
+    const wall = world.walls.find((b) => b.maxX - b.minX > 6 && b.maxZ - b.minZ < 1)!;
     const x = (wall.minX + wall.maxX) / 2;
     const a = nav.nearestWalkable(x, wall.minZ - 2, 2)!;
     const b = nav.nearestWalkable(x, wall.maxZ + 2, 2)!;

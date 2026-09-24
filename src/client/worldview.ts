@@ -31,7 +31,9 @@ const PROP_COLORS: Record<PropStyle, number[]> = {
   wall: [0x8d8a82],
   wood: [0x6b4f33],
   metal: [0x7a3b2e, 0x2f5a73, 0x4e6b3a, 0x8a7a3a, 0x5d6166],
+  fence: [0x7d6a4f, 0x6e5c42],
 };
+const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
 
 /** The rendered island: terrain, water, sky, props, vegetation and lighting. */
 export class WorldView {
@@ -40,6 +42,10 @@ export class WorldView {
   private readonly sky: THREE.Mesh;
   /** Each extraction point's flag, coloured by whether it's open. */
   private readonly flags: THREE.MeshStandardMaterial[];
+  private readonly world: World;
+  private readonly props: THREE.InstancedMesh;
+  /** Each prop's matrix while it stands. */
+  private readonly propMatrices: THREE.Matrix4[];
 
   constructor(world: World) {
     const scene = this.scene;
@@ -57,9 +63,34 @@ export class WorldView {
     this.sun.shadow.normalBias = 0.04;
     scene.add(this.sun, this.sun.target);
 
+    this.world = world;
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
-    scene.add(makeTerrain(world), makeWater(), makeProps(world), makeTrees(world), makeRocks(world), extracts.group);
+    const props = makeProps(world);
+    this.props = props.mesh;
+    this.propMatrices = props.matrices;
+    scene.add(makeTerrain(world), makeWater(), this.props, makeTrees(world), makeRocks(world), extracts.group);
+  }
+
+  /** Show panels standing or broken as the world has them. */
+  syncPanels(): void {
+    this.world.panels.forEach((p) => this.props.setMatrixAt(p.prop, p.box.gone ? GONE : this.propMatrices[p.prop]));
+    this.props.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Show one panel as the world has it. */
+  updatePanel(id: number): void {
+    const p = this.world.panels[id];
+    if (!p) return;
+    this.props.setMatrixAt(p.prop, p.box.gone ? GONE : this.propMatrices[p.prop]);
+    this.props.instanceMatrix.needsUpdate = true;
+  }
+
+  /** A panel's colour, for its debris. */
+  panelColor(id: number, out: THREE.Color): THREE.Color {
+    const p = this.world.panels[id];
+    if (p) this.props.getColorAt(p.prop, out);
+    return out;
   }
 
   /** Green flags fly over open extraction points, red over shut ones; a called pickup flashes amber. */
@@ -196,23 +227,23 @@ function pick(palette: number[], t: number): number {
   return palette[Math.min(palette.length - 1, Math.floor(t * palette.length))];
 }
 
-function makeProps(world: World): THREE.InstancedMesh {
+function makeProps(world: World): { mesh: THREE.InstancedMesh; matrices: THREE.Matrix4[] } {
   const props = world.props;
   const mesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshStandardMaterial({ roughness: 0.85 }),
     props.length,
   );
-  const m = new THREE.Matrix4();
   const c = new THREE.Color();
-  props.forEach(({ box, style, tint }, i) => {
-    m.makeScale(box.maxX - box.minX, box.maxY - box.minY, box.maxZ - box.minZ);
+  const matrices = props.map(({ box, style, tint }, i) => {
+    const m = new THREE.Matrix4().makeScale(box.maxX - box.minX, box.maxY - box.minY, box.maxZ - box.minZ);
     m.setPosition((box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2, (box.minZ + box.maxZ) / 2);
-    mesh.setMatrixAt(i, m);
+    mesh.setMatrixAt(i, box.gone ? GONE : m);
     mesh.setColorAt(i, c.setHex(pick(PROP_COLORS[style], tint)));
+    return m;
   });
   mesh.castShadow = mesh.receiveShadow = true;
-  return mesh;
+  return { mesh, matrices };
 }
 
 /** A tall pole with a bright flag at each extraction point, visible from far off. */
