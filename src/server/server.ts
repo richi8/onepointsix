@@ -1,6 +1,8 @@
 import { CMD_DT, MAX_CMDS_PER_TICK, SERVER_TICK_RATE } from '../shared/constants.ts';
 import type { ClientMsg, InputCmd, ServerMsg } from '../shared/protocol.ts';
+import { mulberry32 } from '../shared/rng.ts';
 import { applyCmd, type PlayerState } from '../shared/sim.ts';
+import { World } from '../shared/world.ts';
 
 /** Commands buffered beyond this are dropped; the client is too far ahead. */
 const MAX_QUEUED_CMDS = MAX_CMDS_PER_TICK * 4;
@@ -23,17 +25,22 @@ interface Player extends PlayerState {
  */
 export class GameServer {
   readonly seed: number;
+  readonly world: World;
   tick = 0;
   private readonly players = new Map<number, Player>();
+  private readonly spawnRng: () => number;
   private nextId = 1;
 
   constructor(seed: number) {
     this.seed = seed >>> 0;
+    this.world = new World(this.seed);
+    this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
   }
 
   connect(send: (msg: ServerMsg) => void): number {
     const id = this.nextId++;
-    this.players.set(id, { id, send, joined: false, queue: [], lastRecv: 0, lastSim: 0, x: 0, y: 0, z: 0, yaw: 0 });
+    const { x, y, z } = this.world.randomLandPoint(this.spawnRng);
+    this.players.set(id, { id, send, joined: false, queue: [], lastRecv: 0, lastSim: 0, x, y, z, vx: 0, vz: 0, yaw: 0 });
     return id;
   }
 
@@ -70,7 +77,7 @@ export class GameServer {
       const n = Math.min(p.queue.length, MAX_CMDS_PER_TICK);
       for (let i = 0; i < n; i++) {
         const cmd = p.queue[i];
-        applyCmd(p, cmd, CMD_DT);
+        applyCmd(this.world, p, cmd, CMD_DT);
         p.lastSim = cmd.seq;
       }
       p.queue.splice(0, n);

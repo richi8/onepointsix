@@ -3,13 +3,14 @@
 
 import { Btn, CMDS_PER_TICK, SERVER_TICK_RATE } from '../shared/constants.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
 import { GameServer } from './server.ts';
 
 const SECONDS = 5;
-const server = new GameServer(1);
+const server = new GameServer(DEFAULT_WORLD.seed);
 let last: ServerMsg | null = null;
 const id = server.connect((msg) => (last = msg));
-server.receive(id, { t: 'hello', name: 'headless' });
+server.receive(id, { t: 'hello', name: 'headless', world: DEFAULT_WORLD });
 
 let seq = 0;
 const ticks = SECONDS * SERVER_TICK_RATE;

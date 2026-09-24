@@ -2,6 +2,7 @@ import { INTERP_DELAY, SERVER_DT } from '../shared/constants.ts';
 import { lerp } from '../shared/geom.ts';
 import { isReliable, type ClientMsg, type InputCmd, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
 import { LagTransport, type Transport } from '../shared/transport.ts';
+import type { WorldConfig } from '../shared/worldconfig.ts';
 
 /** How many unacknowledged commands ride along with each input packet. */
 const REDUNDANT_CMDS = 8;
@@ -44,10 +45,10 @@ export class Connection {
   private clock = -1;
   private sincePing = PING_INTERVAL;
 
-  constructor() {
+  constructor(world: WorldConfig) {
     this.transport = new LagTransport(new WorkerTransport(), isReliable);
     this.transport.onMessage = (msg) => this.handle(msg);
-    this.transport.send({ t: 'hello', name: 'player' });
+    this.transport.send({ t: 'hello', name: 'player', world });
   }
 
   get connected(): boolean {

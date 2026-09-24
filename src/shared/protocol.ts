@@ -2,6 +2,8 @@
 // Worker; later it is a WebSocket. Everything here must survive structured
 // cloning and JSON, so only plain data.
 
+import type { WorldConfig } from './worldconfig.ts';
+
 /** One fixed CMD_DT step of player intent. Bots produce these too. */
 export interface InputCmd {
   seq: number;
@@ -19,7 +21,8 @@ export interface PlayerSnap {
 }
 
 export type ClientMsg =
-  | { t: 'hello'; name: string }
+  // `world` is the island the client wants to join; the server may ignore it.
+  | { t: 'hello'; name: string; world: WorldConfig }
   // Carries the last few unacknowledged commands so a lost packet costs nothing.
   | { t: 'input'; cmds: InputCmd[] }
   | { t: 'ping'; time: number };

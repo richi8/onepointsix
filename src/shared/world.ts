@@ -400,18 +400,21 @@ export class World {
   }
 
   private placeOutposts(rng: () => number): void {
-    for (let attempt = 0; attempt < 500 && this.outposts.length < OUTPOST_NAMES.length; attempt++) {
-      const x = (rng() - 0.5) * this.size * 0.7;
-      const z = (rng() - 0.5) * this.size * 0.7;
-      const y = this.terrainHeight(x, z);
-      if (y < 3 || y > 30) continue;
-      let rough = 0;
-      for (const [ox, oz] of [[20, 0], [-20, 0], [0, 20], [0, -20]]) {
-        rough = Math.max(rough, Math.abs(this.terrainHeight(x + ox, z + oz) - y));
+    // Ideal sites are spread out and flat; relax both until every outpost fits.
+    for (const [spacing, maxRough, maxY] of [[160, 7, 30], [130, 9, 36], [100, 12, 42], [70, 16, 50]]) {
+      for (let attempt = 0; attempt < 500 && this.outposts.length < OUTPOST_NAMES.length; attempt++) {
+        const x = (rng() - 0.5) * this.size * 0.7;
+        const z = (rng() - 0.5) * this.size * 0.7;
+        const y = this.terrainHeight(x, z);
+        if (y < 3 || y > maxY) continue;
+        let rough = 0;
+        for (const [ox, oz] of [[20, 0], [-20, 0], [0, 20], [0, -20]]) {
+          rough = Math.max(rough, Math.abs(this.terrainHeight(x + ox, z + oz) - y));
+        }
+        if (rough > maxRough) continue;
+        if (this.outposts.some((o) => Math.hypot(o.x - x, o.z - z) < spacing)) continue;
+        this.outposts.push({ name: OUTPOST_NAMES[this.outposts.length], x, y, z });
       }
-      if (rough > 7) continue;
-      if (this.outposts.some((o) => Math.hypot(o.x - x, o.z - z) < 160)) continue;
-      this.outposts.push({ name: OUTPOST_NAMES[this.outposts.length], x, y, z });
     }
 
     // Flatten a plateau under each outpost.

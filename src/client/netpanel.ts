@@ -66,7 +66,7 @@ export class NetPanel {
   update(me: PlayerSnap | undefined): void {
     if (this.root.hidden) return;
     const c = this.conn;
-    const pos = me ? `${me.x.toFixed(1)}, ${me.z.toFixed(1)}` : '-';
+    const pos = me ? `${me.x.toFixed(1)}, ${me.y.toFixed(1)}, ${me.z.toFixed(1)}` : '-';
     this.stats.textContent =
       `id ${c.id}  tick ${c.lastTick}  pos ${pos}\n` +
       `rtt ${c.rtt.toFixed(0)} ms\n` +

@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { GameServer } from '../src/server/server.ts';
 import { Btn, CMD_DT, CMDS_PER_TICK, WALK_SPEED } from '../src/shared/constants.ts';
 import type { InputCmd, ServerMsg } from '../src/shared/protocol.ts';
+import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 function setup() {
   const server = new GameServer(1);
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: 'test' });
+  server.receive(id, { t: 'hello', name: 'test', world: DEFAULT_WORLD });
   const lastSnapshot = () => inbox.filter((m) => m.t === 'snapshot').at(-1)!;
   return { server, id, inbox, lastSnapshot };
 }
@@ -20,25 +21,39 @@ describe('GameServer', () => {
     expect(inbox[0]).toEqual({ t: 'welcome', id, seed: 1, tick: 0, tickRate: 30 });
   });
 
-  it('moves a player by exactly the commands it simulated and acks them', () => {
-    const { server, id, lastSnapshot } = setup();
-    server.receive(id, { t: 'input', cmds: [fwd(1), fwd(2)] });
+  it('spawns players standing on dry land', () => {
+    const { server, lastSnapshot } = setup();
     server.step();
     const snap = lastSnapshot();
     if (snap.t !== 'snapshot') throw new Error();
+    const { x, y, z } = snap.players[0];
+    expect(server.world.terrainHeight(x, z)).toBeGreaterThan(1);
+    expect(y).toBeCloseTo(server.world.groundHeight(x, z, y));
+  });
+
+  it('moves a player by exactly the commands it simulated and acks them', () => {
+    const { server, id, lastSnapshot } = setup();
+    server.step();
+    const before = lastSnapshot();
+    server.receive(id, { t: 'input', cmds: [fwd(1), fwd(2)] });
+    server.step();
+    const snap = lastSnapshot();
+    if (snap.t !== 'snapshot' || before.t !== 'snapshot') throw new Error();
     expect(snap.ack).toBe(2);
-    expect(snap.players[0].z).toBeCloseTo(-WALK_SPEED * CMD_DT * 2);
+    expect(snap.players[0].z - before.players[0].z).toBeCloseTo(-WALK_SPEED * CMD_DT * 2);
   });
 
   it('ignores redundant resends of commands it already has', () => {
     const { server, id, lastSnapshot } = setup();
+    server.step();
+    const before = lastSnapshot();
     server.receive(id, { t: 'input', cmds: [fwd(1), fwd(2)] });
     server.receive(id, { t: 'input', cmds: [fwd(1), fwd(2), fwd(3)] });
     for (let i = 0; i < 3; i++) server.step();
     const snap = lastSnapshot();
-    if (snap.t !== 'snapshot') throw new Error();
+    if (snap.t !== 'snapshot' || before.t !== 'snapshot') throw new Error();
     expect(snap.ack).toBe(3);
-    expect(snap.players[0].z).toBeCloseTo(-WALK_SPEED * CMD_DT * 3);
+    expect(snap.players[0].z - before.players[0].z).toBeCloseTo(-WALK_SPEED * CMD_DT * 3);
   });
 
   it('is deterministic for the same input stream', () => {
@@ -66,7 +81,7 @@ describe('GameServer joining', () => {
     const id = server.connect((m) => inbox.push(m));
     server.step();
     expect(inbox).toEqual([]);
-    server.receive(id, { t: 'hello', name: 'late' });
+    server.receive(id, { t: 'hello', name: 'late', world: DEFAULT_WORLD });
     server.step();
     expect(inbox.map((m) => m.t)).toEqual(['welcome', 'snapshot']);
   });
