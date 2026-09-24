@@ -8,17 +8,46 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 - **Genre:** extraction shooter with 3–10 minute runs.
 - **Tone:** grounded realistic, with PBR materials and real-world weapons feel. Think Arma
   Reforger at low settings, not photoreal.
-- **Instant access:** open a URL and play. Identity is an anonymous token.
+- **Instant access:** open the page, press **Play**, and you're in. No account; identity is an
+  anonymous token.
+- **Default world:** there is always a default island. **Play** drops you into the first game on
+  it that isn't full.
 - **Shareable worlds:** a world is fully described by its config (seed and settings), so a link
   *is* the world. "Beat my score on this island."
 - **Fresh start every run:** no persistent progression. Each run is scored on its own.
+- **Local first:** the game runs entirely in the browser with no backend. Multiplayer is a future
+  feature, but the architecture is ready for it from day one.
+
+## Entry Flow
+
+1. Load the page and see the main menu with a **Play** button. The default world renders behind
+   it.
+2. **Play** starts a quick join into the first game on the default world that isn't full.
+   - **Now (local):** there is only one local game, so it starts immediately.
+   - **Future (multiplayer):** matchmaking picks the first instance with a free slot and creates a
+     new instance if all are full.
+3. A world link (`?world=...`) skips the default world and joins that world instead.
 
 ## Game Modes
 
 | Mode | Description |
 |---|---|
 | **PvE (solo)** | You versus AI on your own island. Played just for fun. |
-| **Mixed** | Real players plus bots. Bots fill empty slots and are removed as humans join. *(The offline proof of concept uses bots only.)* |
+| **Mixed** | Other operators share the island with you. Locally they are all bots. In future multiplayer, bots fill empty slots and are removed as humans join. |
+
+### World capacity
+
+The island is 800 × 800 m, with 6 outposts.
+
+| Kind | Count | Notes |
+|---|---|---|
+| **Operators** (players and fill bots) | **12** per game | Mixed mode: every slot starts as a bot, and humans replace them in the future. PvE: only you. |
+| **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Present in both modes. |
+
+**Why 12:** that's roughly 50,000 m² per operator, which is about a 230 m square each. Runs are
+3–10 minutes, so you meet another operator every 1–3 minutes, while guards fill the time in
+between. At 16 or more, the island feels like a deathmatch and extraction points get camped. At 8
+or fewer, it feels empty. The cap is a single constant, to be tuned during playtests.
 
 ## Core Loop
 
@@ -45,6 +74,10 @@ playing in seconds: no install, no account. Written fully in TypeScript.
   work against each other.
 
 ### Gunplay
+- **Proof of concept roster (3 weapons):**
+  - **Assault rifle:** all-rounder, full-auto
+  - **Pistol:** sidearm, always carried
+  - **Bolt-action rifle:** long range for the open island, high damage, slow
 - Hitscan with recoil patterns, spread (depending on movement and stance) and hitboxes (headshots)
 - Ammo and reloading, suppressors as loot
 - Grenades
@@ -83,7 +116,8 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 
 ## Technical Architecture
 
-**Stack:** TypeScript, Vite, Three.js (client), Node (server, later), Web Worker (local server).
+**Stack:** TypeScript, Vite, Three.js (client), Web Worker (local game server). No backend for
+now. In future multiplayer, the same server code runs in Node.
 
 ```
 src/
@@ -114,31 +148,38 @@ src/
 ## Implementation Roadmap
 
 Each chunk ends in something you can play or test. **Chunks 0–6 are the proof of concept.**
+Everything runs locally in the browser; there is no backend.
 
 | # | Chunk | Scope | Done when |
 |---|---|---|---|
 | 0 | **Foundations** | Vite + TS setup, `shared/server/client` layout, local server in a Worker, message protocol types, fixed tick loop, fake-lag/loss toggle | A box moves when you press keys, driven by the server |
-| 1 | **World** | Seeded island terrain, outposts, props, trees and rocks; renderer, sky, fog; collision; seed read from the URL | Same seed gives the same island; you can fly around it |
+| 1 | **World and menu** | Seeded island terrain, outposts, props, trees and rocks; renderer, sky, fog; collision; **default world**; main menu with **Play** over the rendered island; `?world=` param | Load the page, press Play, and you're on the default island; the same seed gives the same island |
 | 2 | **Movement** | Pointer lock, CS-like movement, sprint, crouch, jump; client prediction and reconciliation against the Worker server | Movement feels tight even with 100 ms fake lag |
 | 3 | **Advanced movement** | Slide, mantle, lean, stamina, carry-weight hooks | You can mantle a crate and slide into cover |
-| 4 | **Gunplay** | Hitscan, recoil and spread, hitboxes, ammo and reload, damage and death, HUD, hit markers; lag-compensation scaffolding | You can shoot target dummies with a satisfying feel |
-| 5 | **Bots** | Navigation grid, perception (sight and hearing), state machine (patrol, investigate, engage, cover, flank), difficulty levels | Bots patrol outposts and fight back with reasonable tactics |
-| 6 | **Run loop** | Drop-in insertion, run clock and MIA, loot containers, inventory and weight, extraction points opening and closing, call-and-hold extraction, results screen and score | **The full PvE loop is playable. First real playtest.** |
+| 4 | **Gunplay** | The 3 weapons (assault rifle, pistol, bolt-action), weapon switching, hitscan, recoil and spread, hitboxes, ammo and reload, damage and death, HUD, hit markers; lag-compensation scaffolding | You can shoot target dummies with a satisfying feel |
+| 5 | **Bots** | Navigation grid, perception (sight and hearing), state machine (patrol, investigate, engage, cover, flank), difficulty levels; **guards** at outposts and **fill-bot operators** that play runs like a player | Guards defend outposts; operator bots loot and extract |
+| 6 | **Run loop** | Quick join through the local "game directory" (first game not full, capped at 12 operators), PvE and Mixed modes, drop-in insertion, run clock and MIA, loot containers, inventory and weight, extraction points opening and closing, call-and-hold extraction, results screen and score | **The full PvE and Mixed loop is playable. First real playtest.** |
 | 7 | **Destructible cover** | Panel-based walls, fences and crates with HP, debris, collision updates, destruction events, grenades | You can blow a hole in a wall and shoot through it |
 | 8 | **Contracts and noise** | Objectives per run (intel, cache, commander), noise events that attract bots, suppressors | Runs feel different from each other |
 | 9 | **Look and sound** | Realistic assets (glTF, PBR, animations), positional audio, footsteps, muzzle flash, performance pass | It looks and sounds like a real game |
-| 10 | **Shareable worlds (offline)** | World config in the URL, per-world local leaderboard, share button, death cam from recorded inputs | You send a link and a friend gets the same island |
-| 11 | **Multiplayer** | Node server reusing `server/`, WebSocket, snapshot deltas and interpolation, lag compensation, rooms per world link, bot fill that shrinks as players join, anonymous identity, basic anti-cheat, deployment | Two browsers play on the same island |
-| 12 | **Transport upgrade** | WebTransport or WebRTC DataChannels (UDP-like), server-side visibility culling, server leaderboards | Stable under real internet conditions |
+| 10 | **Shareable worlds** | World config in the URL, per-world local leaderboard, share button, death cam from recorded inputs | You send a link and a friend gets the same island and can try to beat your score |
 
 ## Future
-- Day/night cycle and weather that change the rules (e.g. more and tougher bots at night, but
+- **Multiplayer**
+  - Node server that reuses `server/`, with WebSocket first
+  - Snapshot deltas, interpolation and lag compensation
+  - Real matchmaking: the first instance that isn't full, or a new one, for each world
+  - Bot fill that shrinks as humans join
+  - Anonymous identity, basic anti-cheat, deployment
+- **Transport upgrade:** WebTransport or WebRTC DataChannels (UDP-like), server-side visibility
+  culling, server leaderboards
+- **Day/night cycle and weather** that change the rules (e.g. more and tougher bots at night, but
   better loot)
 - Squads with revive
 - Shareable full-run replays
 - Global leaderboards and seasonal featured islands
 
-## Open questions
-- Weapon roster size for the proof of concept (1 rifle and 1 pistol?)
-- Maximum players per world in Mixed mode (target 16–32?)
-- Hosting provider for the multiplayer servers
+## Decisions
+- **Weapons for the proof of concept:** assault rifle, pistol and bolt-action rifle
+- **Capacity:** 12 operators and about 24 guards per game (tunable constant)
+- **Backend:** none for now; the game is local only. Multiplayer is a future feature.
