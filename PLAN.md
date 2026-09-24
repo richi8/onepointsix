@@ -1,0 +1,144 @@
+# onepointsix — Game Plan
+
+A realistic, browser-based **extraction shooter** on shareable islands. Click a link and you're
+playing in seconds: no install, no account. Written fully in TypeScript.
+
+## Vision
+
+- **Genre:** extraction shooter with 3–10 minute runs.
+- **Tone:** grounded realistic, with PBR materials and real-world weapons feel. Think Arma
+  Reforger at low settings, not photoreal.
+- **Instant access:** open a URL and play. Identity is an anonymous token.
+- **Shareable worlds:** a world is fully described by its config (seed and settings), so a link
+  *is* the world. "Beat my score on this island."
+- **Fresh start every run:** no persistent progression. Each run is scored on its own.
+
+## Game Modes
+
+| Mode | Description |
+|---|---|
+| **PvE (solo)** | You versus AI on your own island. Played just for fun. |
+| **Mixed** | Real players plus bots. Bots fill empty slots and are removed as humans join. *(The offline proof of concept uses bots only.)* |
+
+## Core Loop
+
+1. **Drop in** at any time at an insertion point on the island. Your personal run clock starts.
+2. **Receive contracts.** You get 1–2 objectives per run, for example: grab intel from the radio
+   tower, destroy a supply cache, eliminate a bot commander.
+3. **Loot, fight, sneak.** Search containers, fight AI patrols (and players in Mixed mode), and
+   manage noise and weight.
+4. **Extract.** Reach an extraction point that is currently open. Some extraction points need you
+   to call and hold for about 20 seconds while bots converge on you.
+5. **Score.** The extracted loot value, kills and completed contracts make your run score. It
+   goes on the world's leaderboard.
+   - **Die = score 0.**
+   - **Run clock hits 10:00 = MIA = score 0.**
+
+## Features & Design Pillars
+
+### Movement (grounded, no grapple)
+- Sprint with stamina, crouch, jump
+- Slide
+- Mantle over walls and crates
+- Lean left and right (Q/E), which pairs with destructible cover
+- **Carry weight.** Heavy loot slows you down and disables slide and mantle, so loot and movement
+  work against each other.
+
+### Gunplay
+- Hitscan with recoil patterns, spread (depending on movement and stance) and hitboxes (headshots)
+- Ammo and reloading, suppressors as loot
+- Grenades
+
+### Destructible cover
+- Walls, fences and crates are built from a few **breakable panels**, each with its own HP. No
+  voxels.
+- Breaking a panel is a small network event ("panel 812 broke"), so it's cheap to sync.
+- Debris and collision update in real time.
+
+### Noise system
+- Gunfire, explosions, sprinting and breaking cover make noise events that bots hear and
+  investigate.
+- You choose between stealth and going loud. Suppressors reduce the noise radius.
+
+### Extraction pressure
+- A personal run clock for each player, which fits drop-in play
+- Extraction points open and close at random
+- Call-and-hold extractions draw in bots
+
+### Bots (AI operators)
+- They send the **same input commands as players**, so bot fill in Mixed mode comes for free.
+- States: patrol, investigate, engage, take cover, flank
+- Perception through sight and hearing (the noise system)
+- Difficulty levels, and special "commander" bots used as contract targets
+
+### Shareable worlds and leaderboards
+- The world config (seed and settings) is encoded in the URL.
+- Each world has its own leaderboard: stored locally first, on the server once there is
+  multiplayer.
+- A share button on the results screen.
+
+### Replays (cheap because the simulation is deterministic)
+- The simulation runs on inputs, so a run can be recorded as its inputs.
+- Death cam first, shareable replay links later.
+
+## Technical Architecture
+
+**Stack:** TypeScript, Vite, Three.js (client), Node (server, later), Web Worker (local server).
+
+```
+src/
+  shared/   deterministic simulation: world gen, collision, movement, weapons, protocol types
+  server/   authoritative game server: tick loop, bots, loot, contracts, extraction, scoring
+  client/   rendering, input, prediction/reconciliation, interpolation, HUD, audio
+```
+
+### Rules that keep multiplayer easy to add later
+1. **Server-authoritative from day one.** The server runs in a **Web Worker**. Only serializable
+   messages cross the worker boundary, which acts as the network. Later the same server code runs
+   in Node unchanged.
+2. **Shared simulation.** Movement, weapons and collision are identical on client and server. The
+   client predicts; the server corrects.
+3. **Bots are just players without a keyboard.** They produce input commands the same way players
+   do.
+4. **The local transport can simulate lag and packet loss,** so netcode bugs show up while
+   playing offline.
+5. **A world is its config.** Only the seed and settings travel over the network; every peer
+   generates the same world.
+6. **Fixed-timestep, deterministic simulation.** This makes prediction, lag compensation and
+   replays possible.
+
+### Assets
+- Poly Haven for PBR textures and HDRIs, Mixamo for animations, glTF for models
+- Budget for small downloads: compressed textures and level of detail (LOD)
+
+## Implementation Roadmap
+
+Each chunk ends in something you can play or test. **Chunks 0–6 are the proof of concept.**
+
+| # | Chunk | Scope | Done when |
+|---|---|---|---|
+| 0 | **Foundations** | Vite + TS setup, `shared/server/client` layout, local server in a Worker, message protocol types, fixed tick loop, fake-lag/loss toggle | A box moves when you press keys, driven by the server |
+| 1 | **World** | Seeded island terrain, outposts, props, trees and rocks; renderer, sky, fog; collision; seed read from the URL | Same seed gives the same island; you can fly around it |
+| 2 | **Movement** | Pointer lock, CS-like movement, sprint, crouch, jump; client prediction and reconciliation against the Worker server | Movement feels tight even with 100 ms fake lag |
+| 3 | **Advanced movement** | Slide, mantle, lean, stamina, carry-weight hooks | You can mantle a crate and slide into cover |
+| 4 | **Gunplay** | Hitscan, recoil and spread, hitboxes, ammo and reload, damage and death, HUD, hit markers; lag-compensation scaffolding | You can shoot target dummies with a satisfying feel |
+| 5 | **Bots** | Navigation grid, perception (sight and hearing), state machine (patrol, investigate, engage, cover, flank), difficulty levels | Bots patrol outposts and fight back with reasonable tactics |
+| 6 | **Run loop** | Drop-in insertion, run clock and MIA, loot containers, inventory and weight, extraction points opening and closing, call-and-hold extraction, results screen and score | **The full PvE loop is playable. First real playtest.** |
+| 7 | **Destructible cover** | Panel-based walls, fences and crates with HP, debris, collision updates, destruction events, grenades | You can blow a hole in a wall and shoot through it |
+| 8 | **Contracts and noise** | Objectives per run (intel, cache, commander), noise events that attract bots, suppressors | Runs feel different from each other |
+| 9 | **Look and sound** | Realistic assets (glTF, PBR, animations), positional audio, footsteps, muzzle flash, performance pass | It looks and sounds like a real game |
+| 10 | **Shareable worlds (offline)** | World config in the URL, per-world local leaderboard, share button, death cam from recorded inputs | You send a link and a friend gets the same island |
+| 11 | **Multiplayer** | Node server reusing `server/`, WebSocket, snapshot deltas and interpolation, lag compensation, rooms per world link, bot fill that shrinks as players join, anonymous identity, basic anti-cheat, deployment | Two browsers play on the same island |
+| 12 | **Transport upgrade** | WebTransport or WebRTC DataChannels (UDP-like), server-side visibility culling, server leaderboards | Stable under real internet conditions |
+
+## Future
+- Day/night cycle and weather that change the rules (e.g. more and tougher bots at night, but
+  better loot)
+- Squads with revive
+- Shareable full-run replays
+- Global leaderboards and seasonal featured islands
+
+## Open questions
+- Weapon roster size for the proof of concept (1 rifle and 1 pistol?)
+- Maximum players per world in Mixed mode (target 16–32?)
+- Hosting provider for the multiplayer servers
