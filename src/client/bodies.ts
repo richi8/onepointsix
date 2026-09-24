@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
-import type { PlayerSnap } from '../shared/protocol.ts';
+import type { PlayerSnap, Team } from '../shared/protocol.ts';
 
 // Everyone else, drawn from exactly the volumes hit detection uses: a head
 // sphere, a torso and legs. Placeholder figures until chunk 9 brings animated
-// characters; until chunk 5 everyone else is a target dummy.
+// characters, coloured by side: operators in grey-blue, guards in olive and
+// target dummies in orange.
 
 const FALL_TIME = 0.45;
 const FLASH_TIME = 0.1;
 const HEAD = 0xd8c3a0;
-const TORSO = 0xc4652b;
-const LEGS = 0x4a4636;
+const TORSO: Record<Team, number> = { operator: 0x3f556e, guard: 0x5a6638, dummy: 0xc4652b };
+const LEGS: Record<Team, number> = { operator: 0x2e3238, guard: 0x4a4636, dummy: 0x4a4636 };
 
 const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
@@ -40,7 +41,7 @@ export class Bodies {
     const seen = new Set<number>();
     for (const p of players) {
       seen.add(p.id);
-      const f = this.figures.get(p.id) ?? this.create(p.id);
+      const f = this.figures.get(p.id) ?? this.create(p.id, p.team);
       this.pose(f, p, dt);
     }
     for (const [id, f] of this.figures) {
@@ -57,8 +58,8 @@ export class Bodies {
     if (f) f.flash = FLASH_TIME;
   }
 
-  private create(id: number): Figure {
-    const materials = [HEAD, TORSO, LEGS, 0x24262a].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
+  private create(id: number, team: Team): Figure {
+    const materials = [HEAD, TORSO[team], LEGS[team], 0x24262a].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
     const [head, torso, legs, held] = [sphere, cylinder, cylinder, gun].map((geo, i) => {
       const mesh = new THREE.Mesh(geo, materials[i]);
       mesh.castShadow = true;

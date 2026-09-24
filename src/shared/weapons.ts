@@ -51,6 +51,8 @@ export interface WeaponDef {
   wander: number;
   /** Carried mass in kg, for later when loadouts count toward carry weight. */
   mass: number;
+  /** How far away a shot can be heard, in metres. */
+  noise: number;
 }
 
 export const WEAPONS: readonly WeaponDef[] = [
@@ -77,6 +79,7 @@ export const WEAPONS: readonly WeaponDef[] = [
     kick: 0.012,
     wander: 0.006,
     mass: 3.5,
+    noise: 180,
   },
   {
     name: 'Pistol',
@@ -101,6 +104,7 @@ export const WEAPONS: readonly WeaponDef[] = [
     kick: 0.03,
     wander: 0.01,
     mass: 1,
+    noise: 110,
   },
   {
     name: 'Bolt-action rifle',
@@ -125,6 +129,7 @@ export const WEAPONS: readonly WeaponDef[] = [
     kick: 0.07,
     wander: 0.02,
     mass: 4.5,
+    noise: 260,
   },
 ];
 

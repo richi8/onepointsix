@@ -110,7 +110,18 @@ export const BURST_RESET = 0.3;
 /** How far back the server rewinds other players to where a shooter saw them. */
 export const MAX_REWIND = 0.5;
 
-export const BOT_TARGET_COUNT = 12;
+// Population. Operators are players plus the bots that fill the empty slots.
+export const OPERATOR_CAPACITY = 12;
+/** Ground guards per outpost, besides the sentry in its watchtower. */
+export const GUARDS_PER_OUTPOST = 2;
+/** Pairs of guards walking routes between outposts. */
+export const GUARD_PATROLS = 3;
+/** Seconds before a dead guard is replaced at its post. */
+export const GUARD_RESPAWN = 60;
+/** Seconds a fallen operator bot lies there before it leaves the game. */
+export const BODY_TIME = 5;
+/** Seconds before an empty operator slot is filled by a new bot dropping in. */
+export const OPERATOR_REFILL = 12;
 
 export const Btn = {
   Forward: 1,

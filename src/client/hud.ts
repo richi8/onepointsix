@@ -136,14 +136,29 @@ export class Hud {
     how.textContent = `${WEAPONS[e.weapon].name}${e.head ? ' · headshot' : ''}`;
     row.append(how, victim);
     if (e.killer === me || e.victim === me) row.className = 'you';
-    this.feed.append(row);
-    while (this.feed.children.length > FEED_MAX) this.feed.firstElementChild!.remove();
-    setTimeout(() => (row.style.opacity = '0'), FEED_TIME * 1000);
-    setTimeout(() => row.remove(), FEED_TIME * 1000 + 400);
+    this.pushFeed(row);
     if (e.victim === me) {
       this.killer = e.killer === me ? '' : e.killerName;
       this.respawnIn = RESPAWN_TIME;
     }
+  }
+
+  /** Someone left the island. */
+  extract(e: Extract<GameEvent, { k: 'extract' }>, me: number): void {
+    const row = document.createElement('div');
+    row.append(e.id === me ? 'You' : e.name);
+    const how = document.createElement('em');
+    how.textContent = `extracted · ${e.carry} kg`;
+    row.append(how);
+    row.className = e.id === me ? 'you extract' : 'extract';
+    this.pushFeed(row);
+  }
+
+  private pushFeed(row: HTMLElement): void {
+    this.feed.append(row);
+    while (this.feed.children.length > FEED_MAX) this.feed.firstElementChild!.remove();
+    setTimeout(() => (row.style.opacity = '0'), FEED_TIME * 1000);
+    setTimeout(() => row.remove(), FEED_TIME * 1000 + 400);
   }
 
   private updateNumbers(dt: number, camera: THREE.Camera): void {

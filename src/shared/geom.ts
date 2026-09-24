@@ -26,6 +26,11 @@ export function angleDiff(a: number, b: number): number {
   return wrapAngle(a - b);
 }
 
+/** Yaw that faces from (x, z) toward (tx, tz); yaw 0 faces -z. */
+export function yawToward(x: number, z: number, tx: number, tz: number): number {
+  return Math.atan2(-(tx - x), -(tz - z));
+}
+
 // Ray tests below take a normalized direction and return the distance to the
 // first hit, 0 if the origin is inside, or Infinity on a miss.
 

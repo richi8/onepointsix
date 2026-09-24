@@ -22,8 +22,12 @@ export interface InputCmd {
   view?: number;
 }
 
+/** Operators are players and fill bots, each on their own side; guards defend outposts together; dummies stand on the range. */
+export type Team = 'operator' | 'guard' | 'dummy';
+
 export interface PlayerSnap {
   id: number;
+  team: Team;
   x: number;
   y: number;
   z: number;
@@ -45,6 +49,8 @@ export type GameEvent =
   | { k: 'hurt'; damage: number; x: number; z: number }
   // To everyone.
   | { k: 'kill'; killer: number; victim: number; killerName: string; victimName: string; weapon: number; head: boolean }
+  // To everyone: an operator left the island carrying `carry` kg.
+  | { k: 'extract'; id: number; name: string; carry: number }
   // To everyone but the shooter, who predicted it: a round from (ox, oy, oz) that stopped at (ex, ey, ez).
   | {
       k: 'shot'; id: number; weapon: number;

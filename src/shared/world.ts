@@ -63,6 +63,12 @@ export interface Outpost {
   z: number;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+  z: number;
+}
+
 /** Anything that moves through the world with a player-sized collision hull. */
 export interface Body {
   x: number;
@@ -75,6 +81,9 @@ export interface Body {
 const GRID_CELL = 8;
 const GRID_OFFSET = 1024;
 const OUTPOST_NAMES = ['Fort Ash', 'Radio Hill', 'Quarry', 'Old Mill', 'Pinecrest', 'Lookout'];
+const EXTRACT_COUNT = 4;
+/** Longest ray the collider walk follows, past which nothing is left to hit. */
+const MAX_RAY = WORLD_SIZE * 1.5;
 
 function topOf(c: Collider): number {
   return c.kind === 'cyl' ? c.y1 : c.maxY;
@@ -105,6 +114,8 @@ export class World {
   readonly rocks: Rock[] = [];
   readonly props: Prop[] = [];
   readonly outposts: Outpost[] = [];
+  /** Where operators leave the island. Chunk 6 opens and closes them. */
+  readonly extracts: Point[] = [];
   readonly colliders: Collider[] = [];
   readonly maxHeight: number;
   private readonly grid = new Map<number, Collider[]>();
@@ -132,6 +143,8 @@ export class World {
     this.placeTrees(rng);
     this.placeRocks(rng);
     for (const c of this.colliders) this.insert(c);
+    // Its own random stream, so adding extraction points moved nothing else.
+    this.placeExtracts(mulberry32(this.seed ^ 0x6a09e667));
   }
 
   // ---------------------------------------------------------------- queries
@@ -197,9 +210,13 @@ export class World {
   /** Whether a player hull `height` tall fits with its feet at (x, y, z). */
   fits(x: number, y: number, z: number, height: number): boolean {
     if (this.floorHeight(x, z) > y + STEP_HEIGHT) return false;
-    const pad = PLAYER_RADIUS * 0.9;
-    for (const c of this.query(x, z, PLAYER_RADIUS)) {
-      if (topOf(c) <= y + 0.01 || bottomOf(c) >= y + height) continue;
+    return this.clear(x, y, z, height, PLAYER_RADIUS * 0.9);
+  }
+
+  /** Whether no obstacle reaches within `pad` of (x, z) between feetY and feetY + height. */
+  clear(x: number, feetY: number, z: number, height: number, pad: number): boolean {
+    for (const c of this.query(x, z, pad)) {
+      if (topOf(c) <= feetY + 0.01 || bottomOf(c) >= feetY + height) continue;
       if (overlapsFootprint(c, x, z, pad)) return false;
     }
     return true;
@@ -261,26 +278,8 @@ export class World {
 
   /** Distance along a normalized ray to the first solid hit, or Infinity. */
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-    let best = this.raycastTerrain(ox, oy, oz, dx, dy, dz, maxT);
-    const end = Math.min(best, maxT);
-    const ex = ox + dx * end;
-    const ez = oz + dz * end;
-    const x0 = Math.min(ox, ex);
-    const x1 = Math.max(ox, ex);
-    const z0 = Math.min(oz, ez);
-    const z1 = Math.max(oz, ez);
-    for (const c of this.colliders) {
-      let t: number;
-      if (c.kind === 'cyl') {
-        if (c.x + c.r < x0 || c.x - c.r > x1 || c.z + c.r < z0 || c.z - c.r > z1) continue;
-        t = rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1);
-      } else {
-        if (c.maxX < x0 || c.minX > x1 || c.maxZ < z0 || c.minZ > z1) continue;
-        t = rayAabb(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
-      }
-      if (t < best) best = t;
-    }
-    return best;
+    const terrain = this.raycastTerrain(ox, oy, oz, dx, dy, dz, maxT);
+    return this.raycastColliders(ox, oy, oz, dx, dy, dz, Math.min(terrain, maxT, MAX_RAY), terrain);
   }
 
   /** Outward normal of the solid surface at a point on it, such as a raycast hit. */
@@ -343,6 +342,52 @@ export class World {
   }
 
   // ------------------------------------------------------------- internals
+
+  /**
+   * Walk the collider grid cell by cell along the ray, testing what each cell
+   * holds, and stop once a hit lies within the cell being walked: any later
+   * hit would be in a later cell. Returns the nearer of `best` and any hit.
+   */
+  private raycastColliders(
+    ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, end: number, best: number,
+  ): number {
+    const stamp = ++this.stamp;
+    let gx = Math.floor(ox / GRID_CELL);
+    let gz = Math.floor(oz / GRID_CELL);
+    const stepX = dx > 0 ? 1 : -1;
+    const stepZ = dz > 0 ? 1 : -1;
+    const ax = Math.abs(dx);
+    const az = Math.abs(dz);
+    const deltaX = ax > 1e-12 ? GRID_CELL / ax : Infinity;
+    const deltaZ = az > 1e-12 ? GRID_CELL / az : Infinity;
+    let nextX = ax > 1e-12 ? ((dx > 0 ? (gx + 1) * GRID_CELL - ox : ox - gx * GRID_CELL) / ax) : Infinity;
+    let nextZ = az > 1e-12 ? ((dz > 0 ? (gz + 1) * GRID_CELL - oz : oz - gz * GRID_CELL) / az) : Infinity;
+    let enter = 0;
+    while (enter <= end && enter < best) {
+      const cell = this.grid.get((gx + GRID_OFFSET) * 4096 + gz + GRID_OFFSET);
+      if (cell) {
+        for (const c of cell) {
+          if (c.stamp === stamp) continue;
+          c.stamp = stamp;
+          const t = c.kind === 'cyl'
+            ? rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
+            : rayAabb(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
+          if (t < best) best = t;
+        }
+      }
+      const exit = Math.min(nextX, nextZ);
+      if (best <= exit || exit === Infinity) break;
+      enter = exit;
+      if (nextX < nextZ) {
+        nextX += deltaX;
+        gx += stepX;
+      } else {
+        nextZ += deltaZ;
+        gz += stepZ;
+      }
+    }
+    return best;
+  }
 
   private raycastTerrain(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
     if (oy < this.terrainHeight(ox, oz)) return 0;
@@ -582,6 +627,29 @@ export class World {
           this.addProp(cx - s / 2, lo - 0.3, cz - s / 2, cx + s / 2, hi + s, cz + s / 2, 'crate', rng());
         }
       }
+    }
+  }
+
+  /** Extraction points on low ground toward the coast, far from outposts and from each other. */
+  private placeExtracts(rng: () => number): void {
+    const candidates: Point[] = [];
+    for (let tries = 0; candidates.length < 60 && tries < 3000; tries++) {
+      const x = (rng() - 0.5) * this.size * 0.9;
+      const z = (rng() - 0.5) * this.size * 0.9;
+      const h = this.terrainHeight(x, z);
+      if (h < 2 || h > 14 || Math.hypot(x, z) < this.half * 0.35) continue;
+      if (this.nearOutpost(x, z, 90) || this.blocked(x, z, 3)) continue;
+      candidates.push({ x, y: this.groundHeight(x, z, h), z });
+    }
+    // Greedy farthest-point picks spread them around the island.
+    while (this.extracts.length < EXTRACT_COUNT && candidates.length) {
+      let best = 0;
+      let bestD = -1;
+      candidates.forEach((c, i) => {
+        const d = this.extracts.length ? Math.min(...this.extracts.map((e) => Math.hypot(e.x - c.x, e.z - c.z))) : Math.hypot(c.x, c.z);
+        if (d > bestD) (best = i), (bestD = d);
+      });
+      this.extracts.push(candidates.splice(best, 1)[0]);
     }
   }
 

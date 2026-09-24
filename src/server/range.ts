@@ -1,8 +1,9 @@
 import { Btn, CMD_DT, CMDS_PER_TICK, EYE_HEIGHT, PLAYER_HEIGHT, SERVER_DT } from '../shared/constants.ts';
+import { yawToward } from '../shared/geom.ts';
 import type { InputCmd } from '../shared/protocol.ts';
 import type { World } from '../shared/world.ts';
 
-// A shooting range of target dummies until chunk 5 brings real bots. Dummies
+// A shooting range of target dummies where players spawn, to practise on. Dummies
 // are players without a keyboard: they move only through input commands.
 
 export type DummyKind = 'still' | 'strafe' | 'crouch' | 'lean';
@@ -38,11 +39,6 @@ const LANE_OFFSETS = [0, -3, 3];
 const CANDIDATES = 24;
 const DIRECTIONS = 8;
 const CHEST = 1.2;
-
-/** Yaw that faces from (x, z) toward (tx, tz); yaw 0 faces -z. */
-export function yawToward(x: number, z: number, tx: number, tz: number): number {
-  return Math.atan2(-(tx - x), -(tz - z));
-}
 
 /**
  * Pick a spot with a long clear view and lay dummies out down range from it,

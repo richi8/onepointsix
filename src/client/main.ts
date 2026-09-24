@@ -164,6 +164,9 @@ function onEvent(e: GameEvent): void {
     case 'kill':
       hud.kill(e, conn!.id);
       break;
+    case 'extract':
+      hud.extract(e, conn!.id);
+      break;
     case 'shot': {
       const d = Math.hypot(e.ex - e.ox, e.ey - e.oy, e.ez - e.oz) || 1;
       const dx = (e.ex - e.ox) / d;

@@ -305,6 +305,11 @@ canvas {
   color: #e8c35a;
 }
 
+.killfeed .extract em {
+  color: #7fd98f;
+  opacity: 1;
+}
+
 .killfeed em {
   font-style: normal;
   opacity: 0.7;

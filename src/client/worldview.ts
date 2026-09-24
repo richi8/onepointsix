@@ -50,7 +50,7 @@ export class WorldView {
     this.sun.shadow.normalBias = 0.04;
     scene.add(this.sun, this.sun.target);
 
-    scene.add(makeTerrain(world), makeWater(), makeProps(world), makeTrees(world), makeRocks(world));
+    scene.add(makeTerrain(world), makeWater(), makeProps(world), makeTrees(world), makeRocks(world), makeExtracts(world));
   }
 
   /** Keep the sky around the camera and the shadow frustum over what matters. */
@@ -192,6 +192,27 @@ function makeProps(world: World): THREE.InstancedMesh {
   });
   mesh.castShadow = mesh.receiveShadow = true;
   return mesh;
+}
+
+/** A tall pole with a bright flag at each extraction point, visible from far off. */
+function makeExtracts(world: World): THREE.Group {
+  const group = new THREE.Group();
+  const pole = new THREE.CylinderGeometry(0.06, 0.08, 8, 6).translate(0, 4, 0);
+  const flag = new THREE.BoxGeometry(1.6, 1, 0.04).translate(0.8, 7.4, 0);
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x9a9a92, roughness: 0.6, metalness: 0.4 });
+  const flagMat = new THREE.MeshStandardMaterial({ color: 0x4fd06b, emissive: 0x2a8c3e, emissiveIntensity: 0.8, roughness: 0.9 });
+  for (const e of world.extracts) {
+    const marker = new THREE.Group();
+    const p = new THREE.Mesh(pole, poleMat);
+    const f = new THREE.Mesh(flag, flagMat);
+    p.castShadow = f.castShadow = true;
+    marker.add(p, f);
+    marker.position.set(e.x, e.y, e.z);
+    // Poles carry no collider; they stand just off the spot so nobody stands inside one.
+    marker.position.x += 1.5;
+    group.add(marker);
+  }
+  return group;
 }
 
 function makeTrees(world: World): THREE.Group {

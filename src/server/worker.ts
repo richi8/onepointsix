@@ -2,7 +2,7 @@
 // The local game server. Runs in a Web Worker so the page talks to it only
 // through messages, exactly as it will talk to a remote server later.
 
-import { SERVER_DT } from '../shared/constants.ts';
+import { OPERATOR_CAPACITY, SERVER_DT } from '../shared/constants.ts';
 import { FixedLoop, runLoop } from '../shared/loop.ts';
 import type { ClientMsg, ServerMsg } from '../shared/protocol.ts';
 import { GameServer } from './server.ts';
@@ -18,7 +18,7 @@ self.onmessage = (e: MessageEvent<ClientMsg>) => {
   const msg = e.data;
   if (!server) {
     if (msg.t !== 'hello') return;
-    const game = new GameServer(msg.world.seed);
+    const game = new GameServer(msg.world.seed, { guards: true, operators: OPERATOR_CAPACITY });
     id = game.connect((m: ServerMsg) => self.postMessage(m));
     runLoop(new FixedLoop(SERVER_DT, () => game.step()));
     server = game;

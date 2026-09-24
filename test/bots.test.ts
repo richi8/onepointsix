@@ -1,0 +1,210 @@
+import { describe, expect, it } from 'vitest';
+import { Bot, hostile, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
+import { NavGrid } from '../src/server/nav.ts';
+import { GameServer } from '../src/server/server.ts';
+import { SKILLS } from '../src/server/skill.ts';
+import { GUARD_RESPAWN, OPERATOR_REFILL, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { yawToward } from '../src/shared/geom.ts';
+import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
+import { mulberry32 } from '../src/shared/rng.ts';
+import { spawnState, type PlayerState } from '../src/shared/sim.ts';
+import { RIFLE } from '../src/shared/weapons.ts';
+import { World } from '../src/shared/world.ts';
+import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
+
+const world = new World(DEFAULT_WORLD.seed);
+const nav = new NavGrid(world);
+
+function agent(id: number, team: Team, x: number, z: number): Agent {
+  return { ...spawnState(x, world.groundHeight(x, z, world.floorHeight(x, z)), z), id, team };
+}
+
+/** A clear stretch of open ground: a spot and another `dist` metres away in plain sight. */
+function openGround(dist: number): { ax: number; az: number; bx: number; bz: number } {
+  const rand = mulberry32(3);
+  for (;;) {
+    const a = world.randomLandPoint(rand);
+    const yaw = rand() * Math.PI * 2;
+    const bx = a.x - Math.sin(yaw) * dist;
+    const bz = a.z - Math.cos(yaw) * dist;
+    const by = world.groundHeight(bx, bz, world.floorHeight(bx, bz));
+    if (!nav.dry(a.x, a.z) || !nav.dry(bx, bz)) continue;
+    if (!world.hasLineOfSight(a.x, a.y + 1.6, a.z, bx, by + 1.0, bz)) continue;
+    if (!world.hasLineOfSight(a.x, a.y + 1.6, a.z, bx, by + 1.6, bz)) continue;
+    return { ax: a.x, az: a.z, bx, bz };
+  }
+}
+
+/** A sentry at `self` facing `yaw`, thinking for `seconds` about the agents given. */
+function watch(self: Agent, others: Agent[], yaw: number, seconds: number, before?: (bot: Bot, ctx: BotContext) => void) {
+  const role: Role = { kind: 'sentry', post: { x: self.x, y: self.y, z: self.z, yaw } };
+  const bot = new Bot(role, SKILLS.normal, RIFLE, yaw, mulberry32(1));
+  const all = [self, ...others];
+  const ctx: BotContext = {
+    world, nav, time: 0, agents: all, agent: (id) => all.find((a) => a.id === id), pathBudget: 10, callout: () => {},
+  };
+  before?.(bot, ctx);
+  for (let t = 0; t < seconds; t += 0.1) {
+    ctx.time = t;
+    bot.think(ctx, self, 0.1);
+  }
+  return bot;
+}
+
+describe('bot perception', () => {
+  const g = openGround(30);
+
+  it('spots an enemy in plain view ahead', () => {
+    const self = agent(1, 'guard', g.ax, g.az);
+    const enemy = agent(2, 'operator', g.bx, g.bz);
+    const bot = watch(self, [enemy], yawToward(g.ax, g.az, g.bx, g.bz), 2);
+    expect(bot.awareness(2)).toBe(1);
+    expect(bot.state).toBe('engage');
+    expect(bot.target).toBe(2);
+  });
+
+  it('does not see a still enemy behind it', () => {
+    const self = agent(1, 'guard', g.ax, g.az);
+    const enemy = agent(2, 'operator', g.bx, g.bz);
+    const bot = watch(self, [enemy], yawToward(g.bx, g.bz, g.ax, g.az), 3);
+    expect(bot.awareness(2)).toBe(0);
+    expect(bot.state).toBe('patrol');
+  });
+
+  it('ignores friends and dummies', () => {
+    const self = agent(1, 'guard', g.ax, g.az);
+    const bot = watch(self, [agent(2, 'guard', g.bx, g.bz), agent(3, 'dummy', g.bx, g.bz)], yawToward(g.ax, g.az, g.bx, g.bz), 2);
+    expect(bot.awareness(2)).toBe(0);
+    expect(bot.awareness(3)).toBe(0);
+  });
+
+  it('knows who is hostile', () => {
+    const [op, op2, guard, guard2, dummy] = [agent(1, 'operator', 0, 0), agent(2, 'operator', 0, 0), agent(3, 'guard', 0, 0), agent(4, 'guard', 0, 0), agent(5, 'dummy', 0, 0)];
+    expect(hostile(op, op2)).toBe(true);
+    expect(hostile(op, guard)).toBe(true);
+    expect(hostile(guard, op)).toBe(true);
+    expect(hostile(guard, guard2)).toBe(false);
+    expect(hostile(op, dummy)).toBe(false);
+    expect(hostile(op, op)).toBe(false);
+  });
+
+  it('does not see through a wall', () => {
+    const wall = world.props.find((p) => p.style === 'wall' && world.outposts.some((o) => Math.abs(p.box.maxY - o.y - 3) < 1e-6) && p.box.maxX - p.box.minX > 5)!.box;
+    const x = (wall.minX + wall.maxX) / 2;
+    const self = agent(1, 'guard', x, wall.maxZ + 3);
+    const enemy = agent(2, 'operator', x, wall.minZ - 3);
+    const bot = watch(self, [enemy], 0, 3);
+    expect(bot.awareness(2)).toBe(0);
+  });
+
+  it('turns to investigate a gunshot', () => {
+    const self = agent(1, 'guard', g.ax, g.az);
+    const bot = watch(self, [], 0, 0.5, (b, ctx) => b.hear(self, { x: g.bx, y: 0, z: g.bz, radius: 180, source: 9 }, ctx.time));
+    expect(bot.state).toBe('investigate');
+  });
+
+  it('knows where a shooter it cannot see is once hit', () => {
+    const self = agent(1, 'guard', g.ax, g.az);
+    const enemy = agent(2, 'operator', g.bx, g.bz);
+    const bot = watch(self, [enemy], yawToward(g.bx, g.bz, g.ax, g.az), 0.3, (b, ctx) => b.hurt(enemy, ctx.time));
+    expect(bot.awareness(2)).toBe(1);
+    expect(bot.target).toBe(2);
+  });
+});
+
+/** Server internals, for putting bodies where a test needs them. */
+function body(server: GameServer, id: number): PlayerState {
+  return (server as unknown as { players: Map<number, PlayerState> }).players.get(id)!;
+}
+
+function human(server: GameServer) {
+  const inbox: ServerMsg[] = [];
+  const id = server.connect((m) => inbox.push(m));
+  server.receive(id, { t: 'hello', name: 'human', world: DEFAULT_WORLD });
+  return { id, events: (): GameEvent[] => inbox.flatMap((m) => (m.t === 'events' ? m.events : [])) };
+}
+
+describe('guards', () => {
+  it('man every outpost and patrol between them', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
+    const bots = server.bots();
+    expect(bots.every((b) => b.team === 'guard')).toBe(true);
+    expect(bots.filter((b) => b.bot.role.kind === 'sentry')).toHaveLength(world.outposts.length);
+    expect(bots.length).toBeGreaterThanOrEqual(20);
+    expect(bots.filter((b) => b.bot.role.kind === 'guard' && b.bot.role.leader)).not.toHaveLength(0);
+  });
+
+  it('defend their outpost against an intruder', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
+    const h = human(server);
+    const o = server.world.outposts[0];
+    const spot = server.nav.nearestWalkable(o.x + 2, o.z + 2)!;
+    for (let t = 0; t < SERVER_TICK_RATE * 20; t++) {
+      const me = body(server, h.id);
+      if (t === 0) Object.assign(me, { x: spot.x, z: spot.z, y: server.world.groundHeight(spot.x, spot.z, o.y) });
+      server.step();
+      if (me.dead) break;
+    }
+    const kill = h.events().find((e) => e.k === 'kill' && e.victim === h.id);
+    expect(kill).toBeDefined();
+    expect(server.bots().find((b) => kill?.k === 'kill' && b.id === kill.killer)?.team).toBe('guard');
+  });
+
+  it('come back to their post after being killed', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
+    const sentry = server.bots().find((b) => b.bot.role.kind === 'sentry')!;
+    Object.assign(body(server, sentry.id), { dead: true });
+    (server as unknown as { players: Map<number, { respawn: number }> }).players.get(sentry.id)!.respawn = GUARD_RESPAWN;
+    for (let t = 0; t < GUARD_RESPAWN * SERVER_TICK_RATE + 2; t++) server.step();
+    const after = server.bots().find((b) => b.id === sentry.id)!;
+    expect(after.state.dead).toBe(false);
+    expect(after.bot).not.toBe(sentry.bot);
+  });
+});
+
+describe('operator bots', () => {
+  it('fill the empty operator slots', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, operators: 5 });
+    expect(server.bots().filter((b) => b.team === 'operator')).toHaveLength(5);
+    const names = server.bots().map((b) => b.name);
+    expect(new Set(names).size).toBe(5);
+  });
+
+  it('loot, extract and are replaced by a new bot', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, operators: 1 });
+    const [op] = server.bots();
+    expect(op.bot.role.kind === 'operator' && op.bot.role.loot.length).toBeGreaterThan(0);
+    let extract: GameEvent | undefined;
+    server.onEvent = (e) => (extract ??= e.k === 'extract' ? e : undefined);
+    for (let t = 0; t < SERVER_TICK_RATE * 300 && !extract; t++) server.step();
+    expect(extract).toMatchObject({ k: 'extract', id: op.id });
+    expect(extract?.k === 'extract' && extract.carry).toBeGreaterThan(0);
+    expect(server.bots()).toHaveLength(0);
+    for (let t = 0; t < SERVER_TICK_RATE * OPERATOR_REFILL + 1; t++) server.step();
+    expect(server.bots()).toHaveLength(1);
+    expect(server.bots()[0].id).not.toBe(op.id);
+  });
+});
+
+describe('bots in play', () => {
+  it('act only through commands, so the same seed plays out the same', () => {
+    const run = () => {
+      const server = new GameServer(DEFAULT_WORLD.seed, { guards: true, operators: 12 });
+      const kills: string[] = [];
+      server.onEvent = (e) => e.k === 'kill' && kills.push(`${server.tick}:${e.killer}>${e.victim}`);
+      for (let t = 0; t < SERVER_TICK_RATE * 30; t++) server.step();
+      return { kills, states: server.bots().map((b) => [b.id, b.state.x, b.state.z, b.state.hp, b.bot.state]) };
+    };
+    const a = run();
+    expect(a.kills.length).toBeGreaterThan(0);
+    expect(run()).toEqual(a);
+  });
+
+  it('keep well within the tick budget with the full population', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { guards: true, operators: 12 });
+    const start = performance.now();
+    const ticks = SERVER_TICK_RATE * 60;
+    for (let t = 0; t < ticks; t++) server.step();
+    expect((performance.now() - start) / ticks).toBeLessThan(SERVER_DT * 1000 * 0.25);
+  });
+});

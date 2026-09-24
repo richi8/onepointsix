@@ -128,6 +128,7 @@ export class Connection {
       if (!pa || pa.dead !== pb.dead) return pb;
       return {
         id: pb.id,
+        team: pb.team,
         x: lerp(pa.x, pb.x, f),
         y: lerp(pa.y, pb.y, f),
         z: lerp(pa.z, pb.z, f),

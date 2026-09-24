@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Btn, CMD_DT, PLAYER_RADIUS } from '../src/shared/constants.ts';
+import { rayAabb, rayCylinder } from '../src/shared/geom.ts';
+import { mulberry32 } from '../src/shared/rng.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
 import { World } from '../src/shared/world.ts';
 
@@ -13,6 +15,44 @@ describe('World', () => {
     expect(again.props).toEqual(w1.props);
     expect(again.trees).toEqual(w1.trees);
     expect(again.rocks).toEqual(w1.rocks);
+  });
+
+  it('raycasts exactly like testing every collider', () => {
+    const rand = mulberry32(7);
+    for (let i = 0; i < 2000; i++) {
+      const o = w1.randomLandPoint(rand);
+      const oy = o.y + 1 + rand() * 3;
+      let dx = rand() - 0.5;
+      let dy = (rand() - 0.5) * 0.3;
+      let dz = rand() - 0.5;
+      const len = Math.hypot(dx, dy, dz);
+      (dx /= len), (dy /= len), (dz /= len);
+      const maxT = 5 + rand() * 300;
+      let best = Infinity;
+      for (const c of w1.colliders) {
+        const t = c.kind === 'cyl'
+          ? rayCylinder(o.x, oy, o.z, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
+          : rayAabb(o.x, oy, o.z, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
+        best = Math.min(best, t);
+      }
+      const got = w1.raycast(o.x, oy, o.z, dx, dy, dz, maxT);
+      // Within range, no collider is missed; terrain can only bring the hit nearer.
+      if (best <= maxT && got > best) throw new Error(`missed a collider at ${best}, got ${got}`);
+    }
+  });
+
+  it('places extraction points on dry land, spread apart and away from outposts', () => {
+    for (const seed of [1, 2, 3, 42]) {
+      const w = new World(seed);
+      expect(w.extracts.length).toBeGreaterThanOrEqual(3);
+      for (const e of w.extracts) {
+        expect(w.terrainHeight(e.x, e.z)).toBeGreaterThan(1.5);
+        expect(w.fits(e.x, e.y, e.z, 1.8)).toBe(true);
+        for (const o of w.outposts) expect(Math.hypot(o.x - e.x, o.z - e.z)).toBeGreaterThan(80);
+        for (const f of w.extracts) if (f !== e) expect(Math.hypot(f.x - e.x, f.z - e.z)).toBeGreaterThan(100);
+      }
+    }
+    expect(new World(1).extracts).toEqual(w1.extracts);
   });
 
   it('differs for another seed', () => {
