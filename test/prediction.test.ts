@@ -29,7 +29,7 @@ function session(delayTicks: number, loss: number) {
   const tick = (driveInput: boolean) => {
     if (driveInput) {
       for (let i = 0; i < CMDS_PER_TICK; i++) {
-        if (rand() < 0.1) buttons = Math.floor(rand() * 512);
+        if (rand() < 0.1) buttons = Math.floor(rand() * 2048);
         yaw += (rand() - 0.5) * 0.2;
         const cmd = { seq: ++seq, buttons, yaw, pitch: 0 };
         unacked.push(cmd);

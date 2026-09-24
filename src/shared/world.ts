@@ -183,6 +183,28 @@ export class World {
     return ceil;
   }
 
+  /** Top of the highest obstacle over (x, z) with its top in (minY, maxY], or -Infinity. */
+  ledgeHeight(x: number, z: number, minY: number, maxY: number): number {
+    let best = -Infinity;
+    for (const c of this.query(x, z, 0)) {
+      const top = topOf(c);
+      if (top <= minY || top > maxY || top <= best) continue;
+      if (overlapsFootprint(c, x, z, 0)) best = top;
+    }
+    return best;
+  }
+
+  /** Whether a player hull `height` tall fits with its feet at (x, y, z). */
+  fits(x: number, y: number, z: number, height: number): boolean {
+    if (this.floorHeight(x, z) > y + STEP_HEIGHT) return false;
+    const pad = PLAYER_RADIUS * 0.9;
+    for (const c of this.query(x, z, PLAYER_RADIUS)) {
+      if (topOf(c) <= y + 0.01 || bottomOf(c) >= y + height) continue;
+      if (overlapsFootprint(c, x, z, pad)) return false;
+    }
+    return true;
+  }
+
   /** Push a body horizontally out of any obstacle taller than a step. */
   collide(b: Body, height = PLAYER_HEIGHT): void {
     const R = PLAYER_RADIUS;

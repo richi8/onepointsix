@@ -80,7 +80,7 @@ export class Predictor {
    * Where to draw the player: between the last two command steps by `alpha`
    * (the input loop's leftover fraction), plus the fading correction.
    */
-  render(alpha: number): { x: number; y: number; z: number; duck: number } | null {
+  render(alpha: number): { x: number; y: number; z: number; duck: number; lean: number } | null {
     const s = this.state;
     if (!s) return null;
     const p = this.prev ?? s;
@@ -89,6 +89,7 @@ export class Predictor {
       y: lerp(p.y, s.y, alpha) + this.error.y,
       z: lerp(p.z, s.z, alpha) + this.error.z,
       duck: lerp(p.duck, s.duck, alpha),
+      lean: lerp(p.lean, s.lean, alpha),
     };
   }
 }

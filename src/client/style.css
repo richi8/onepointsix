@@ -129,6 +129,32 @@ canvas {
   display: none;
 }
 
+.stamina {
+  position: fixed;
+  left: 50%;
+  bottom: 40px;
+  width: 180px;
+  height: 4px;
+  margin-left: -90px;
+  background: rgb(0 0 0 / 0.4);
+  border-radius: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.stamina[hidden] {
+  display: none;
+}
+
+.stamina div {
+  height: 100%;
+  background: #e8e3d4;
+}
+
+.stamina.winded div {
+  background: #d9534f;
+}
+
 .paused {
   position: fixed;
   inset: 0;

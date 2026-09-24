@@ -44,6 +44,55 @@ export const MAX_HORIZONTAL_SPEED = 20;
 /** Must stay below STEP_HEIGHT / CMD_DT so falling bodies can't skip past a ledge. */
 export const MAX_FALL_SPEED = 30;
 
+// Stamina, as a fraction of a full bar. Spending it pauses regeneration.
+export const SPRINT_DRAIN = 1 / 7;
+export const JUMP_STAMINA = 0.08;
+export const SLIDE_STAMINA = 0.15;
+export const STAMINA_REGEN = 1 / 4;
+export const STAMINA_REGEN_DELAY = 0.8;
+/** After running dry, sprinting waits until the bar refills this far. */
+export const STAMINA_RECOVER = 0.3;
+
+// Slide: a sprint plus a fresh crouch press trades control for momentum.
+export const SLIDE_MIN_SPEED = 7;
+export const SLIDE_BOOST = 2.5;
+export const SLIDE_MAX_SPEED = 12;
+export const SLIDE_FRICTION = 1.1;
+export const SLIDE_DURATION = 0.9;
+export const SLIDE_COOLDOWN = 0.5;
+/** A slide ends early once it is slower than this. */
+export const SLIDE_END_SPEED = 3.5;
+
+// Mantle: jump + forward at a ledge climbs onto it.
+/** Highest ledge above the feet that can be mantled. */
+export const MANTLE_MAX_HEIGHT = 2.1;
+/**
+ * Highest ledge above the feet that can be caught in the air. Keeps a jump's
+ * apex from reaching 3 m walls and shipping containers.
+ */
+export const MANTLE_AIR_HEIGHT = 1;
+/** How far past the body's edge a ledge can be grabbed. */
+export const MANTLE_REACH = 0.45;
+export const MANTLE_RISE_SPEED = 5.5;
+export const MANTLE_FORWARD_SPEED = 4;
+export const MANTLE_EXIT_SPEED = 3;
+
+// Lean (Q/E): the eye shifts sideways and rolls; blocked by walls.
+export const LEAN_OFFSET = 0.45;
+export const LEAN_ROLL = 0.22;
+export const LEAN_RATE = 6;
+export const LEAN_SPEED_MUL = 0.7;
+
+// Carry weight in kg. Heavier loads are slower and tire faster; past
+// CARRY_HEAVY you can no longer slide or mantle.
+export const CARRY_FREE = 10;
+export const CARRY_HEAVY = 30;
+export const CARRY_MAX = 50;
+/** Speed lost at CARRY_MAX, as a fraction. */
+export const CARRY_SLOWDOWN = 0.35;
+/** Extra stamina drain at CARRY_MAX, as a multiple. */
+export const CARRY_DRAIN = 1;
+
 // Combat
 export const MAX_HP = 100;
 export const RESPAWN_TIME = 3;
@@ -72,4 +121,6 @@ export const Btn = {
   Fire: 64,
   Reload: 128,
   Crouch: 256,
+  LeanLeft: 512,
+  LeanRight: 1024,
 } as const;

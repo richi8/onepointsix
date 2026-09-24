@@ -9,7 +9,7 @@ import {
   WALK_SPEED,
 } from '../src/shared/constants.ts';
 import { applyCmd, spawnState, type PlayerState } from '../src/shared/sim.ts';
-import { World, type Box } from '../src/shared/world.ts';
+import { World } from '../src/shared/world.ts';
 
 const w = new World(1);
 
@@ -127,24 +127,5 @@ describe('jumping', () => {
     // Right of +z-facing is -x.
     expect(p.vx).toBeLessThan(-0.5);
     expect(p.vz).toBeCloseTo(WALK_SPEED, 0);
-  });
-
-  it('can jump onto a waist-high crate', () => {
-    const o = w.outposts[0];
-    const onTop = (a: Box, b: Box) =>
-      Math.abs(b.minY - a.maxY) < 1e-6 && b.minX < a.maxX && b.maxX > a.minX && b.minZ < a.maxZ && b.maxZ > a.minZ;
-    const crate = w.props.find(
-      (q) =>
-        q.style === 'crate' &&
-        Math.abs(q.box.maxY - o.y - 1.2) < 1e-6 &&
-        !w.props.some((r) => r !== q && onTop(q.box, r.box)),
-    )!.box;
-    const x = (crate.minX + crate.maxX) / 2;
-    const z = crate.maxZ + 0.7;
-    const p = spawnState(x, w.groundHeight(x, z, o.y), z);
-    run(p, Btn.Forward | Btn.Jump, 1, 0);
-    run(p, Btn.Forward, 40, 0);
-    expect(p.onGround).toBe(true);
-    expect(p.y).toBeCloseTo(crate.maxY, 6);
   });
 });

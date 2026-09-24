@@ -9,6 +9,8 @@ const KEYS: Record<string, number> = {
   Space: Btn.Jump,
   ShiftLeft: Btn.Sprint,
   KeyC: Btn.Crouch,
+  KeyQ: Btn.LeanLeft,
+  KeyE: Btn.LeanRight,
   KeyR: Btn.Reload,
 };
 

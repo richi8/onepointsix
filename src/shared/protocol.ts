@@ -21,6 +21,8 @@ export interface PlayerSnap {
   yaw: number;
   /** 0 standing to 1 crouched. */
   duck: number;
+  /** -1 leaning left to 1 leaning right. */
+  lean: number;
 }
 
 export type ClientMsg =
@@ -28,7 +30,9 @@ export type ClientMsg =
   | { t: 'hello'; name: string; world: WorldConfig }
   // Carries the last few unacknowledged commands so a lost packet costs nothing.
   | { t: 'input'; cmds: InputCmd[] }
-  | { t: 'ping'; time: number };
+  | { t: 'ping'; time: number }
+  // Debug only: sets the sender's carried weight in kg until there is an inventory.
+  | { t: 'debug'; carry: number };
 
 export type ServerMsg =
   | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number }

@@ -73,6 +73,11 @@ export class Connection {
     this.transport.send({ t: 'input', cmds: this.unacked.slice(-REDUNDANT_CMDS) });
   }
 
+  /** Debug: set the carried weight in kg on the server. */
+  setCarry(kg: number): void {
+    this.transport.send({ t: 'debug', carry: kg });
+  }
+
   /** Advance local clocks; call once per rendered frame. */
   update(dt: number): void {
     if (this.clock >= 0) this.clock += dt;
@@ -106,6 +111,7 @@ export class Connection {
         z: lerp(pa.z, pb.z, f),
         yaw: pb.yaw,
         duck: lerp(pa.duck, pb.duck, f),
+        lean: lerp(pa.lean, pb.lean, f),
       };
     });
   }

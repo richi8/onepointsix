@@ -74,7 +74,7 @@ describe('GameServer', () => {
       for (let tick = 0; tick < 90; tick++) {
         const cmds = [];
         for (let i = 0; i < CMDS_PER_TICK; i++) {
-          cmds.push({ seq: ++seq, buttons: (seq * 7919) % 512, yaw: Math.sin(seq) * 3, pitch: 0 });
+          cmds.push({ seq: ++seq, buttons: (seq * 7919) % 2048, yaw: Math.sin(seq) * 3, pitch: 0 });
         }
         server.receive(id, { t: 'input', cmds });
         server.step();

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { CMD_DT, CROUCH_EYE_HEIGHT, CROUCH_HEIGHT, EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
+import { CMD_DT, CROUCH_HEIGHT, LEAN_ROLL, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
 import { lerp } from '../shared/geom.ts';
 import { FixedLoop } from '../shared/loop.ts';
+import { eyePosition } from '../shared/sim.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD, parseWorldParam } from '../shared/worldconfig.ts';
 import { Connection } from './connection.ts';
@@ -44,6 +45,8 @@ const menu = document.getElementById('menu')!;
 const hint = document.getElementById('hint')!;
 const crosshair = document.getElementById('crosshair')!;
 const paused = document.getElementById('paused')!;
+const stamina = document.getElementById('stamina')!;
+const staminaFill = stamina.firstElementChild as HTMLElement;
 const playButton = document.getElementById('play') as HTMLButtonElement;
 document.getElementById('world-label')!.textContent =
   config.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${config.seed}`;
@@ -110,10 +113,11 @@ function orbitCamera(now: number): void {
   view.update(camera, focus, world.half);
 }
 
-function eyeCamera(x: number, y: number, z: number, duck: number): void {
+function eyeCamera(x: number, y: number, z: number, duck: number, lean: number): void {
   // Look uses the live mouse, not the last command, so aiming has no latency.
-  camera.position.set(x, y + lerp(EYE_HEIGHT, CROUCH_EYE_HEIGHT, duck), z);
-  camera.rotation.set(input.pitch, input.yaw, 0);
+  const eye = eyePosition(world, x, y, z, input.yaw, duck, lean);
+  camera.position.set(eye.x, eye.y, eye.z);
+  camera.rotation.set(input.pitch, input.yaw, eye.roll);
   focus.set(x, y, z);
   view.update(camera, focus, 70);
 }
@@ -129,7 +133,7 @@ renderer.setAnimationLoop(() => {
     seen.add(p.id);
     const box = boxFor(p.id, false);
     box.position.set(p.x, p.y, p.z);
-    box.rotation.y = p.yaw;
+    box.rotation.set(0, p.yaw, -p.lean * LEAN_ROLL, 'YXZ');
     box.scale.y = lerp(1, CROUCH_HEIGHT / PLAYER_HEIGHT, p.duck);
   }
   for (const [id, box] of boxes) {
@@ -139,8 +143,15 @@ renderer.setAnimationLoop(() => {
   }
 
   const me = conn?.predictor.render(inputLoop.alpha);
-  if (me) eyeCamera(me.x, me.y, me.z, me.duck);
+  if (me) eyeCamera(me.x, me.y, me.z, me.duck, me.lean);
   else orbitCamera(now);
+
+  const state = conn?.predictor.state;
+  stamina.hidden = !state || (state.stamina >= 1 && !state.winded);
+  if (state) {
+    staminaFill.style.width = `${state.stamina * 100}%`;
+    stamina.classList.toggle('winded', state.winded);
+  }
 
   panel?.update();
   renderer.render(scene, camera);

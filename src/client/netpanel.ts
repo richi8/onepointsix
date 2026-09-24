@@ -1,3 +1,4 @@
+import { CARRY_MAX } from '../shared/constants.ts';
 import type { NetConditions } from '../shared/transport.ts';
 import type { Connection } from './connection.ts';
 
@@ -45,6 +46,23 @@ export class NetPanel {
       this.root.append(row);
     }
 
+    // Debug until chunk 6 adds an inventory: carried weight in kg.
+    const carry = document.createElement('label');
+    const carryName = document.createElement('div');
+    const carryInput = document.createElement('input');
+    const carryValue = document.createElement('span');
+    carryName.textContent = 'Carry weight (kg, debug)';
+    carryInput.type = 'range';
+    carryInput.min = '0';
+    carryInput.max = String(CARRY_MAX);
+    carryInput.value = carryValue.textContent = '0';
+    carryInput.oninput = () => {
+      carryValue.textContent = carryInput.value;
+      conn.setCarry(Number(carryInput.value));
+    };
+    carry.append(carryName, carryInput, carryValue);
+    this.root.append(carry);
+
     const presets = document.createElement('div');
     for (const [name, preset] of Object.entries(PRESETS)) {
       const b = document.createElement('button');
@@ -69,17 +87,23 @@ export class NetPanel {
     const me = pr.state;
     const pos = me ? `${me.x.toFixed(1)}, ${me.y.toFixed(1)}, ${me.z.toFixed(1)}` : '-';
     const speed = me ? Math.hypot(me.vx, me.vz).toFixed(1) : '-';
-    const state = me ? (me.onGround ? 'ground' : 'air') + (me.crouched ? ' crouched' : '') : '-';
+    const state = me
+      ? (me.mantling ? 'mantle' : me.onGround ? 'ground' : 'air') +
+        (me.slide > 0 ? ' slide' : me.crouched ? ' crouched' : '') +
+        (me.lean !== 0 ? ` lean ${me.lean.toFixed(1)}` : '')
+      : '-';
+    const stamina = me ? `stamina ${(me.stamina * 100).toFixed(0)}%${me.winded ? ' winded' : ''}  carry ${me.carry} kg` : '';
     this.stats.textContent =
       `id ${c.id}  tick ${c.lastTick}  pos ${pos}\n` +
       `speed ${speed} m/s  ${state}\n` +
+      `${stamina}\n` +
       `rtt ${c.rtt.toFixed(0)} ms  unacked cmds ${c.pendingCmds}\n` +
       `corrections ${pr.corrections}  last ${pr.lastError.toFixed(3)} m`;
   }
 
   private apply(preset: NetConditions): void {
     Object.assign(this.conn.transport.net, preset);
-    for (const input of this.root.querySelectorAll<HTMLInputElement>('input[type=range]')) {
+    for (const input of this.root.querySelectorAll<HTMLInputElement>('input[data-key]')) {
       const key = input.dataset.key as keyof NetConditions;
       input.value = String(preset[key] * Number(input.dataset.scale));
       input.dispatchEvent(new Event('input'));
