@@ -35,9 +35,11 @@ function openGround(dist: number): { ax: number; az: number; bx: number; bz: num
   }
 }
 
-/** A sentry at `self` facing `yaw`, thinking for `seconds` about the agents given. */
-function watch(self: Agent, others: Agent[], yaw: number, seconds: number, before?: (bot: Bot, ctx: BotContext) => void) {
-  const role: Role = { kind: 'sentry', post: { x: self.x, y: self.y, z: self.z, yaw } };
+/** A sentry at `self` facing `yaw`, or a bot in `role`, thinking for `seconds` about the agents given. */
+function watch(
+  self: Agent, others: Agent[], yaw: number, seconds: number, before?: (bot: Bot, ctx: BotContext) => void,
+  role: Role = { kind: 'sentry', post: { x: self.x, y: self.y, z: self.z, yaw } },
+) {
   const bot = new Bot(role, SKILLS.normal, RIFLE, yaw, mulberry32(1));
   const all = [self, ...others];
   const ctx: BotContext = {
@@ -70,6 +72,20 @@ describe('bot perception', () => {
     const bot = watch(self, [enemy], yawToward(g.bx, g.bz, g.ax, g.az), 3);
     expect(bot.awareness(2)).toBe(0);
     expect(bot.state).toBe('patrol');
+  });
+
+  it('leaves a guard some way off alone as an operator, until it shoots', () => {
+    const far = openGround(60);
+    const self = agent(1, 'operator', far.ax, far.az);
+    const guard = agent(2, 'guard', far.bx, far.bz);
+    const role: Role = { kind: 'operator', loot: [], greed: 20 };
+    const yaw = yawToward(far.ax, far.az, far.bx, far.bz);
+    const calm = watch(self, [guard], yaw, 3, undefined, role);
+    expect(calm.awareness(2)).toBe(1);
+    expect(calm.state).toBe('extract');
+    const shot = watch(self, [guard], yaw, 3, (bot) => bot.hurt(guard, 0), role);
+    expect(shot.target).toBe(2);
+    expect(['engage', 'cover']).toContain(shot.state);
   });
 
   it('ignores friends and dummies', () => {

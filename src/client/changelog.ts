@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Playtest tuning',
+    notes: [
+      'Mixed games now hold 8 operators instead of 12, so you run into another operator every minute or two rather than every few seconds.',
+      'You drop in farther from the outposts and from other operators.',
+      'Other operators play smarter: they skirt around outposts, creep when close to one, and slip away from guards instead of fighting the whole outpost. They leave you alone at long range unless you shoot at them.',
+      'Your runs are logged in this browser. Press F4 to see how long they last, how they end and what killed you, and copy the log to send it in.',
+      'A shared link without a mode now challenges you in whichever mode you pick.',
+      'The menu fits small and short windows.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Faster loading',
     notes: [
       'The game downloads less than half as much as before, so it starts sooner, and it uses less graphics memory once loaded.',

@@ -111,7 +111,7 @@ export const BURST_RESET = 0.3;
 export const MAX_REWIND = 0.5;
 
 // Population. Operators are players plus the bots that fill the empty slots.
-export const OPERATOR_CAPACITY = 12;
+export const OPERATOR_CAPACITY = 8;
 /** Ground guards per outpost, besides the sentry in its watchtower. */
 export const GUARDS_PER_OUTPOST = 2;
 /** Pairs of guards walking routes between outposts. */

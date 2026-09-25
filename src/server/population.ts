@@ -32,8 +32,10 @@ const PATROL_LEASH = 70;
 /** Patrols pass outposts at this distance, outside the walls. */
 const PATROL_STANDOFF = 26;
 /** Operators drop in at least this far from outposts and from other players. */
-const INSERT_FROM_OUTPOSTS = 70;
-const INSERT_FROM_PLAYERS = 60;
+const INSERT_FROM_OUTPOSTS = 130;
+const INSERT_FROM_PLAYERS = 100;
+/** Operator bots willing to carry this many kg or more also go for the guarded crates in outposts. */
+const RAIDER_GREED = 26;
 /** Crates searched per run. */
 const LOOT_STOPS: [number, number] = [1, 3];
 /** A response squad sets off from this far from the extraction point it answers. */
@@ -121,7 +123,9 @@ export function insertionPoint(world: World, nav: NavGrid, rand: () => number, a
 export function planOperator(world: World, nav: NavGrid, rand: () => number, avoid: Point[], taken: Set<string>): BotPlan {
   const spawn = insertionPoint(world, nav, rand, avoid);
 
-  const crates = lootCrates(world).map((c) => c.box);
+  // How much it's willing to carry, kg. Greedy ones also raid the outposts' crates.
+  const greed = 12 + rand() * 22;
+  const crates = lootCrates(world).filter((c) => !c.rich || greed >= RAIDER_GREED).map((c) => c.box);
   const loot: LootSpot[] = [];
   const stops = LOOT_STOPS[0] + Math.floor(rand() * (LOOT_STOPS[1] - LOOT_STOPS[0] + 1));
   let from: Point = spawn;
@@ -148,8 +152,6 @@ export function planOperator(world: World, nav: NavGrid, rand: () => number, avo
   const skill: Difficulty = r < 0.2 ? 'easy' : r < 0.75 ? 'normal' : 'hard';
   const primary = skill !== 'easy' && rand() < 0.2 ? BOLT : RIFLE;
   const yaw = loot[0] ? yawToward(spawn.x, spawn.z, loot[0].x, loot[0].z) : rand() * Math.PI * 2;
-  // How much it's willing to carry, kg.
-  const greed = 12 + rand() * 22;
   return { name, role: { kind: 'operator', loot, greed }, skill, primary, spawn: { ...spawn, yaw } };
 }
 

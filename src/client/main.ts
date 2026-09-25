@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { CMD_DT, WALK_SPEED } from '../shared/constants.ts';
+import { CMD_DT, OPERATOR_CAPACITY, WALK_SPEED } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
 import { extractName } from '../shared/loot.ts';
 import { isReliable, type ClientMsg, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
+import { runRecord } from '../shared/runstats.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared/share.ts';
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
@@ -26,6 +27,7 @@ import { Leaderboard, localStore } from './leaderboard.ts';
 import { NetPanel } from './netpanel.ts';
 import type { Rendered } from './prediction.ts';
 import { Resolution } from './resolution.ts';
+import { RunLog, RunLogPanel } from './runlog.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
 import { ViewModel } from './viewmodel.ts';
@@ -53,7 +55,7 @@ const BOARD_SHOWN = 5;
 /** Islands from "New island" get seeds up to this, so their numbers stay short. */
 const NEW_ISLAND_SEEDS = 999_999;
 const MODE_NOTES: Record<Mode, string> = {
-  mixed: 'Loot and get out, against guards and eleven other operators.',
+  mixed: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators.`,
   pve: 'Loot and get out. Just you against the guards.',
   range: 'Target practice. No clock, and you respawn.',
 };
@@ -147,6 +149,7 @@ const paused = document.getElementById('paused')!;
 const playButton = document.getElementById('play') as HTMLButtonElement;
 const store = localStore();
 const board = new Leaderboard(store);
+const runLog = new RunLog(store);
 document.getElementById('world-label')!.textContent =
   config.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${config.seed}`;
 
@@ -181,6 +184,10 @@ function toast(text: string): void {
   toastTimer = window.setTimeout(() => (toastEl.hidden = true), 2500);
 }
 
+const runLogPanel = new RunLogPanel(runLog, (text) => {
+  navigator.clipboard.writeText(text).then(() => toast('Run log copied.'), () => window.prompt('Copy the run log:', text));
+});
+
 /** Copy a link to this page with `query`, or failing that, show it to copy by hand. */
 async function copyLink(query: string): Promise<void> {
   const url = new URL(query, location.href).href;
@@ -192,9 +199,9 @@ async function copyLink(query: string): Promise<void> {
   }
 }
 
-/** The score to beat from the link we came in on, if it's for `m`. */
+/** The score to beat from the link we came in on, if it's for `m`; a link without a mode counts for any. */
 function challengeFor(m: Mode): Challenge | null {
-  return link.challenge && (link.mode ?? 'mixed') === m ? link.challenge : null;
+  return link.challenge && m !== 'range' && (link.mode ?? m) === m ? link.challenge : null;
 }
 
 /** Share the island in the current mode, with your best score on it to beat. */
@@ -215,7 +222,10 @@ const boardEl = document.getElementById('board')!;
 function showBoard(): void {
   const c = challengeFor(mode);
   challengeEl.hidden = !c;
-  if (c) challengeEl.textContent = `${c.name} scored ${c.score.toLocaleString('en-US')} on this island in ${MODE_NAMES[mode]}. Beat it.`;
+  if (c) {
+    const where = link.mode ? ` in ${MODE_NAMES[link.mode]}` : '';
+    challengeEl.textContent = `${c.name} scored ${c.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
+  }
   boardEl.hidden = mode === 'range';
   if (mode === 'range') return;
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
@@ -408,6 +418,8 @@ function endRun(e: RunEnd): void {
   if (!conn) return;
   conn.over = true;
   sfx.runEnd(e.outcome === 'extracted');
+  runLog.add(runRecord(e, config.seed, mode, (i) => extractNames[i]));
+  runLogPanel.render();
   const standing: string[] = [];
   const place = board.add(config.seed, mode, { name: playerName(), score: e.score, date: today() });
   if (place === 1) standing.push('New best on this island!');

@@ -41,13 +41,14 @@ The island is 800 × 800 m, with 6 outposts.
 
 | Kind | Count | Notes |
 |---|---|---|
-| **Operators** (players and fill bots) | **12** per game | Mixed mode: every slot starts as a bot, and humans replace them in the future. PvE: only you. |
+| **Operators** (players and fill bots) | **8** per game | Mixed mode: every slot starts as a bot, and humans replace them in the future. PvE: only you. |
 | **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Present in both modes. |
 
-**Why 12:** that's roughly 50,000 m² per operator, which is about a 230 m square each. Runs are
-3–10 minutes, so you meet another operator every 1–3 minutes, while guards fill the time in
-between. At 16 or more, the island feels like a deathmatch and extraction points get camped. At 8
-or fewer, it feels empty. The cap is a single constant, to be tuned during playtests.
+**Why 8:** that's roughly 80,000 m² per operator, which is about a 280 m square each. Runs are
+3–10 minutes, and the aim is to meet another operator every 1–3 minutes, while guards fill the
+time in between. The plan started at 12, but chunk 12's bot playtest found that at 12 an operator
+spotted another every 42 s, 8 every 57 s and 6 every 97 s, so 8 is the middle ground until human
+playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
 
 ## Core Loop
 
@@ -150,7 +151,8 @@ src/
 
 Each chunk ends in something you can play or test. **Chunks 0–6 are the proof of concept.**
 Everything runs locally in the browser; there is no backend. The **Status** column says whether
-a chunk is **Done** (committed) or **Not started**.
+a chunk is **Done** (committed), **Partly done** (committed, with part of its goal waiting on
+something outside the code) or **Not started**.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
@@ -175,7 +177,7 @@ the Known Issues named in its scope.
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 11 | **Ship and load** | Verify GitHub Pages end to end (the live site, share links, `?world=`); a loading screen with progress instead of the flat-colour swap; KTX2 textures and meshopt glTF; code splitting so the first bundle is under 500 kB; build the texture arrays off the main thread (`createImageBitmap` / a Worker); replace the Mixamo soldier with a CC0 character (e.g. Quaternius); generate the texture layer list from one source | A stranger opens the live link on a mid-range laptop and is playing within about 5 s on a warm cache; no licensing doubts left | **Done** |
-| 12 | **Playtest and tuning** | A local run-stats log (length, cause of death, extraction used, contracts done, loot value) with a debug panel to read it; tune the operator cap, guard count, bot difficulty, weapon damage and recoil, extraction timings and loot values from playtests; fix what playtests find; mode-less links; the menu at small window sizes | Several full runs by other people; the average run lands in 3–10 minutes, and no single strategy dominates | Not started |
+| 12 | **Playtest and tuning** | A local run-stats log (length, cause of death, extraction used, contracts done, loot value) with a debug panel to read it; tune the operator cap, guard count, bot difficulty, weapon damage and recoil, extraction timings and loot values from playtests; fix what playtests find; mode-less links; the menu at small window sizes | Several full runs by other people; the average run lands in 3–10 minutes, and no single strategy dominates | **Partly done**: the run log, bot playtest, bot and cap tuning, mode-less links and small-window menu are in; runs by other people haven't happened yet |
 | 13 | **Animation** | Death animation with a simple ragdoll that doesn't sink into ground or walls; third-person crouch-walk, slide, mantle, jump and fall clips; third-person reload, weapon switch and grenade throw; suppressors on third-person guns; first-person arms with animated reloads; a distinct look for commanders and each side; hit flash only where the round landed; the body lean matches the lean hitbox | Watching another operator, you can tell what they are doing: crouching, sliding, reloading, throwing | Not started |
 | 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | Not started |
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | Not started |
@@ -289,6 +291,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   cleared, and they don't follow you to another device.
 - **A link without a mode is taken as Mixed** (10), so an old `?world=` link with a score in it
   and no `mode` compares against Mixed runs.
+  **Resolved** (12): a link without a mode keeps the mode you last played, and its score is the one
+  to beat in whichever mode you pick (except the range). The menu then doesn't name a mode.
 - **Names aren't filtered** (10). Locally only you and the bots see yours, but multiplayer will
   need filtering and length checks on the server.
 - **"New island" only picks seeds up to 999,999** (10), to keep the numbers short. Typed
@@ -339,12 +343,46 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   screenshots in a headless browser only.
 - **The menu's layout is only checked at desktop size** (10). It now scrolls when the window is
   too short, but it wasn't tried at small sizes.
+  **Resolved** (12): screenshotted at 800 × 450, 640 × 400, 420 × 600 and 340 × 520. The title
+  now shrinks with the window width, the menu keeps a side margin, and windows under 600 px tall
+  get a tighter layout. Everything fits down to 800 × 450; at 640 × 400 only "What's new" is below
+  the fold. It was checked on a static copy of the menu in headless Chrome, not the running game,
+  because headless Chrome renders the game too slowly to screenshot.
 - **Gun fitting uses hand-measured fractions** (9) in `src/client/guns.ts`, so a new model needs
   measuring again.
 - **The asset script needs an Apple Silicon Mac** (11). It uses `sips` and `pkgutil`, and it
   downloads the arm64 build of the KTX tools unless `ktx` is on the PATH.
 - **The loading screen and asset pipeline have no automated tests** (11). They were checked in
   a headless browser with software and Metal rendering, by screenshot and by timing.
+
+### Playtest and tuning
+- **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
+  the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
+  far comes from bots.
+- **The run log stays in one browser** (12). There's no backend, so a playtester has to copy it
+  from the F4 panel (Copy as JSON) and send it by hand. It keeps the last 200 runs.
+- **Bot runs can't check run length** (12). An operator bot searches only 1–3 crates and leaves,
+  so even its extracted runs last about 1:20. The bot playtest (`npm run playtest`) is good for
+  comparing ways of playing and how often operators meet, not for how long a human run lasts.
+- **Operator bots still die in most runs** (12). Over 6 islands × 30 min, 19% of their runs
+  extract (up from 8%), 81% are killed, and guards do about two thirds of the killing, mostly
+  sentries and outpost guards at 40–120 m. Making guards weaker helped bots but would also make
+  PvE easier for humans, so guards were left alone until humans have played.
+- **Most of the listed tuning wasn't changed** (12): guard count, bot skill numbers, weapon damage
+  and recoil, extraction timings and loot values. In the bot playtest the rifle and bolt-action
+  came out even (about 210 and 190 points per run), as did light and heavy carrying, so there was
+  nothing to fix there without human data. Only the operator cap and operator bot behaviour were
+  tuned.
+- **Operator bots now leave far-off enemies alone** (12). They fight guards only within 40 m, and
+  other operators only within their gun's effective range, unless shot at in the last 10 s. That
+  applies to human players too, so a bot you spot at long range won't open fire first.
+- **The bot playtest leaves out runs still going when it stops** (12), so long runs are slightly
+  undercounted. Bots get no contracts, so "contracts done" is always 0% there.
+- **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
+  outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops
+  in at any land point, possibly next to an outpost. How often that happens wasn't measured.
+- **The run log panel has no automated tests** (12). The records, summary and storage are tested;
+  the F4 panel was only checked by typecheck.
 
 ## Future
 - **Multiplayer**
@@ -361,7 +399,7 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 
 ## Decisions
 - **Weapons for the proof of concept:** assault rifle, pistol and bolt-action rifle
-- **Capacity:** 12 operators and about 24 guards per game (tunable constant)
+- **Capacity:** 8 operators (12 until chunk 12's playtest) and about 24 guards per game (tunable constant)
 - **Backend:** none for now; the game is local only. Multiplayer is a future feature.
 - **After the proof of concept:** chunks 11–18 polish and deepen the local game. Multiplayer
   stays in Future and comes after them.

@@ -96,9 +96,24 @@ const AWARENESS_DECAY = 0.25;
 /** Footstep hearing ranges: sprinting and walking. Crouch-walking is silent. */
 const STEPS_SPRINT = 22;
 const STEPS_WALK = 9;
-/** How far operators and guards go out of their way to check on a noise; farther ones just draw a look. */
-const OPERATOR_CURIOSITY = 60;
+/**
+ * How far operators and guards go out of their way to check on a noise. Operators
+ * mostly keep clear of other people's fights; only what is right next to them draws them in.
+ */
+const OPERATOR_CURIOSITY = 25;
 const GUARD_CURIOSITY = 110;
+/**
+ * Operators leave guards alone beyond this range unless the guard has shot at
+ * them lately: a fight at an outpost brings the whole outpost down on them.
+ */
+const OPERATOR_GUARD_RANGE = 40;
+/** Seconds a shooter stays a threat to be fought back. */
+const THREAT_TIME = 10;
+/** Operators going about their run walk rather than sprint this close to an outpost, and sneak closer in. */
+const OUTPOST_WALK = 110;
+const OUTPOST_SNEAK = 55;
+/** Operators route around outposts they aren't going to, this far out. */
+const OUTPOST_BERTH = 95;
 /** Rounds passing this close to a bot's chest put it under fire. */
 const NEAR_MISS = 2.5;
 const COVER_COOLDOWN = 6;
@@ -145,6 +160,8 @@ interface Contact {
   seenAt: number;
   /** When it last came into view. */
   since: number;
+  /** When it last shot at or hit us. */
+  threatAt: number;
 }
 
 export class Bot {
@@ -257,6 +274,7 @@ export class Bot {
   underFire(shooter: Agent, now: number): void {
     const c = this.contact(shooter.id, shooter);
     c.level = Math.max(c.level, 0.7);
+    c.threatAt = now;
     this.heard = { x: shooter.x, y: shooter.y, z: shooter.z, at: now };
   }
 
@@ -268,6 +286,7 @@ export class Bot {
     c.y = attacker.y;
     c.z = attacker.z;
     c.seenAt = now;
+    c.threatAt = now;
     this.hurtAt = now;
     this.hurtHandled = false;
   }
@@ -365,7 +384,7 @@ export class Bot {
     let known: [number, Contact] | null = null;
     for (const entry of this.contacts) {
       const [id, c] = entry;
-      if (c.level < 1) continue;
+      if (c.level < 1 || !this.picksFight(ctx, self, id, c, now)) continue;
       if (!known || c.seenAt > known[1].seenAt) known = entry;
       if (!c.visible) continue;
       const score = Math.hypot(c.x - self.x, c.z - self.z) - (id === this.target ? 15 : 0);
@@ -381,7 +400,9 @@ export class Bot {
       else if (c.since === now) this.reactAt = Math.max(this.reactAt, now + this.skill.reaction * 0.5);
       if (this.state === 'cover' && now < this.spotUntil) return;
       const empty = self.mag[self.weapon] === 0 && self.reserve[self.weapon] > 0 && d > 10;
-      const wantCover = (empty || (hurt && self.hp < 70 && this.rand() < this.skill.coverChance)) && now - this.lastCover > COVER_COOLDOWN;
+      // Operators always break off from guards once hurt: there are more where that one came from.
+      const duck = this.slipsAway(ctx, id) || this.rand() < this.skill.coverChance;
+      const wantCover = (empty || (hurt && self.hp < 70 && duck)) && now - this.lastCover > COVER_COOLDOWN;
       if (wantCover && this.takeCover(ctx, self, c)) return;
       this.enter('engage');
       return;
@@ -389,7 +410,11 @@ export class Bot {
 
     if (this.target) {
       const c = this.contacts.get(this.target);
-      if (!c) {
+      if (c && !this.picksFight(ctx, self, this.target, c, now)) {
+        // An operator lets a guard go once it's no longer in the way.
+        this.target = 0;
+        if (!this.isRoutine(this.state)) this.enter(this.routine());
+      } else if (!c) {
         this.target = 0;
         if (!this.isRoutine(this.state) && this.state !== 'investigate') this.enter(this.routine());
       } else if (this.state === 'engage' && now - c.seenAt > LOST_TIME) {
@@ -398,8 +423,8 @@ export class Bot {
       } else if (this.state === 'engage' || this.state === 'cover' || this.state === 'flank') return;
     }
 
-    // Shot by someone out of sight, or a friend called out a contact.
-    if (known && known[1].seenAt >= this.stateAt && this.state !== 'flank') {
+    // Shot by someone out of sight, or a friend called out a contact. Operators don't go looking for guards.
+    if (known && known[1].seenAt >= this.stateAt && this.state !== 'flank' && !this.slipsAway(ctx, known[0])) {
       this.target = known[0];
       if (hurt && this.rand() < this.skill.coverChance && now - this.lastCover > COVER_COOLDOWN && this.takeCover(ctx, self, known[1])) return;
       this.investigate(ctx, known[1]);
@@ -468,8 +493,8 @@ export class Bot {
         }
         const d = Math.hypot(spot.x - self.x, spot.z - self.z);
         if (d > ARRIVE) {
-          this.goTo(spot);
-          if (d > 30 && self.stamina > 0.4) this.pace = 'sprint';
+          this.goTo(this.around(ctx, self, spot));
+          this.travel(ctx, self, d);
           break;
         }
         this.goTo(null);
@@ -495,8 +520,8 @@ export class Bot {
         }
         const d = Math.hypot(e.x - self.x, e.z - self.z);
         if (d > EXTRACT_RADIUS / 2) {
-          this.goTo(e);
-          if (d > 30 && self.stamina > 0.4) this.pace = 'sprint';
+          this.goTo(this.around(ctx, self, e));
+          this.travel(ctx, self, d);
           break;
         }
         // In the zone: keep low and wait for it to open, or call the pickup.
@@ -576,9 +601,12 @@ export class Bot {
           this.crouch = true;
           if (self.mag[self.weapon] < WEAPONS[self.weapon].magSize && self.reserve[self.weapon] > 0) this.reloadWanted = true;
         }
-        // Stay until reloaded and settled, then peek.
+        // Stay until reloaded and settled, then peek, or for an operator hiding from a guard, slip away.
         if ((now >= this.spotUntil && self.reload <= 0 && self.mag[self.weapon] > 0) || now - this.stateAt > FLANK_TIME) {
-          this.enter('engage');
+          if (this.slipsAway(ctx, this.target) && !c?.visible) {
+            this.target = 0;
+            this.enter(this.routine());
+          } else this.enter('engage');
         }
         break;
       }
@@ -603,6 +631,43 @@ export class Bot {
       if (this.state === 'patrol' && self.team === 'guard') self.reserve = spawnWeapons().reserve;
       if (this.weapon !== this.primary && self.mag[this.primary] + self.reserve[this.primary] > 0) this.weapon = this.primary;
     }
+  }
+
+  /**
+   * Where to head for on the way to `goal` so as to keep clear of the outposts
+   * it isn't going to: the goal itself, or a point off to the side of the
+   * first outpost the straight line would pass close to.
+   */
+  private around(ctx: BotContext, self: Agent, goal: Point): Point {
+    const dx = goal.x - self.x;
+    const dz = goal.z - self.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1) return goal;
+    let best: Point | null = null;
+    let bestAlong = Infinity;
+    for (const o of ctx.world.outposts) {
+      // Going there, or already there: nothing to go around.
+      if (Math.hypot(o.x - goal.x, o.z - goal.z) < OUTPOST_BERTH || Math.hypot(o.x - self.x, o.z - self.z) < OUTPOST_BERTH) continue;
+      const along = ((o.x - self.x) * dx + (o.z - self.z) * dz) / len;
+      if (along <= 0 || along >= len) continue;
+      // Which side of the line the outpost is on; pass it on the other.
+      const side = (dx * (o.z - self.z) - dz * (o.x - self.x)) / len;
+      if (Math.abs(side) >= OUTPOST_BERTH || along >= bestAlong) continue;
+      const nx = (dz / len) * Math.sign(side || 1);
+      const nz = (-dx / len) * Math.sign(side || 1);
+      const p = ctx.nav.nearestWalkable(o.x + nx * OUTPOST_BERTH * 1.15, o.z + nz * OUTPOST_BERTH * 1.15, 20);
+      if (!p) continue;
+      best = { x: p.x, y: goal.y, z: p.z };
+      bestAlong = along;
+    }
+    return best ?? goal;
+  }
+
+  /** How an operator crosses the island `d` metres from where it's going: fast in the open, quietly near outposts. */
+  private travel(ctx: BotContext, self: Agent, d: number): void {
+    const near = ctx.world.nearestOutpost(self.x, self.z)?.dist ?? Infinity;
+    if (near < OUTPOST_SNEAK && d > ARRIVE * 3) this.pace = 'sneak';
+    else if (d > 30 && self.stamina > 0.4 && near > OUTPOST_WALK) this.pace = 'sprint';
   }
 
   private nextStop(): void {
@@ -651,6 +716,22 @@ export class Bot {
     this.waitUntil = 0;
     this.path = [];
     this.pathGoal = null;
+  }
+
+  /**
+   * Whether to fight a spotted enemy. Guards always do. Operators fight back
+   * when shot at, and otherwise only pick fights they can win quickly: other
+   * operators within their gun's range, and guards up close.
+   */
+  private picksFight(ctx: BotContext, self: Agent, id: number, c: Contact, now: number): boolean {
+    if (this.role.kind !== 'operator' || now - c.threatAt < THREAT_TIME) return true;
+    const range = ctx.agent(id)?.team === 'guard' ? OPERATOR_GUARD_RANGE : EFFECTIVE_RANGE[this.primary];
+    return Math.hypot(c.x - self.x, c.z - self.z) <= range;
+  }
+
+  /** An operator facing a guard: it would rather get away than win. */
+  private slipsAway(ctx: BotContext, id: number): boolean {
+    return this.role.kind === 'operator' && ctx.agent(id)?.team === 'guard';
   }
 
   private isRoutine(state: BotState): boolean {
@@ -972,7 +1053,7 @@ export class Bot {
   private contact(id: number, a: Point): Contact {
     let c = this.contacts.get(id);
     if (!c) {
-      c = { level: 0, visible: false, headOnly: false, x: a.x, y: a.y, z: a.z, seenAt: -Infinity, since: 0 };
+      c = { level: 0, visible: false, headOnly: false, x: a.x, y: a.y, z: a.z, seenAt: -Infinity, since: 0, threatAt: -Infinity };
       this.contacts.set(id, c);
     }
     return c;

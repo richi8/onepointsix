@@ -14,7 +14,7 @@
         font-family: system-ui, sans-serif; transition: opacity 0.5s;
       }
       .loading.done { opacity: 0; pointer-events: none; }
-      .loading h1 { margin: 0; font-size: 64px; font-weight: 800; letter-spacing: -0.02em; }
+      .loading h1 { margin: 0; font-size: clamp(40px, 15vw, 64px); font-weight: 800; letter-spacing: -0.02em; }
       .loading .bar { width: min(320px, 70vw); height: 4px; border-radius: 2px; background: rgb(255 255 255 / 0.15); overflow: hidden; }
       .loading .bar div { width: 0; height: 100%; background: #e8c35a; transition: width 0.2s; }
       .loading p { margin: 0; font-size: 14px; color: rgb(255 255 255 / 0.65); }
@@ -93,7 +93,7 @@
       <div class="hint" id="hint">
         WASD move · Shift sprint · Space jump / mantle · C crouch (slide while sprinting) · Q/E lean · LMB fire ·
         RMB aim · R reload · 1/2/3 or wheel switch · G grenade · F search / take / call / grab intel · X drop · Esc free mouse ·
-        F3 net panel
+        F3 net panel · F4 run log
       </div>
     </div>
     <div class="paused" id="paused" hidden>Click to resume</div>

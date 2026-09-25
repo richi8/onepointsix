@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc",
     "sim": "node src/server/headless.ts",
+    "playtest": "node src/server/playtest.ts",
     "test": "vitest run"
   },
   "dependencies": {

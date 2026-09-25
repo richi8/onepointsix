@@ -36,6 +36,7 @@ import type {
   BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
+import type { RunEndEvent } from '../shared/runstats.ts';
 import { applyCmd, copyState, spawnState, type PlayerState } from '../shared/sim.ts';
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
@@ -86,6 +87,8 @@ interface Run {
   hold: number;
   /** Who killed them, once dead. */
   killer: string;
+  /** How they died, once dead. */
+  death: { by: Team | 'self'; weapon: number; head: boolean } | null;
   /** Objectives paid on extraction; only humans get them. */
   contracts: Contract[];
 }
@@ -163,6 +166,8 @@ export class GameServer {
   tick = 0;
   /** Hears everything sent to everyone: kills, calls and extractions. */
   onEvent: ((e: GameEvent) => void) | null = null;
+  /** Hears every operator's run ending, bots' too; `plan` is the bot's, or null for a human. */
+  onRunEnd: ((e: RunEndEvent, plan: BotPlan | null) => void) | null = null;
   private readonly players = new Map<number, Player>();
   private readonly spawnRng: () => number;
   private readonly botRng: () => number;
@@ -483,10 +488,13 @@ export class GameServer {
     const value = lootValue(run.items);
     const contracts = run.contracts.map(contractView);
     const score = outcome === 'extracted' ? runScore(value, run.kills, run.guardKills, contractReward(contracts)) : 0;
-    p.events.push({
+    const end: RunEndEvent = {
       k: 'runEnd', outcome, score, value, items: [...run.items], kills: run.kills, guardKills: run.guardKills,
-      contracts, time: this.time - run.start, killer: run.killer,
-    });
+      contracts, time: this.time - run.start, killer: run.killer, extract: outcome === 'extracted' ? run.zone : -1,
+      death: outcome === 'killed' ? run.death : null,
+    };
+    p.events.push(end);
+    this.onRunEnd?.(end, p.plan);
     this.dismiss(run);
     if (outcome === 'extracted') this.broadcast({ k: 'extract', id: p.id, name: p.name, value });
     if (outcome === 'killed') this.containers.drop(p.x, p.y, p.z, run.items, this.time);
@@ -838,6 +846,7 @@ export class GameServer {
     if (!victim.plan && !victim.dummy && attacker !== victim) victim.deathcam = { killer: attacker, time: this.time };
     if (victim.run) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
+      victim.run.death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head' };
       this.endRun(victim, 'killed');
     }
   }
@@ -880,7 +889,8 @@ export class GameServer {
 
 function newRun(start: number): Run {
   return {
-    start, items: [], kills: 0, guardKills: 0, search: null, useHeld: false, dropHeld: false, zone: -1, hold: 0, killer: '', contracts: [],
+    start, items: [], kills: 0, guardKills: 0, search: null, useHeld: false, dropHeld: false, zone: -1, hold: 0, killer: '', death: null,
+    contracts: [],
   };
 }
 

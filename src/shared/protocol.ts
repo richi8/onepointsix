@@ -97,6 +97,10 @@ export type GameEvent =
       /** Seconds the run lasted. */
       time: number;
       killer: string;
+      /** Extraction point got out at, or -1. */
+      extract: number;
+      /** How they died, if killed: by whom (their side, or themselves), with what weapon, and whether in the head. */
+      death: { by: Team | 'self'; weapon: number; head: boolean } | null;
     }
   // To a player killed by someone else, a moment after: their killer's inputs
   // around the kill at server time `time`, to replay from the killer's eyes.

@@ -175,7 +175,9 @@ describe('a run', () => {
     expect(h.events().some((ev) => ev.k === 'runEnd')).toBe(false);
     h.hold(0, 20);
     const value = ITEMS[GOLD].value + ITEMS[WATCH].value;
-    expect(h.events()).toContainEqual(expect.objectContaining({ k: 'runEnd', outcome: 'extracted', score: value, value, items: [GOLD, WATCH] }));
+    expect(h.events()).toContainEqual(expect.objectContaining({
+      k: 'runEnd', outcome: 'extracted', score: value, value, items: [GOLD, WATCH], extract: 0, death: null,
+    }));
     expect(onEvent).toContainEqual({ k: 'extract', id: h.id, name: `h${h.id}`, value });
     expect(server.humans()).toBe(0);
   });
@@ -221,7 +223,10 @@ describe('a run', () => {
     me.protection = 0;
     (server as unknown as { damage: (...args: unknown[]) => void }).damage(me, body(server, other.id), 500, 'head', 0, 0, 0, 0);
     server.step();
-    expect(h.events()).toContainEqual(expect.objectContaining({ k: 'runEnd', outcome: 'killed', score: 0, value: ITEMS[GOLD].value, killer: `h${other.id}` }));
+    expect(h.events()).toContainEqual(expect.objectContaining({
+      k: 'runEnd', outcome: 'killed', score: 0, value: ITEMS[GOLD].value, killer: `h${other.id}`, extract: -1,
+      death: { by: 'operator', weapon: 0, head: true },
+    }));
     expect(body(server, other.id).run).toMatchObject({ kills: 1 });
     const [bag] = h.snap().bags;
     expect(Math.hypot(bag.x - me.x, bag.z - me.z)).toBeLessThan(0.01);
