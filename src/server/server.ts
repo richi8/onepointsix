@@ -1,5 +1,8 @@
 import {
   BODY_TIME,
+  BOUNTY_FUZZ,
+  BOUNTY_MIN,
+  BOUNTY_PING,
   BREAK_NOISE,
   Btn,
   CMD_DT,
@@ -34,7 +37,7 @@ import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
 import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loot.ts';
 import type {
-  Action, BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
+  Action, BagSnap, BountyView, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
@@ -50,6 +53,7 @@ import { Cover } from './cover.ts';
 import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
 import { insertionPoint, planCommander, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
+import type { Personality } from './personality.ts';
 import { SKILLS } from './skill.ts';
 
 /** Commands buffered beyond this are dropped; the client is too far ahead. */
@@ -142,6 +146,8 @@ export interface ServerOptions {
   conditions?: Conditions;
   /** Operator slots, filled by bots where no player takes them (default 0, no operator bots). */
   operators?: number;
+  /** Every operator bot plays this way, for tests (default a personality at random for each). */
+  personality?: Personality;
 }
 
 /**
@@ -168,7 +174,13 @@ export class GameServer {
   private readonly spawnRng: () => number;
   private readonly botRng: () => number;
   private readonly contractRng: () => number;
+  private readonly bountyRng: () => number;
   private readonly operatorSlots: number;
+  private readonly personality: Personality | undefined;
+  /** Who carries the bounty, and where and when they were last called; null while nobody does. */
+  private bounty: { id: number; x: number; y: number; z: number; at: number } | null = null;
+  /** This tick's bags, for bots, made when first asked for. */
+  private bagList: BagSnap[] | null = null;
   /** When each operator slot emptied by a bot leaving gets filled again, soonest first. */
   private readonly refills: number[] = [];
   private readonly ctx: BotContext;
@@ -186,6 +198,7 @@ export class GameServer {
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
     this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);
+    this.bountyRng = mulberry32(this.seed ^ 0x2545f491);
     this.nav = new NavGrid(this.world);
     // Paint the ground now rather than on the first bot's first look.
     vegetationOf(this.world);
@@ -193,6 +206,7 @@ export class GameServer {
     this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1));
     this.cover = new Cover(this.world);
     this.operatorSlots = options.operators ?? 0;
+    this.personality = options.personality;
     const players = this.players;
     this.ctx = {
       world: this.world,
@@ -208,6 +222,8 @@ export class GameServer {
         return p ? this.lootView(p) : null;
       },
       senses: sensesOf(this.conditions),
+      bounty: 0,
+      bags: () => (this.bagList ??= this.containers.bags()),
     };
     if (options.guards) {
       const plans = planGuards(this.world, this.nav, this.botRng, night);
@@ -293,6 +309,7 @@ export class GameServer {
     const ctx = this.ctx;
     const now = (ctx.time = this.time);
     ctx.pathBudget = PATH_BUDGET;
+    this.bagList = null;
     for (const p of this.players.values()) {
       if (p.bot && !p.dead) {
         if ((this.tick + p.id) % THINK_TICKS === 0) p.bot.think(ctx, p, THINK_TICKS * SERVER_DT);
@@ -345,6 +362,7 @@ export class GameServer {
       if (p.run || p.plan?.temporary) this.leave(p);
       else this.spawn(p);
     }
+    this.stepBounty(now);
     while (this.refills.length && now >= this.refills[0]) {
       this.refills.shift();
       if (this.operatorCount() < this.operatorSlots) this.addOperatorBot();
@@ -357,6 +375,7 @@ export class GameServer {
     const players = joined.map(snapOf);
     let extracts: ExtractView[] | null = null;
     let bags: BagSnap[] | null = null;
+    const bounty = this.bountyView();
     const grenades: GrenadeSnap[] = this.grenades.map(({ id, x, y, z }) => ({ id, x, y, z }));
     for (const p of joined) {
       // Bots see the game directly.
@@ -367,7 +386,7 @@ export class GameServer {
       extracts ??= this.extracts.views(now);
       bags ??= this.containers.bags();
       p.send({
-        t: 'snapshot', tick: this.tick, ack: p.lastSim, you: copyState(p), players, run: this.runView(p), extracts, bags, grenades,
+        t: 'snapshot', tick: this.tick, ack: p.lastSim, you: copyState(p), players, run: this.runView(p), extracts, bags, grenades, bounty,
       });
       if (p.events.length) p.send({ t: 'events', tick: this.tick, events: p.events });
       p.events = [];
@@ -536,6 +555,50 @@ export class GameServer {
     if (clip) p.events.push({ k: 'deathcam', killer: killer.id, name: killer.name, time, clip });
   }
 
+  // -------------------------------------------------------------- bounty
+
+  /**
+   * The operator carrying the most loot, at least BOUNTY_MIN, is the bounty:
+   * everyone is told who, and every BOUNTY_PING seconds roughly where. Bots
+   * that want them go after them. The one carrying it keeps it on a tie.
+   */
+  private stepBounty(now: number): void {
+    let holder: Player | null = null;
+    let most = BOUNTY_MIN - 1;
+    const current = this.bounty ? this.players.get(this.bounty.id) : undefined;
+    for (const p of this.players.values()) {
+      if (!p.run || p.dead) continue;
+      const v = lootValue(p.run.items);
+      if (v > most || (v === most && p === current)) (holder = p), (most = v);
+    }
+    if (!holder) {
+      if (this.bounty) this.broadcast({ k: 'bounty', id: 0, name: '', value: 0 });
+      this.bounty = null;
+      this.ctx.bounty = 0;
+      return;
+    }
+    if (holder !== current) {
+      this.bounty = { id: holder.id, x: 0, y: 0, z: 0, at: -Infinity };
+      this.ctx.bounty = holder.id;
+      this.broadcast({ k: 'bounty', id: holder.id, name: holder.name, value: most });
+    }
+    const b = this.bounty!;
+    if (now - b.at < BOUNTY_PING) return;
+    const a = this.bountyRng() * Math.PI * 2;
+    const r = Math.sqrt(this.bountyRng()) * BOUNTY_FUZZ;
+    Object.assign(b, { x: holder.x + Math.sin(a) * r, y: holder.y, z: holder.z + Math.cos(a) * r, at: now });
+    for (const p of this.players.values()) {
+      if (p.bot && !p.dead && p.team === 'operator') p.bot.bountyCalled(p, holder.id, b, now);
+    }
+  }
+
+  private bountyView(): BountyView | null {
+    const b = this.bounty;
+    const p = b && this.players.get(b.id);
+    if (!b || !p?.run) return null;
+    return { id: b.id, name: p.name, value: lootValue(p.run.items), x: b.x, z: b.z, at: b.at };
+  }
+
   // -------------------------------------------------------------- contracts
 
   /** A human's run gets its contracts, and the commanders among them are put on the island. */
@@ -606,7 +669,7 @@ export class GameServer {
   private addOperatorBot(): void {
     const others = [...this.players.values()].filter((p) => p.team === 'operator' && !p.dead);
     const taken = new Set(others.map((p) => p.name));
-    this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken), 'operator');
+    this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken, this.personality), 'operator');
   }
 
   /** Players and bots taking operator slots. */
@@ -665,10 +728,10 @@ export class GameServer {
    * A sound at (x, y, z) that carries `radius` metres, made by `source`: every
    * bot within it hears it, or only those `who` picks.
    */
-  private noise(x: number, y: number, z: number, radius: number, source: number, who?: (p: Player) => boolean): void {
+  private noise(x: number, y: number, z: number, radius: number, source: number, who?: (p: Player) => boolean, gunfire = false): void {
     // Rain drowns sounds out.
     radius *= this.ctx.senses.hearing;
-    const n: Noise = { x, y, z, radius, source };
+    const n: Noise = { x, y, z, radius, source, gunfire };
     for (const p of this.players.values()) {
       if (!p.bot || p.dead || (who && !who(p)) || Math.hypot(p.x - x, p.z - z) > radius) continue;
       p.bot.hear(p, n, this.time);
@@ -714,7 +777,7 @@ export class GameServer {
       if (!p.bot || p.dead || p === shooter || p === victim || !hostile(p, shooter)) continue;
       if (Bot.nearMiss(p, ox, oy, oz, dx, dy, dz, t)) p.bot.underFire(shooter, now);
     }
-    this.noise(ox, oy, oz, w.noise * (shot.quiet ? SUPPRESSED_NOISE : 1), shooter.id);
+    this.noise(ox, oy, oz, w.noise * (shot.quiet ? SUPPRESSED_NOISE : 1), shooter.id, undefined, true);
     if (victim) this.damage(victim, shooter, damageAt(shot.weapon, t, zone), zone, shot.weapon, ex, ey, ez);
     else if (panel >= 0) this.panelsBroke(this.cover.damage(panel, damageAt(shot.weapon, t, 'torso'), now), ox, oy, oz, shooter);
   }
@@ -808,7 +871,7 @@ export class GameServer {
         if (amount > 0) this.damage(p, owner ?? p, amount, 'torso', GRENADE, h.torsoX, chest, h.torsoZ, { x, z });
       }
     }
-    this.noise(x, y, z, GRENADE_NOISE, g.owner);
+    this.noise(x, y, z, GRENADE_NOISE, g.owner, undefined, true);
     this.panelsBroke(this.cover.blast(x, y, z, now), x, y, z, owner);
   }
 
@@ -834,7 +897,7 @@ export class GameServer {
     }
     this.broadcast({
       k: 'kill', killer: attacker.id, victim: victim.id, killerName: attacker.name, victimName: victim.name,
-      weapon, head: zone === 'head',
+      weapon, head: zone === 'head', bounty: victim.id === this.bounty?.id,
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
     if (!victim.plan && attacker !== victim) victim.deathcam = { killer: attacker, time: this.time };

@@ -1,0 +1,201 @@
+import { describe, expect, it } from 'vitest';
+import { Bot, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
+import { Containers } from '../src/server/containers.ts';
+import { Extracts } from '../src/server/extracts.ts';
+import { NavGrid } from '../src/server/nav.ts';
+import { PERSONALITIES, TEMPERS, type Personality } from '../src/server/personality.ts';
+import { planOperator } from '../src/server/population.ts';
+import { GameServer } from '../src/server/server.ts';
+import { SKILLS } from '../src/server/skill.ts';
+import { BOUNTY_MIN, BOUNTY_PING, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { DEFAULT_CONDITIONS, sensesOf } from '../src/shared/conditions.ts';
+import { ITEMS, lootValue } from '../src/shared/loot.ts';
+import type { BagSnap, GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
+import { mulberry32 } from '../src/shared/rng.ts';
+import { spawnState, type PlayerState } from '../src/shared/sim.ts';
+import { RIFLE } from '../src/shared/weapons.ts';
+import { World, type Point } from '../src/shared/world.ts';
+import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
+
+const world = new World(DEFAULT_WORLD.seed);
+const nav = new NavGrid(world);
+const GOLD = ITEMS.findIndex((i) => i.name === 'Gold bar');
+
+function agent(id: number, team: Team, x: number, z: number): Agent {
+  return { ...spawnState(x, world.groundHeight(x, z, world.floorHeight(x, z)), z), id, team };
+}
+
+/** A dry spot at least `far` metres from every outpost. */
+function openSpot(far: number, seed = 5): { x: number; z: number } {
+  const rand = mulberry32(seed);
+  for (;;) {
+    const p = world.randomLandPoint(rand);
+    if (nav.dry(p.x, p.z) && world.outposts.every((o) => Math.hypot(o.x - p.x, o.z - p.z) > far)) return p;
+  }
+}
+
+function context(agents: Agent[], bags: BagSnap[] = [], bounty = 0): BotContext {
+  return {
+    world, nav, time: 0, agents, agent: (id) => agents.find((a) => a.id === id), pathBudget: 10, callout: () => {},
+    extracts: new Extracts(world, mulberry32(1)).points, lootView: () => null, senses: sensesOf(DEFAULT_CONDITIONS), bounty, bags: () => bags,
+  };
+}
+
+/** An operator bot that has searched every crate, or has `loot` still to go to. */
+function operator(personality: Personality, loot: Point[] = []): Bot {
+  const role: Role = { kind: 'operator', loot: loot.map((p) => ({ ...p, look: p })), greed: 20, personality };
+  return new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(2));
+}
+
+function think(bot: Bot, ctx: BotContext, self: Agent, seconds: number, from = 0): void {
+  for (let t = from; t < from + seconds; t += 0.1) {
+    ctx.time = t;
+    bot.think(ctx, self, 0.1);
+  }
+}
+
+type Body = PlayerState & { run: { items: number[] } | null };
+function body(server: GameServer, id: number): Body {
+  return (server as unknown as { players: Map<number, Body> }).players.get(id)!;
+}
+
+describe('operator personalities', () => {
+  it('shape what each operator bot sets out to do', () => {
+    const rand = mulberry32(4);
+    const seen = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const plan = planOperator(world, nav, rand, [], new Set());
+      if (plan.role.kind !== 'operator') throw new Error('not an operator');
+      const p = plan.role.personality!;
+      seen.add(p);
+      const t = TEMPERS[p];
+      expect(plan.role.greed).toBeGreaterThanOrEqual(t.greed[0]);
+      expect(plan.role.greed).toBeLessThanOrEqual(t.greed[1]);
+      expect(plan.role.loot.length).toBeLessThanOrEqual(t.stops[1]);
+    }
+    expect([...seen].sort()).toEqual([...PERSONALITIES].sort());
+  });
+
+  it('hunter follows gunfire, but a rat stays away', () => {
+    const at = openSpot(250);
+    const self = agent(1, 'operator', at.x, at.z);
+    const shooter = agent(2, 'operator', at.x + 120, at.z);
+    for (const [p, want] of [['hunter', 'stalk'], ['rat', 'extract']] as const) {
+      const bot = operator(p);
+      const ctx = context([self, shooter]);
+      think(bot, ctx, self, 0.2);
+      bot.hear(self, { x: shooter.x, y: shooter.y, z: shooter.z, radius: 180, source: 2, gunfire: true }, 0.2);
+      think(bot, ctx, self, 0.3, 0.2);
+      expect(bot.state).toBe(want);
+    }
+  });
+
+  it('a looter joins a fight between two others, not one side shooting', () => {
+    const at = openSpot(250);
+    const self = agent(1, 'operator', at.x, at.z);
+    const a = agent(2, 'operator', at.x + 90, at.z);
+    const b = agent(3, 'operator', at.x + 90, at.z + 30);
+    const bot = operator('looter', [{ x: at.x - 150, y: self.y, z: at.z }]);
+    const ctx = context([self, a, b]);
+    think(bot, ctx, self, 0.2);
+    bot.hear(self, { x: a.x, y: a.y, z: a.z, radius: 180, source: 2, gunfire: true }, 0.2);
+    think(bot, ctx, self, 0.3, 0.2);
+    expect(bot.state).not.toBe('stalk');
+    bot.hear(self, { x: b.x, y: b.y, z: b.z, radius: 180, source: 3, gunfire: true }, 0.5);
+    think(bot, ctx, self, 0.3, 0.5);
+    expect(bot.state).toBe('stalk');
+  });
+
+  it('a camper waits near an extraction point before leaving, and a hunter roams', () => {
+    const at = openSpot(150);
+    const self = agent(1, 'operator', at.x, at.z);
+    const camper = operator('camper');
+    think(camper, context([self]), self, 1);
+    expect(camper.state).toBe('camp');
+    const hunter = operator('hunter');
+    think(hunter, context([self]), self, 1);
+    expect(hunter.state).toBe('hunt');
+    // Later in the run they head out.
+    const late = context([self]);
+    think(camper, late, self, 0.5, TEMPERS.camper.linger + 1);
+    expect(camper.state).toBe('extract');
+  });
+
+  it('a looter goes through a valuable bag nearby', () => {
+    const at = openSpot(150);
+    const self = agent(1, 'operator', at.x, at.z);
+    const bag: BagSnap = { id: 7, x: at.x + 12, y: self.y, z: at.z, value: 4000 };
+    const bot = operator('looter');
+    think(bot, context([self], [bag]), self, 0.5);
+    expect(bot.state).toBe('loot');
+    const cheap = operator('looter');
+    think(cheap, context([self], [{ ...bag, value: 100 }]), self, 0.5);
+    expect(cheap.state).toBe('extract');
+  });
+});
+
+describe('bags', () => {
+  it('say what they hold', () => {
+    const c = new Containers(world, mulberry32(1));
+    c.drop(0, 0, 0, [GOLD, GOLD], 0);
+    expect(c.bags()[0].value).toBe(lootValue([GOLD, GOLD]));
+  });
+});
+
+describe('the bounty', () => {
+  it('goes to the operator carrying the most, is called every so often, and is gone once they die', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 3, personality: 'rat' });
+    const sent: ServerMsg[] = [];
+    const id = server.connect((m) => sent.push(m));
+    server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'offline' });
+    const events: GameEvent[] = [];
+    server.onEvent = (e) => events.push(e);
+    server.step();
+    const last = () => [...sent].reverse().find((m) => m.t === 'snapshot');
+    expect(last()?.t === 'snapshot' && last()?.bounty).toBeNull();
+
+    const me = body(server, id);
+    me.run!.items = [GOLD];
+    expect(lootValue(me.run!.items)).toBeGreaterThanOrEqual(BOUNTY_MIN);
+    server.step();
+    expect(events.find((e) => e.k === 'bounty')).toMatchObject({ k: 'bounty', id, value: lootValue([GOLD]) });
+    const first = last();
+    if (first?.t !== 'snapshot' || !first.bounty) throw new Error('no bounty');
+    expect(Math.hypot(first.bounty.x - me.x, first.bounty.z - me.z)).toBeLessThan(16);
+
+    // Someone else carrying more takes it over.
+    const other = server.bots().find((b) => b.team === 'operator')!;
+    body(server, other.id).run!.items = [GOLD, GOLD];
+    server.step();
+    expect(events.filter((e) => e.k === 'bounty').at(-1)).toMatchObject({ id: other.id });
+
+    // It's called again after BOUNTY_PING seconds.
+    const at = (m = last()) => (m?.t === 'snapshot' ? m.bounty?.at : undefined);
+    const called = at();
+    for (let t = 0; t < BOUNTY_PING * SERVER_TICK_RATE; t++) server.step();
+    expect(at()).toBeGreaterThan(called!);
+
+    body(server, other.id).run!.items = [];
+    me.run!.items = [];
+    server.step();
+    expect(events.filter((e) => e.k === 'bounty').at(-1)).toMatchObject({ id: 0 });
+  });
+
+  it('is spotted sooner than anyone else', () => {
+    let self: Agent;
+    let target: Agent;
+    for (let seed = 1; ; seed++) {
+      const at = openSpot(150, seed);
+      self = agent(1, 'guard', at.x, at.z);
+      target = agent(2, 'operator', at.x, at.z - 70);
+      if (world.hasLineOfSight(self.x, self.y + 1.6, self.z, target.x, target.y + 1.2, target.z)) break;
+    }
+    const aware = (bounty: number) => {
+      const bot = new Bot({ kind: 'sentry', post: { x: self.x, y: self.y, z: self.z, yaw: 0 } }, SKILLS.normal, RIFLE, 0, mulberry32(1));
+      const ctx = context([self, target], [], bounty);
+      think(bot, ctx, self, 0.6);
+      return bot.awareness(2);
+    };
+    expect(aware(2)).toBeGreaterThan(aware(0));
+  });
+});

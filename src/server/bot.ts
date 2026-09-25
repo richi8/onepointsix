@@ -6,19 +6,22 @@ import {
   CROUCH_SPEED,
   EXTRACT_RADIUS,
   EYE_HEIGHT,
+  MAX_HP,
+  RUN_TIME,
   WALK_SPEED,
 } from '../shared/constants.ts';
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
 import type { Senses } from '../shared/conditions.ts';
-import type { InputCmd, LootView, Team } from '../shared/protocol.ts';
+import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
 import type { Point, World } from '../shared/world.ts';
 import type { ExtractPoint } from './extracts.ts';
 import type { NavGrid, Waypoint } from './nav.ts';
+import { TEMPERS, type Personality, type Temper } from './personality.ts';
 import type { Skill } from './skill.ts';
 
 // A bot is a player without a keyboard. It perceives the world through the
@@ -49,21 +52,29 @@ export type Role =
   // where it was when called away.
   | { kind: 'guard'; route: Point[]; leash: number; home?: Point; leader?: number }
   // Plays a run: search the crate at each loot spot, taking what it can carry
-  // up to `greed` kg, then leave at the nearest open extraction point.
-  | { kind: 'operator'; loot: LootSpot[]; greed: number };
+  // up to `greed` kg, then leave at the nearest open extraction point. Its
+  // personality decides what else it does along the way.
+  | { kind: 'operator'; loot: LootSpot[]; greed: number; personality?: Personality };
 
 export interface LootSpot extends Point {
   /** What to look at while searching, such as the crate. */
   look: Point;
+  /** Set for a bag on the ground, by id. */
+  bag?: number;
 }
 
-export type BotState = 'patrol' | 'loot' | 'extract' | 'investigate' | 'engage' | 'cover' | 'flank';
+export type BotState =
+  | 'patrol' | 'loot' | 'extract' | 'investigate' | 'engage' | 'cover' | 'flank'
+  // Operators by personality: roaming for a fight, waiting by an extraction point, and closing in on a fight or the bounty.
+  | 'hunt' | 'camp' | 'stalk';
 
 /** Something heard: a shot, a friend's callout, footsteps. */
 export interface Noise extends Point {
   radius: number;
   /** Who made it. */
   source: number;
+  /** A gunshot or a blast: a fight. */
+  gunfire?: boolean;
 }
 
 /** The game as bots see it, rebuilt each tick by the server. */
@@ -84,6 +95,10 @@ export interface BotContext {
   lootView(self: Agent): LootView | null;
   /** How far the time of day and the weather let everyone see and hear. */
   senses: Senses;
+  /** Who carries the bounty, or 0. */
+  bounty: number;
+  /** Bags on the ground and what's in them. */
+  bags(): readonly BagSnap[];
 }
 
 /** Whether a would shoot b. Operators are each on their own side; guards stick together. */
@@ -134,6 +149,31 @@ const OUTPOST_WALK = 110;
 const OUTPOST_SNEAK = 55;
 /** Operators route around outposts they aren't going to, this far out. */
 const OUTPOST_BERTH = 95;
+/** The bounty is spotted in this much of the time, and its footsteps heard this much farther. */
+const BOUNTY_SPOT = 0.7;
+const BOUNTY_LOUD = 1.6;
+/** Operators pick fights with the bounty this much farther out. */
+const BOUNTY_REACH = 1.5;
+/** Hunters count anyone with less health than this as wounded. */
+const WOUNDED = 60;
+/** Seconds gunfire is remembered for telling where a fight is, and how far apart two sides' shots can be to be one fight. */
+const FIGHT_MEMORY = 8;
+const FIGHT_SPREAD = 70;
+/** Gunfire closer than this isn't someone else's fight to join: it's ours. */
+const FIGHT_NEAR = 30;
+/** Bots joining a fight stop this far short of it and watch, and give up after this many seconds. */
+const STALK_STANDOFF = 40;
+const GUARD_STANDOFF = 90;
+/** A fight at an outpost is watched from this far from its middle, out of the sentry's sight. */
+const OUTPOST_WATCH = 135;
+const STALK_TIME = 70;
+/** Bags this close are worth a detour. */
+const BAG_RANGE = 50;
+/** Hunters roam to points this far off, and campers wait this far from their extraction point. */
+const HUNT_RANGE = 150;
+const CAMP_RANGE: [number, number] = [25, 45];
+/** Operators head out with at least this many seconds of the run clock left, whatever their personality. */
+const LEAVE_BY = 150;
 /** Rounds passing this close to a bot's chest put it under fire. */
 const NEAR_MISS = 2.5;
 const COVER_COOLDOWN = 6;
@@ -258,6 +298,29 @@ export class Bot {
   private exit = -1;
   private readonly unreachable = new Set<number>();
 
+  // An operator's run, by its personality.
+  readonly personality: Personality | null;
+  private readonly temper: Temper | null;
+  /** Its own copy of the crates to search, which bags it comes across are added to. */
+  private readonly loot: LootSpot[];
+  private readonly bagsTried = new Set<number>();
+  /** Server time its run started: its first think. */
+  private born = -1;
+  /** Health as of the last think: badly hurt, it gives up on hunting and camping. */
+  private hp = MAX_HP;
+  /** Gunfire heard lately, for telling where a fight is. */
+  private gunfire: (Point & { source: number; at: number })[] = [];
+  /** Where the bounty was last called, if it's worth going after. */
+  private lure: (Point & { at: number }) | null = null;
+  /** Time of the latest gunfire or call acted on, so each is followed once. */
+  private stalkAt = -Infinity;
+  /** Where the fight or the bounty being closed in on is. */
+  private fightAt: Point | null = null;
+  /** Where a camper waits and for which extraction point; set once it gives up camping. */
+  private camp: Point | null = null;
+  private campFor = -1;
+  private campDone = false;
+
   constructor(role: Role, skill: Skill, primary: number, yaw: number, rand: () => number) {
     this.role = role;
     this.skill = skill;
@@ -266,6 +329,9 @@ export class Bot {
     this.yaw = this.lookYaw = yaw;
     this.rand = rand;
     this.wobblePhase = rand() * 100;
+    this.personality = role.kind === 'operator' ? (role.personality ?? null) : null;
+    this.temper = this.personality ? TEMPERS[this.personality] : null;
+    this.loot = role.kind === 'operator' ? [...role.loot] : [];
     this.state = this.routine();
   }
 
@@ -279,6 +345,10 @@ export class Bot {
   /** A sound reached the bot. The server checks the range. */
   hear(self: Agent, noise: Noise, now: number): void {
     if (noise.source === self.id) return;
+    if (noise.gunfire && this.temper?.thirdParty) {
+      this.gunfire = this.gunfire.filter((g) => now - g.at < FIGHT_MEMORY);
+      this.gunfire.push({ x: noise.x, y: noise.y, z: noise.z, source: noise.source, at: now });
+    }
     // The farther away, the vaguer the sense of where it came from.
     const d = Math.hypot(noise.x - self.x, noise.z - self.z);
     const fuzz = d * 0.08;
@@ -288,6 +358,13 @@ export class Bot {
       z: noise.z + (this.rand() - 0.5) * 2 * fuzz,
       at: now,
     };
+  }
+
+  /** Roughly where the bounty, `holder`, is now. Those who want it go after it. */
+  bountyCalled(self: Agent, holder: number, at: Point, now: number): void {
+    const range = this.temper?.bountyRange ?? 0;
+    if (holder === self.id || Math.hypot(at.x - self.x, at.z - self.z) > range) return;
+    this.lure = { x: at.x, y: at.y, z: at.z, at: now };
   }
 
   /** A round from `shooter` passed close or hit nearby. */
@@ -323,6 +400,8 @@ export class Bot {
   /** Look and listen, then decide. Called every few ticks with the seconds since the last call. */
   think(ctx: BotContext, self: Agent, dt: number): void {
     this.now = ctx.time;
+    if (this.born < 0) this.born = ctx.time;
+    this.hp = self.hp;
     if (this.isRoutine(this.state)) this.anchor = { x: self.x, y: self.y, z: self.z };
     this.perceive(ctx, self, dt);
     this.decide(ctx, self);
@@ -383,6 +462,8 @@ export class Bot {
         if (flash) time *= 0.3;
         else if (lit) time *= 0.5;
         if (off > s.fov * 0.3) time *= 1.5;
+        // Everyone is looking out for the bounty.
+        if (a.id === ctx.bounty) time *= BOUNTY_SPOT;
         const was = c.level;
         c.level = Math.min(c.level + dt / time, 1);
         if (!c.visible) c.since = now;
@@ -408,7 +489,8 @@ export class Bot {
         } else if (now - c.seenAt > s.memory) this.contacts.delete(a.id);
       }
       // Footsteps, when not in sight.
-      const loud = !a.onGround ? 0 : speed > WALK_SPEED + 0.5 ? STEPS_SPRINT : speed > CROUCH_SPEED + 0.3 ? STEPS_WALK : 0;
+      const loud = (!a.onGround ? 0 : speed > WALK_SPEED + 0.5 ? STEPS_SPRINT : speed > CROUCH_SPEED + 0.3 ? STEPS_WALK : 0) *
+        (a.id === ctx.bounty ? BOUNTY_LOUD : 1);
       if (d < loud * senses.hearing) this.heard = { x: a.x, y: a.y, z: a.z, at: now };
     }
     for (const id of this.contacts.keys()) {
@@ -427,7 +509,7 @@ export class Bot {
       if (c.level < 1 || !this.picksFight(ctx, self, id, c, now)) continue;
       if (!known || c.seenAt > known[1].seenAt) known = entry;
       if (!c.visible) continue;
-      const score = Math.hypot(c.x - self.x, c.z - self.z) - (id === this.target ? 15 : 0);
+      const score = Math.hypot(c.x - self.x, c.z - self.z) - (id === this.target ? 15 : 0) - this.appeal(ctx, id);
       if (score < bestScore) (best = entry), (bestScore = score);
     }
     const hurt = !this.hurtHandled && now - this.hurtAt < 0.6;
@@ -471,13 +553,102 @@ export class Bot {
       return;
     }
 
+    // Someone else's fight, or the bounty called nearby: go and see who's left. Not once heading out or hurt.
+    if ((this.isRoutine(this.state) && this.state !== 'extract') || this.state === 'stalk') {
+      const lure = self.hp >= WOUNDED ? this.lured(ctx, self) : null;
+      if (lure) {
+        this.stalk(ctx, self, lure);
+        return;
+      }
+    }
+    if (this.isRoutine(this.state) && this.pickUpBag(ctx, self)) return;
+
     if (this.heard && this.heard.at >= this.stateAt && this.state !== 'engage') {
       const h = this.heard;
       this.heard = null;
       const d = Math.hypot(h.x - self.x, h.z - self.z);
-      if (d > (this.role.kind === 'operator' ? OPERATOR_CURIOSITY : GUARD_CURIOSITY)) return;
+      if (d > (this.temper?.curiosity ?? (this.role.kind === 'operator' ? OPERATOR_CURIOSITY : GUARD_CURIOSITY))) return;
       this.investigate(ctx, h);
     }
+  }
+
+  /** How much more a target is worth fighting, in metres nearer: the bounty, and for a hunter, the wounded. */
+  private appeal(ctx: BotContext, id: number): number {
+    if (!this.temper) return 0;
+    const a = ctx.agent(id);
+    if (!a) return 0;
+    return (id === ctx.bounty && !this.temper.shy ? 20 : 0) + (this.personality === 'hunter' ? (MAX_HP - a.hp) * 0.4 : 0);
+  }
+
+  /**
+   * A fight between others it wants to join, or the bounty, not followed yet:
+   * gunfire from two sides close together, or for a hunter any gunfire.
+   */
+  private lured(ctx: BotContext, self: Agent): (Point & { at: number; guards?: boolean }) | null {
+    const t = this.temper;
+    if (!t) return null;
+    let best: (Point & { at: number; guards?: boolean }) | null = null;
+    let bestD = Infinity;
+    for (const g of this.gunfire) {
+      if (g.at <= this.stalkAt || this.now - g.at >= FIGHT_MEMORY) continue;
+      const d = Math.hypot(g.x - self.x, g.z - self.z);
+      if (d > t.thirdParty || d < FIGHT_NEAR || d >= bestD) continue;
+      const fight = t.anyGunfire || this.gunfire.some((o) =>
+        o.source !== g.source && this.now - o.at < FIGHT_MEMORY && Math.hypot(o.x - g.x, o.z - g.z) < FIGHT_SPREAD);
+      if (!fight) continue;
+      // Guards in it bring more guards: that one is watched from farther off.
+      const guards = this.gunfire.some((o) => Math.hypot(o.x - g.x, o.z - g.z) < FIGHT_SPREAD && ctx.agent(o.source)?.team === 'guard');
+      best = { ...g, guards };
+      bestD = d;
+    }
+    if (!best && this.lure && this.lure.at > this.stalkAt) best = this.lure;
+    return best;
+  }
+
+  /**
+   * Close in on a fight or the bounty: stop short, then watch. A fight at an
+   * outpost is watched from outside it, for whoever comes out.
+   */
+  private stalk(ctx: BotContext, self: Agent, at: Point & { at: number; guards?: boolean }): void {
+    this.stalkAt = at.at;
+    const d = Math.hypot(at.x - self.x, at.z - self.z);
+    const standoff = at.guards ? GUARD_STANDOFF : STALK_STANDOFF;
+    if (d < standoff) return;
+    let k = (d - standoff) / d;
+    const o = ctx.world.nearestOutpost(at.x, at.z);
+    if (o && o.dist < OUTPOST_BERTH) {
+      const out = o.outpost;
+      const from = Math.hypot(self.x - out.x, self.z - out.z);
+      if (from < OUTPOST_WATCH) return;
+      k = 1 - OUTPOST_WATCH / from;
+      at = { x: out.x, y: at.y, z: out.z, at: at.at };
+    }
+    const p = ctx.nav.nearestWalkable(self.x + (at.x - self.x) * k, self.z + (at.z - self.z) * k, 10);
+    if (!p) return;
+    this.enter('stalk', true);
+    this.spot = { x: p.x, y: at.y, z: p.z };
+    this.fightAt = { x: at.x, y: at.y, z: at.z };
+  }
+
+  /** A bag worth the detour lies nearby: go through it next. */
+  private pickUpBag(ctx: BotContext, self: Agent): boolean {
+    const t = this.temper;
+    if (!t || t.bagValue === Infinity || this.role.kind !== 'operator' || self.carry >= this.role.greed) return false;
+    for (const b of ctx.bags()) {
+      if (this.bagsTried.has(b.id) || (b.value ?? 0) < t.bagValue) continue;
+      const d = Math.hypot(b.x - self.x, b.z - self.z);
+      if (d > BAG_RANGE) continue;
+      this.bagsTried.add(b.id);
+      // Stand just short of it, on the near side.
+      const k = Math.max(d - 0.8, 0) / (d || 1);
+      const p = ctx.nav.nearestWalkable(self.x + (b.x - self.x) * k, self.z + (b.z - self.z) * k, 3);
+      if (!p) continue;
+      const y = ctx.world.groundHeight(p.x, p.z, ctx.world.floorHeight(p.x, p.z));
+      this.loot.splice(Math.min(this.step, this.loot.length), 0, { x: p.x, y, z: p.z, look: { x: b.x, y: b.y, z: b.z }, bag: b.id });
+      this.enter('loot', true);
+      return true;
+    }
+    return false;
   }
 
   /** Set up behaviour for the current state: where to go, how, and what to look at. */
@@ -526,7 +697,7 @@ export class Bot {
 
       case 'loot': {
         if (role.kind !== 'operator') break;
-        const spot = role.loot[this.step];
+        const spot = this.loot[this.step];
         if (!spot) {
           this.enter('extract');
           break;
@@ -545,6 +716,8 @@ export class Bot {
         const view = ctx.lootView(self);
         const next = view?.items[0];
         if (now >= this.waitUntil) this.nextStop();
+        // The bag was emptied, or someone else got to it.
+        else if (spot.bag !== undefined && view?.id !== spot.bag) this.nextStop();
         else if (!view || !view.searched) this.use = 'hold';
         else if (next !== undefined && (ITEMS[next].use || self.carry + ITEMS[next].mass <= role.greed)) this.use = 'tap';
         else this.nextStop();
@@ -569,6 +742,85 @@ export class Bot {
         this.crouch = true;
         this.lookAround(now, this.yaw);
         if (e.kind === 'call' && e.open && e.pickup < 0) this.use = 'tap';
+        break;
+      }
+
+      case 'hunt': {
+        if (this.routine() !== 'hunt') {
+          this.enter(this.routine());
+          break;
+        }
+        // Roam between places people pass, stopping to listen, until a fight is heard.
+        if (!this.spot || (this.waitUntil > 0 && now >= this.waitUntil)) {
+          this.spot = this.roamPoint(ctx, self);
+          this.waitUntil = 0;
+        }
+        const d = this.spot ? Math.hypot(this.spot.x - self.x, this.spot.z - self.z) : 0;
+        if (this.spot && d > ARRIVE * 2) {
+          this.goTo(this.around(ctx, self, this.spot));
+          this.travel(ctx, self, d);
+          break;
+        }
+        this.goTo(null);
+        this.crouch = true;
+        if (this.waitUntil === 0) this.waitUntil = now + this.between(LOOK_AROUND) * 1.5;
+        this.lookAround(now, this.yaw);
+        break;
+      }
+
+      case 'camp': {
+        if (this.routine() !== 'camp') {
+          this.enter(this.routine());
+          break;
+        }
+        // Wait near the extraction point it'll use, low, watching whoever comes.
+        const e = this.chooseExit(ctx, self);
+        if (!e) {
+          this.enter('extract');
+          break;
+        }
+        if (this.campFor !== this.exit) {
+          this.camp = this.campSpot(ctx, e);
+          this.campFor = this.exit;
+        }
+        if (!this.camp) {
+          this.campDone = true;
+          this.enter('extract');
+          break;
+        }
+        const d = Math.hypot(this.camp.x - self.x, this.camp.z - self.z);
+        if (d > ARRIVE) {
+          this.goTo(this.around(ctx, self, this.camp));
+          this.travel(ctx, self, d);
+          break;
+        }
+        this.goTo(null);
+        this.crouch = true;
+        this.lookAround(now, yawToward(self.x, self.z, e.x, e.z));
+        break;
+      }
+
+      case 'stalk': {
+        const spot = this.spot!;
+        const d = Math.hypot(spot.x - self.x, spot.z - self.z);
+        const fight = this.fightAt ?? spot;
+        const toFight = Math.hypot(fight.x - self.x, fight.z - self.z);
+        if (d > ARRIVE * 2 && this.waitUntil === 0) {
+          this.goTo(spot);
+          // Run while far off, then close in carefully, watching where the shots came from.
+          if (toFight > 90 && self.stamina > 0.3 && !this.temper?.sneaky) this.pace = 'sprint';
+          else if (toFight < 50) {
+            this.pace = this.skill.name === 'easy' ? 'walk' : 'sneak';
+            this.focus = { x: fight.x, y: fight.y + EYE_HEIGHT, z: fight.z };
+          }
+        } else {
+          this.goTo(null);
+          this.crouch = true;
+          if (this.waitUntil === 0) this.waitUntil = now + this.between(LOOK_AROUND) * 2;
+          this.lookAround(now, yawToward(self.x, self.z, fight.x, fight.z));
+          if (now >= this.waitUntil) this.enter(this.routine());
+        }
+        if (now - this.stateAt > STALK_TIME) this.enter(this.routine());
         break;
       }
 
@@ -706,8 +958,47 @@ export class Bot {
   /** How an operator crosses the island `d` metres from where it's going: fast in the open, quietly near outposts. */
   private travel(ctx: BotContext, self: Agent, d: number): void {
     const near = ctx.world.nearestOutpost(self.x, self.z)?.dist ?? Infinity;
-    if (near < OUTPOST_SNEAK && d > ARRIVE * 3) this.pace = 'sneak';
-    else if (d > 30 && self.stamina > 0.4 && near > OUTPOST_WALK) this.pace = 'sprint';
+    const sneaky = !!this.temper?.sneaky;
+    if (near < (sneaky ? OUTPOST_WALK : OUTPOST_SNEAK) && d > ARRIVE * 3) this.pace = 'sneak';
+    else if (d > 30 && self.stamina > 0.4 && near > OUTPOST_WALK && !sneaky) this.pace = 'sprint';
+  }
+
+  /** Somewhere for a hunter to go looking: an extraction point, or a random spot within reach. */
+  private roamPoint(ctx: BotContext, self: Agent): Point | null {
+    const exits = ctx.extracts.filter((e) => Math.hypot(e.x - self.x, e.z - self.z) < HUNT_RANGE * 2);
+    if (exits.length && this.rand() < 0.4) {
+      const e = exits[Math.floor(this.rand() * exits.length)];
+      const p = this.campSpot(ctx, e);
+      if (p) return p;
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const r = HUNT_RANGE * (0.4 + this.rand() * 0.6);
+      const p = ctx.nav.nearestWalkable(self.x + Math.sin(a) * r, self.z + Math.cos(a) * r, 15);
+      if (!p || !ctx.nav.dry(p.x, p.z)) continue;
+      const near = ctx.world.nearestOutpost(p.x, p.z)?.dist ?? Infinity;
+      if (near < OUTPOST_BERTH) continue;
+      return { x: p.x, y: ctx.world.groundHeight(p.x, p.z, ctx.world.floorHeight(p.x, p.z)), z: p.z };
+    }
+    return null;
+  }
+
+  /** A dry spot a little way off an extraction point, one that can see into it from a crouch if there is one. */
+  private campSpot(ctx: BotContext, e: Point): Point | null {
+    const w = ctx.world;
+    const turn = this.rand() * Math.PI * 2;
+    let blind: Point | null = null;
+    for (let i = 0; i < 16; i++) {
+      const a = turn + (i / 16) * Math.PI * 2;
+      const r = CAMP_RANGE[0] + this.rand() * (CAMP_RANGE[1] - CAMP_RANGE[0]);
+      const x = e.x + Math.sin(a) * r;
+      const z = e.z + Math.cos(a) * r;
+      if (!ctx.nav.dry(x, z) || (w.nearestOutpost(x, z)?.dist ?? Infinity) < OUTPOST_BERTH) continue;
+      const y = w.groundHeight(x, z, w.floorHeight(x, z));
+      if (w.hasLineOfSight(x, y + CROUCH_EYE_HEIGHT, z, e.x, e.y + 1, e.z)) return { x, y, z };
+      blind ??= { x, y, z };
+    }
+    return blind;
   }
 
   private nextStop(): void {
@@ -765,13 +1056,19 @@ export class Bot {
    */
   private picksFight(ctx: BotContext, self: Agent, id: number, c: Contact, now: number): boolean {
     if (this.role.kind !== 'operator' || now - c.threatAt < THREAT_TIME) return true;
-    const range = ctx.agent(id)?.team === 'guard' ? OPERATOR_GUARD_RANGE : EFFECTIVE_RANGE[this.primary];
+    let range = OPERATOR_GUARD_RANGE;
+    if (ctx.agent(id)?.team !== 'guard') {
+      range = EFFECTIVE_RANGE[this.primary] * (this.temper?.fightRange ?? 1);
+      if (id === ctx.bounty) range *= BOUNTY_REACH;
+      // A hunter goes after the wounded from farther.
+      else if (this.personality === 'hunter' && (ctx.agent(id)?.hp ?? MAX_HP) < WOUNDED) range *= BOUNTY_REACH;
+    }
     return Math.hypot(c.x - self.x, c.z - self.z) <= range;
   }
 
-  /** An operator facing a guard: it would rather get away than win. */
+  /** An operator facing a guard, or a shy one facing anyone: it would rather get away than win. */
   private slipsAway(ctx: BotContext, id: number): boolean {
-    return this.role.kind === 'operator' && ctx.agent(id)?.team === 'guard';
+    return this.role.kind === 'operator' && (ctx.agent(id)?.team === 'guard' || !!this.temper?.shy);
   }
 
   /**
@@ -781,17 +1078,25 @@ export class Bot {
   private wantsLight(ctx: BotContext, self: Agent): boolean {
     if (!ctx.senses.night) return false;
     if (this.role.kind !== 'operator') return true;
-    if (!this.isRoutine(this.state)) return false;
+    if (!this.isRoutine(this.state) || this.state === 'hunt' || this.state === 'camp' || this.temper?.sneaky) return false;
     return ctx.world.outposts.every((o) => Math.hypot(o.x - self.x, o.z - self.z) > OPERATOR_DARK);
   }
 
   private isRoutine(state: BotState): boolean {
-    return state === 'patrol' || state === 'loot' || state === 'extract';
+    return state === 'patrol' || state === 'loot' || state === 'extract' || state === 'hunt' || state === 'camp';
   }
 
   private routine(): BotState {
     if (this.role.kind !== 'operator') return 'patrol';
-    return this.step < this.role.loot.length ? 'loot' : 'extract';
+    if (this.step < this.loot.length) return 'loot';
+    // Hunters and campers stay on a while once done looting, but leave in time.
+    const t = this.temper;
+    const run = this.born < 0 ? 0 : this.now - this.born;
+    if (t && run < Math.min(t.linger, RUN_TIME - LEAVE_BY) && this.hp >= WOUNDED) {
+      if (this.personality === 'hunter') return 'hunt';
+      if (this.personality === 'camper' && !this.campDone) return 'camp';
+    }
+    return 'extract';
   }
 
   private investigate(ctx: BotContext, at: Point): void {
@@ -940,6 +1245,13 @@ export class Bot {
     if (this.state === 'extract') {
       if (this.exit >= 0) this.unreachable.add(this.exit);
       this.exit = -1;
+    } else if (this.state === 'camp') {
+      // Look for another spot; after a few, just leave.
+      this.campFor = -1;
+      if (this.rand() < 0.4) this.campDone = true;
+      this.enter(this.routine(), true);
+    } else if (this.state === 'hunt') {
+      this.spot = null;
     } else if (this.isRoutine(this.state)) {
       this.step++;
       this.waitUntil = 0;

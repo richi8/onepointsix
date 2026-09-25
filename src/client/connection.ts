@@ -1,7 +1,7 @@
 import { INTERP_DELAY, SERVER_DT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp } from '../shared/geom.ts';
 import type {
-  BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
+  BagSnap, BountyView, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
 } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { TAPE_TIME } from '../shared/tape.ts';
@@ -68,6 +68,7 @@ export class Connection {
   run: RunView | null = null;
   extracts: ExtractView[] = [];
   bags: BagSnap[] = [];
+  bounty: BountyView | null = null;
   /** Set once the run has ended: no more commands are sent. */
   over = false;
   /** Panels down right now, as the server says; what the world shows can differ while a replay plays. */
@@ -188,7 +189,8 @@ export class Connection {
           this.run = msg.run;
           this.extracts = msg.extracts;
           this.bags = msg.bags;
-          this.recorder?.snapshot(msg.tick * SERVER_DT, msg.players, msg.grenades, msg.run, msg.extracts, msg.bags);
+          this.bounty = msg.bounty;
+          this.recorder?.snapshot(msg.tick * SERVER_DT, msg.players, msg.grenades, msg.run, msg.extracts, msg.bags, msg.bounty);
         }
         break;
       case 'events':

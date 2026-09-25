@@ -204,3 +204,11 @@ export const Btn = {
   /** Held while the flashlight is on; the client keeps the toggle. It only lights anything after dark. */
   Light: 32768,
 } as const;
+
+// The bounty: the operator carrying the most loot is hunted.
+/** Loot worth at least this much makes its carrier the bounty. */
+export const BOUNTY_MIN = 3000;
+/** Seconds between calls of roughly where the bounty is. */
+export const BOUNTY_PING = 20;
+/** How far off the called spot can be from where the bounty really is, metres. */
+export const BOUNTY_FUZZ = 15;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CMD_DT, MAX_PITCH, OPERATOR_CAPACITY, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
+import { CMD_DT, MAX_PITCH, OPERATOR_CAPACITY, SERVER_DT, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
 import { conditionsLabel, sensesOf, TIMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, smoothstep, wrapAngle } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
@@ -32,6 +32,7 @@ import { RunLog } from './runlog.ts';
 import { Replay, SPEEDS } from './replay.ts';
 import { ReplayBar, type ReplayCamera } from './replaybar.ts';
 import { decodeReplay, encodeReplay, RunRecorder, type ReplayData } from './replayfile.ts';
+import { RivalHud } from './rivalhud.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
 import { surfaceMaterial } from './surfaces.ts';
@@ -120,6 +121,7 @@ const bodies = new Bodies(scene, world);
 const bags = new Bags(scene);
 const hud = new Hud();
 const runHud = new RunHud(world);
+const rivalHud = new RivalHud(world);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
 sfx.conditions = config;
@@ -1028,6 +1030,9 @@ function onEvent(e: GameEvent, replayed = false): void {
     case 'extract':
       hud.extract(e, meId);
       break;
+    case 'bounty':
+      hud.bounty(e, meId);
+      break;
     case 'call':
       hud.call(e, extractNames[e.index], meId);
       sfx.call();
@@ -1307,6 +1312,9 @@ renderer.setAnimationLoop(() => {
     else runHud.update(null, [], 0, 0, 0, camera);
     if (!paused.hidden) runHud.updatePause(conn.run, pauseStanding());
   }
+  if (rep) rivalHud.update(rep.bags(), rep.bounty(), rep.id, free ? null : camera.position, rep.time, camera);
+  else if (conn && !cam && me && !conn.over) rivalHud.update(conn.bags, conn.bounty, conn.id, camera.position, conn.lastTick * SERVER_DT, camera);
+  else rivalHud.update([], null, 0, null, 0, camera);
   const contracts = rep ? (rep.run()?.contracts ?? []) : conn && !conn.over && !cam ? (conn.run?.contracts ?? []) : [];
   contractProps.update(contracts);
 

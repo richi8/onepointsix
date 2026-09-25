@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Rivals',
+    notes: [
+      'The other operators each play their own way. Rats sneak about, loot and keep out of fights. Hunters follow gunfire to finish off whoever is left, and go after the wounded. Campers wait near an extraction point for whoever comes to leave. Looters raid the outposts’ crates and pick over the bags fights leave behind.',
+      'Gunfire draws operators in: a fight between two others brings a third to see who is left, watching from a distance, and a fight at an outpost is watched from outside it.',
+      'The bounty: whoever carries the most loot, at least $3,000, carries the bounty. Everyone is told who, and every 20 seconds roughly where they are, shown by a marker for a few seconds. They are also spotted and heard more easily, and other operators pick fights with them from farther away. The line under the clock says who has it, or that you do.',
+      'Bags on the ground show what they hold from up to 40 m away, when you can see them. The kill feed marks the bounty being killed.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Replays',
     notes: [
       'Every run is recorded. When it ends, Watch replay plays the whole run back through your own eyes, exactly as you played it, with your HUD.',

@@ -5,6 +5,7 @@ import { BOLT, RIFLE } from '../shared/weapons.ts';
 import { watchtower, type Outpost, type Point, type World } from '../shared/world.ts';
 import type { LootSpot, Post, Role } from './bot.ts';
 import type { NavGrid } from './nav.ts';
+import { PERSONALITIES, TEMPERS, type Personality } from './personality.ts';
 import type { Difficulty } from './skill.ts';
 
 // Who is on the island besides the players, and what each of them is for:
@@ -36,10 +37,6 @@ const PATROL_STANDOFF = 26;
 /** Operators drop in at least this far from outposts and from other players. */
 const INSERT_FROM_OUTPOSTS = 130;
 const INSERT_FROM_PLAYERS = 100;
-/** Operator bots willing to carry this many kg or more also go for the guarded crates in outposts. */
-const RAIDER_GREED = 26;
-/** Crates searched per run. */
-const LOOT_STOPS: [number, number] = [1, 3];
 /** A response squad sets off from this far from the extraction point it answers. */
 const RESPONSE_DISTANCE: [number, number] = [150, 190];
 const RESPONSE_LEASH = 40;
@@ -130,14 +127,19 @@ export function insertionPoint(world: World, nav: NavGrid, rand: () => number, a
  * the way. It picks an open extraction point when it's done. `avoid` are
  * players to keep clear of; `taken` are callsigns already in use.
  */
-export function planOperator(world: World, nav: NavGrid, rand: () => number, avoid: Point[], taken: Set<string>): BotPlan {
+export function planOperator(
+  world: World, nav: NavGrid, rand: () => number, avoid: Point[], taken: Set<string>, personality?: Personality,
+): BotPlan {
   const spawn = insertionPoint(world, nav, rand, avoid);
+  personality ??= PERSONALITIES[Math.floor(rand() * PERSONALITIES.length)];
+  const temper = TEMPERS[personality];
 
-  // How much it's willing to carry, kg. Greedy ones also raid the outposts' crates.
-  const greed = 12 + rand() * 22;
-  const crates = lootCrates(world).filter((c) => !c.rich || greed >= RAIDER_GREED).map((c) => c.box);
+  // How much it's willing to carry, kg. Raiders also go for the outposts' crates.
+  const greed = temper.greed[0] + rand() * (temper.greed[1] - temper.greed[0]);
+  const crates = lootCrates(world).filter((c) => !c.rich || temper.raids).map((c) => c.box);
   const loot: LootSpot[] = [];
-  const stops = LOOT_STOPS[0] + Math.floor(rand() * (LOOT_STOPS[1] - LOOT_STOPS[0] + 1));
+  const [fewest, most] = temper.stops;
+  const stops = fewest + Math.floor(rand() * (most - fewest + 1));
   let from: Point = spawn;
   const used = new Set<number>();
   for (let s = 0; s < stops; s++) {
@@ -162,7 +164,7 @@ export function planOperator(world: World, nav: NavGrid, rand: () => number, avo
   const skill: Difficulty = r < 0.2 ? 'easy' : r < 0.75 ? 'normal' : 'hard';
   const primary = skill !== 'easy' && rand() < 0.2 ? BOLT : RIFLE;
   const yaw = loot[0] ? yawToward(spawn.x, spawn.z, loot[0].x, loot[0].z) : rand() * Math.PI * 2;
-  return { name, role: { kind: 'operator', loot, greed }, skill, primary, spawn: { ...spawn, yaw } };
+  return { name, role: { kind: 'operator', loot, greed, personality }, skill, primary, spawn: { ...spawn, yaw } };
 }
 
 /**

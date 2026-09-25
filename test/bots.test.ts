@@ -46,7 +46,7 @@ function watch(
   const all = [self, ...others];
   const ctx: BotContext = {
     world, nav, time: 0, agents: all, agent: (id) => all.find((a) => a.id === id), pathBudget: 10, callout: () => {},
-    extracts: [], lootView: () => null, senses,
+    extracts: [], lootView: () => null, senses, bounty: 0, bags: () => [],
   };
   before?.(bot, ctx);
   for (let t = 0; t < seconds; t += 0.1) {
@@ -241,7 +241,7 @@ describe('operator bots', () => {
   });
 
   it('loot, extract and are replaced by a new bot', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 1 });
+    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 1, personality: 'looter' });
     const [op] = server.bots();
     expect(op.bot.role.kind === 'operator' && op.bot.role.loot.length).toBeGreaterThan(0);
     let extract: GameEvent | undefined;

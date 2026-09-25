@@ -107,6 +107,9 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
 - States: patrol, investigate, engage, take cover, flank
 - Perception through sight and hearing (the noise system)
 - Difficulty levels, and special "commander" bots used as contract targets
+- Operator bot personalities (chunk 18): the rat, hunter, camper and looter, each with its own
+  numbers in `src/server/personality.ts`
+- The bounty (chunk 18): the operator carrying the most loot is called out to everyone
 
 ### Shareable worlds and leaderboards
 - The world config (seed, time of day and weather) is encoded in the URL.
@@ -186,7 +189,7 @@ the Known Issues named in its scope.
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | **Done** (60 fps checked on an M3 Pro only, and slow hardware only simulated) |
 | 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards stay universal, one per island and mode whatever the conditions (changed from "per condition" at the user's request) | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | **Done** |
 | 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | **Done** (the Save and Watch buttons after a real run were checked in the browser with a simulated run end only) |
-| 18 | **Rivals** | Operator bot personalities: the *rat* (sneaks, loots, avoids fights), the *hunter* (follows gunfire to find wounded operators), the *camper* (waits near extraction points) and the *looter* (goes for high-value crates); third-partying, so operators are drawn to fights between others; a bounty on the operator carrying the most value, who is marked or heard more easily; a kill feed; bags left by bodies show their value before you open them. Personalities carry over as fill bots in future multiplayer | In Mixed mode, meeting another operator plays out differently depending on who they are, and a big haul makes you feel hunted | Not started |
+| 18 | **Rivals** | Operator bot personalities: the *rat* (sneaks, loots, avoids fights), the *hunter* (follows gunfire to find wounded operators), the *camper* (waits near extraction points) and the *looter* (goes for high-value crates); third-partying, so operators are drawn to fights between others; a bounty on the operator carrying the most value, who is marked or heard more easily; a kill feed; bags left by bodies show their value before you open them. Personalities carry over as fill bots in future multiplayer | In Mixed mode, meeting another operator plays out differently depending on who they are, and a big haul makes you feel hunted | **Done** (checked by bot playtests and a headless screenshot with a faked bounty; nobody has played against the personalities yet) |
 
 ## Known Issues
 
@@ -677,6 +680,36 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   faked in the page, since a run can't be ended on demand in the browser. Dropping a file was only
   wired, not tried.
 
+### Rivals
+- **You can't tell a bot's personality except by how it plays** (18). Names, the kill feed and
+  the results screen don't say whether it was a rat, hunter, camper or looter.
+- **Operator bots get out less often** (18). In a 30-minute, 6-island bot playtest 13% of their
+  runs extract, down from 20% before the personalities: rats 20%, looters 14%, campers 11%,
+  hunters 7%. Hunters and campers stay on the island longer by design (up to 4 and 5 minutes into
+  the run, or until below 60 health), and guards still do most of the killing. It was tuned from
+  hunters at 0%: they now watch fights from 40 m off, 90 m if guards are in it, and 135 m from the
+  middle of an outpost, and drop out of hunting when hurt.
+- **The kill feed was already there** (18). It came with the run loop; this chunk only marks the
+  bounty being killed, and adds a row when someone takes the bounty.
+- **Bots know more than they should** (18). They know what every bag within 50 m holds without
+  seeing it, and a bot joining a fight goes for exactly where the shots came from, not a guess.
+  Everyone is spotted faster and heard farther while carrying the bounty, whether or not the bot
+  was told about it.
+- **Killing the bounty pays nothing extra** (18). The reward is their loot, left in their bag. The
+  bounty goes to whoever carries the most (at least $3,000), keeps to its carrier on a tie, and is
+  called every 20 s within 15 m of where they are. It shows in the HUD for 8 s after each call.
+- **Bag values show through bushes and grass** (18): the tags only check that walls and terrain
+  don't hide the bag, up to 40 m.
+- **Campers may wait where they can't see the extraction point** (18). A spot that can see into it
+  from a crouch is preferred, but if none of 16 tries finds one, any dry spot 25–45 m off will do.
+- **Replays gained the bounty without a new file version** (18). It's an optional part of the file,
+  so older replays still play, with no bounty and no bag values.
+- **Snapshots are bigger** (18): each carries the bounty, and each bag its value.
+- **The rivals HUD was checked by one screenshot** (18): the bounty marker, the line under the
+  clock and a bag's value, with the bounty and the bag faked in the page in headless Chrome. The
+  "you carry the bounty" line and the feed rows were not seen. The bots' personalities, the bounty
+  and bag values on the server are covered by tests.
+
 ### Licensing
 - **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but
   shipping the raw `soldier.glb` in a public repository and site may count as redistributing the
@@ -795,6 +828,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   universal. A link still carries its conditions, so a challenge is played as it was set.
 - **Conditions are fixed presets** (16): day, dusk or night, and clear, rain or fog, fixed for a
   game. The time doesn't pass and the weather doesn't change during a run.
+- **Operator bots' personalities are picked at random** (18), a quarter each, and a test or a
+  playtest can fix them with the server's `personality` option. The bounty has no score of its
+  own; killing its carrier gets you their loot.
 - **Share links carry the sharer's score.** With no backend, leaderboards live in each browser,
   so the link encodes the world config plus the sharer's name and score as the target to beat.
 - **Hosting:** a static site (e.g. GitHub Pages or Cloudflare Pages) is needed in chunk 10 so

@@ -140,6 +140,12 @@ export class Hud {
     const how = document.createElement('em');
     how.textContent = `${weaponName(e.weapon)}${e.head ? ' · headshot' : ''}`;
     row.append(how, victim);
+    if (e.bounty) {
+      const b = document.createElement('em');
+      b.className = 'bounty';
+      b.textContent = 'bounty';
+      row.append(b);
+    }
     if (e.killer === me || e.victim === me) row.className = 'you';
     this.pushFeed(row);
     if (e.victim === me) this.killer = e.killer === me ? '' : e.killerName;
@@ -153,6 +159,18 @@ export class Hud {
     how.textContent = `extracted · $${e.value.toLocaleString('en-US')}`;
     row.append(how);
     row.className = e.id === me ? 'you extract' : 'extract';
+    this.pushFeed(row);
+  }
+
+  /** Someone now carries the bounty; nobody losing it is told by the kill or extraction. */
+  bounty(e: Extract<GameEvent, { k: 'bounty' }>, me: number): void {
+    if (!e.id) return;
+    const row = document.createElement('div');
+    row.append(e.id === me ? 'You' : e.name);
+    const how = document.createElement('em');
+    how.textContent = `${e.id === me ? 'carry' : 'carries'} the bounty · $${e.value.toLocaleString('en-US')}`;
+    row.append(how);
+    row.className = e.id === me ? 'you bounty' : 'bounty';
     this.pushFeed(row);
   }
 

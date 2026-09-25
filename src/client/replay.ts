@@ -1,4 +1,4 @@
-import type { BagSnap, ExtractView, GameEvent, GrenadeSnap, PlayerSnap, RunView } from '../shared/protocol.ts';
+import type { BagSnap, BountyView, ExtractView, GameEvent, GrenadeSnap, PlayerSnap, RunView } from '../shared/protocol.ts';
 import { motionOf, type PlayerState } from '../shared/sim.ts';
 import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
@@ -121,6 +121,10 @@ export class Replay {
 
   bags(): BagSnap[] {
     return latest(this.data.bags, this.time)?.[1] ?? [];
+  }
+
+  bounty(): BountyView | null {
+    return latest(this.data.bounty ?? [], this.time)?.[1] ?? null;
   }
 
   /** Panels down at the time shown. */

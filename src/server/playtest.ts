@@ -28,6 +28,8 @@ interface Played {
 
 const played: Played[] = [];
 const kills = new Map<string, number>();
+/** Operators who became the bounty, and how their runs ended. */
+const bounty = { held: 0, killed: 0, extracted: 0 };
 const start = performance.now();
 for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
   const server = new GameServer(seed, { ...MODES.offline.options, conditions: { time, weather } });
@@ -35,8 +37,15 @@ for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
   server.onRunEnd = (e, plan) => {
     if (plan) played.push({ record: runRecord(e, { seed, time, weather }, 'offline', (i) => names[i]), plan });
   };
+  let holder = 0;
   server.onEvent = (e) => {
+    if (e.k === 'bounty') {
+      if (e.id && e.id !== holder) bounty.held++;
+      holder = e.id;
+    }
+    if (e.k === 'extract' && e.id === holder) bounty.extracted++;
     if (e.k !== 'kill') return;
+    if (e.bounty) bounty.killed++;
     const team = (id: number) => server.bots().find((b) => b.id === id)?.team ?? '?';
     const key = `${team(e.killer)} killed ${team(e.victim)}`;
     kills.set(key, (kills.get(key) ?? 0) + 1);
@@ -49,7 +58,8 @@ const seconds = (performance.now() - start) / 1000;
 console.log(`${islands} islands from seed ${firstSeed} (${time}, ${weather}), ${minutes} min each, simulated in ${seconds.toFixed(0)} s`);
 console.log('Runs still going when the game stopped are left out, so long runs are slightly undercounted.\n');
 console.log(summaryText(summarize(played.map((p) => p.record))));
-console.log(`\nkills per hour of game: ${[...kills].map(([k, n]) => `${k} ${(n / ((islands * minutes) / 60)).toFixed(0)}`).join(', ')}`);
+console.log(`\nbounties: ${bounty.held} (${(bounty.held / ((islands * minutes) / 60)).toFixed(0)} per hour), ${bounty.killed} killed, ${bounty.extracted} got out`);
+console.log(`kills per hour of game: ${[...kills].map(([k, n]) => `${k} ${(n / ((islands * minutes) / 60)).toFixed(0)}`).join(', ')}`);
 
 /** One line per group of runs, to compare ways of playing. */
 function compare(title: string, key: (p: Played) => string): void {
@@ -75,6 +85,7 @@ function fmt(t: number): string {
   return `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
 }
 
+compare('personality', (p) => (p.plan.role.kind === 'operator' ? (p.plan.role.personality ?? '?') : '?'));
 compare('skill', (p) => p.plan.skill);
 compare('weapon', (p) => WEAPONS[p.plan.primary].name);
 compare('greed', (p) => {

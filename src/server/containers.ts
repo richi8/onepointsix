@@ -1,6 +1,6 @@
 import { BAG_TIME, CRATE_RESTOCK, INTERACT_REACH } from '../shared/constants.ts';
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
-import { lootCrates, rollItems, sortForTaking } from '../shared/loot.ts';
+import { lootCrates, lootValue, rollItems, sortForTaking } from '../shared/loot.ts';
 import type { BagSnap } from '../shared/protocol.ts';
 import type { World } from '../shared/world.ts';
 
@@ -167,7 +167,7 @@ export class Containers {
   bags(): BagSnap[] {
     const out: BagSnap[] = [];
     for (const c of this.all.values()) {
-      if (c.kind === 'bag') out.push({ id: c.id, x: (c.minX + c.maxX) / 2, y: c.minY, z: (c.minZ + c.maxZ) / 2 });
+      if (c.kind === 'bag') out.push({ id: c.id, x: (c.minX + c.maxX) / 2, y: c.minY, z: (c.minZ + c.maxZ) / 2, value: lootValue(c.items) });
     }
     return out;
   }

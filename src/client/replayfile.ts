@@ -1,7 +1,7 @@
 import { CMD_RATE, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { wrapAngle } from '../shared/geom.ts';
 import type {
-  Action, BagSnap, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, Motion, PlayerSnap, RunView,
+  Action, BagSnap, BountyView, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, Motion, PlayerSnap, RunView,
 } from '../shared/protocol.ts';
 import { copyState, spawnState, type PlayerState } from '../shared/sim.ts';
 import type { TapeClip, TapeKey } from '../shared/tape.ts';
@@ -45,6 +45,8 @@ export interface ReplayData {
   runs: Timed<RunView>[];
   extracts: Timed<ExtractView[]>[];
   bags: Timed<BagSnap[]>[];
+  /** Who carried the bounty and where they were called, whenever it changed; missing in replays from before the bounty. */
+  bounty?: Timed<BountyView | null>[];
   /** Every event the player was sent, but for the run's end and the replays. */
   events: Timed<GameEvent>[];
 }
@@ -67,8 +69,9 @@ export class RunRecorder {
   private readonly runs: Timed<RunView>[] = [];
   private readonly extracts: Timed<ExtractView[]>[] = [];
   private readonly bags: Timed<BagSnap[]>[] = [];
+  private readonly bounty: Timed<BountyView | null>[] = [];
   private readonly events: Timed<GameEvent>[] = [];
-  private shown = { run: '', extracts: '', bags: '' };
+  private shown = { run: '', extracts: '', bags: '', bounty: '' };
   private tape: TapeClip | null = null;
   private end: RunEnd | null = null;
   private endAt = 0;
@@ -87,7 +90,10 @@ export class RunRecorder {
     this.broken = [...broken];
   }
 
-  snapshot(time: number, players: readonly PlayerSnap[], grenades: readonly GrenadeSnap[], run: RunView | null, extracts: readonly ExtractView[], bags: readonly BagSnap[]): void {
+  snapshot(
+    time: number, players: readonly PlayerSnap[], grenades: readonly GrenadeSnap[], run: RunView | null, extracts: readonly ExtractView[],
+    bags: readonly BagSnap[], bounty: BountyView | null = null,
+  ): void {
     this.lastAt = time;
     if (time - this.lastFrame >= FRAME_DT - 1e-6) {
       this.lastFrame = time;
@@ -110,6 +116,11 @@ export class RunRecorder {
     if (b !== this.shown.bags) {
       this.shown.bags = b;
       this.bags.push([time, rounded([...bags])]);
+    }
+    const k = bounty ? `${bounty.id}|${bounty.at}|${bounty.value}` : '';
+    if (k !== this.shown.bounty) {
+      this.shown.bounty = k;
+      this.bounty.push([time, bounty && rounded(bounty)]);
     }
   }
 
@@ -134,7 +145,7 @@ export class RunRecorder {
     return {
       world: { ...this.world }, mode: this.mode, name: this.name, id: this.id, date: this.date, build: this.build,
       end: this.end, from, to, broken: [...this.broken], tape: this.tape, frames: this.frames.data(),
-      runs: [...this.runs], extracts: [...this.extracts], bags: [...this.bags], events: this.events.filter(([at]) => at <= to),
+      runs: [...this.runs], extracts: [...this.extracts], bags: [...this.bags], bounty: [...this.bounty], events: this.events.filter(([at]) => at <= to),
     };
   }
 }

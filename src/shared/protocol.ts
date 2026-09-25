@@ -101,7 +101,13 @@ export type GameEvent =
   // To the victim: they took `damage` from a shooter at (x, z).
   | { k: 'hurt'; damage: number; x: number; z: number }
   // To everyone.
-  | { k: 'kill'; killer: number; victim: number; killerName: string; victimName: string; weapon: number; head: boolean }
+  | {
+      k: 'kill'; killer: number; victim: number; killerName: string; victimName: string; weapon: number; head: boolean;
+      /** The victim carried the bounty. */
+      bounty?: boolean;
+    }
+  // To everyone: `id` now carries the bounty, loot worth `value`, or with id 0, nobody does.
+  | { k: 'bounty'; id: number; name: string; value: number }
   // To everyone: an operator left the island with loot worth `value`.
   | { k: 'extract'; id: number; name: string; value: number }
   // To everyone: someone called in a pickup at extraction point `index`.
@@ -210,6 +216,20 @@ export interface BagSnap {
   x: number;
   y: number;
   z: number;
+  /** What the loot in it is worth; missing in replays from before it was sent. */
+  value?: number;
+}
+
+/** The bounty: who carries the most loot, and roughly where they were last called. */
+export interface BountyView {
+  id: number;
+  name: string;
+  /** What they carry now. */
+  value: number;
+  /** Where they were called, give or take BOUNTY_FUZZ, and the server time of the call. */
+  x: number;
+  z: number;
+  at: number;
 }
 
 export type ServerMsg =
@@ -222,6 +242,8 @@ export type ServerMsg =
   | {
       t: 'snapshot'; tick: number; ack: number; you: PlayerState; players: PlayerSnap[];
       run: RunView | null; extracts: ExtractView[]; bags: BagSnap[]; grenades: GrenadeSnap[];
+      /** Null while nobody carries enough to be the bounty. */
+      bounty: BountyView | null;
     }
   | { t: 'events'; tick: number; events: GameEvent[] }
   | { t: 'pong'; time: number };
