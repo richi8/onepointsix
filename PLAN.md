@@ -846,6 +846,16 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - Global leaderboards and seasonal featured islands
 - **A more realistic soldier model** to replace Quaternius's stylized one (after Phase 3)
 
+### Future game ideas
+Layers on top of the core loop, which stays as it is: die = score 0, scores stay comparable, and
+extraction stays as hard as it is.
+- **Push on:** after extracting, bank the score or drop straight onto the next island of a fixed
+  chain (3–5 islands, built from the seed), keeping what you carry. Dying anywhere in the chain
+  scores 0. Each chain length has its own board, and the chain goes in the link
+  (e.g. `?world=4242&chain=3`).
+- **Daily island:** the island and conditions are built from the date, so everyone plays the
+  same run that day, and "today's score" links compare fairly.
+
 ## Decisions
 - **No slide:** removed after chunk 14 at the user's request. Crouching while sprinting just
   crouches; `Motion` no longer has `'slide'`.
