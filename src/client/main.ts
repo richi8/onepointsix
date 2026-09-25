@@ -55,8 +55,6 @@ const SHAKE_DECAY = 5;
 /** Seconds before the loading screen offers to play without waiting for the textures. */
 const SKIP_LOADING_AFTER = 8;
 const MODE_NAMES: Record<Mode, string> = { mixed: 'Mixed', pve: 'PvE', range: 'Range' };
-/** Milliseconds after the pointer is freed during which Esc is taken as the same press. */
-const ESC_GRACE = 300;
 /** Leaderboard rows shown on the menu. */
 const BOARD_SHOWN = 5;
 /** Islands from "New island" get seeds up to this, so their numbers stay short. */
@@ -540,21 +538,9 @@ document.getElementById('again')!.onclick = () => {
 };
 document.getElementById('to-menu')!.onclick = toMenu;
 
-/** When the pointer was last freed, so the Esc that freed it doesn't also close the dashboard. */
-let unlockedAt = 0;
 input.onLockChange = (locked) => {
-  if (!locked) unlockedAt = performance.now();
-  paused.classList.remove('closed');
   if (conn && !conn.over) paused.hidden = locked;
 };
-// Esc closes the dashboard too. Browsers won't take the mouse back from the
-// Esc key, so if the lock is refused the dashboard folds away to a prompt,
-// and Esc again brings it back.
-window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Escape' || paused.hidden || performance.now() - unlockedAt < ESC_GRACE) return;
-  if (paused.classList.contains('closed')) paused.classList.remove('closed');
-  else void input.lock().then((ok) => ok || paused.classList.add('closed'));
-});
 // Clicking anywhere but the Leave button resumes.
 paused.onclick = (e) => {
   if (e.target !== leaveButton) input.lock();

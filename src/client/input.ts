@@ -104,34 +104,14 @@ export class Input {
     return this.locked ? b : 0;
   }
 
-  /**
-   * Must be called from a user gesture (click or key press). Resolves to
-   * whether the pointer got locked: re-locking too soon after Esc, or from
-   * the Esc key itself, is refused.
-   */
-  lock(): Promise<boolean> {
-    const el = this.element;
+  /** Must be called from a user gesture (click or key press). */
+  lock(): void {
     // Raw mouse input skips OS acceleration where supported; fall back if not.
-    const raw = el.requestPointerLock({ unadjustedMovement: true });
-    if (!raw) return lockAnswer(el);
-    return raw.then(
-      () => true,
-      () => (el.requestPointerLock() ?? lockAnswer(el)).then(() => document.pointerLockElement === el, () => false),
-    );
+    // Re-locking too soon after Esc is refused; the user just clicks again.
+    this.element
+      .requestPointerLock({ unadjustedMovement: true })
+      ?.catch(() => this.element.requestPointerLock()?.catch(() => {}));
   }
-}
-
-/** Whether `el` got the lock, from the events, for browsers whose request returns no promise (Safari). */
-function lockAnswer(el: HTMLElement): Promise<boolean> {
-  return new Promise((resolve) => {
-    const done = (): void => {
-      document.removeEventListener('pointerlockchange', done);
-      document.removeEventListener('pointerlockerror', done);
-      resolve(document.pointerLockElement === el);
-    };
-    document.addEventListener('pointerlockchange', done);
-    document.addEventListener('pointerlockerror', done);
-  });
 }
 
 function isTyping(e: KeyboardEvent): boolean {

@@ -517,9 +517,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   with no script and no class names that ad blockers match.
 - **Esc can't always close the run dashboard straight back into the game** (run dashboard
   commit). Browsers don't count Esc as a user gesture, and Chrome refuses to re-lock the mouse
-  for about a second after Esc freed it. When the lock is refused, the dashboard folds away to
-  a "Click to resume" prompt instead. The path where the lock succeeds is untested, because
-  headless Chrome never grants pointer lock.
+  for about a second after Esc freed it, so a refused lock left a "Click to resume" prompt anyway.
+  **Resolved** (by removal): Esc no longer closes the dashboard; clicking anywhere does. Holding
+  the dashboard on Tab, or claiming Esc with Keyboard Lock in fullscreen, would bring it back.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
