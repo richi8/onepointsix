@@ -164,6 +164,77 @@ Everything runs locally in the browser; there is no backend.
 | 9 | **Look and sound** | Realistic assets (glTF, PBR, animations), positional audio, footsteps, muzzle flash, performance pass | It looks and sounds like a real game |
 | 10 | **Shareable worlds** | World config and sharer name + score in the URL, per-world local leaderboard, share button, static hosting, death cam from recorded inputs | You send a link and a friend gets the same island with your score to beat |
 
+## Known Issues
+
+Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
+leaves here. Each item notes the chunk it came from, and fixed items are removed.
+
+### Look and animation
+- **No death animation or ragdoll** (9). Bodies topple backward stiffly around their feet and
+  can sink into the ground or walls.
+- **Third-person movement has no animations beyond idle, walk and run** (9). Crouch-walking is
+  a bent walk posed in code. Sliding, mantling, jumping and falling still play the walk or run
+  clip.
+- **Actions aren't animated in third person** (9). Reloading, switching weapons and throwing
+  grenades don't show on other players.
+- **Third-person guns don't show suppressors** (9), although the viewmodel does.
+- **Distant bodies animate at 12 Hz and skip hand IK** (9), beyond 90 m. It's cheaper, but
+  scoped players may notice the stutter.
+- **One soldier model for every side, told apart only by tint** (9). Commanders look like any
+  other guard.
+- **The hit flash lights the whole body** (9), not just where the round landed.
+- **The body lean is only an approximation of the lean hitbox** (9). The head ends up roughly
+  over its hit sphere, but not exactly.
+- **First-person hands are boxes** (9), with no arms or animated reload.
+- **Buildings are still boxes** (9): the walls, watchtowers, containers and crates are textured,
+  but the geometry is primitive. There are no doors, windows or interiors.
+- **Trees are procedural** (9), because Poly Haven's tree models are hundreds of MB each. They
+  have no LOD or impostors, and they don't sway.
+- **There is no ground cover** (9): no grass blades, bushes or small rocks near the player.
+- **Water is a flat, see-through plane** (9), with no waves, reflections, shoreline foam or
+  underwater effect.
+- **Debris is coloured with each layer's average** (9), not textured like the panel it came
+  from.
+- **Shadows use one fixed 2048 px map** (9), with no cascades, so distant shadows are coarse or
+  missing.
+
+### Sound
+- **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
+  audio, so recorded samples need a new source.
+- **Sound ignores walls** (9): there's no occlusion and no reverb, and footsteps can be heard
+  through walls.
+- **There's no ambient sound** (9): no wind, sea, birds or distant fighting.
+- **Surface detection for footsteps is rough** (9). It uses thresholds on height, slope and
+  distance to an outpost, and doesn't match the painted terrain exactly.
+- **No sliding scrape** (9). Slides are silent.
+
+### Performance and loading
+- **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat
+  colours, and the swap is visible.
+- **Assets are uncompressed** (9): JPEG textures instead of KTX2, and glTF without Draco or
+  meshopt. The soldier is 2 MB and the sky 1.4 MB, about 6 MB in total.
+- **Building the texture arrays can stall the page** (9). It uses canvas `getImageData` on the
+  main thread at startup.
+- **The JavaScript bundle is over 500 kB** (9), with no code splitting. The build warns about
+  it.
+- **The terrain is one full-resolution mesh**, with no LOD.
+- **Adaptive resolution is untested on slow hardware** (9) and could flip back and forth.
+- **Every positional sound creates its own panner node** (9), released on a timer. Heavy
+  fights create a lot of them.
+
+### Licensing
+- **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but
+  shipping the raw `soldier.glb` in a public repository and site may count as redistributing the
+  asset itself. Replace it with a CC0 character (e.g. Quaternius) if in doubt.
+
+### Code and testing
+- **The texture layer list is duplicated** (9) in `scripts/fetch-assets.mjs` and
+  `src/client/assets.ts`, and must be kept in step by hand.
+- **The client's rendering, animation and audio have no automated tests** (9). They were checked
+  by screenshots only, and nobody has listened to the audio.
+- **Gun fitting uses hand-measured fractions** (9) in `src/client/guns.ts`, so a new model needs
+  measuring again.
+
 ## Future
 - **Multiplayer**
   - Node server that reuses `server/`, with WebSocket first
