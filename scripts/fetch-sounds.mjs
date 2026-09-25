@@ -161,7 +161,11 @@ const wav = join(CACHE, 'sounds.wav');
 writeFileSync(wav, writeWav(all));
 execFileSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '64000', wav, join(OUT, 'sounds.m4a')]);
 const round = (v) => Math.round(v * 1e5) / 1e5;
+// afconvert's AAC starts with 2112 samples of priming. The file says so, but
+// not every browser trims them; the game checks (see bankLead in soundlist.ts).
 writeFileSync(join(OUT, 'sounds.json'), `${JSON.stringify({
   clips: Object.fromEntries(Object.entries(clips).map(([k, v]) => [k, v.map(([a, d]) => [round(a), round(d)])])),
+  length: round(at / RATE),
+  priming: round(2112 / RATE),
 })}\n`);
 console.log(`${(at / RATE).toFixed(1)} s packed`);

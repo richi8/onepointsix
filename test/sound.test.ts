@@ -5,7 +5,7 @@ import { World } from '../src/shared/world.ts';
 import { GROUND_LAYERS, groundLayerAt, groundWeights, terrainNormalsY } from '../src/shared/ground.ts';
 import { enclosure, nearestWater, occlusion, woodland } from '../src/client/hearing.ts';
 import { Layer } from '../src/shared/layers.ts';
-import { SOUNDS, type SoundBank } from '../src/client/soundlist.ts';
+import { bankLead, SOUNDS, type SoundBank } from '../src/client/soundlist.ts';
 import packed from '../public/assets/sounds.json';
 import { Surfaces } from '../src/client/surface.ts';
 import { VoicePool } from '../src/client/voices.ts';
@@ -151,5 +151,16 @@ describe('sound bank', () => {
   it('keeps the clips apart in the packed file', () => {
     const all = Object.values(bank.clips).flat().sort((a, b) => a[0] - b[0]);
     for (let i = 1; i < all.length; i++) expect(all[i][0]).toBeGreaterThan(all[i - 1][0] + all[i - 1][1]);
+  });
+
+  it('moves the clips past the priming only where the browser left it in', () => {
+    const all = Object.values(bank.clips).flat();
+    expect(bank.length).toBeGreaterThanOrEqual(Math.max(...all.map(([a, d]) => a + d)));
+    expect(bank.priming).toBeCloseTo(2112 / 44100, 4);
+    // Chrome and Safari: trimmed to the length. Firefox: every 1024-sample frame, priming and all.
+    expect(bankLead(bank, bank.length!)).toBe(0);
+    const frames = Math.ceil((bank.length! * 44100 + 2112) / 1024);
+    expect(bankLead(bank, (frames * 1024) / 44100)).toBe(bank.priming);
+    expect(bankLead({ clips: {} }, 200)).toBe(0);
   });
 });

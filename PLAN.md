@@ -201,7 +201,7 @@ human pass comes last so people play the finished result.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 19 | **Browser tests and benchmarks** | A browser test runner in the repo (Playwright: Chromium, Firefox and WebKit) with a dev-only hook to end a run on demand; tests for the menu, leaderboard UI, share button, loading screen, death cam and its HUD, replay viewer, file picker and dropped files, handover between islands, rivals HUD (bounty, "you carry the bounty", feed rows) and the results buttons; screenshot comparisons for the water, ground cover, impostors, cascades, indoor light and the pose viewer's poses; AAC offsets checked in Firefox and WebKit; a frame-time benchmark with many near bodies (posing, IK, fingers) and the ground cover's rebuild; the pose viewer run by the tests | `npm run test:browser` covers every UI named in Code and testing, runs in all three engines, and prints a frame-cost report | **Not started** |
+| 19 | **Browser tests and benchmarks** | A browser test runner in the repo (Playwright: Chromium, Firefox and WebKit) with a dev-only hook to end a run on demand; tests for the menu, leaderboard UI, share button, loading screen, death cam and its HUD, replay viewer, file picker and dropped files, handover between islands, rivals HUD (bounty, "you carry the bounty", feed rows) and the results buttons; screenshot comparisons for the water, ground cover, impostors, cascades, indoor light and the pose viewer's poses; AAC offsets checked in Firefox and WebKit; a frame-time benchmark with many near bodies (posing, IK, fingers) and the ground cover's rebuild; the pose viewer run by the tests | `npm run test:browser` covers every UI named in Code and testing, runs in all three engines, and prints a frame-cost report | **Done** (93 tests in about 3 minutes on an M3 Pro; the screenshots are Chromium's only, and the tests don't run in CI) |
 | 20 | **Lean loading and portable tooling** | Sounds on the loading bar (the ambience and your own gun before Play, the rest after); the loading bar counts the script download and uncompressed sizes; skipping the loading screen fades the assets in instead of swapping; the entry chunk split so ground cover, impostors, replays and the death cam load lazily; a smaller Basis transcoder (an ETC1S-only build) or a measured case against it; KTX2 and the prefiltered sky compared to the originals by number, not only by eye; smaller sounds (Opus where supported, AAC fallback); the sound and asset scripts run on Linux and Intel Macs (ffmpeg instead of `afconvert`, any-platform KTX tools); a click soon after Esc resumes at once or says why it can't | Total JavaScript at start is down by a measured amount, the first sound plays with the first shot, and both scripts run in CI on Linux | **Not started** |
 | 21 | **Animation clips and hands** | Real clips from a CC0 animation library (e.g. Quaternius's Universal Animation Library) retargeted to the soldier: crouch-walk, jump, fall, climb, shooting and hit reactions; walk and run speeds measured from the clips' foot contacts, with foot locking; a reload per gun (the bolt-action works its bolt and loads rounds, the pistol swaps a small magazine); a grenade model; hand grips placed from marked points on each gun model instead of hand-measured fractions, and the pistol sized for the fist; first-person arms that reach without stretching (longer bones or a dedicated arms model); the leaning and crouched head matched to its hitbox; distant bodies at a higher rate if the chunk 19 benchmark allows it (a new, more realistic soldier model is left for a later phase) | Watching someone jump, climb, reload a bolt-action or take a hit shows a real motion, and the benchmark shows no frame cost over chunk 19's | **Not started** |
 | 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Not started** |
@@ -426,6 +426,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A
   mid-range laptop wasn't tried, nobody has watched the swaying and waves in motion, and the
   ground cover's rebuild, when the camera crosses an 8 m cell, wasn't timed.
+  **Resolved in part** (19): the benchmark times the rebuild at about 1 ms a cell crossed in all
+  three engines (see "The ground cover's first fill"), and the screenshots are now compared by
+  the tests. The mid-range laptop and watching it move are left for chunk 30.
+- **Building ceilings show shadow acne** (19): the indoor screenshots show streaks across the
+  underside of the roof, dark by day and orange at dusk. Seen only now that a test looks inside.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
@@ -494,6 +499,13 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **AAC playback was only checked in Chrome** (14): the packed offsets depend on the browser
   trimming the encoder's priming samples, which Chrome does exactly. Safari should (it's Apple's
   format) and Firefox should, but neither was tried.
+  **Resolved** (19): a browser test decodes the bank in each engine and checks every shot gets
+  loud within its first few milliseconds. WebKit trims exactly like Chrome. Firefox didn't: it
+  decodes every AAC frame, priming and end padding included (159.52 s instead of 159.46 s), so
+  every sound there played 48 ms late and lost 48 ms off its end. `sounds.json` now says how long
+  the packed sound is and how much priming the encoder added (2112 samples), and the game moves
+  every clip by the priming when the decoded file is longer by at least that much
+  (`bankLead` in `soundlist.ts`). The sound script writes both numbers.
 - **The sound script needs a Mac** (14): it uses `afconvert` to decode and encode.
 
 ### Performance and loading
@@ -570,6 +582,7 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   commit). Chrome refuses to re-lock the mouse that soon, so the click keeps retrying for up to
   2 s and the game resumes once it's let through. Untested: headless Chrome never grants pointer
   lock, and whether a retry still counts as the click's gesture depends on the browser.
+  Still untested after chunk 19: none of the three test browsers grants the lock headless.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
@@ -716,6 +729,13 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   screenshots in headless Chrome, the results-screen buttons and the death cam HUD with a run end
   faked in the page, since a run can't be ended on demand in the browser. Dropping a file was only
   wired, not tried.
+  **Resolved** (19): a dev-only message to the local host (`game.dev({ act: 'end', ... })`) ends
+  a real run on demand, extracted, killed by the nearest operator bot or missing. The browser
+  tests then use every results button (Play again, Menu, the share button, Watch and Save
+  replay), the viewer (pausing, speeds by button and key, the timeline, switching to the free
+  camera and back, Esc), the file picker, dropping a file on the menu, a file that isn't a replay,
+  and the handover to another island, which opens paused, in all three engines. Flying the free
+  camera about isn't tested.
 
 ### Rivals
 - **You can't tell a bot's personality except by how it plays** (18). Names, the kill feed and
@@ -746,6 +766,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   clock and a bag's value, with the bounty and the bag faked in the page in headless Chrome. The
   "you carry the bounty" line and the feed rows were not seen. The bots' personalities, the bounty
   and bag values on the server are covered by tests.
+  **Resolved** (19): the browser tests take the bounty by carrying the most (the line and its feed
+  row, with no marker of your own), then give a rival more, find its marker by looking where it
+  was called, kill it (a feed row marked bounty) and read its bag's value off the tag, all with a
+  real game in each engine.
 
 ### Licensing
 - **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but
@@ -767,9 +791,18 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   packed sound list are tested. The audio engine itself was only checked in headless Chrome by a
   script outside the repo (offline renders of each sound, and a Mixed game checking the recordings
   decode and the ambience comes up), and still nobody has listened to it.
+  **Resolved in part** (19): the browser tests compare screenshots of the island (water, ground
+  cover, impostors, cascades, indoor light by day and night) and of the pose viewer's soldiers,
+  and decode the sound bank in all three engines to check each shot starts on time. The
+  animation is still only checked in still pictures, and still nobody has listened to the audio.
 - **The death cam, menu, leaderboard UI and share button have no automated tests** (10). The
   tape replay, share links and leaderboard storage are tested; the rest was checked by
   screenshots in a headless browser only.
+  **Resolved** (19): `npm run test:browser` plays the real game in Chromium, Firefox and WebKit
+  and tests each of them: the menu (mode, name, conditions in the address, What's new, New island,
+  Enter), the board (order, open places, a challenge among your scores and kept in view), the
+  share button (the copied link, and the prompt where copying is refused) and the death cam (the
+  killer's name and HUD, skipping it, ending by itself, watching it again).
 - **The menu's layout is only checked at desktop size** (10). It now scrolls when the window is
   too short, but it wasn't tried at small sizes.
   **Resolved** (12): screenshotted at 800 × 450, 640 × 400, 420 × 600 and 340 × 520. The title
@@ -783,21 +816,59 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   downloads the arm64 build of the KTX tools unless `ktx` is on the PATH.
 - **The loading screen and asset pipeline have no automated tests** (11). They were checked in
   a headless browser with software and Metal rendering, by screenshot and by timing.
+  **Resolved in part** (19): the browser tests check the loading screen gives way to the menu,
+  offers to play in flat colours when a download hangs, and says so when one fails. The asset
+  pipeline's output (KTX2 against the originals) still isn't compared by number; that's chunk 20.
 
 - **Snapshots are bigger** (13): each player carries five more fields (motion, action and its
   progress, suppressor, commander). That's fine through the Worker, but multiplayer should pack
   them.
 - **The pose viewer isn't part of the build or the tests** (13). `dev/pose.html` runs on the dev
   server only, and its screenshots were read by eye.
+  **Resolved** (19): the browser tests open it and compare four pictures: moving (standing to
+  climbing), the hands (reloads, a draw, a throw, leaning, aiming up, dead), each gun with a
+  suppressor with a commander and a guard, and the first-person arms mid-reload. It stays out of
+  the build, as a dev page.
 - **The world's new rendering has few automated tests** (15). The terrain tiles (exact heights
   up close, skirts), the wave height, adaptive resolution and the buildings (placement, bot paths
   into both rooms, walking through doorways, lintels falling, crates) are tested. The water
   shader, ground cover, impostors, cascades and indoor light were checked by screenshots only.
   In development, `?cam=x,y,z,tx,ty,tz` (or `?cam=o<outpost>,...` relative to an outpost) holds
   the menu camera for such screenshots.
+  **Resolved** (19): the browser tests compare pictures of each at a fixed spot, with the wind,
+  waves and rain stood still by the new dev-only `?still=<seconds>`, which also holds the
+  resolution.
 - **Two tests had leaned on the old outpost layout** (15): the guard test put the intruder at a
   fixed spot, which now sits between two containers, and the mantle test picked a crate that now
   has another stacked on it. They now pick a spot the sentry can see, and an unstacked crate.
+- **The browser tests don't run in CI** (19). The deploy workflow still runs only Vitest. The
+  tests want a GPU to draw the game at speed; on Linux Chromium is told to use OpenGL
+  (`--use-angle=gl`), which hasn't been tried, and neither have Firefox and WebKit on Linux.
+- **The screenshots come from one machine** (19): Chromium on an M3 Pro through Metal, at
+  640 × 360, kept in `e2e/screenshots/darwin/`. Another machine makes its own on its first run
+  (which reports each as a failure once), so they only catch changes on the machine that made
+  them. A change to fewer than 1% of the pixels passes. Firefox and WebKit draw the same spots in
+  no comparison, only in the UI tests.
+- **Pointer lock is never granted in the test browsers** (19), so every test plays with the
+  "Click anywhere to resume" card up, and the lock itself and resuming stay untested. Nothing in
+  the tests moves or shoots with the mouse and keys; runs are ended with the dev shortcut.
+- **The dev shortcut is a new client message** (19): `{ t: 'dev', cmd }` ends your run, gives
+  you or the nearest operator bot loot, brings that bot 8 m in front of you or has you kill it.
+  Only the Worker host of a development build passes it on; a multiplayer server must drop it.
+- **The benchmark reports and doesn't judge** (19). `dev/bench.html` times each frame until the
+  GPU is done with it (a one-pixel read), so it's one frame's whole cost, not the throughput of
+  frames overlapping. Firefox and WebKit round timers to 1 ms. The report shows each number
+  next to the one kept in `e2e/bench-baseline.json` (an M3 Pro, chunk 19), but nothing fails on a
+  slower frame. It runs last, alone, as the teardown of the setup project, so running a single
+  engine's tests runs it too, unless `--no-deps` is given.
+- **Soldiers are expensive to draw** (19). In the benchmark, 24 soldiers 4 to 25 m off take a
+  Chromium frame from 3.1 to 10.6 ms (Firefox 7 to 16, WebKit 4 to 11). Posing them is only 2.4 ms
+  of it: the rest is drawing, about 43 draw calls each with their shadows (1,113 against 86) and
+  1.1 million triangles against 0.42 million. Worth merging a soldier's meshes in chunk 21.
+- **The ground cover's first fill takes about 21 ms** (19), when every cell in range is scattered
+  at once. Crossing into a new cell after that takes about 1 ms (1.7 ms at the 95th percentile in
+  Chromium), and into cells seen before about the same, so the copying costs as much as the
+  scattering.
 ### Playtest and tuning
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
   the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
@@ -907,4 +978,6 @@ extraction stays as hard as it is.
   that links can be shared. It serves files only; there is still no game server.
 - **Existing scaffold:** the uncommitted setup and `src/shared` world generator get reused and
   reviewed in chunks 0 and 1.
-- **Testing:** Vitest for the shared simulation (determinism, movement, collision).
+- **Testing:** Vitest for the shared simulation (determinism, movement, collision), and from
+  chunk 19 Playwright for the game in the browser (`npm run test:browser`: Chromium, Firefox and
+  WebKit on the Vite dev server, whose development build has the hooks the tests use).

@@ -5,7 +5,7 @@ import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
 import { enclosure, nearestWater, occlusion, woodland } from './hearing.ts';
-import type { SoundBank } from './soundlist.ts';
+import { bankLead, type SoundBank } from './soundlist.ts';
 import type { Surface } from './surface.ts';
 import { VoicePool } from './voices.ts';
 
@@ -199,7 +199,8 @@ export class Sfx {
     const [bank, data] = await this.download;
     // decodeAudioData detaches the buffer, so decode a copy in case it's asked again.
     this.bank ??= await this.ctx.decodeAudioData(data.slice(0));
-    this.clips = bank.clips;
+    const lead = bankLead(bank, this.bank.duration);
+    this.clips = Object.fromEntries(Object.entries(bank.clips).map(([k, v]) => [k, v.map(([a, d]) => [a + lead, d])]));
     this.startAmbience();
   }
 

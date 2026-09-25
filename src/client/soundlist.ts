@@ -69,4 +69,18 @@ export const SOUNDS: SoundSource[] = [
 /** Where each sound's variations sit in the packed file, in seconds: written by the script. */
 export interface SoundBank {
   clips: Record<string, [start: number, duration: number][]>;
+  /** Seconds of sound packed, and of silence the encoder put in front of it (AAC's 2112 samples). */
+  length?: number;
+  priming?: number;
+}
+
+/**
+ * Seconds to add to every clip's start in a decoded bank `decoded` seconds
+ * long. Chrome and Safari trim the encoder's priming and padding as the file
+ * says; Firefox decodes every frame, so there the whole file is late by the
+ * priming and a little longer.
+ */
+export function bankLead(bank: SoundBank, decoded: number): number {
+  const { length, priming } = bank;
+  return length && priming && decoded - length > priming - 1e-3 ? priming : 0;
 }

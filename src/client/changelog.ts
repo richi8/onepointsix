@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Sounds on time in Firefox',
+    notes: [
+      'In Firefox every recorded sound played about a twentieth of a second late and lost as much off its end. Shots, footsteps and reloads now play on time there, as they already did in Chrome and Safari.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Rivals',
     notes: [
       'The other operators each play their own way. Rats sneak about, loot and keep out of fights. Hunters follow gunfire to finish off whoever is left, and go after the wounded. Campers wait near an extraction point for whoever comes to leave. Looters raid the outposts’ crates and pick over the bags fights leave behind.',

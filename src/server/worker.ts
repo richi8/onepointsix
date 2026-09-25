@@ -25,6 +25,8 @@ self.onmessage = (e: MessageEvent<ClientMsg>) => {
     current = { game, id: game.connect((m: ServerMsg) => self.postMessage(m)) };
   }
   if (!current) return;
+  // Shortcuts for browser tests, never in a build players get.
+  if (msg.t === 'dev' && !import.meta.env.DEV) return;
   current.game.receive(current.id, msg);
   if (msg.t === 'leave') current = null;
 };

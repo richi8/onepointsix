@@ -163,7 +163,22 @@ export type ClientMsg =
   | { t: 'leave' }
   // Carries the last few unacknowledged commands so a lost packet costs nothing.
   | { t: 'input'; cmds: InputCmd[] }
-  | { t: 'ping'; time: number };
+  | { t: 'ping'; time: number }
+  // A test or the console changing the run on the spot. Only the local host in a
+  // development build passes it on; a real server must drop it.
+  | { t: 'dev'; cmd: DevCmd };
+
+/**
+ * Development shortcuts for browser tests. The rival is the nearest living
+ * operator bot: `rival` brings it a few metres in front of you, `kill` has you
+ * kill it, and `give` puts items in your pack or its. `end` ends your run now,
+ * `killed` meaning by the rival.
+ */
+export type DevCmd =
+  | { act: 'end'; outcome: 'extracted' | 'killed' | 'mia' }
+  | { act: 'give'; items: number[]; rival?: boolean }
+  | { act: 'rival' }
+  | { act: 'kill' };
 
 /** An extraction point, as everyone sees it. Where it is comes from the world. */
 export interface ExtractView {

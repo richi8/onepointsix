@@ -5,7 +5,7 @@ import { angleDiff, clamp, lerp, smoothstep, wrapAngle } from '../shared/geom.ts
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
 import { extractName } from '../shared/loot.ts';
-import { isReliable, parseMode, type ClientMsg, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
+import { isReliable, parseMode, type ClientMsg, type DevCmd, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
 import { runRecord } from '../shared/runstats.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared/share.ts';
@@ -1127,19 +1127,31 @@ const devCam = ((): number[] | null => {
   return [n[0] + at.x, n[1] + at.y, n[2] + at.z, n[3] + at.x, n[4] + at.y, n[5] + at.z];
 })();
 
+/**
+ * In development, `?still=<seconds>` stops the wind, waves and rain at that
+ * moment and holds the resolution, so screenshots of a spot come out the same
+ * every time.
+ */
+const still = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('still') ?? NaN) : NaN;
+
+/** Seconds for the wind, waves and rain. */
+function sceneTime(): number {
+  return Number.isNaN(still) ? performance.now() / 1000 : still;
+}
+
 function orbitCamera(now: number): void {
   if (devCam) {
     camera.position.set(devCam[0], devCam[1], devCam[2]);
     camera.lookAt(devCam[3], devCam[4], devCam[5]);
     focus.set(devCam[3], devCam[4], devCam[5]);
-    view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, now);
+    view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, sceneTime());
     return;
   }
   const a = (now - start) * MENU_ORBIT_SPEED + 0.6;
   camera.position.set(Math.sin(a) * MENU_ORBIT_RADIUS, world.maxHeight + 90, Math.cos(a) * MENU_ORBIT_RADIUS);
   camera.lookAt(0, 0, 0);
   focus.set(0, 0, 0);
-  view.update(camera, focus, MENU_SHADOWS, world.half, now);
+  view.update(camera, focus, MENU_SHADOWS, world.half, sceneTime());
 }
 
 /**
@@ -1170,7 +1182,7 @@ function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt:
     camera.rotation.z += (Math.random() - 0.5) * k * 0.5;
   }
   focus.set(me.x, me.y, me.z);
-  view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, performance.now() / 1000);
+  view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, sceneTime());
 
   const speed = Math.hypot(s.vx, s.vz);
   const lookDx = angleDiff(lastYaw, yaw) * 600;
@@ -1213,7 +1225,7 @@ function flyCamera(dt: number): void {
   camera.position.set(fly.x, fly.y, fly.z);
   camera.rotation.set(fly.pitch, fly.yaw, 0);
   focus.set(fly.x, world.floorHeight(fly.x, fly.z), fly.z);
-  view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, performance.now() / 1000);
+  view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, sceneTime());
 }
 
 /** Our own footsteps and landings, from the predicted state. */
@@ -1250,13 +1262,15 @@ function sprinting(s: PlayerState): boolean {
 }
 
 if (import.meta.env.DEV) {
-  // For poking at the game from the console or a test browser.
-  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, get conn() { return conn; }, get deathcam() { return deathcam; }, get replay() { return replay; } } });
+  // For poking at the game from the console or a test browser. `dev` sends
+  // the local host a shortcut, such as ending the run (see DevCmd).
+  const dev = (cmd: DevCmd) => conn?.transport.send({ t: 'dev', cmd });
+  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, resolution, dev, get conn() { return conn; }, get deathcam() { return deathcam; }, get replay() { return replay; } } });
 }
 
 renderer.setAnimationLoop(() => {
   const now = performance.now() / 1000;
-  resolution.update(now - last);
+  if (Number.isNaN(still)) resolution.update(now - last);
   const dt = Math.min(now - last, 0.1);
   last = now;
 

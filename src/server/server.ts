@@ -32,12 +32,12 @@ import {
   THROW_TIME,
 } from '../shared/constants.ts';
 import { DEFAULT_CONDITIONS, isNight, sensesOf, type Conditions } from '../shared/conditions.ts';
-import { angleDiff, clamp, lerp, yawToward } from '../shared/geom.ts';
+import { angleDiff, clamp, lerp, wrapAngle, yawToward } from '../shared/geom.ts';
 import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
 import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loot.ts';
 import type {
-  Action, BagSnap, BountyView, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
+  Action, BagSnap, BountyView, ClientMsg, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
@@ -288,6 +288,51 @@ export class GameServer {
         break;
       case 'leave':
         this.disconnect(id);
+        break;
+      case 'dev':
+        this.dev(p, msg.cmd);
+        break;
+    }
+  }
+
+  /** A development shortcut; see DevCmd. The host decides whether to pass them on. */
+  private dev(p: Player, cmd: DevCmd): void {
+    let rival: Player | null = null;
+    let nearest = Infinity;
+    for (const o of this.players.values()) {
+      const d = Math.hypot(o.x - p.x, o.z - p.z);
+      if (o.bot && o.team === 'operator' && !o.dead && d < nearest) (rival = o), (nearest = d);
+    }
+    switch (cmd.act) {
+      case 'end':
+        if (!p.run || p.dead) return;
+        if (cmd.outcome !== 'killed') this.endRun(p, cmd.outcome);
+        else {
+          const by = rival ?? p;
+          p.protection = 0;
+          this.damage(p, by, p.hp, 'head', by.weapon, p.x, p.y + 1.6, p.z);
+        }
+        break;
+      case 'give': {
+        const to = cmd.rival ? rival : p;
+        if (!to?.run || to.dead) return;
+        to.run.items.push(...cmd.items);
+        to.carry = lootMass(to.run.items);
+        break;
+      }
+      case 'rival':
+        if (!rival) return;
+        rival.x = p.x - Math.sin(p.yaw) * 8;
+        rival.z = p.z - Math.cos(p.yaw) * 8;
+        rival.y = this.world.floorHeight(rival.x, rival.z);
+        rival.vx = rival.vy = rival.vz = 0;
+        rival.yaw = wrapAngle(p.yaw + Math.PI);
+        rival.tape.sync(rival);
+        break;
+      case 'kill':
+        if (!rival) return;
+        rival.protection = 0;
+        this.damage(rival, p, rival.hp, 'head', p.weapon, rival.x, rival.y + 1.6, rival.z);
         break;
     }
   }
