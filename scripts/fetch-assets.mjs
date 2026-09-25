@@ -13,7 +13,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { meshopt, prune, resample } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
-import { LAYERS } from '../src/client/layers.ts';
+import { LAYERS } from '../src/shared/layers.ts';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
 const CACHE = new URL('../node_modules/.cache/fetch-assets/', import.meta.url).pathname;

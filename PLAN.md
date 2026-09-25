@@ -343,6 +343,17 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Ground cover is only for looks** (15). Nothing collides with grass, bushes or pebbles, and bots
   see straight through them, so bushes are kept under 0.9 m and grass under 0.6 m. Near the
   coast grass can stand on sand, because each tuft reads the paint at the nearest terrain vertex.
+  **Resolved** (15, follow-up): bots can't see through bushes or thick grass. Bushes are
+  scattered in `src/shared/vegetation.ts`, identically on the server and every client, and are now
+  0.5–1.3 m and drawn to 120 m (bot sight reaches 120 m), so crouching behind a big one hides you
+  while standing doesn't. Grass is modelled as a layer up to 0.6 m deep that a sight line loses 55%
+  to per metre through thick grass, so it hides a body only where the line skims the ground near it.
+  A bot sees someone if at least 30% of their chest or head shows; less than full view slows
+  spotting, and an unsuppressed muzzle flash shows through leaves. Still open: grass isn't placed
+  blade by blade for sight, so a lone tuft doesn't hide you and a gap in a field does; nothing
+  collides with them; bullets go straight through; bots don't look for bushes to hide in. With no
+  prone stance, a crouched chest (0.7 m) is above the tallest grass, so grass alone rarely hides
+  anyone.
 - **The tree impostors are rough** (15). There's one picture from the side, lit evenly and then
   darkened by a hand-set 0.4 to match the full trees. Trees switch between full and impostor at
   170–190 m with no cross-fade. A sun-facing card only approximates a crown's shadow, and
@@ -360,6 +371,12 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The textured island looks washed out** (noticed in 15, from 11). The strong sky light
   (environment intensity 1.7) flattens the ground's colours and makes the sun's shadows faint.
   Checked against the build before chunk 15: it looked the same.
+  **Resolved** (15, follow-up): the sun is up from 2.6 to 3.3 and the sky light down to 1.0
+  (hemisphere 0.3), so the sunlit side outweighs the shade and shadows read; tone mapping is
+  Khronos PBR Neutral at 0.9 exposure instead of ACES, which bleached greens toward yellow-grey;
+  fog starts at 120 m instead of 60 m. Alpha-tested grass and bush cards had their alpha boosted
+  by mip level, since distant ones were thinning into pale hollow outlines. Distant bushes still
+  look a little blue-grey from the sky light on their up-facing normals.
 - **World detail was checked by screenshots on one machine** (15). Headless Chrome on an M3 Pro
   holds 60 fps (median 16.7 ms, 95th percentile 18.2 ms) at 1280 × 720 in a Mixed game.
   Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A

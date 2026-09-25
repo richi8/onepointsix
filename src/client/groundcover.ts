@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp } from '../shared/geom.ts';
 import { mulberry32 } from '../shared/rng.ts';
+import { type Vegetation, VEG_CELL, vegetationOf } from '../shared/vegetation.ts';
 import type { World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
-import { GROUND_LAYERS, groundWeights } from './ground.ts';
-import { Layer } from './layers.ts';
+import { groundWeights } from '../shared/ground.ts';
+import { Layer } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 
@@ -13,11 +14,11 @@ import { WIND_GLSL, wind } from './wind.ts';
 // of the island scatters its own the same way every time, thickest where the
 // ground is painted grass, and never on props, under roofs or in the sea.
 // Only the cells near the camera are drawn, and everything shrinks away
-// toward the edge of its range, so nothing pops in. They're only for looks:
-// nothing collides with them, and bots see straight through them, so the
-// bushes are kept low enough not to hide a standing body.
+// toward the edge of its range, so nothing pops in. Nothing collides with
+// them, but bots can't see through the bushes and thick grass: the bushes come
+// from shared/vegetation.ts, where the server finds them too.
 
-const CELL = 8;
+const CELL = VEG_CELL;
 
 interface Kind {
   /** Metres out it's drawn to. */
@@ -32,7 +33,8 @@ interface Kind {
 
 const KINDS = {
   grass: { range: 42, density: 1.6, keep: (w, i) => w[i + Layer.grass] + w[i + Layer.dryGrass] * 0.8, size: [0.3, 0.6] },
-  bush: { range: 75, density: 0.018, keep: (w, i) => (w[i + Layer.grass] + w[i + Layer.dryGrass] * 0.5) * 0.9, size: [0.45, 0.9] },
+  // Placed by Vegetation; drawn out to where bots can see.
+  bush: { range: 120, density: 0.018, keep: () => 0, size: [0, 0] },
   pebble: { range: 35, density: 0.07, keep: (w, i) => 0.25 + w[i + Layer.rock] + w[i + Layer.dirt] * 0.8 + w[i + Layer.sand] * 0.5, size: [0.06, 0.26] },
 } satisfies Record<string, Kind>;
 type KindName = keyof typeof KINDS;
@@ -57,6 +59,7 @@ const LEAF = new THREE.Color(0x6a8a44);
 export class GroundCover {
   readonly group = new THREE.Group();
   private readonly world: World;
+  private readonly vegetation: Vegetation;
   private readonly weights: Float32Array;
   private readonly cells = new Map<string, Record<KindName, Scatter>>();
   private readonly layers: Record<KindName, Batch>;
@@ -66,6 +69,7 @@ export class GroundCover {
 
   constructor(world: World) {
     this.world = world;
+    this.vegetation = vegetationOf(world);
     this.weights = groundWeights(world);
     const make = (name: KindName, geo: THREE.BufferGeometry, material: THREE.Material): Batch => {
       const kind = KINDS[name];
@@ -142,14 +146,32 @@ export class GroundCover {
     const rand = mulberry32((ix * 73856093) ^ (iz * 19349663) ^ this.world.seed);
     c = {
       grass: this.scatter(ix, iz, 'grass', rand),
-      bush: this.scatter(ix, iz, 'bush', rand),
+      bush: this.placeBushes(ix, iz),
       pebble: this.scatter(ix, iz, 'pebble', rand),
     };
     this.cells.set(key, c);
     return c;
   }
 
-  private scatter(ix: number, iz: number, name: KindName, rand: () => number): Scatter {
+  private placeBushes(ix: number, iz: number): Scatter {
+    const bushes = this.vegetation.bushes(ix, iz);
+    const matrices = new Float32Array(bushes.length * 16);
+    const colors = new Float32Array(bushes.length * 3);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const pos = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const c = new THREE.Color();
+    bushes.forEach((b, k) => {
+      q.setFromEuler(e.set(b.leanX, b.turn, b.leanZ));
+      m.compose(pos.set(b.x, b.y, b.z), q, scale.set(b.size, b.height, b.size)).toArray(matrices, k * 16);
+      c.copy(LEAF).multiplyScalar(0.75 + b.shade * 0.4).toArray(colors, k * 3);
+    });
+    return { matrices, colors, count: bushes.length };
+  }
+
+  private scatter(ix: number, iz: number, name: 'grass' | 'pebble', rand: () => number): Scatter {
     const w = this.world;
     const kind = KINDS[name];
     const tries = Math.round(CELL * CELL * kind.density + rand());
@@ -172,10 +194,10 @@ export class GroundCover {
       if (Math.abs(x) > w.half - 1 || Math.abs(z) > w.half - 1) continue;
       const y = w.terrainHeight(x, z);
       if (y < WATER_LEVEL + (name === 'pebble' ? -1 : 0.4)) continue;
-      const i = this.vertex(x, z);
+      const i = this.vegetation.vertex(x, z);
       if (keep > kind.keep(this.weights, i)) continue;
       // Not inside or under anything: props, trees, rocks or roofs.
-      if (!w.clear(x, y, z, 3.5, name === 'bush' ? 0.5 : 0.05)) continue;
+      if (!w.clear(x, y, z, 3.5, 0.05)) continue;
       if (w.buildings.some((b) => x > b.minX - 0.3 && x < b.maxX + 0.3 && z > b.minZ - 0.3 && z < b.maxZ + 0.3)) continue;
       pos.set(x, y - (name === 'pebble' ? size * 0.3 : 0.02), z);
       if (name === 'pebble') {
@@ -189,21 +211,11 @@ export class GroundCover {
       if (name === 'grass') {
         const dry = clamp(this.weights[i + Layer.dryGrass] / (this.weights[i + Layer.grass] + this.weights[i + Layer.dryGrass] + 1e-3), 0, 1);
         c.copy(LUSH).lerp(DRY, dry).multiplyScalar(0.85 + shade * 0.3);
-      } else if (name === 'bush') c.copy(LEAF).multiplyScalar(0.75 + shade * 0.4);
-      else c.setScalar(0.35 + shade * 0.25);
+      } else c.setScalar(0.35 + shade * 0.25);
       c.toArray(colors, count * 3);
       count++;
     }
     return { matrices, colors, count };
-  }
-
-  /** Index into the layer weights of the terrain vertex nearest (x, z). */
-  private vertex(x: number, z: number): number {
-    const w = this.world;
-    const n = w.res + 1;
-    const ix = clamp(Math.round((x + w.half) / w.cell), 0, w.res);
-    const iz = clamp(Math.round((z + w.half) / w.cell), 0, w.res);
-    return (iz * n + ix) * GROUND_LAYERS;
   }
 }
 
@@ -232,7 +244,19 @@ function fading(material: THREE.MeshStandardMaterial, range: number, eye: { valu
           transformed += transpose(mat3(instanceMatrix)) * push / (s * s);` : ''}
         }`);
     // Cards light as the ground they grow from, from either side.
-    if (give > 0) shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize(vNormal);');
+    if (give > 0) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize(vNormal);')
+        // Smaller mips average leaves into the gaps round them and fall under
+        // the alpha test, hollowing cards out at a distance; make up for it.
+        .replace('#include <alphatest_fragment>', /* glsl */ `
+          {
+            vec2 texel = vMapUv * vec2(textureSize(map, 0));
+            float mip = max(0.0, 0.5 * log2(max(dot(dFdx(texel), dFdx(texel)), dot(dFdy(texel), dFdy(texel)))));
+            diffuseColor.a *= 1.0 + mip * 0.3;
+          }
+          #include <alphatest_fragment>`);
+    }
   };
   material.customProgramCacheKey = () => `${key}-cover-${range}-${give}`;
   return material;

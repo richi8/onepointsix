@@ -41,6 +41,7 @@ import type { RunEndEvent } from '../shared/runstats.ts';
 import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
+import { vegetationOf } from '../shared/vegetation.ts';
 import { World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise } from './bot.ts';
 import { Containers } from './containers.ts';
@@ -194,6 +195,8 @@ export class GameServer {
     this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);
     this.range = layoutRange(this.world, mulberry32(this.seed ^ 0x2545f491));
     this.nav = new NavGrid(this.world);
+    // Paint the ground now rather than on the first bot's first look.
+    vegetationOf(this.world);
     this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f));
     this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1));
     this.cover = new Cover(this.world);

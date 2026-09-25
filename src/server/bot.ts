@@ -14,6 +14,7 @@ import { ITEMS } from '../shared/loot.ts';
 import type { InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
+import { vegetationOf } from '../shared/vegetation.ts';
 import type { Point, World } from '../shared/world.ts';
 import type { ExtractPoint } from './extracts.ts';
 import type { NavGrid, Waypoint } from './nav.ts';
@@ -89,6 +90,8 @@ export function hostile(a: Agent, b: Agent): boolean {
 const LOST_TIME = 1.6;
 /** A target this close is noticed even outside the view cone. */
 const TOUCH_RANGE = 3;
+/** Below this much showing through bushes and grass, a target is hidden. */
+const CONCEALED = 0.3;
 /** Sight range multiple for crouched targets. */
 const CROUCH_SIGHT = 0.65;
 /** Awareness lost per second by a half-noticed target out of sight. */
@@ -322,15 +325,24 @@ export class Bot {
       let visible = false;
       let headOnly = false;
       let off = 0;
+      // How much of them shows through bushes and grass, 0..1.
+      let shows = 0;
       if (d <= range) {
         off = Math.abs(angleDiff(yawToward(self.x, self.z, a.x, a.z), this.yaw));
         if (off <= s.fov / 2 || d < TOUCH_RANGE) {
           const h = hitboxes(a);
           const chest = (h.hipY + h.neckY) / 2;
-          if (ctx.world.hasLineOfSight(eye.headX, eye.headY, eye.headZ, h.torsoX, chest, h.torsoZ)) visible = true;
-          else if (ctx.world.hasLineOfSight(eye.headX, eye.headY, eye.headZ, h.headX, h.headY, h.headZ)) {
+          const through = (x: number, y: number, z: number): number =>
+            ctx.world.hasLineOfSight(eye.headX, eye.headY, eye.headZ, x, y, z) ? vegetationOf(ctx.world).seeThrough(eye.headX, eye.headY, eye.headZ, x, y, z) : 0;
+          const body = through(h.torsoX, chest, h.torsoZ);
+          const head = body >= CONCEALED ? 0 : through(h.headX, h.headY, h.headZ);
+          shows = Math.max(body, head);
+          // A muzzle flash shows through leaves, unless it's suppressed.
+          // So does anyone close enough to touch.
+          const flash = a.sinceShot < 1 && !a.suppressed[a.weapon];
+          if (shows >= CONCEALED || (shows > 0 && (flash || d < TOUCH_RANGE))) {
             visible = true;
-            headOnly = true;
+            headOnly = body < CONCEALED && head >= CONCEALED;
           }
         }
       }
@@ -338,6 +350,8 @@ export class Bot {
       if (visible) {
         c ??= this.contact(a.id, a);
         let time = s.spotTime + (d / 100) * s.spotPerDistance;
+        // Half hidden in the bushes takes longer to make out.
+        time /= Math.max(shows, CONCEALED);
         if (a.duck > 0.5) time *= 1.6;
         if (speed > WALK_SPEED + 0.5) time *= 0.6;
         // A muzzle flash gives a shooter away, unless it's suppressed.

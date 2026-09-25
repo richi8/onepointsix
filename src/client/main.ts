@@ -76,7 +76,9 @@ view.prepare(renderer);
 const resolution = new Resolution(renderer);
 // Two passes a frame; count both.
 renderer.info.autoReset = false;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// Neutral keeps the colours ACES would bleach; the sun outweighs the sky light so shadows read.
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 0.9;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 // The viewmodel draws in a second pass over a cleared depth buffer.

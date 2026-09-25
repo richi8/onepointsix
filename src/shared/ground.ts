@@ -1,6 +1,6 @@
-import { clamp, smoothstep } from '../shared/geom.ts';
-import { fbm } from '../shared/rng.ts';
-import type { World } from '../shared/world.ts';
+import { clamp, smoothstep } from './geom.ts';
+import { fbm } from './rng.ts';
+import type { World } from './world.ts';
 import { Layer } from './layers.ts';
 
 // What the ground is painted with, worked out once per terrain vertex: the

@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
-import { Layer } from './layers.ts';
+import { Layer } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 

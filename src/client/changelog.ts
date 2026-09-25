@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Hide in the bushes',
+    notes: [
+      'Guards and operators can no longer see through bushes. Crouch behind a big one and they’ll walk past; stand up and they’ll spot you. Firing an unsuppressed gun still gives you away. Grass blocks their view too, though it’s short, so it only hides you when they look along the ground, such as over the brow of a hill.',
+      'Bushes come in more sizes, some big enough to crouch behind, and you can see them much farther off.',
+      'The island is less washed out: stronger sunlight, richer colours, darker and clearer shadows and less haze.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Buildings, grass and waves',
     notes: [
       'Every outpost now has a concrete building with two rooms, doorways at the front, the end and between the rooms, and windows you can shoot through. Fight through it room by room, blow holes in its walls, and search the guarded crates inside.',

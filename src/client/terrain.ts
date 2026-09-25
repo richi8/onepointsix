@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { smoothstep } from '../shared/geom.ts';
 import { fbm } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
-import { paint } from './ground.ts';
+import { paint } from '../shared/ground.ts';
 
 // The island's ground as square tiles, each drawn at full detail up close and
 // with every second or fourth vertex farther off. Up close the triangles are

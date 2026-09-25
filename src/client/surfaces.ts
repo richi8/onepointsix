@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Building } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
-import { LAYERS } from './layers.ts';
+import { LAYERS } from '../shared/layers.ts';
 
 // PBR surfaces textured in world space, so nothing needs UVs: the island's
 // terrain blends five ground layers painted per vertex, and props, rocks and

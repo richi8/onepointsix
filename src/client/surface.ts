@@ -1,7 +1,7 @@
 import { WATER_LEVEL } from '../shared/constants.ts';
 import type { PropStyle, World } from '../shared/world.ts';
-import { groundLayerAt } from './ground.ts';
-import { Layer } from './layers.ts';
+import { groundLayerAt } from '../shared/ground.ts';
+import { Layer } from '../shared/layers.ts';
 
 // What a body is standing on, for how its footsteps sound: a prop's top, the
 // water, or whichever ground layer is painted strongest underfoot.

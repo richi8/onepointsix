@@ -5,7 +5,7 @@ import { HOUSE_WALL, type PropStyle, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import { GroundCover } from './groundcover.ts';
-import { Layer } from './layers.ts';
+import { Layer } from '../shared/layers.ts';
 import { setRooms, surfaceMaterial } from './surfaces.ts';
 import { Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
@@ -20,8 +20,8 @@ import { wind } from './wind.ts';
 const HORIZON = new THREE.Color(0xb9c9d6);
 const ZENITH = new THREE.Color(0x4f7fae);
 const SUN_DIR = new THREE.Vector3(0.45, 0.6, 0.35).normalize();
-const FOG_NEAR = 60;
-const FOG_FAR = 750;
+const FOG_NEAR = 120;
+const FOG_FAR = 1100;
 
 const FLAG_OPEN = 0x4fd06b;
 const FLAG_SHUT = 0xc4453a;
@@ -83,7 +83,7 @@ export class WorldView {
     scene.add(this.sky);
 
     scene.add(this.hemi);
-    this.sun = new Sun(0xfff1dc, 2.6, SUN_DIR);
+    this.sun = new Sun(0xfff1dc, 3.3, SUN_DIR);
     this.sun.addTo(scene);
 
     this.world = world;
@@ -109,8 +109,8 @@ export class WorldView {
   /** Swap the flat colours for textures and light everything from the sky. */
   applyAssets(assets: Assets): void {
     this.scene.environment = assets.environment;
-    this.scene.environmentIntensity = 1.7;
-    this.hemi.intensity = 0.4;
+    this.scene.environmentIntensity = 1.0;
+    this.hemi.intensity = 0.3;
 
     this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true }));
 
