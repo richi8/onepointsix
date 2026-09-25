@@ -164,6 +164,23 @@ Everything runs locally in the browser; there is no backend.
 | 9 | **Look and sound** | Realistic assets (glTF, PBR, animations), positional audio, footsteps, muzzle flash, performance pass | It looks and sounds like a real game |
 | 10 | **Shareable worlds** | World config and sharer name + score in the URL, per-world local leaderboard, share button, static hosting, death cam from recorded inputs | You send a link and a friend gets the same island with your score to beat |
 
+### Phase 2: polish and depth (still local only)
+
+Chunks 11–18 finish the single-browser game. Multiplayer stays in **Future**, and none of these
+chunks may break the rules that keep multiplayer easy to add later. Each chunk also resolves
+the Known Issues named in its scope.
+
+| # | Chunk | Scope | Done when |
+|---|---|---|---|
+| 11 | **Ship and load** | Verify GitHub Pages end to end (the live site, share links, `?world=`); a loading screen with progress instead of the flat-colour swap; KTX2 textures and meshopt glTF; code splitting so the first bundle is under 500 kB; build the texture arrays off the main thread (`createImageBitmap` / a Worker); replace the Mixamo soldier with a CC0 character (e.g. Quaternius); generate the texture layer list from one source | A stranger opens the live link on a mid-range laptop and is playing within about 5 s on a warm cache; no licensing doubts left |
+| 12 | **Playtest and tuning** | A local run-stats log (length, cause of death, extraction used, contracts done, loot value) with a debug panel to read it; tune the operator cap, guard count, bot difficulty, weapon damage and recoil, extraction timings and loot values from playtests; fix what playtests find; mode-less links; the menu at small window sizes | Several full runs by other people; the average run lands in 3–10 minutes, and no single strategy dominates |
+| 13 | **Animation** | Death animation with a simple ragdoll that doesn't sink into ground or walls; third-person crouch-walk, slide, mantle, jump and fall clips; third-person reload, weapon switch and grenade throw; suppressors on third-person guns; first-person arms with animated reloads; a distinct look for commanders and each side; hit flash only where the round landed; the body lean matches the lean hitbox | Watching another operator, you can tell what they are doing: crouching, sliding, reloading, throwing |
+| 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between |
+| 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop |
+| 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards are kept per condition | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions |
+| 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened |
+| 18 | **Squads (with bots)** | A PvE option to drop in with 1–3 bot squadmates; a downed state and revive for both you and them; simple squad commands (follow, hold, regroup); squadmates share the run and the score. Humans taking those slots stays Future | A downed player gets revived by a bot squadmate under fire, and the squad extracts together |
+
 ## Known Issues
 
 Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
@@ -284,16 +301,17 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   - Anonymous identity, basic anti-cheat, deployment
 - **Transport upgrade:** WebTransport or WebRTC DataChannels (UDP-like), server-side visibility
   culling, server leaderboards
-- **Day/night cycle and weather** that change the rules (e.g. more and tougher bots at night, but
-  better loot)
-- Squads with revive
-- Shareable full-run replays
+- **Squads with humans:** friends take the bot squadmate slots from chunk 18
+- **Replay links:** shareable through the server instead of as files (chunk 17 covers local
+  replays)
 - Global leaderboards and seasonal featured islands
 
 ## Decisions
 - **Weapons for the proof of concept:** assault rifle, pistol and bolt-action rifle
 - **Capacity:** 12 operators and about 24 guards per game (tunable constant)
 - **Backend:** none for now; the game is local only. Multiplayer is a future feature.
+- **After the proof of concept:** chunks 11–18 polish and deepen the local game. Multiplayer
+  stays in Future and comes after them.
 - **Platform:** desktop only (keyboard and mouse) in current Chrome, Firefox and Safari. Target
   is 60 fps on a mid-range laptop. No touch or mobile support for now.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
