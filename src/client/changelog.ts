@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Replays',
+    notes: [
+      'Every run is recorded. When it ends, Watch replay plays the whole run back through your own eyes, exactly as you played it, with your HUD.',
+      'Save replay downloads the run as a small file (under 1 MB even for a full ten minutes). Send it to a friend: Watch a replay on the main menu, or dropping the file on the menu, opens it on the right island in the right conditions.',
+      'In a replay: pause with Space, drag the timeline or skip 5 seconds with the arrow keys, and play it from quarter speed to four times as fast. Kills and how the run ended are marked on the timeline.',
+      'Press V, drag the view or start moving for a free camera: WASD to fly, Q and E down and up, Shift to go faster, and you can watch yourself from outside.',
+      'Walls and crates break and are rebuilt in replays at the moment they did, so what you see matches what happened. The death cam does the same, instead of showing the walls as they are now.',
+      'The death cam shows your killer’s health and ammo, and a hit marker whenever one of their rounds hits.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'A steadier main menu',
     notes: [
       'The F3 frame-rate panel and the F4 run log panel are gone. Your runs are still logged in this browser.',

@@ -120,6 +120,40 @@ export function copyState(p: PlayerState): PlayerState {
   };
 }
 
+/** Copies every state field of `p` into `out`, reusing its lists, so nothing is allocated. */
+export function copyStateInto(out: PlayerState, p: PlayerState): void {
+  out.x = p.x; out.y = p.y; out.z = p.z; out.vx = p.vx; out.vy = p.vy; out.vz = p.vz;
+  out.yaw = p.yaw; out.pitch = p.pitch; out.onGround = p.onGround; out.crouched = p.crouched; out.duck = p.duck;
+  out.jumpHeld = p.jumpHeld; out.stamina = p.stamina; out.staminaDelay = p.staminaDelay; out.winded = p.winded;
+  out.mantling = p.mantling; out.mantleX = p.mantleX; out.mantleY = p.mantleY; out.mantleZ = p.mantleZ;
+  out.lean = p.lean; out.carry = p.carry; out.hp = p.hp; out.dead = p.dead; out.life = p.life;
+  out.weapon = p.weapon; out.cooldown = p.cooldown; out.reload = p.reload; out.draw = p.draw;
+  out.triggerHeld = p.triggerHeld; out.aim = p.aim; out.recoilPitch = p.recoilPitch; out.recoilYaw = p.recoilYaw;
+  out.burst = p.burst; out.sinceShot = p.sinceShot; out.grenades = p.grenades; out.throwHeld = p.throwHeld;
+  for (let i = 0; i < p.mag.length; i++) out.mag[i] = p.mag[i];
+  for (let i = 0; i < p.reserve.length; i++) out.reserve[i] = p.reserve[i];
+  for (let i = 0; i < p.suppressed.length; i++) out.suppressed[i] = p.suppressed[i];
+}
+
+/** Whether two players are in the same state, field for field. */
+export function sameState(a: PlayerState, b: PlayerState): boolean {
+  return a.x === b.x && a.y === b.y && a.z === b.z && a.vx === b.vx && a.vy === b.vy && a.vz === b.vz &&
+    a.yaw === b.yaw && a.pitch === b.pitch && a.onGround === b.onGround && a.crouched === b.crouched && a.duck === b.duck &&
+    a.jumpHeld === b.jumpHeld && a.stamina === b.stamina && a.staminaDelay === b.staminaDelay && a.winded === b.winded &&
+    a.mantling === b.mantling && a.mantleX === b.mantleX && a.mantleY === b.mantleY && a.mantleZ === b.mantleZ &&
+    a.lean === b.lean && a.carry === b.carry && a.hp === b.hp && a.dead === b.dead && a.life === b.life &&
+    a.weapon === b.weapon && a.cooldown === b.cooldown && a.reload === b.reload && a.draw === b.draw &&
+    a.triggerHeld === b.triggerHeld && a.aim === b.aim && a.recoilPitch === b.recoilPitch && a.recoilYaw === b.recoilYaw &&
+    a.burst === b.burst && a.sinceShot === b.sinceShot && a.grenades === b.grenades && a.throwHeld === b.throwHeld &&
+    sameList(a.mag, b.mag) && sameList(a.reserve, b.reserve) && sameList(a.suppressed, b.suppressed);
+}
+
+function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /** How a player is moving, as others see it. */
 export function motionOf(p: PlayerState): Motion {
   return p.mantling ? 'mantle' : p.onGround ? 'ground' : 'air';

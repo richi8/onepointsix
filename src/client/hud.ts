@@ -68,9 +68,10 @@ export class Hud {
 
   /**
    * Call once per frame. `spreadPx` is the current spread cone's radius on
-   * screen; `aim` and `yaw` are the rendered values.
+   * screen; `aim` and `yaw` are the rendered values. `deathNotice` is off for
+   * someone else's view, such as a killer's in the death cam.
    */
-  update(dt: number, s: PlayerState | null, aim: number, spreadPx: number, sprinting: boolean, camera: THREE.Camera): void {
+  update(dt: number, s: PlayerState | null, aim: number, spreadPx: number, sprinting: boolean, camera: THREE.Camera, deathNotice = true): void {
     this.marker = Math.max(this.marker - dt, 0);
     this.hitmarker.style.opacity = String(Math.min(this.marker / HITMARKER_TIME, 1));
     this.hurt = Math.max(this.hurt - dt * 1.5, 0);
@@ -101,19 +102,24 @@ export class Hud {
     this.staminaFill.style.width = `${s.stamina * 100}%`;
     this.stamina.classList.toggle('winded', s.winded);
 
-    this.death.hidden = !s.dead;
+    this.death.hidden = !s.dead || !deathNotice;
     if (s.dead) this.deathText.textContent = this.killer ? `by ${this.killer}` : '';
   }
 
   /** The server confirmed one of our rounds hit. */
   hit(zone: Zone, killed: boolean, damage: number, x: number, y: number, z: number): void {
-    this.hitmarker.className = `hitmarker${zone === 'head' ? ' head' : ''}${killed ? ' kill' : ''}`;
-    this.marker = killed ? KILLMARKER_TIME : HITMARKER_TIME;
+    this.mark(zone === 'head', killed);
     const el = document.createElement('span');
     el.textContent = String(damage);
     el.className = killed ? 'kill' : zone;
     this.numbersRoot.append(el);
     this.numbers.push({ el, pos: new THREE.Vector3(x, y, z), age: 0 });
+  }
+
+  /** Flash the hit marker, bigger for a kill. */
+  mark(head: boolean, killed: boolean): void {
+    this.hitmarker.className = `hitmarker${head ? ' head' : ''}${killed ? ' kill' : ''}`;
+    this.marker = killed ? KILLMARKER_TIME : HITMARKER_TIME;
   }
 
   /** We took damage from someone standing at `bearing` radians right of where we face. */

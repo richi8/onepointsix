@@ -39,7 +39,7 @@ import type {
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
 import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
-import { Tape } from '../shared/tape.ts';
+import { Tape, TAPE_TIME } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
 import { World, type Box, type Point } from '../shared/world.ts';
@@ -224,6 +224,8 @@ export class GameServer {
 
   connect(send: (msg: ServerMsg) => void): number {
     const p = this.add('player', 'operator', send);
+    // A human's whole run is kept, for its replay.
+    p.tape = new Tape(RUN_TIME + TAPE_TIME);
     p.run = newRun(this.time);
     this.spawn(p);
     this.assignContracts(p);
@@ -300,6 +302,7 @@ export class GameServer {
       p.tape.beginTick(p, now - SERVER_DT);
       for (let i = 0; i < n; i++) {
         const cmd = p.queue[i];
+        p.tape.sync(p);
         applyCmd(this.world, p, cmd, CMD_DT, (fx) => {
           if (fx.k === 'shot') this.fire(p, fx.shot, cmd.view);
           else if (fx.k === 'throw') {
@@ -307,7 +310,7 @@ export class GameServer {
             p.threw = true;
           } else if (fx.k === 'draw') p.threw = false;
         });
-        p.tape.record(cmd);
+        p.tape.record(cmd, p);
         p.light = this.ctx.senses.dark && !p.dead && (cmd.buttons & Btn.Light) !== 0;
         if (p.run && !p.dead) this.use(p, cmd.buttons);
         p.lastSim = cmd.seq;
@@ -486,6 +489,12 @@ export class GameServer {
       death: outcome === 'killed' ? run.death : null,
     };
     p.events.push(end);
+    if (!p.plan) {
+      // The run's replay: key how it ended first, such as the death.
+      p.tape.sync(p);
+      const clip = p.tape.clip(run.start);
+      if (clip) p.events.push({ k: 'tape', clip });
+    }
     this.onRunEnd?.(end, p.plan);
     this.dismiss(run);
     if (outcome === 'extracted') this.broadcast({ k: 'extract', id: p.id, name: p.name, value });

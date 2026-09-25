@@ -129,6 +129,8 @@ export type GameEvent =
   // To a player killed by someone else, a moment after: their killer's inputs
   // around the kill at server time `time`, to replay from the killer's eyes.
   | { k: 'deathcam'; killer: number; name: string; time: number; clip: TapeClip }
+  // To the player as their run ends: their own inputs for all of it, to replay the run.
+  | { k: 'tape'; clip: TapeClip }
   // To the player: one of their contracts, by index, was done or failed.
   | { k: 'contract'; index: number; state: 'done' | 'failed' }
   // To everyone: panels broke, knocked from around (x, y, z).

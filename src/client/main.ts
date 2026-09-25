@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { CMD_DT, OPERATOR_CAPACITY, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
-import { sensesOf, TIMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
-import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
+import { CMD_DT, MAX_PITCH, OPERATOR_CAPACITY, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
+import { conditionsLabel, sensesOf, TIMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
+import { angleDiff, clamp, lerp, smoothstep, wrapAngle } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
 import { extractName } from '../shared/loot.ts';
@@ -29,6 +29,9 @@ import { Leaderboard, localStore } from './leaderboard.ts';
 import type { Rendered } from './prediction.ts';
 import { Resolution } from './resolution.ts';
 import { RunLog } from './runlog.ts';
+import { Replay, SPEEDS } from './replay.ts';
+import { ReplayBar, type ReplayCamera } from './replaybar.ts';
+import { decodeReplay, encodeReplay, RunRecorder, type ReplayData } from './replayfile.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
 import { surfaceMaterial } from './surfaces.ts';
@@ -140,6 +143,7 @@ function finishLoading(): void {
   loadingEl.classList.add('done');
   setTimeout(() => loadingEl.remove(), 600);
   playButton.focus();
+  void openHandedReplay();
 }
 
 loadingSkip.onclick = finishLoading;
@@ -469,6 +473,8 @@ function join(): void {
   stopDeathcam(false);
   killedBy = null;
   conn = new Connection(config, world, mode, playerName(), transport);
+  conn.recorder = new RunRecorder(config, mode, playerName(), BUILD);
+  ownReplay = null;
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
   conn.onEvents = (events) => events.forEach((e) => onEvent(e));
   conn.onWelcome = (broken) => {
@@ -488,7 +494,7 @@ function join(): void {
 }
 
 function play(): void {
-  if (conn || !loaded) return;
+  if (conn || !loaded || replay) return;
   sfx.unlock();
   menu.hidden = true;
   view.preview = false;
@@ -551,6 +557,9 @@ function endRun(e: RunEnd): void {
   };
   showLastResults = () => {
     (document.getElementById('replay') as HTMLButtonElement).hidden = !killedBy;
+    const recorded = !!conn?.recorder?.ready;
+    (document.getElementById('watch-run') as HTMLButtonElement).hidden = !recorded;
+    (document.getElementById('save-run') as HTMLButtonElement).hidden = !recorded;
     runHud.showResults(e, standing.join(' '));
   };
   const shown = conn;
@@ -566,7 +575,7 @@ function endRun(e: RunEnd): void {
 // --------------------------------------------------------------- death cam
 
 const deathcamEl = document.getElementById('deathcam')!;
-const deathcamScope = deathcamEl.querySelector('.scope') as HTMLElement;
+const hudEl = document.getElementById('hud')!;
 /** The killer's inputs from the server, and what we saw around then. */
 let killedBy: { e: DeathcamEvent; recording: Recording } | null = null;
 let deathcam: Deathcam | null = null;
@@ -574,11 +583,14 @@ let deathcam: Deathcam | null = null;
 /** Replay how we died, then show the results. */
 function playDeathcam(): void {
   if (!killedBy) return;
-  deathcam = new Deathcam(world, killedBy.e, killedBy.recording);
+  deathcam = new Deathcam(world, killedBy.e, killedBy.recording, conn?.broken ?? []);
+  showCover(deathcam.broken);
   // Start the bodies afresh, as they were then.
   bodies.update([], 0);
   runHud.hideResults();
-  document.getElementById('hud')!.hidden = true;
+  // The killer's health, ammo and hits.
+  hudEl.hidden = false;
+  hudEl.classList.add('watching');
   deathcamEl.querySelector('.banner span')!.textContent = `Killed by ${deathcam.name}`;
   deathcamEl.hidden = false;
 }
@@ -588,6 +600,9 @@ function stopDeathcam(results = true): void {
   if (!deathcam) return;
   deathcam = null;
   deathcamEl.hidden = true;
+  hudEl.hidden = true;
+  hudEl.classList.remove('watching');
+  showCover(conn ? [...conn.broken] : []);
   bodies.update([], 0);
   if (results) showLastResults?.();
 }
@@ -601,8 +616,290 @@ window.addEventListener('keydown', (e) => {
 });
 document.getElementById('replay')!.onclick = playDeathcam;
 
+/** Put the panels in the world as `broken` says, for a replay's moment or back to now. */
+function showCover(broken: readonly number[]): void {
+  world.syncPanels(broken);
+  view.syncPanels();
+}
+
+// ------------------------------------------------------------------ replays
+
+/** The update of the game, saved in replays to tell one from an older version. */
+const BUILD = CHANGELOG[0]?.date ?? '';
+/** Seconds of a replay after the run ends: the fall, like the death camera's. */
+const REPLAY_AFTER = RESULTS_DELAY_DEAD;
+/** Seconds a replay skips back or forward with the arrow keys. */
+const REPLAY_SKIP = 5;
+/** The free camera's speed in metres per second, and with Shift held. */
+const FLY_SPEED = 10;
+const FLY_FAST = 40;
+/** Radians the free camera turns per pixel dragged. */
+const FLY_LOOK = 0.004;
+const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
+
+const replayBar = new ReplayBar();
+let replay: Replay | null = null;
+let replayCam: ReplayCamera = 'eyes';
+/** Our last run's replay, once made. */
+let ownReplay: ReplayData | null = null;
+const fly = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, keys: new Set<string>(), drag: false };
+
+/** Our last run as a replay, if it has ended. */
+function lastRun(): ReplayData | null {
+  ownReplay ??= conn?.recorder?.finish(REPLAY_AFTER) ?? null;
+  return ownReplay;
+}
+
+/** Who played a replay, where and how it went, for its title. */
+function replayTitle(r: ReplayData): string {
+  const island = r.world.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${r.world.seed}`;
+  const when = conditionsLabel(r.world) || 'Day';
+  const e = r.end;
+  const how = e.outcome === 'extracted' ? `Extracted · ${e.score.toLocaleString('en-US')}`
+    : e.outcome === 'killed' ? `Killed${e.killer ? ` by ${e.killer}` : ''}` : 'Missing in action';
+  return `${r.name} · ${island} · ${when} · ${how}`;
+}
+
+/**
+ * Watch a replay: ours from the results, or one opened from a file. One of
+ * another island loads that island first, so it's handed over through the
+ * session and the page reloads.
+ */
+function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array): void {
+  if (r.world.seed >>> 0 !== config.seed >>> 0) {
+    if (!bytes) return;
+    try {
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      sessionStorage.setItem('replay', btoa(bin));
+    } catch {
+      toast(`This replay is on ${r.world.seed === DEFAULT_WORLD.seed ? 'the default island' : `island #${r.world.seed}`}, and it's too big to take there. Open that island, then the replay.`);
+      return;
+    }
+    location.search = shareQuery(r.world);
+    return;
+  }
+  if (!loaded) return;
+  if (r.build !== BUILD) toast('This replay is from another version of the game, so it may not play back exactly.');
+  stopDeathcam(false);
+  sfx.unlock();
+  if (r.world.time !== config.time || r.world.weather !== config.weather) setConditions({ time: r.world.time, weather: r.world.weather });
+  document.exitPointerLock();
+  menu.hidden = true;
+  paused.hidden = true;
+  runHud.hideResults();
+  view.preview = false;
+  replay = new Replay(world, r);
+  replayCam = 'eyes';
+  hud.reset();
+  hud.show();
+  hudEl.classList.add('watching', 'replaying');
+  hudEl.classList.remove('free');
+  replayBar.show(replayTitle(r), replay.start, replay.end, replay.marks(), unsaved);
+  afterSeek();
+}
+
+/** Back to the results, or the menu if there's no run to go back to. */
+function closeReplay(back = true): void {
+  if (!replay) return;
+  replay = null;
+  replayBar.hide();
+  fly.keys.clear();
+  hudEl.hidden = true;
+  hudEl.classList.remove('watching', 'replaying', 'free');
+  showCover(conn ? [...conn.broken] : []);
+  bodies.update([], 0);
+  bags.update([]);
+  grenades.update([]);
+  if (!back) return;
+  if (conn && showLastResults) showLastResults();
+  else {
+    menu.hidden = false;
+    view.preview = true;
+    showBoard();
+    playButton.focus();
+  }
+}
+
+/** The replay jumped: the panels, bodies and HUD are set right for the new moment. */
+function afterSeek(): void {
+  if (!replay) return;
+  showCover(replay.brokenAt());
+  bodies.update([], 0);
+  hud.reset();
+  deadFor = 0;
+}
+
+function seekReplay(t: number): void {
+  if (!replay) return;
+  replay.seek(t);
+  afterSeek();
+}
+
+function toggleReplay(): void {
+  if (!replay) return;
+  sfx.unlock();
+  // Played to the end, it starts again.
+  if (!replay.playing && replay.time >= replay.end) seekReplay(replay.start);
+  replay.playing = !replay.playing;
+}
+
+function setReplayCam(cam: ReplayCamera): void {
+  if (cam === 'free' && replayCam !== 'free') {
+    fly.x = camera.position.x;
+    fly.y = camera.position.y;
+    fly.z = camera.position.z;
+    fly.yaw = camera.rotation.y;
+    fly.pitch = clamp(camera.rotation.x, -MAX_PITCH, MAX_PITCH);
+  }
+  replayCam = cam;
+  hudEl.classList.toggle('free', cam === 'free');
+}
+
+async function saveReplay(r: ReplayData): Promise<void> {
+  const bytes = await encodeReplay(r);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/gzip' }));
+  const a = document.createElement('a');
+  const d = new Date(r.date);
+  const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+  const who = r.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'run';
+  a.href = url;
+  a.download = `onepointsix-${who}-${stamp}.replay`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  toast(`Replay saved (${Math.max(Math.round(bytes.length / 1024), 1)} kB). Send the file to a friend.`);
+}
+
+async function openReplayFile(file: File): Promise<void> {
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    watchReplay(await decodeReplay(bytes), false, bytes);
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'That replay couldn’t be opened.');
+  }
+}
+
+/** A replay handed over from another island's page: open it paused, since sound needs a click first. */
+async function openHandedReplay(): Promise<void> {
+  let saved: string | null = null;
+  try {
+    saved = sessionStorage.getItem('replay');
+    sessionStorage.removeItem('replay');
+  } catch {
+    return;
+  }
+  if (!saved) return;
+  try {
+    const bytes = Uint8Array.from(atob(saved), (c) => c.charCodeAt(0));
+    watchReplay(await decodeReplay(bytes), false);
+    if (replay) replay.playing = false;
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'That replay couldn’t be opened.');
+  }
+}
+
+replayBar.onPlay = toggleReplay;
+replayBar.onSeek = seekReplay;
+replayBar.onSpeed = (speed) => replay && (replay.speed = speed);
+replayBar.onCamera = setReplayCam;
+replayBar.onClose = () => closeReplay();
+replayBar.onSave = () => {
+  if (replay) void saveReplay(replay.data);
+};
+
+document.getElementById('watch-run')!.onclick = () => {
+  const r = lastRun();
+  if (r) watchReplay(r, true);
+};
+document.getElementById('save-run')!.onclick = () => {
+  const r = lastRun();
+  if (r) void saveReplay(r);
+};
+
+const replayFile = document.getElementById('replay-file') as HTMLInputElement;
+document.getElementById('replay-open')!.onclick = () => replayFile.click();
+replayFile.onchange = () => {
+  const file = replayFile.files?.[0];
+  replayFile.value = '';
+  if (file) void openReplayFile(file);
+};
+
+// A replay dropped on the menu opens too.
+const dropEl = document.getElementById('drop')!;
+const canDrop = (e: DragEvent) => !menu.hidden && !conn && !replay && !!e.dataTransfer?.types.includes('Files');
+window.addEventListener('dragover', (e) => {
+  if (!canDrop(e)) return;
+  e.preventDefault();
+  dropEl.hidden = false;
+});
+window.addEventListener('dragleave', (e) => {
+  if (!e.relatedTarget) dropEl.hidden = true;
+});
+window.addEventListener('drop', (e) => {
+  dropEl.hidden = true;
+  if (!canDrop(e)) return;
+  e.preventDefault();
+  const file = e.dataTransfer?.files[0];
+  if (file) void openReplayFile(file);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (!replay || (e.target instanceof HTMLInputElement && e.target.type !== 'range')) return;
+  if (FLY_KEYS.has(e.code)) {
+    // Moving takes the camera off the player's eyes.
+    if (replayCam !== 'free' && !e.code.startsWith('Shift')) setReplayCam('free');
+    fly.keys.add(e.code);
+    return;
+  }
+  const speed = SPEEDS.indexOf(replay.speed);
+  switch (e.code) {
+    case 'Space':
+      toggleReplay();
+      break;
+    case 'ArrowLeft':
+      seekReplay(replay.time - REPLAY_SKIP);
+      break;
+    case 'ArrowRight':
+      seekReplay(replay.time + REPLAY_SKIP);
+      break;
+    case 'BracketLeft':
+      replay.speed = SPEEDS[Math.max(speed - 1, 0)];
+      break;
+    case 'BracketRight':
+      replay.speed = SPEEDS[Math.min(speed + 1, SPEEDS.length - 1)];
+      break;
+    case 'KeyV':
+      setReplayCam(replayCam === 'eyes' ? 'free' : 'eyes');
+      break;
+    case 'Escape':
+      closeReplay();
+      break;
+    default:
+      return;
+  }
+  e.preventDefault();
+});
+window.addEventListener('keyup', (e) => fly.keys.delete(e.code));
+window.addEventListener('blur', () => fly.keys.clear());
+
+// Dragging on the view looks around with the free camera.
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (!replay || e.button !== 0) return;
+  setReplayCam('free');
+  fly.drag = true;
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!replay || !fly.drag) return;
+  fly.yaw = wrapAngle(fly.yaw - e.movementX * FLY_LOOK);
+  fly.pitch = clamp(fly.pitch - e.movementY * FLY_LOOK, -MAX_PITCH, MAX_PITCH);
+});
+renderer.domElement.addEventListener('pointerup', () => (fly.drag = false));
+renderer.domElement.addEventListener('pointercancel', () => (fly.drag = false));
+
 function toMenu(): void {
   stopDeathcam(false);
+  closeReplay(false);
   conn?.leave();
   conn = null;
   showBoard();
@@ -704,10 +1001,16 @@ function ownShot(shot: Shot, players: readonly PlayerSnap[]): void {
   showRound(struck, dx, dy, dz, shot.quiet);
 }
 
-/** `replay` is set for events replayed in the death cam; live rounds and blasts aren't drawn over it. */
-function onEvent(e: GameEvent, replay = false): void {
-  const me = conn?.predictor.state;
-  if (deathcam && !replay && (e.k === 'shot' || e.k === 'boom')) return;
+/**
+ * `replayed` is set for events played back in a death cam or replay. While one
+ * shows, live events only keep the books: the world is shown as it was then.
+ */
+function onEvent(e: GameEvent, replayed = false): void {
+  if ((deathcam || replay) && !replayed && e.k !== 'deathcam' && e.k !== 'runEnd') return;
+  // Whose eyes we see through: our own, or the player of the replay or death cam.
+  const me = deathcam?.state ?? replay?.state ?? conn?.predictor.state;
+  const meYaw = replay ? replay.view().yaw : input.yaw;
+  const meId = replay ? replay.id : (conn?.id ?? 0);
   switch (e.k) {
     case 'hit':
       hud.hit(e.zone, e.killed, e.damage, e.x, e.y, e.z);
@@ -715,25 +1018,25 @@ function onEvent(e: GameEvent, replay = false): void {
       bodies.flash(e.target, e.x, e.y, e.z);
       break;
     case 'hurt':
-      if (me) hud.hurtFrom(e.damage, bearing(me.x, me.z, input.yaw, e.x, e.z));
+      if (me) hud.hurtFrom(e.damage, bearing(me.x, me.z, meYaw, e.x, e.z));
       sfx.hurt();
       break;
     case 'kill':
       bodies.killed(e.victim, e.killer);
-      hud.kill(e, conn!.id);
+      hud.kill(e, meId);
       break;
     case 'extract':
-      hud.extract(e, conn!.id);
+      hud.extract(e, meId);
       break;
     case 'call':
-      hud.call(e, extractNames[e.index], conn!.id);
+      hud.call(e, extractNames[e.index], meId);
       sfx.call();
       break;
     case 'took':
       sfx.pickup();
       break;
     case 'contract': {
-      const c = conn?.run?.contracts[e.index];
+      const c = (replay ? replay.run() : conn?.run)?.contracts[e.index];
       if (c) hud.contract(contractTitle(c), e.state);
       if (e.state === 'done') sfx.pickup();
       break;
@@ -883,6 +1186,31 @@ function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt:
   viewModel.hidden = s.dead || (s.weapon === BOLT && me.aim > 0.9);
 }
 
+/** The replay's free camera: flown with WASD, Q and E, turned by dragging. */
+function flyCamera(dt: number): void {
+  const k = fly.keys;
+  const step = (k.has('ShiftLeft') || k.has('ShiftRight') ? FLY_FAST : FLY_SPEED) * dt;
+  const fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+  const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+  const up = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
+  const cp = Math.cos(fly.pitch);
+  fly.x += (-Math.sin(fly.yaw) * cp * fwd + Math.cos(fly.yaw) * side) * step;
+  fly.z += (-Math.cos(fly.yaw) * cp * fwd - Math.sin(fly.yaw) * side) * step;
+  fly.y += (Math.sin(fly.pitch) * fwd + up) * step;
+  const edge = world.half * 1.5;
+  fly.x = clamp(fly.x, -edge, edge);
+  fly.z = clamp(fly.z, -edge, edge);
+  fly.y = clamp(fly.y, world.floorHeight(fly.x, fly.z) + 0.3, world.maxHeight + 200);
+  if (Math.abs(camera.fov - PLAY_FOV) > 1e-3) {
+    camera.fov = PLAY_FOV;
+    camera.updateProjectionMatrix();
+  }
+  camera.position.set(fly.x, fly.y, fly.z);
+  camera.rotation.set(fly.pitch, fly.yaw, 0);
+  focus.set(fly.x, world.floorHeight(fly.x, fly.z), fly.z);
+  view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, performance.now() / 1000);
+}
+
 /** Our own footsteps and landings, from the predicted state. */
 function footsteps(s: PlayerState): void {
   const moved = Math.hypot(s.x - own.x, s.z - own.z);
@@ -918,7 +1246,7 @@ function sprinting(s: PlayerState): boolean {
 
 if (import.meta.env.DEV) {
   // For poking at the game from the console or a test browser.
-  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, get conn() { return conn; }, get deathcam() { return deathcam; } } });
+  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, get conn() { return conn; }, get deathcam() { return deathcam; }, get replay() { return replay; } } });
 }
 
 renderer.setAnimationLoop(() => {
@@ -932,44 +1260,60 @@ renderer.setAnimationLoop(() => {
     inputLoop.advance(now);
   }
   const cam = deathcam;
-  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true));
-  const players = cam ? cam.others() : (conn?.interpolated() ?? []);
+  const rep = replay;
+  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true), (kill) => hud.mark(false, kill));
+  rep?.update(dt, (fx) => weaponFx(fx, () => rep.others()), (e) => onEvent(e, true));
+  const free = !!rep && replayCam === 'free';
+  const players = cam ? cam.others() : rep ? (free ? [...rep.others(), rep.self()] : rep.others()) : (conn?.interpolated() ?? []);
   bodies.update(players, dt, camera);
-  bags.update(conn?.bags ?? []);
-  grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? []));
-  if (conn) view.setExtracts(conn.extracts, now);
+  bags.update(rep ? rep.bags() : (conn?.bags ?? []));
+  grenades.update(cam ? cam.grenades() : rep ? rep.grenades() : (conn?.grenades() ?? []));
+  if (rep) view.setExtracts(rep.extracts(), now);
+  else if (conn) view.setExtracts(conn.extracts, now);
 
   const me = conn?.predictor.render(inputLoop.alpha);
-  const state = cam ? cam.state : (conn?.predictor.state ?? null);
-  if (cam) {
-    const killer = cam.view();
-    eyeCamera(killer, killer.yaw, killer.pitch, cam.state, dt);
-    deathcamScope.style.opacity = cam.state.weapon === BOLT ? String(Math.max((killer.aim - 0.8) / 0.2, 0)) : '0';
+  /** Whose view is shown: the killer's in a death cam, the player's in a replay, else ours. */
+  const shown = cam ?? rep;
+  const state = shown ? shown.state : (conn?.predictor.state ?? null);
+  const eye = shown?.view();
+  if (free) flyCamera(dt);
+  else if (eye && shown) {
+    eyeCamera(eye, eye.yaw, eye.pitch, shown.state, dt);
+    if (rep?.playing) footsteps(rep.state);
   } else if (me && state) {
     eyeCamera(me, input.yaw, input.pitch, state, dt);
     footsteps(state);
   } else orbitCamera(now);
   camera.updateMatrixWorld();
-  const torch = !cam && !!state && !state.dead && input.light;
+  const torch = rep ? !free && !rep.state.dead && rep.self().light : !cam && !!state && !state.dead && input.light;
   flashlights.update(camera, torch, players, (id, out) => bodies.muzzle(id, out));
   viewModel.torchOn = torch;
   sfx.update(camera, dt);
   effects.update(dt);
 
-  if (conn && !cam) {
+  if (shown || conn) {
+    const aim = eye ? eye.aim : (me?.aim ?? 0);
     const spread = state ? spreadOf(state) : 0;
     const spreadPx = (Math.tan(spread) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2);
-    hud.update(dt, state, me?.aim ?? 0, clamp(spreadPx, 0, innerHeight / 3), !!state && sprinting(state), camera);
+    // No death notice over a killer's view.
+    hud.update(dt, state, aim, clamp(spreadPx, 0, innerHeight / 3), !!state && sprinting(state), camera, !cam);
+  }
+  if (rep && eye) {
+    runHud.update(rep.time <= rep.runOver ? rep.run() : null, rep.extracts(), eye.x, eye.z, eye.yaw, camera);
+    replayBar.update(rep, replayCam);
+  } else if (cam) runHud.update(null, [], 0, 0, 0, camera);
+  else if (conn) {
     if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera);
     else runHud.update(null, [], 0, 0, 0, camera);
     if (!paused.hidden) runHud.updatePause(conn.run, pauseStanding());
   }
-  contractProps.update(conn && !conn.over ? (conn.run?.contracts ?? []) : []);
+  const contracts = rep ? (rep.run()?.contracts ?? []) : conn && !conn.over && !cam ? (conn.run?.contracts ?? []) : [];
+  contractProps.update(contracts);
 
   if (cam?.done) stopDeathcam();
   renderer.clear();
   renderer.render(scene, camera);
-  if (state) {
+  if (state && !free) {
     renderer.clearDepth();
     renderer.render(viewModel.scene, viewModel.camera);
   }

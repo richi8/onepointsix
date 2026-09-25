@@ -5,6 +5,7 @@ import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
 import { grenadesAt, playersAt, type Recording, type ReplayEvent } from './connection.ts';
+import { brokenBefore } from './replay.ts';
 
 export type DeathcamEvent = Extract<GameEvent, { k: 'deathcam' }>;
 
@@ -18,7 +19,8 @@ const SLOW_AFTER = 0.4;
  * The last seconds before you died, seen through your killer's eyes. The
  * killer is rebuilt from their recorded inputs through the shared
  * simulation, so their aim, recoil and shots are exactly what the server
- * judged. Everyone else is drawn from the snapshots this client received.
+ * judged. Everyone else is drawn from the snapshots this client received,
+ * and the panels are put back as they stood then.
  */
 export class Deathcam {
   readonly killer: number;
@@ -26,12 +28,15 @@ export class Deathcam {
   /** Server time being shown. */
   time: number;
   readonly end: number;
+  /** Panels down when it starts. */
+  readonly broken: number[];
   private readonly kill: number;
   private readonly player: TapePlayer;
   private readonly recording: Recording;
   private nextEvent = 0;
 
-  constructor(world: World, e: DeathcamEvent, recording: Recording) {
+  /** `broken` is the panels down now. */
+  constructor(world: World, e: DeathcamEvent, recording: Recording, broken: Iterable<number>) {
     this.killer = e.killer;
     this.name = e.name;
     this.kill = e.time;
@@ -42,6 +47,7 @@ export class Deathcam {
     this.end = Math.max(Math.min(e.time + DEATHCAM_AFTER, this.player.end), this.time);
     // Catch up silently to where it starts, and skip what happened before.
     this.player.seek(this.time);
+    this.broken = brokenBefore(broken, recording.events, this.time);
     while (this.nextEvent < recording.events.length && recording.events[this.nextEvent].time <= this.time) this.nextEvent++;
   }
 
@@ -49,17 +55,24 @@ export class Deathcam {
     return this.time >= this.end;
   }
 
-  /** Play on by `dt` real seconds; the killer's own effects go to `onFx`, and other people's shots and blasts to `onEvent`. */
-  update(dt: number, onFx: (fx: WeaponFx) => void, onEvent: (e: ReplayEvent) => void): void {
+  /**
+   * Play on by `dt` real seconds. The killer's own effects go to `onFx`, other
+   * people's shots, blasts and breaking panels to `onEvent`, and the killer's
+   * hits to `onMark`, `kill` set for the one that killed.
+   */
+  update(dt: number, onFx: (fx: WeaponFx) => void, onEvent: (e: ReplayEvent) => void, onMark: (kill: boolean) => void): void {
     const near = this.time > this.kill - SLOW_BEFORE && this.time < this.kill + SLOW_AFTER;
+    const before = this.time;
     this.time = Math.min(this.time + dt * (near ? SLOW_RATE : 1), this.end);
     this.player.seek(this.time, onFx);
     const events = this.recording.events;
     while (this.nextEvent < events.length && events[this.nextEvent].time <= this.time) {
-      const { e } = events[this.nextEvent++];
-      // The killer's rounds come from the replay itself.
+      const { e, time } = events[this.nextEvent++];
+      // The killer's rounds come from the replay itself; only whether they hit is taken.
       if (e.k !== 'shot' || e.id !== this.killer) onEvent(e);
+      else if (e.struck === 'body' && time < this.kill) onMark(false);
     }
+    if (before < this.kill && this.time >= this.kill) onMark(true);
   }
 
   /** The killer, where to draw them now. */

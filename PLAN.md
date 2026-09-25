@@ -116,7 +116,7 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
 
 ### Replays (cheap because the simulation is deterministic)
 - The simulation runs on inputs, so a run can be recorded as its inputs.
-- Death cam first, shareable replay links later.
+- Death cam first, then whole runs saved as replay files (chunk 17); shareable replay links later.
 
 ## Technical Architecture
 
@@ -185,7 +185,7 @@ the Known Issues named in its scope.
 | 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | **Done** |
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | **Done** (60 fps checked on an M3 Pro only, and slow hardware only simulated) |
 | 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards stay universal, one per island and mode whatever the conditions (changed from "per condition" at the user's request) | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | **Done** |
-| 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | Not started |
+| 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | **Done** (the Save and Watch buttons after a real run were checked in the browser with a simulated run end only) |
 | 18 | **Rivals** | Operator bot personalities: the *rat* (sneaks, loots, avoids fights), the *hunter* (follows gunfire to find wounded operators), the *camper* (waits near extraction points) and the *looter* (goes for high-value crates); third-partying, so operators are drawn to fights between others; a bounty on the operator carrying the most value, who is marked or heard more easily; a kill feed; bags left by bodies show their value before you open them. Personalities carry over as fill bots in future multiplayer | In Mixed mode, meeting another operator plays out differently depending on who they are, and a big haul makes you feel hunted | Not started |
 
 ## Known Issues
@@ -601,22 +601,81 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
   are drawn and collided as they are now, so a replayed killer can walk or shoot differently
   around them.
+  **Resolved** (17): the client keeps the breaks and rebuilds of the last seconds with the rest of
+  the recording. The death cam undoes those since its start to put the panels back as they stood
+  then, plays them forward as they happened, and sets the panels back to now when it ends. Live
+  breaks during the death cam are only noted, and shown once it's over.
 - **The killer's state can drift between keyframes** (10). The server changes a few things
   outside the commands (health, ammo from loot, dying). The replay re-syncs to a full state
   every 0.5 s, so errors are small and short-lived, but they're there.
   **Improved** (15): a new carry weight now writes a keyframe at once, since it changes how fast
   the player moves. Chunk 15's new outpost layouts had a bot take loot just before the end of
   the tape test, and its replay drifted 3 cm. Health and ammo still wait for the next key.
+  **Resolved** (17): the tape keeps a copy of the player after each command and writes a key
+  (marked `changed`) whenever the server changed anything since: damage, ammo, loot, a death or
+  respawn. It checks at the start of every tick and before every command, so a replay picks up a
+  change from the next command on. One gap is left: with more than two commands in one tick, they
+  share a time, so a change between two of them may be keyed after them. The checks cost about
+  10–15% of a server step with 31 bots.
 - **No HUD in the death cam** (10): there's no hit marker, killer health or ammo. The bolt
   scope overlay is the only thing shown besides the banner.
+  **Resolved** (17): the normal HUD shows the killer's health, ammo, crosshair, stamina and scope,
+  with no key hints and no death notice. A hit marker flashes for each of the killer's rounds that
+  struck a body, and a kill marker at the kill. There are no damage numbers, since the victim's
+  client isn't told the killer's damage to others, and the markers count any body struck, not only
+  yours.
 - **Death cam clips are big** (10): about 6 s of commands and keyframes as plain JSON, some tens
   of kB per death. That's fine through the Worker, but multiplayer should pack it.
 - **Every player's inputs are taped all the time** (10), including guards far from anyone, just
   in case they kill someone. It's cheap, but it isn't free.
 - **Deaths on the range get no death cam**, and neither does a self-kill with a grenade.
   Replays can't be shared yet either (see Future).
+  **Resolved** (17) for sharing: whole runs are saved and opened as replay files.
   **Resolved** for the range only (modes change): the range was removed. A self-kill with a
   grenade still gets no death cam.
+
+### Replays
+- **Only the player is replayed exactly** (17). Their inputs rebuild them through the simulation;
+  everyone else is drawn from the snapshots their client got, 15 a second (every other one),
+  rounded to the centimetre and milliradian. Others' recoil, exact aim and footing aren't theirs,
+  and a body dying between two frames snaps to the next one.
+- **Replays are tied to the game's version** (17). A change to the simulation, the weapons or
+  the island generator makes an older replay play back differently; the player would walk
+  through a moved wall. A replay from another version only gets a warning, and versions are told
+  apart by the date of the newest "What's new" entry, so two updates on one day look the same.
+  The file format has its own version, and a replay in another format is refused.
+- **A ten-minute replay is about 900 kB** (17), most of it the other 30-odd bodies. A 45-second
+  test run is about 70 kB. Frames at 10 a second, or leaving out bodies far from the player,
+  would halve it.
+- **A replay lasts only until the next run** (17). Watch replay and Save replay act on the last
+  run; nothing is kept in the browser, so an unsaved replay is gone once you play again or leave.
+- **Opening a replay of another island reloads the page** (17). The file is handed over through
+  the tab's session storage and opened paused, since sound needs a click first. If it doesn't fit
+  there (a few MB), you're told to open that island and then the replay. Its conditions replace
+  the ones chosen on the menu.
+- **The free camera flies through everything** (17). It stays above the ground and near the
+  island, but walls, rocks and trees don't stop it.
+- **Seeking starts the scene afresh** (17): the kill feed, hit numbers and the death notice are
+  cleared, tracers and debris already flying stay, and the dead fall again from standing. What
+  happened before the new moment isn't rebuilt, only the panels.
+- **The kill feed says "You" for the replay's player** (17), even when a friend watches it, since
+  it's shown as the player saw it. Feed rows fade by real time, not replay time.
+- **Sounds in replays aren't rebuilt when seeking** (17), and the player's own footsteps only
+  play through their eyes. At 4× everything plays four times as often.
+- **The live game goes on unseen behind a replay** (17). Watching your run from the results
+  keeps the connection; live events are dropped but for keeping the books, and the panels are set
+  back to how they stand now when the replay closes.
+- **Look angles are rounded** (17). Commands carry yaw and pitch in whole 0.00001 rad steps, so
+  the replay stores them as small whole numbers and still replays exactly. It's far below a
+  pixel, but it is a change to what the server simulates.
+- **The server keeps a human's whole run** (17): every command and a key every 0.5 s, about
+  36,000 commands for ten minutes. Fine locally; a multiplayer server should keep it packed.
+- **Replays were checked in a headless browser only** (17). The recorder, file, player, frames
+  and cover history are tested against a real server run in Node. The viewer, free camera, file
+  picker, dropping a file, the handover between islands and the death cam HUD were checked by
+  screenshots in headless Chrome, the results-screen buttons and the death cam HUD with a run end
+  faked in the page, since a run can't be ended on demand in the browser. Dropping a file was only
+  wired, not tried.
 
 ### Licensing
 - **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but

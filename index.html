@@ -64,7 +64,11 @@
         <ol></ol>
         <p class="empty"></p>
       </div>
-      <button type="button" class="news-button" id="news-open">What's new<span class="dot" hidden></span></button>
+      <div class="menu-foot">
+        <button type="button" class="news-button" id="news-open">What's new<span class="dot" hidden></span></button>
+        <button type="button" class="news-button" id="replay-open">Watch a replay</button>
+        <input type="file" id="replay-file" accept=".replay,application/gzip,application/json" hidden />
+      </div>
       <a class="support" href="https://buymeacoffee.com/richi8" target="_blank" rel="noopener"><span aria-hidden="true">☕</span>Buy me a coffee</a>
     </div>
     <div class="news" id="news" hidden role="dialog" aria-modal="true" aria-labelledby="news-title">
@@ -104,8 +108,7 @@
       <div class="death" id="death" hidden><h2>You were killed</h2><p></p></div>
       <div class="hint" id="hint">
         WASD move · Shift sprint · Space jump / mantle · C crouch · Q/E lean · LMB fire ·
-        RMB aim · R reload · 1/2/3 or wheel switch · G grenade · F search / take / call / grab intel · X drop · T flashlight · Esc menu ·
-        F3 net panel · F4 run log
+        RMB aim · R reload · 1/2/3 or wheel switch · G grenade · F search / take / call / grab intel · X drop · T flashlight · Esc menu
       </div>
     </div>
     <div class="paused" id="paused" hidden>
@@ -118,10 +121,31 @@
       </div>
     </div>
     <div class="deathcam" id="deathcam" hidden>
-      <div class="scope"></div>
       <div class="banner"><b>Death cam</b><span></span></div>
       <div class="skip">Click or press Space to skip</div>
     </div>
+    <div class="replaybar" id="replaybar" hidden>
+      <div class="head"><b>Replay</b><span class="who"></span></div>
+      <div class="timeline">
+        <div class="marks"></div>
+        <input type="range" class="scrub" min="0" max="1" step="any" value="0" aria-label="Time in the replay" />
+      </div>
+      <div class="controls">
+        <button type="button" class="play" aria-label="Pause"></button>
+        <span class="time"></span>
+        <div class="seg speeds" role="radiogroup" aria-label="Speed"></div>
+        <div class="seg cams" role="radiogroup" aria-label="Camera">
+          <button type="button" role="radio" data-cam="eyes">Eyes</button>
+          <button type="button" role="radio" data-cam="free">Free</button>
+        </div>
+        <span class="grow"></span>
+        <button type="button" class="save">Save</button>
+        <button type="button" class="close">Close</button>
+      </div>
+      <div class="keys">Space pause · ← → 5 s · [ ] speed · V camera · Esc close</div>
+      <div class="keys free">Free camera: drag to look · WASD move · Q/E down/up · Shift faster</div>
+    </div>
+    <div class="drop" id="drop" hidden><p>Drop a replay to watch it</p></div>
     <div class="toast" id="toast" role="status" hidden></div>
     <div class="results" id="results" hidden>
       <div class="card">
@@ -138,6 +162,10 @@
         <div class="buttons more">
           <button type="button" id="share-run" class="secondary"></button>
           <button type="button" id="replay" class="secondary" hidden>Watch death cam</button>
+        </div>
+        <div class="buttons more">
+          <button type="button" id="watch-run" class="secondary">Watch replay</button>
+          <button type="button" id="save-run" class="secondary">Save replay</button>
         </div>
       </div>
     </div>

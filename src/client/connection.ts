@@ -10,6 +10,7 @@ import type { LagTransport, Transport } from '../shared/transport.ts';
 import type { World } from '../shared/world.ts';
 import type { WorldConfig } from '../shared/worldconfig.ts';
 import { Predictor } from './prediction.ts';
+import { quantizeLook, type RunRecorder } from './replayfile.ts';
 
 /** How many unacknowledged commands ride along with each input packet. */
 const REDUNDANT_CMDS = 8;
@@ -39,8 +40,12 @@ export interface Snapshot {
   grenades: GrenadeSnap[];
 }
 
-/** Events worth showing again in a replay: other people's rounds and explosions. */
-export type ReplayEvent = Extract<GameEvent, { k: 'shot' } | { k: 'boom' }>;
+/** Events worth showing again in a death cam: rounds, explosions, and panels breaking and being rebuilt. */
+export type ReplayEvent = Extract<GameEvent, { k: 'shot' } | { k: 'boom' } | { k: 'break' } | { k: 'repair' }>;
+
+function isReplayEvent(e: GameEvent): e is ReplayEvent {
+  return e.k === 'shot' || e.k === 'boom' || e.k === 'break' || e.k === 'repair';
+}
 
 /** The last few seconds as this client saw them, everyone included, for replays. */
 export interface Recording {
@@ -65,6 +70,10 @@ export class Connection {
   bags: BagSnap[] = [];
   /** Set once the run has ended: no more commands are sent. */
   over = false;
+  /** Panels down right now, as the server says; what the world shows can differ while a replay plays. */
+  readonly broken = new Set<number>();
+  /** Records the whole run for its replay, if set. */
+  recorder: RunRecorder | null = null;
   /** Round-trip time in ms, smoothed. */
   rtt = 0;
   lastTick = 0;
@@ -113,7 +122,8 @@ export class Connection {
   /** Queue one CMD_DT step of input and send it with its unacked predecessors. */
   sendCmd(buttons: number, yaw: number, pitch: number, weapon: number): void {
     if (!this.connected || this.over) return;
-    const cmd = { seq: ++this.seq, buttons, yaw, pitch, weapon, view: this.renderTime() / SERVER_DT };
+    // Whole look steps, so a replay stores them small and still plays back exactly.
+    const cmd = { seq: ++this.seq, buttons, yaw: quantizeLook(yaw), pitch: quantizeLook(pitch), weapon, view: this.renderTime() / SERVER_DT };
     this.unacked.push(cmd);
     this.predictor.predict(cmd, (fx) => this.onFx?.(fx));
     if (this.unacked.length > MAX_UNACKED) this.unacked.shift();
@@ -164,6 +174,8 @@ export class Connection {
         this.seed = msg.seed;
         this.mode = msg.mode;
         this.clock = msg.tick * SERVER_DT;
+        for (const i of msg.broken) this.broken.add(i);
+        this.recorder?.welcome(msg.id, msg.broken);
         this.onWelcome?.(msg.broken);
         break;
       case 'pong': {
@@ -176,11 +188,15 @@ export class Connection {
           this.run = msg.run;
           this.extracts = msg.extracts;
           this.bags = msg.bags;
+          this.recorder?.snapshot(msg.tick * SERVER_DT, msg.players, msg.grenades, msg.run, msg.extracts, msg.bags);
         }
         break;
       case 'events':
         for (const e of msg.events) {
-          if (e.k === 'shot' || e.k === 'boom') this.recording.events.push({ time: msg.tick * SERVER_DT, e });
+          if (isReplayEvent(e)) this.recording.events.push({ time: msg.tick * SERVER_DT, e });
+          if (e.k === 'break') for (const i of e.panels) this.broken.add(i);
+          if (e.k === 'repair') for (const i of e.panels) this.broken.delete(i);
+          this.recorder?.event(msg.tick * SERVER_DT, e);
         }
         this.trimRecording(msg.tick * SERVER_DT);
         this.onEvents?.(msg.events);

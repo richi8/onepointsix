@@ -1432,6 +1432,222 @@ canvas {
   transform: translateX(-50%);
 }
 
+/* ------------------------------------------------------------------ replays */
+
+.menu .menu-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Watching a replay or a death cam: no key hints, and the bottom corners make room for the replay's controls. */
+.hud.watching .hint {
+  display: none;
+}
+
+.hud.replaying .health,
+.hud.replaying .ammo {
+  bottom: 132px;
+}
+
+.hud.replaying .pack {
+  bottom: 172px;
+}
+
+.hud.replaying .stamina {
+  bottom: 136px;
+}
+
+/* The free camera isn't anyone's eyes: only the clock and the feed stay. */
+.hud.free > :not(.killfeed, .clock) {
+  display: none;
+}
+
+.replaybar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  width: min(760px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 10px 14px 8px;
+  color: #fff;
+  background: rgb(14 16 18 / 0.82);
+  border-top: 3px solid #e8c35a;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.45);
+  transform: translateX(-50%);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.replaybar[hidden] {
+  display: none;
+}
+
+.replaybar .head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.replaybar .head b {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #e8c35a;
+}
+
+.replaybar .head span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+.replaybar .timeline {
+  position: relative;
+  margin: 6px 0 4px;
+}
+
+.replaybar .scrub {
+  display: block;
+  width: 100%;
+  margin: 0;
+  accent-color: #e8c35a;
+  cursor: pointer;
+}
+
+.replaybar .marks {
+  position: absolute;
+  inset: 0 8px;
+  pointer-events: none;
+}
+
+.replaybar .marks i {
+  position: absolute;
+  top: -5px;
+  width: 2px;
+  height: 6px;
+  margin-left: -1px;
+  background: #e8c35a;
+  border-radius: 1px;
+}
+
+.replaybar .marks i.death {
+  background: #d9534f;
+}
+
+.replaybar .marks i.extract {
+  background: #4fd06b;
+}
+
+.replaybar .controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.replaybar button {
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #eee;
+  background: rgb(255 255 255 / 0.12);
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.replaybar button:hover {
+  background: rgb(255 255 255 / 0.22);
+}
+
+.replaybar button.play {
+  width: 38px;
+  color: #1b1b1b;
+  background: #e8c35a;
+}
+
+.replaybar button.play:hover {
+  background: #f2d27a;
+}
+
+.replaybar button[hidden] {
+  display: none;
+}
+
+.replaybar .time {
+  min-width: 96px;
+  font-size: 13px;
+}
+
+.replaybar .seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: rgb(0 0 0 / 0.35);
+  border-radius: 5px;
+}
+
+.replaybar .seg button {
+  padding: 3px 8px;
+  background: transparent;
+  border-radius: 3px;
+}
+
+.replaybar .seg button:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.replaybar .seg button.on {
+  color: #1b1b1b;
+  background: rgb(232 195 90 / 0.85);
+}
+
+.replaybar .grow {
+  flex: 1;
+}
+
+.replaybar .keys {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.replaybar .keys.free {
+  margin-top: 2px;
+}
+
+.replaybar:not(.free) .keys.free {
+  display: none;
+}
+
+.drop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  background: rgb(0 0 0 / 0.6);
+  outline: 3px dashed #e8c35a;
+  outline-offset: -24px;
+  pointer-events: none;
+}
+
+.drop[hidden] {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ toast */
 
 .toast {
