@@ -509,6 +509,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   first-person arms. The soldier model grew by 4.5 kB for the death clip.
 - **The entry chunk grew again, to 172 kB** (15), with the terrain tiles, water, ground cover,
   impostors and cascades. It all ships in the entry chunk rather than loading lazily.
+- **The Buy Me a Coffee button blocks the page while it loads** (pause menu commit). Its
+  script writes the button in place with `document.writeln`, so it has to be a plain blocking
+  script in `index.html`. A slow buymeacoffee.com CDN holds up the rest of the page, and ad
+  blockers that block it leave no button. A plain styled link would avoid both.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
