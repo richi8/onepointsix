@@ -520,6 +520,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   for about a second after Esc freed it, so a refused lock left a "Click to resume" prompt anyway.
   **Resolved** (by removal): Esc no longer closes the dashboard; clicking anywhere does. Holding
   the dashboard on Tab, or claiming Esc with Keyboard Lock in fullscreen, would bring it back.
+- **A click on the run dashboard within about a second of Esc resumes late** (dashboard retry
+  commit). Chrome refuses to re-lock the mouse that soon, so the click keeps retrying for up to
+  2 s and the game resumes once it's let through. Untested: headless Chrome never grants pointer
+  lock, and whether a retry still counts as the click's gesture depends on the browser.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain

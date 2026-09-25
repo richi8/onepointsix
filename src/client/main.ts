@@ -55,6 +55,8 @@ const SHAKE_DECAY = 5;
 /** Seconds before the loading screen offers to play without waiting for the textures. */
 const SKIP_LOADING_AFTER = 8;
 const MODE_NAMES: Record<Mode, string> = { mixed: 'Mixed', pve: 'PvE', range: 'Range' };
+/** Milliseconds a click on the run dashboard keeps trying to take the mouse back. */
+const RELOCK_RETRY = 2000;
 /** Leaderboard rows shown on the menu. */
 const BOARD_SHOWN = 5;
 /** Islands from "New island" get seeds up to this, so their numbers stay short. */
@@ -543,8 +545,23 @@ input.onLockChange = (locked) => {
 };
 // Clicking anywhere but the Leave button resumes.
 paused.onclick = (e) => {
-  if (e.target !== leaveButton) input.lock();
+  if (e.target !== leaveButton) void resume();
 };
+let resuming = false;
+/**
+ * Chrome refuses to re-lock the mouse for about a second after Esc freed it.
+ * A click in that time keeps trying until it's let through, while the click
+ * still counts as a gesture, rather than being lost.
+ */
+async function resume(): Promise<void> {
+  if (resuming) return;
+  resuming = true;
+  const until = performance.now() + RELOCK_RETRY;
+  while (!paused.hidden && !(await input.lock()) && performance.now() < until) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  resuming = false;
+}
 const leaveButton = document.getElementById('leave')!;
 leaveButton.onclick = toMenu;
 
