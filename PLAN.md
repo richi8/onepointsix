@@ -858,11 +858,21 @@ extraction stays as hard as it is.
 - **Race:** a minigame inside the normal run, in the existing modes, with its own leaderboard
   of fastest times per island. Every outpost has a race box with a design of its own. Each
   player has their own item in each box: anyone can take theirs, and it never runs out or
-  disappears. Taking the first item starts the race: a speedrun panel with split times appears,
-  and from then on you can only extract carrying 3 items, from any 3 outposts. Looting goes on
-  as normal (ammo, medkits, loot). Extraction windows don't change, dying means no time, and
-  there's no bounty on items. Times show their conditions, like scores. Replays already cover
-  proof, as files.
+  disappears. Taking the first item starts the race and its clock: a speedrun panel with split
+  times appears, with a short note explaining the race, since players may start it by accident.
+  From then on you can only extract carrying 3 items, from any 3 outposts. Looting goes on as
+  normal (ammo, medkits, loot). Extraction windows don't change, dying means no time, and there's
+  no bounty on items. Times show their conditions, like scores.
+  - The clock starts at the first item, not at drop-in, so random drop-in points don't decide
+    times. The walk to the first box isn't timed, and you choose which box to start from.
+  - Opening a race box has no confirmation: starting the race by accident is part of the
+    friction, and how players discover it.
+  - A race run still counts on the score board: extracting scores the loot as normal, and the
+    time goes on the race board.
+  - Calling extraction without 3 items shows a message saying why ("2/3 race items") and what
+    the race needs.
+  - Replays already cover proof, as files. The replay viewer and death cam draw the race panel
+    and its splits.
 
 ## Decisions
 - **No slide:** removed after chunk 14 at the user's request. Crouching while sprinting just
