@@ -126,6 +126,10 @@ canvas {
   text-shadow: none;
 }
 
+.menu .challenge.off {
+  opacity: 0.45;
+}
+
 .menu .challenge[hidden] {
   display: none;
 }
@@ -680,11 +684,6 @@ canvas {
   background: #e8c35a;
 }
 
-.menu .mode-note {
-  margin: 0;
-  font-size: 13px;
-  opacity: 0.85;
-}
 
 /* ------------------------------------------------------------------ conditions */
 
@@ -722,14 +721,57 @@ canvas {
   background: rgb(232 195 90 / 0.85);
 }
 
-.menu .mode-note[hidden] {
-  display: none;
+/* ------------------------------------------------------------------ briefing */
+
+/* What the chosen mode, time and weather mean, one line each. */
+.menu .briefing {
+  width: min(380px, 100%);
+  box-sizing: border-box;
+  padding: 8px 14px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  background: rgb(0 0 0 / 0.4);
+  border-radius: 6px;
+  text-shadow: none;
+}
+
+/* Every option's note in the same cell, so the line is as tall as the longest. */
+.menu .briefing .line {
+  display: grid;
+  padding: 3px 0;
+}
+
+.menu .briefing .line + .line {
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.menu .briefing p {
+  grid-area: 1 / 1;
+  display: grid;
+  grid-template-columns: 5.2em 1fr;
+  gap: 8px;
+  margin: 0;
+  visibility: hidden;
+}
+
+.menu .briefing p.on {
+  visibility: visible;
+}
+
+.menu .briefing b {
+  padding-top: 2px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e8c35a;
 }
 
 /* ------------------------------------------------------------------ leaderboard */
 
 .menu .board {
-  width: min(300px, 100%);
+  position: relative;
+  width: min(380px, 100%);
   box-sizing: border-box;
   text-align: left;
   margin-top: 6px;
@@ -797,8 +839,23 @@ canvas {
   color: #9fd3ff;
 }
 
+.menu .board li.open {
+  opacity: 0.35;
+}
+
+/* With no scores yet, the note stands in the middle of the empty list. */
+.menu .board.none ol {
+  visibility: hidden;
+}
+
 .menu .board .empty {
+  position: absolute;
+  inset: 26px 14px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
+  text-align: center;
   opacity: 0.7;
 }
 
@@ -831,7 +888,8 @@ canvas {
     margin-top: 0;
   }
 
-  .menu .board {
+  .menu .board,
+  .menu .briefing {
     padding: 6px 12px;
   }
 

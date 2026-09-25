@@ -68,13 +68,15 @@ const MODE_NOTES: Record<Mode, string> = {
   offline: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} bot operators. Nobody else joins.`,
 };
 
-const CONDITION_NOTES: Record<TimeOfDay | Weather, string> = {
-  day: '',
-  dusk: 'Dusk: the light is going. T for a flashlight.',
-  night: 'Night: more and tougher guards, better loot. A flashlight (T) shows you the way, and shows you to them.',
-  clear: '',
-  rain: 'Rain: shorter sight, and it drowns out footsteps and far-off shots.',
-  fog: 'Fog: nobody sees far, you included.',
+const TIME_NOTES: Record<TimeOfDay, string> = {
+  day: 'Broad daylight: you see them coming, and they see you.',
+  dusk: 'The light is going. T for a flashlight.',
+  night: 'More and tougher guards, better loot. A flashlight (T) shows you the way, and shows you to them.',
+};
+const WEATHER_NOTES: Record<Weather, string> = {
+  clear: 'Sight and sound carry across the island.',
+  rain: 'Shorter sight, and it drowns out footsteps and far-off shots.',
+  fog: 'Nobody sees far, you included.',
 };
 
 const link = parseShareLink(location.search);
@@ -248,10 +250,12 @@ const boardEl = document.getElementById('board')!;
 /** The menu's leaderboard for the chosen mode, with the challenge from the link in its place. */
 function showBoard(): void {
   const c = challengeFor(mode);
-  challengeEl.hidden = !c;
-  if (c) {
+  // Shown in either mode, faded in the other, so switching doesn't move the menu.
+  challengeEl.hidden = !link.challenge;
+  challengeEl.classList.toggle('off', !c);
+  if (link.challenge) {
     const where = link.mode ? ` in ${MODE_NAMES[link.mode]}` : '';
-    challengeEl.textContent = `${c.name} scored ${c.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
+    challengeEl.textContent = `${link.challenge.name} scored ${link.challenge.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
   }
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
   const rows: { name: string; score: number; note: string; rival: boolean }[] = board.entries(config.seed, mode)
@@ -264,6 +268,17 @@ function showBoard(): void {
   const shown = rows.slice(0, BOARD_SHOWN);
   const rival = rows.findIndex((r) => r.rival);
   if (rival >= BOARD_SHOWN) shown[BOARD_SHOWN - 1] = rows[rival];
+  // Open places fill the list out to its full length, so it's the same size however many scores there are.
+  const open = Array.from({ length: BOARD_SHOWN - shown.length }, (_, i) => {
+    const li = document.createElement('li');
+    li.className = 'open';
+    const rank = document.createElement('i');
+    rank.textContent = `${shown.length + i + 1}.`;
+    const name = document.createElement('span');
+    name.textContent = '—';
+    li.append(rank, name);
+    return li;
+  });
   boardEl.querySelector('ol')!.replaceChildren(...shown.map((r) => {
     const li = document.createElement('li');
     li.classList.toggle('rival', r.rival);
@@ -277,9 +292,10 @@ function showBoard(): void {
     note.textContent = r.note;
     li.append(rank, name, score, note);
     return li;
-  }));
+  }), ...open);
   const empty = boardEl.querySelector('.empty') as HTMLElement;
   empty.hidden = rows.length > 0;
+  boardEl.classList.toggle('none', rows.length === 0);
   empty.textContent = 'No scores yet. Get off the island with loot to post one.';
 }
 
@@ -303,7 +319,33 @@ const inputLoop = new FixedLoop(CMD_DT, () => conn?.sendCmd(input.sample(), inpu
 
 // ------------------------------------------------------------------ modes
 
-const modeNote = document.getElementById('mode-note')!;
+const briefing = document.getElementById('briefing')!;
+
+/**
+ * A line of the menu's briefing on what one choice means. Every option's note
+ * sits in the same place, only the chosen one showing, so the longest sets the
+ * height and picking another doesn't move the menu about.
+ */
+function briefingLine<K extends string>(notes: Record<K, string>): (chosen: K) => void {
+  const line = document.createElement('div');
+  line.className = 'line';
+  const options = (Object.keys(notes) as K[]).map((k) => {
+    const option = document.createElement('p');
+    const name = document.createElement('b');
+    name.textContent = k;
+    option.append(name, notes[k]);
+    line.append(option);
+    return [k, option] as const;
+  });
+  briefing.append(line);
+  return (chosen) => {
+    for (const [k, option] of options) option.classList.toggle('on', k === chosen);
+  };
+}
+
+const briefMode = briefingLine(MODE_NOTES);
+const briefTime = briefingLine(TIME_NOTES);
+const briefWeather = briefingLine(WEATHER_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
 let mode: Mode = 'online';
 try {
@@ -321,7 +363,7 @@ function selectMode(m: Mode): void {
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
   }
-  modeNote.textContent = MODE_NOTES[m];
+  briefMode(m);
   try {
     localStorage.setItem('mode', m);
   } catch {
@@ -336,7 +378,6 @@ selectMode(mode);
 
 const timeButtons = [...document.querySelectorAll<HTMLButtonElement>('#times button')];
 const weatherButtons = [...document.querySelectorAll<HTMLButtonElement>('#weathers button')];
-const conditionsNote = document.getElementById('conditions-note')!;
 
 /**
  * Play the island at another time of day or in other weather: relit behind
@@ -354,9 +395,8 @@ function setConditions(c: Conditions): void {
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
   }
-  const note = [CONDITION_NOTES[c.time], CONDITION_NOTES[c.weather]].filter(Boolean).join(' ');
-  conditionsNote.textContent = note;
-  conditionsNote.hidden = !note;
+  briefTime(c.time);
+  briefWeather(c.weather);
   view.setConditions(c);
   const lit = view.lit;
   renderer.toneMappingExposure = lit.exposure;
@@ -461,6 +501,7 @@ function play(): void {
   if (conn || !loaded) return;
   sfx.unlock();
   menu.hidden = true;
+  view.preview = false;
   join();
 }
 
@@ -581,6 +622,7 @@ function toMenu(): void {
   document.getElementById('hud')!.hidden = true;
   paused.hidden = true;
   menu.hidden = false;
+  view.preview = true;
   bodies.update([], 0);
   bags.update([]);
   grenades.update([]);

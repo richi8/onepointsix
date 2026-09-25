@@ -18,6 +18,9 @@ export interface Lighting {
   stars: number;
   fogNear: number;
   fogFar: number;
+  /** The fog seen from high above the island on the menu: thinned so the island shows through it. */
+  previewFogNear: number;
+  previewFogFar: number;
   /** Image-based light from the sky's picture, once textured. */
   environment: number;
   /** The flat light in flat colours, and under the sky's picture once textured, from above and below. */
@@ -72,13 +75,15 @@ interface Sky {
   grey: number;
   fogNear: number;
   fogFar: number;
+  previewFogNear: number;
+  previewFogFar: number;
 }
 
 const WEATHER: Record<Weather, Sky> = {
-  clear: { light: 1, grey: 0, fogNear: 120, fogFar: 1100 },
-  rain: { light: 0.3, grey: 0.75, fogNear: 20, fogFar: 380 },
+  clear: { light: 1, grey: 0, fogNear: 120, fogFar: 1100, previewFogNear: 120, previewFogFar: 1100 },
+  rain: { light: 0.3, grey: 0.75, fogNear: 20, fogFar: 380, previewFogNear: 150, previewFogFar: 1000 },
   // Thick enough that an outpost appears out of it only when you're nearly there.
-  fog: { light: 0.3, grey: 1, fogNear: 0, fogFar: 100 },
+  fog: { light: 0.3, grey: 1, fogNear: 0, fogFar: 100, previewFogNear: 30, previewFogFar: 700 },
 };
 
 export function lightingOf(c: Conditions): Lighting {
@@ -98,6 +103,8 @@ export function lightingOf(c: Conditions): Lighting {
     stars: t.stars * (1 - w.grey),
     fogNear: w.fogNear,
     fogFar: w.fogFar,
+    previewFogNear: w.previewFogNear,
+    previewFogFar: w.previewFogFar,
     environment: t.environment * (0.5 + 0.5 * w.light),
     hemi: 1.1 * t.hemi * (0.5 + 0.5 * w.light),
     hemiTextured: 0.3 * t.hemi * (0.5 + 0.5 * w.light),

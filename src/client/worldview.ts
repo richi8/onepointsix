@@ -77,6 +77,7 @@ export class WorldView {
   private lighting: Lighting;
   private raining: boolean;
   private textured = false;
+  private previewing = true;
 
   constructor(world: World, conditions: Conditions) {
     const scene = this.scene;
@@ -125,6 +126,13 @@ export class WorldView {
     this.light();
   }
 
+  /** Whether the island is seen from the menu's orbit, through thinner fog, or played in. */
+  set preview(on: boolean) {
+    if (on === this.previewing) return;
+    this.previewing = on;
+    this.light();
+  }
+
   private light(): void {
     const l = this.lighting;
     this.sun.set(l.sunColor, l.sunIntensity, l.sunDir);
@@ -134,8 +142,8 @@ export class WorldView {
     this.scene.environmentIntensity = l.environment;
     this.fog.color.copy(l.horizon);
     this.background.copy(l.horizon);
-    this.fog.near = l.fogNear;
-    this.fog.far = l.fogFar;
+    this.fog.near = this.previewing ? l.previewFogNear : l.fogNear;
+    this.fog.far = this.previewing ? l.previewFogFar : l.fogFar;
     const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
     u.horizon.value.copy(l.horizon);
     u.zenith.value.copy(l.zenith);

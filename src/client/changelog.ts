@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'A steadier main menu',
+    notes: [
+      'In rain or fog the island behind the main menu now shows through the weather, instead of vanishing into grey.',
+      'What the chosen mode, time of day and weather mean is spelled out in one box, a line each, and the menu no longer jumps about as you switch between them.',
+      'The leaderboard keeps its size, with open places down to fifth, and a challenge from a link stays put when you switch modes, faded in the other one.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Online and Offline',
     notes: [
       'The modes are now Online and Offline. Both put you on the island with the guards and 7 other operators.',
