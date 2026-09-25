@@ -855,6 +855,14 @@ extraction stays as hard as it is.
   (e.g. `?world=4242&chain=3`).
 - **Daily island:** the island and conditions are built from the date, so everyone plays the
   same run that day, and "today's score" links compare fairly.
+- **Race:** a minigame inside the normal run, in the existing modes, with its own leaderboard
+  of fastest times per island. Every outpost has a race box with a design of its own. Each
+  player has their own item in each box: anyone can take theirs, and it never runs out or
+  disappears. Taking the first item starts the race: a speedrun panel with split times appears,
+  and from then on you can only extract carrying 3 items, from any 3 outposts. Looting goes on
+  as normal (ammo, medkits, loot). Extraction windows don't change, dying means no time, and
+  there's no bounty on items. Times show their conditions, like scores. Replays already cover
+  proof, as files.
 
 ## Decisions
 - **No slide:** removed after chunk 14 at the user's request. Crouching while sprinting just
