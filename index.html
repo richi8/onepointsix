@@ -8,7 +8,13 @@
   <body>
     <div class="menu" id="menu">
       <h1>onepointsix</h1>
-      <p class="world" id="world-label"></p>
+      <div class="island">
+        <span id="world-label"></span>
+        <button type="button" class="link" id="new-island">New island</button>
+        <button type="button" class="link" id="share-island">Share link</button>
+      </div>
+      <p class="challenge" id="challenge" hidden></p>
+      <label class="name">Your name <input id="name" maxlength="16" autocomplete="nickname" spellcheck="false" /></label>
       <button id="play" type="button">Play</button>
       <div class="modes" id="modes" role="radiogroup" aria-label="Mode">
         <button type="button" role="radio" data-mode="mixed">Mixed</button>
@@ -16,6 +22,11 @@
         <button type="button" role="radio" data-mode="range">Range</button>
       </div>
       <p class="mode-note" id="mode-note"></p>
+      <div class="board" id="board">
+        <h3></h3>
+        <ol></ol>
+        <p class="empty"></p>
+      </div>
       <button type="button" class="news-button" id="news-open">What's new<span class="dot" hidden></span></button>
     </div>
     <div class="news" id="news" hidden role="dialog" aria-modal="true" aria-labelledby="news-title">
@@ -60,16 +71,27 @@
       </div>
     </div>
     <div class="paused" id="paused" hidden>Click to resume</div>
+    <div class="deathcam" id="deathcam" hidden>
+      <div class="scope"></div>
+      <div class="banner"><b>Death cam</b><span></span></div>
+      <div class="skip">Click or press Space to skip</div>
+    </div>
+    <div class="toast" id="toast" role="status" hidden></div>
     <div class="results" id="results" hidden>
       <div class="card">
         <h2></h2>
         <p class="why"></p>
         <div class="score"><span></span><small>score</small></div>
+        <p class="standing"></p>
         <dl></dl>
         <ul class="items"></ul>
         <div class="buttons">
           <button type="button" id="again">Play again</button>
           <button type="button" id="to-menu" class="secondary">Menu</button>
+        </div>
+        <div class="buttons more">
+          <button type="button" id="share-run" class="secondary"></button>
+          <button type="button" id="replay" class="secondary" hidden>Watch death cam</button>
         </div>
       </div>
     </div>

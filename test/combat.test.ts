@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { GameServer } from '../src/server/server.ts';
-import { Btn, CMDS_PER_TICK, EYE_HEIGHT, MAX_HP, RESPAWN_TIME, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { Btn, CMDS_PER_TICK, DEATHCAM_AFTER, DEATHCAM_BEFORE, EYE_HEIGHT, MAX_HP, RESPAWN_TIME, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { hitboxes, type Pose } from '../src/shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, ServerMsg } from '../src/shared/protocol.ts';
 import type { PlayerState } from '../src/shared/sim.ts';
+import { TapePlayer } from '../src/shared/tape.ts';
 import { BOLT, WEAPONS } from '../src/shared/weapons.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
@@ -217,6 +218,40 @@ describe('player versus player', () => {
 
     tick(server, [a, b], RESPAWN_TIME * SERVER_TICK_RATE);
     expect(b.me()).toMatchObject({ dead: false, hp: MAX_HP, life: 2 });
+  });
+
+  it('sends the victim a death cam that replays the killer exactly', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false });
+    const a = client(server);
+    const b = client(server);
+    tick(server, [a, b], 1);
+    const s = body(server, b.id);
+    const me = a.me();
+    s.x = me.x - Math.sin(me.yaw) * 12;
+    s.z = me.z - Math.cos(me.yaw) * 12;
+    s.y = server.world.groundHeight(s.x, s.z, server.world.terrainHeight(s.x, s.z));
+    s.hp = 1;
+    a.wield(BOLT);
+    // Walk about first, so there's movement to replay; spawn protection wears off meanwhile.
+    tick(server, [a, b], 180, Btn.Left);
+    tick(server, [a, b], 30, Btn.Aim);
+    fireAt(server, a, a.other(b.id), 'torso');
+    expect(b.me().dead).toBe(true);
+    const kill = server.time;
+    const killer = { ...a.me() };
+    expect(b.events().some((e) => e.k === 'deathcam')).toBe(false);
+
+    tick(server, [a, b], DEATHCAM_AFTER * SERVER_TICK_RATE + 1, Btn.Aim);
+    const cam = b.events().find((e) => e.k === 'deathcam');
+    if (cam?.k !== 'deathcam') throw new Error('no death cam');
+    expect(cam).toMatchObject({ killer: a.id, name: `p${a.id}`, time: kill });
+
+    const player = new TapePlayer(server.world, cam.clip);
+    expect(player.start).toBeLessThanOrEqual(kill - DEATHCAM_BEFORE);
+    let shots = 0;
+    player.seek(kill - 1e-6, (fx) => void (fx.k === 'shot' && shots++));
+    expect(shots).toBe(1);
+    expect([player.state.x, player.state.y, player.state.z, player.state.yaw]).toEqual([killer.x, killer.y, killer.z, killer.yaw]);
   });
 
   it('sends other players the tracer of every shot', () => {

@@ -4,6 +4,7 @@
 
 import type { Zone } from './hitbox.ts';
 import type { PlayerState } from './sim.ts';
+import type { TapeClip } from './tape.ts';
 import type { WorldConfig } from './worldconfig.ts';
 
 /** One fixed CMD_DT step of player intent. Bots produce these too. */
@@ -97,6 +98,9 @@ export type GameEvent =
       time: number;
       killer: string;
     }
+  // To a player killed by someone else, a moment after: their killer's inputs
+  // around the kill at server time `time`, to replay from the killer's eyes.
+  | { k: 'deathcam'; killer: number; name: string; time: number; clip: TapeClip }
   // To the player: one of their contracts, by index, was done or failed.
   | { k: 'contract'; index: number; state: 'done' | 'failed' }
   // To everyone: panels broke, knocked from around (x, y, z).

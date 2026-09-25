@@ -160,8 +160,8 @@ export class RunHud {
     this.promptFill.style.width = `${Math.min(Math.max(bar, 0), 1) * 100}%`;
   }
 
-  /** The run is over: show how it went. */
-  showResults(e: RunEnd): void {
+  /** The run is over: show how it went, and `standing` below the score, such as a place on the leaderboard. */
+  showResults(e: RunEnd, standing = ''): void {
     const title = { extracted: 'Extracted', killed: 'Killed in action', mia: 'Missing in action' }[e.outcome];
     const why = {
       extracted: 'You made it off the island.',
@@ -186,6 +186,9 @@ export class RunHud {
     r.querySelector('h2')!.textContent = title;
     r.querySelector('.why')!.textContent = why;
     r.querySelector('.score span')!.textContent = e.score.toLocaleString('en-US');
+    const stand = r.querySelector('.standing') as HTMLElement;
+    stand.textContent = standing;
+    stand.hidden = !standing;
     r.querySelector('dl')!.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     r.querySelector('.items')!.innerHTML = [...counts]
       .map(([i, n]) => `<li>${ITEMS[i].name}${n > 1 ? ` ×${n}` : ''}</li>`)

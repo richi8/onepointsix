@@ -4,6 +4,7 @@ import type {
   BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
 } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
+import { TAPE_TIME } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
 import type { LagTransport, Transport } from '../shared/transport.ts';
 import type { World } from '../shared/world.ts';
@@ -31,10 +32,20 @@ export class WorkerTransport implements Transport<ClientMsg, ServerMsg> {
   }
 }
 
-interface Snapshot {
+/** What a snapshot showed, at server time `time` in seconds. */
+export interface Snapshot {
   time: number;
   players: PlayerSnap[];
   grenades: GrenadeSnap[];
+}
+
+/** Events worth showing again in a replay: other people's rounds and explosions. */
+export type ReplayEvent = Extract<GameEvent, { k: 'shot' } | { k: 'boom' }>;
+
+/** The last few seconds as this client saw them, everyone included, for replays. */
+export interface Recording {
+  snapshots: Snapshot[];
+  events: { time: number; e: ReplayEvent }[];
 }
 
 /**
@@ -70,16 +81,22 @@ export class Connection {
   private ack = 0;
   private readonly unacked: InputCmd[] = [];
   private readonly snapshots: Snapshot[] = [];
+  private readonly recording: Recording = { snapshots: [], events: [] };
   /** Estimate of the server's current time in seconds. */
   private clock = -1;
   private sincePing = PING_INTERVAL;
 
-  /** Quick-joins a game of `mode` on the island; the transport is shared by every run. */
-  constructor(config: WorldConfig, world: World, mode: Mode, transport: LagTransport<ClientMsg, ServerMsg>) {
+  /** Quick-joins a game of `mode` on the island as `name`; the transport is shared by every run. */
+  constructor(config: WorldConfig, world: World, mode: Mode, name: string, transport: LagTransport<ClientMsg, ServerMsg>) {
     this.predictor = new Predictor(world);
     this.transport = transport;
     this.transport.onMessage = (msg) => this.handle(msg);
-    this.transport.send({ t: 'hello', name: 'player', world: config, mode });
+    this.transport.send({ t: 'hello', name, world: config, mode });
+  }
+
+  /** A copy of the last TAPE_TIME seconds as this client saw them. */
+  recorded(): Recording {
+    return { snapshots: [...this.recording.snapshots], events: [...this.recording.events] };
   }
 
   /** Back to the menu. */
@@ -127,51 +144,12 @@ export class Connection {
 
   /** Other players as they were at renderTime, blended between buffered snapshots. */
   interpolated(): PlayerSnap[] {
-    const snaps = this.snapshots;
-    if (snaps.length === 0) return [];
-    const t = this.renderTime();
-    let i = snaps.length - 1;
-    while (i > 0 && snaps[i - 1].time > t) i--;
-    if (i === 0) return snaps[0].players;
-    const a = snaps[i - 1];
-    const b = snaps[i];
-    if (t >= b.time) return b.players;
-    const f = (t - a.time) / (b.time - a.time);
-    return b.players.map((pb) => {
-      const pa = a.players.find((p) => p.id === pb.id);
-      // Don't slide a body across the map when it respawns.
-      if (!pa || pa.dead !== pb.dead) return pb;
-      return {
-        id: pb.id,
-        team: pb.team,
-        x: lerp(pa.x, pb.x, f),
-        y: lerp(pa.y, pb.y, f),
-        z: lerp(pa.z, pb.z, f),
-        yaw: pa.yaw + angleDiff(pb.yaw, pa.yaw) * f,
-        pitch: lerp(pa.pitch, pb.pitch, f),
-        duck: lerp(pa.duck, pb.duck, f),
-        lean: lerp(pa.lean, pb.lean, f),
-        dead: pb.dead,
-        weapon: pb.weapon,
-      };
-    });
+    return playersAt(this.snapshots, this.renderTime());
   }
 
   /** Live grenades as they were at renderTime. */
   grenades(): GrenadeSnap[] {
-    const snaps = this.snapshots;
-    if (snaps.length === 0) return [];
-    const t = this.renderTime();
-    let i = snaps.length - 1;
-    while (i > 0 && snaps[i - 1].time > t) i--;
-    const b = snaps[i];
-    const a = snaps[i - 1];
-    if (!a || t >= b.time) return b.grenades;
-    const f = (t - a.time) / (b.time - a.time);
-    return b.grenades.map((gb) => {
-      const ga = a.grenades.find((g) => g.id === gb.id);
-      return ga ? { id: gb.id, x: lerp(ga.x, gb.x, f), y: lerp(ga.y, gb.y, f), z: lerp(ga.z, gb.z, f) } : gb;
-    });
+    return grenadesAt(this.snapshots, this.renderTime());
   }
 
   /** Commands sent but not yet simulated by the server. */
@@ -201,6 +179,10 @@ export class Connection {
         }
         break;
       case 'events':
+        for (const e of msg.events) {
+          if (e.k === 'shot' || e.k === 'boom') this.recording.events.push({ time: msg.tick * SERVER_DT, e });
+        }
+        this.trimRecording(msg.tick * SERVER_DT);
         this.onEvents?.(msg.events);
         break;
     }
@@ -223,6 +205,8 @@ export class Connection {
     const time = tick * SERVER_DT;
     this.snapshots.push({ time, players: players.filter((p) => p.id !== this.id), grenades });
     if (this.snapshots.length > SNAPSHOT_BUFFER) this.snapshots.shift();
+    this.recording.snapshots.push({ time, players, grenades });
+    this.trimRecording(time);
 
     // Keep the local clock locked to the server's, jumping only on big drift.
     const drift = time - this.clock;
@@ -230,4 +214,55 @@ export class Connection {
     else this.clock += drift * 0.1;
     return true;
   }
+
+  private trimRecording(now: number): void {
+    const { snapshots, events } = this.recording;
+    while (snapshots.length && snapshots[0].time < now - TAPE_TIME) snapshots.shift();
+    while (events.length && events[0].time < now - TAPE_TIME) events.shift();
+  }
+}
+
+/** Where everyone in `snaps` (oldest first) was at server time `t`, blended between the snapshots around it. */
+export function playersAt(snaps: readonly Snapshot[], t: number): PlayerSnap[] {
+  if (snaps.length === 0) return [];
+  let i = snaps.length - 1;
+  while (i > 0 && snaps[i - 1].time > t) i--;
+  if (i === 0) return snaps[0].players;
+  const a = snaps[i - 1];
+  const b = snaps[i];
+  if (t >= b.time) return b.players;
+  const f = (t - a.time) / (b.time - a.time);
+  return b.players.map((pb) => {
+    const pa = a.players.find((p) => p.id === pb.id);
+    // Don't slide a body across the map when it respawns.
+    if (!pa || pa.dead !== pb.dead) return pb;
+    return {
+      id: pb.id,
+      team: pb.team,
+      x: lerp(pa.x, pb.x, f),
+      y: lerp(pa.y, pb.y, f),
+      z: lerp(pa.z, pb.z, f),
+      yaw: pa.yaw + angleDiff(pb.yaw, pa.yaw) * f,
+      pitch: lerp(pa.pitch, pb.pitch, f),
+      duck: lerp(pa.duck, pb.duck, f),
+      lean: lerp(pa.lean, pb.lean, f),
+      dead: pb.dead,
+      weapon: pb.weapon,
+    };
+  });
+}
+
+/** Live grenades in `snaps` at server time `t`. */
+export function grenadesAt(snaps: readonly Snapshot[], t: number): GrenadeSnap[] {
+  if (snaps.length === 0) return [];
+  let i = snaps.length - 1;
+  while (i > 0 && snaps[i - 1].time > t) i--;
+  const b = snaps[i];
+  const a = snaps[i - 1];
+  if (!a || t >= b.time) return b.grenades;
+  const f = (t - a.time) / (b.time - a.time);
+  return b.grenades.map((gb) => {
+    const ga = a.grenades.find((g) => g.id === gb.id);
+    return ga ? { id: gb.id, x: lerp(ga.x, gb.x, f), y: lerp(ga.y, gb.y, f), z: lerp(ga.z, gb.z, f) } : gb;
+  });
 }

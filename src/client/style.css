@@ -59,7 +59,11 @@ canvas {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* Scrolls from the top on short screens instead of cutting off the title. */
+  justify-content: safe center;
+  overflow-y: auto;
+  padding: 16px 0;
+  box-sizing: border-box;
   gap: 12px;
   color: #fff;
   background: linear-gradient(to bottom, rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.45));
@@ -77,10 +81,73 @@ canvas {
   letter-spacing: -0.02em;
 }
 
-.menu .world {
-  margin: 0 0 16px;
+.menu .island {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0 0 4px;
   font-size: 15px;
+}
+
+.menu .island span {
   opacity: 0.85;
+}
+
+.menu button.link {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #e8c35a;
+  background: none;
+  box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.menu button.link:hover {
+  color: #f2d27a;
+  background: none;
+}
+
+.menu .challenge {
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1b1b1b;
+  background: #e8c35a;
+  border-radius: 4px;
+  text-shadow: none;
+}
+
+.menu .challenge[hidden] {
+  display: none;
+}
+
+.menu .name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.menu .name input {
+  width: 150px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 14px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.4);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 4px;
+}
+
+.menu .name input:focus {
+  border-color: #e8c35a;
+  outline: none;
 }
 
 .menu button {
@@ -529,6 +596,84 @@ canvas {
   margin: 0;
   font-size: 13px;
   opacity: 0.85;
+}
+
+/* ------------------------------------------------------------------ leaderboard */
+
+.menu .board {
+  width: min(300px, calc(100% - 32px));
+  margin-top: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  background: rgb(0 0 0 / 0.4);
+  border-radius: 6px;
+  text-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu .board[hidden] {
+  display: none;
+}
+
+.menu .board h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.menu .board ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menu .board li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.menu .board li i {
+  width: 1.4em;
+  font-style: normal;
+  opacity: 0.6;
+}
+
+.menu .board li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu .board li b {
+  color: #e8c35a;
+}
+
+.menu .board li small {
+  width: 4.5em;
+  opacity: 0.6;
+}
+
+.menu .board li.rival {
+  color: #9fd3ff;
+}
+
+.menu .board li.rival b {
+  color: #9fd3ff;
+}
+
+.menu .board .empty {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.menu .board .empty[hidden] {
+  display: none;
 }
 
 /* ------------------------------------------------------------------ what's new */
@@ -1007,4 +1152,100 @@ canvas {
 
 .results button.secondary:hover {
   background: rgb(255 255 255 / 0.2);
+}
+
+.results .standing {
+  margin: -6px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8c35a;
+}
+
+.results .standing[hidden] {
+  display: none;
+}
+
+.results .buttons.more {
+  margin-top: 8px;
+}
+
+.results .buttons.more button {
+  padding: 7px 0;
+  font-size: 12px;
+}
+
+.results button[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ death cam */
+
+.deathcam {
+  position: fixed;
+  inset: 0;
+  color: #fff;
+  cursor: pointer;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+  box-shadow: inset 0 0 160px rgb(120 0 0 / 0.45);
+}
+
+.deathcam[hidden] {
+  display: none;
+}
+
+.deathcam .banner {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 18px;
+  background: rgb(0 0 0 / 0.55);
+  border-left: 4px solid #d9534f;
+  border-radius: 4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.deathcam .banner b {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ff7b6e;
+}
+
+.deathcam .banner span {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.deathcam .skip {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  font-size: 13px;
+  opacity: 0.75;
+  transform: translateX(-50%);
+}
+
+/* ------------------------------------------------------------------ toast */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  z-index: 10;
+  padding: 10px 18px;
+  color: #1b1b1b;
+  font-size: 14px;
+  font-weight: 600;
+  background: #e8c35a;
+  border-radius: 4px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
+  transform: translateX(-50%);
+}
+
+.toast[hidden] {
+  display: none;
 }

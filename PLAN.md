@@ -223,6 +223,40 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Every positional sound creates its own panner node** (9), released on a timer. Heavy
   fights create a lot of them.
 
+### Sharing and leaderboards
+- **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
+  query parameters, so anyone can edit them. They're a friendly challenge, not a record.
+- **Leaderboards only hold your own runs, in one browser** (10). They're lost when site data is
+  cleared, and they don't follow you to another device.
+- **A link without a mode is taken as Mixed** (10), so an old `?world=` link with a score in it
+  and no `mode` compares against Mixed runs.
+- **Names aren't filtered** (10). Locally only you and the bots see yours, but multiplayer will
+  need filtering and length checks on the server.
+- **"New island" only picks seeds up to 999,999** (10), to keep the numbers short. Typed
+  `?world=` values still reach every seed.
+- **The share button copies the link, and doesn't open the system share sheet** (10). Where the
+  clipboard is blocked it falls back to a `prompt()` with the link.
+- **GitHub Pages hosting isn't verified from here** (10). The deploy workflow has existed since
+  chunk 0, but nobody has checked that Pages is enabled and that the live site's links work.
+
+### Death cam
+- **Only the killer is replayed from inputs** (10). Everyone else is drawn from the snapshots the
+  victim's client received, so they're a little behind, and bots out of sight may pop in.
+- **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
+  are drawn and collided as they are now, so a replayed killer can walk or shoot differently
+  around them.
+- **The killer's state can drift between keyframes** (10). The server changes a few things
+  outside the commands (health, ammo from loot, dying). The replay re-syncs to a full state
+  every 0.5 s, so errors are small and short-lived, but they're there.
+- **No HUD in the death cam** (10): there's no hit marker, killer health or ammo. The bolt
+  scope overlay is the only thing shown besides the banner.
+- **Death cam clips are big** (10): about 6 s of commands and keyframes as plain JSON, some tens
+  of kB per death. That's fine through the Worker, but multiplayer should pack it.
+- **Every player's inputs are taped all the time** (10), including guards far from anyone, just
+  in case they kill someone. It's cheap, but it isn't free.
+- **Deaths on the range get no death cam**, and neither does a self-kill with a grenade.
+  Replays can't be shared yet either (see Future).
+
 ### Licensing
 - **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but
   shipping the raw `soldier.glb` in a public repository and site may count as redistributing the
@@ -233,6 +267,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   `src/client/assets.ts`, and must be kept in step by hand.
 - **The client's rendering, animation and audio have no automated tests** (9). They were checked
   by screenshots only, and nobody has listened to the audio.
+- **The death cam, menu, leaderboard UI and share button have no automated tests** (10). The
+  tape replay, share links and leaderboard storage are tested; the rest was checked by
+  screenshots in a headless browser only.
+- **The menu's layout is only checked at desktop size** (10). It now scrolls when the window is
+  too short, but it wasn't tried at small sizes.
 - **Gun fitting uses hand-measured fractions** (9) in `src/client/guns.ts`, so a new model needs
   measuring again.
 

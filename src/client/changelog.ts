@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Share your island',
+    notes: [
+      'Death cam: when someone kills you, watch your last seconds through their eyes, down to where they aimed and every shot they fired. Click or press Space to skip, or watch it again from the results.',
+      'Set your name on the menu. It goes on your scores and the links you share.',
+      'Every island keeps a leaderboard of your best runs in each mode, shown on the menu.',
+      'Challenge a friend from the results screen: it copies a link to the same island with your score to beat. Whoever opens it sees your score on the menu and finds out at the end whether they beat it.',
+      'Share link on the menu copies a link to the island you’re on, with your best score there.',
+      'New island takes you to a fresh random island.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Look and sound',
     notes: [
       'The island has real textures now: grass, dry meadow, dirt around the outposts, rock on the slopes and sand on the beaches, lit by a real sky.',

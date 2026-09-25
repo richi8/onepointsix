@@ -3,6 +3,8 @@ import {
   BREAK_NOISE,
   Btn,
   CMD_DT,
+  DEATHCAM_AFTER,
+  DEATHCAM_BEFORE,
   EXTRACT_TIME,
   GRENADE_DAMAGE,
   GRENADE_FUSE,
@@ -35,6 +37,7 @@ import type {
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { applyCmd, copyState, spawnState, type PlayerState } from '../shared/sim.ts';
+import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise } from './bot.ts';
@@ -114,6 +117,10 @@ interface Player extends PlayerState {
   run: Run | null;
   /** Set for a response squad: when it's recalled. */
   recall: number;
+  /** Their recent inputs, for replaying them in a death cam. */
+  tape: Tape;
+  /** Set for a human killed by someone else: who, and when, until the death cam is sent. */
+  deathcam: { killer: Player; time: number } | null;
 }
 
 interface PoseRecord extends Pose {
@@ -296,12 +303,14 @@ export class GameServer {
       }
       if (p.dummy) p.queue.push(...dummyCmds(p.dummy, p.dummy.index, this.tick, p.lastSim));
       const n = Math.min(p.queue.length, MAX_CMDS_PER_TICK);
+      p.tape.beginTick(p, now - SERVER_DT);
       for (let i = 0; i < n; i++) {
         const cmd = p.queue[i];
         applyCmd(this.world, p, cmd, CMD_DT, (fx) => {
           if (fx.k === 'shot') this.fire(p, fx.shot, cmd.view);
           else if (fx.k === 'throw') this.toss(p, fx.toss);
         });
+        p.tape.record(cmd);
         if (p.run && !p.dead) this.use(p, cmd.buttons);
         p.lastSim = cmd.seq;
       }
@@ -326,6 +335,7 @@ export class GameServer {
         continue;
       }
       if (p.run && !p.dead) this.runStep(p, landed);
+      if (p.deathcam && now >= p.deathcam.time + DEATHCAM_AFTER) this.sendDeathcam(p);
       if (!p.dead || !this.players.has(p.id)) continue;
       p.respawn -= SERVER_DT;
       if (p.respawn > 0) continue;
@@ -509,6 +519,14 @@ export class GameServer {
     };
   }
 
+  /** Send a killed player their killer's inputs from just before the kill until now. */
+  private sendDeathcam(p: Player): void {
+    const { killer, time } = p.deathcam!;
+    p.deathcam = null;
+    const clip = killer.tape.clip(time - DEATHCAM_BEFORE);
+    if (clip) p.events.push({ k: 'deathcam', killer: killer.id, name: killer.name, time, clip });
+  }
+
   // -------------------------------------------------------------- contracts
 
   /** A human's run gets its contracts, and the commanders among them are put on the island. */
@@ -560,6 +578,7 @@ export class GameServer {
     const p: Player = {
       ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, queue: [], lastRecv: 0, lastSim: 0,
       respawn: 0, protection: 0, events: [], dummy: null, plan: null, bot: null, run: null, recall: 0,
+      tape: new Tape(), deathcam: null,
     };
     this.players.set(p.id, p);
     return p;
@@ -816,6 +835,7 @@ export class GameServer {
       weapon, head: zone === 'head',
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
+    if (!victim.plan && !victim.dummy && attacker !== victim) victim.deathcam = { killer: attacker, time: this.time };
     if (victim.run) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
       this.endRun(victim, 'killed');

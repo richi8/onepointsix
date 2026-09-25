@@ -4,23 +4,26 @@ import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
 import { extractName } from '../shared/loot.ts';
-import { isReliable, type ClientMsg, type GameEvent, type Mode, type ServerMsg } from '../shared/protocol.ts';
+import { isReliable, type ClientMsg, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
-import { BOLT, spreadOf, WEAPONS, type Shot } from '../shared/weapons.ts';
+import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared/share.ts';
+import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
-import { DEFAULT_WORLD, parseWorldParam } from '../shared/worldconfig.ts';
+import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
 import { loadAssets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies, strideLength } from './bodies.ts';
 import { CHANGELOG } from './changelog.ts';
 import { ContractProps } from './contractprops.ts';
-import { Connection, WorkerTransport } from './connection.ts';
+import { Connection, WorkerTransport, type Recording, type ReplayEvent } from './connection.ts';
+import { Deathcam, type DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
 import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
+import { Leaderboard, localStore } from './leaderboard.ts';
 import { NetPanel } from './netpanel.ts';
 import type { Rendered } from './prediction.ts';
 import { Resolution } from './resolution.ts';
@@ -43,13 +46,19 @@ const RESULTS_DELAY_DEAD = 2.2;
 /** Camera shake from a blast this close, fading out to nothing at SHAKE_RANGE. */
 const SHAKE_RANGE = 30;
 const SHAKE_DECAY = 5;
+const MODE_NAMES: Record<Mode, string> = { mixed: 'Mixed', pve: 'PvE', range: 'Range' };
+/** Leaderboard rows shown on the menu. */
+const BOARD_SHOWN = 5;
+/** Islands from "New island" get seeds up to this, so their numbers stay short. */
+const NEW_ISLAND_SEEDS = 999_999;
 const MODE_NOTES: Record<Mode, string> = {
   mixed: 'Loot and get out, against guards and eleven other operators.',
   pve: 'Loot and get out. Just you against the guards.',
   range: 'Target practice. No clock, and you respawn.',
 };
 
-const config = parseWorldParam(new URLSearchParams(location.search).get('world'));
+const link = parseShareLink(location.search);
+const config = link.world;
 const world = new World(config.seed);
 const view = new WorldView(world);
 const scene = view.scene;
@@ -102,8 +111,117 @@ loadAssets(renderer).then((assets) => {
 const menu = document.getElementById('menu')!;
 const paused = document.getElementById('paused')!;
 const playButton = document.getElementById('play') as HTMLButtonElement;
+const store = localStore();
+const board = new Leaderboard(store);
 document.getElementById('world-label')!.textContent =
   config.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${config.seed}`;
+
+// ------------------------------------------------------------------ name
+
+const nameInput = document.getElementById('name') as HTMLInputElement;
+nameInput.value = cleanName(store?.getItem('name') ?? '') || `Operator ${100 + Math.floor(Math.random() * 900)}`;
+function saveName(): void {
+  nameInput.value = playerName();
+  try {
+    store?.setItem('name', nameInput.value);
+  } catch {
+    // Not remembered, that's all.
+  }
+}
+nameInput.onchange = saveName;
+saveName();
+
+function playerName(): string {
+  return cleanName(nameInput.value) || 'Operator';
+}
+
+// ------------------------------------------------------------------ sharing
+
+const toastEl = document.getElementById('toast')!;
+let toastTimer = 0;
+
+function toast(text: string): void {
+  toastEl.textContent = text;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => (toastEl.hidden = true), 2500);
+}
+
+/** Copy a link to this page with `query`, or failing that, show it to copy by hand. */
+async function copyLink(query: string): Promise<void> {
+  const url = new URL(query, location.href).href;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Link copied. Send it to a friend.');
+  } catch {
+    window.prompt('Copy this link:', url);
+  }
+}
+
+/** The score to beat from the link we came in on, if it's for `m`. */
+function challengeFor(m: Mode): Challenge | null {
+  return link.challenge && (link.mode ?? 'mixed') === m ? link.challenge : null;
+}
+
+/** Share the island in the current mode, with your best score on it to beat. */
+function shareIsland(): void {
+  const best = mode === 'range' ? null : board.best(config.seed, mode);
+  void copyLink(shareQuery(config, mode, best ?? undefined));
+}
+
+document.getElementById('share-island')!.onclick = shareIsland;
+document.getElementById('new-island')!.onclick = () => {
+  location.search = shareQuery({ seed: 1 + Math.floor(Math.random() * NEW_ISLAND_SEEDS) }, mode);
+};
+
+const challengeEl = document.getElementById('challenge')!;
+const boardEl = document.getElementById('board')!;
+
+/** The menu's leaderboard for the chosen mode, with the challenge from the link in its place. */
+function showBoard(): void {
+  const c = challengeFor(mode);
+  challengeEl.hidden = !c;
+  if (c) challengeEl.textContent = `${c.name} scored ${c.score.toLocaleString('en-US')} on this island in ${MODE_NAMES[mode]}. Beat it.`;
+  boardEl.hidden = mode === 'range';
+  if (mode === 'range') return;
+  boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
+  const rows: { name: string; score: number; note: string; rival: boolean }[] = board.entries(config.seed, mode)
+    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), rival: false }));
+  if (c) {
+    const at = rows.findIndex((r) => r.score < c.score);
+    rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', rival: true });
+  }
+  // Keep the challenge in view even below the rows shown.
+  const shown = rows.slice(0, BOARD_SHOWN);
+  const rival = rows.findIndex((r) => r.rival);
+  if (rival >= BOARD_SHOWN) shown[BOARD_SHOWN - 1] = rows[rival];
+  boardEl.querySelector('ol')!.replaceChildren(...shown.map((r) => {
+    const li = document.createElement('li');
+    li.classList.toggle('rival', r.rival);
+    const rank = document.createElement('i');
+    rank.textContent = `${rows.indexOf(r) + 1}.`;
+    const name = document.createElement('span');
+    name.textContent = r.name;
+    const score = document.createElement('b');
+    score.textContent = r.score.toLocaleString('en-US');
+    const note = document.createElement('small');
+    note.textContent = r.note;
+    li.append(rank, name, score, note);
+    return li;
+  }));
+  const empty = boardEl.querySelector('.empty') as HTMLElement;
+  empty.hidden = rows.length > 0;
+  empty.textContent = 'No scores yet. Get off the island with loot to post one.';
+}
+
+function shortDate(date: string): string {
+  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function today(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 let conn: Connection | null = null;
 let panel: NetPanel | null = null;
@@ -125,6 +243,8 @@ try {
 } catch {
   // Storage may be blocked; the default will do.
 }
+// A link's mode wins, so a challenge is played the way it was set.
+if (link.mode) mode = link.mode;
 
 function selectMode(m: Mode): void {
   mode = m;
@@ -139,6 +259,7 @@ function selectMode(m: Mode): void {
   } catch {
     // Not remembered, that's all.
   }
+  showBoard();
 }
 for (const b of modeButtons) b.onclick = () => selectMode(b.dataset.mode as Mode);
 selectMode(mode);
@@ -202,16 +323,11 @@ window.addEventListener('keydown', (e) => {
 function join(): void {
   transport ??= new LagTransport(new WorkerTransport(), isReliable);
   panel ??= new NetPanel(transport);
-  conn = new Connection(config, world, mode, transport);
-  conn.onFx = (fx) => {
-    if (fx.k === 'shot') ownShot(fx.shot);
-    else if (fx.k === 'throw') sfx.toss();
-    else if (fx.k === 'dry') sfx.dry();
-    else if (fx.k === 'reload') sfx.reload(fx.weapon);
-    else if (fx.k === 'reloaded') sfx.reloaded();
-    else sfx.draw();
-  };
-  conn.onEvents = (events) => events.forEach(onEvent);
+  stopDeathcam(false);
+  killedBy = null;
+  conn = new Connection(config, world, mode, playerName(), transport);
+  conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
+  conn.onEvents = (events) => events.forEach((e) => onEvent(e));
   conn.onWelcome = (broken) => {
     world.syncPanels(broken);
     view.syncPanels();
@@ -237,23 +353,100 @@ function play(): void {
   join();
 }
 
-/** The run ended: let the death camera play out, then show the results. */
+/** Sounds and effects of our own weapon, or of the killer's in a death cam; `players` are the bodies a round can hit. */
+function weaponFx(fx: WeaponFx, players: () => PlayerSnap[]): void {
+  if (fx.k === 'shot') ownShot(fx.shot, players());
+  else if (fx.k === 'throw') sfx.toss();
+  else if (fx.k === 'dry') sfx.dry();
+  else if (fx.k === 'reload') sfx.reload(fx.weapon);
+  else if (fx.k === 'reloaded') sfx.reloaded();
+  else sfx.draw();
+}
+
+/** The results of the last run, shown again after watching the death cam. */
+let showLastResults: (() => void) | null = null;
+
+/**
+ * The run ended: post the score, let the death camera and then the death cam
+ * play out, and show the results.
+ */
 function endRun(e: RunEnd): void {
   if (!conn) return;
   conn.over = true;
   sfx.runEnd(e.outcome === 'extracted');
+  const standing: string[] = [];
+  const place = board.add(config.seed, mode, { name: playerName(), score: e.score, date: today() });
+  if (place === 1) standing.push('New best on this island!');
+  else if (place > 1) standing.push(`#${place} of your runs on this island.`);
+  const c = challengeFor(mode);
+  if (c) {
+    const target = `${c.name}’s ${c.score.toLocaleString('en-US')}`;
+    standing.push(e.score > c.score ? `You beat ${target}!` : `${target} still stands.`);
+  }
+  const best = board.best(config.seed, mode);
+  const shareButton = document.getElementById('share-run') as HTMLButtonElement;
+  shareButton.textContent = e.score > 0 ? 'Challenge a friend' : best ? 'Share your best' : 'Share island';
+  shareButton.onclick = () => {
+    const score = e.score > 0 ? { name: playerName(), score: e.score } : best ?? undefined;
+    void copyLink(shareQuery(config, mode, score));
+  };
+  showLastResults = () => {
+    (document.getElementById('replay') as HTMLButtonElement).hidden = !killedBy;
+    runHud.showResults(e, standing.join(' '));
+  };
   const shown = conn;
   setTimeout(() => {
     if (conn !== shown) return;
     document.exitPointerLock();
     paused.hidden = true;
-    runHud.showResults(e);
+    if (e.outcome === 'killed' && killedBy) playDeathcam();
+    else showLastResults?.();
   }, e.outcome === 'killed' ? RESULTS_DELAY_DEAD * 1000 : 300);
 }
 
+// --------------------------------------------------------------- death cam
+
+const deathcamEl = document.getElementById('deathcam')!;
+const deathcamScope = deathcamEl.querySelector('.scope') as HTMLElement;
+/** The killer's inputs from the server, and what we saw around then. */
+let killedBy: { e: DeathcamEvent; recording: Recording } | null = null;
+let deathcam: Deathcam | null = null;
+
+/** Replay how we died, then show the results. */
+function playDeathcam(): void {
+  if (!killedBy) return;
+  deathcam = new Deathcam(world, killedBy.e, killedBy.recording);
+  // Start the bodies afresh, as they were then.
+  bodies.update([], 0);
+  runHud.hideResults();
+  document.getElementById('hud')!.hidden = true;
+  deathcamEl.querySelector('.banner span')!.textContent = `Killed by ${deathcam.name}`;
+  deathcamEl.hidden = false;
+}
+
+/** The death cam ended or was skipped: on to the results, unless leaving anyway. */
+function stopDeathcam(results = true): void {
+  if (!deathcam) return;
+  deathcam = null;
+  deathcamEl.hidden = true;
+  bodies.update([], 0);
+  if (results) showLastResults?.();
+}
+
+deathcamEl.onclick = () => stopDeathcam();
+window.addEventListener('keydown', (e) => {
+  if (deathcam && (e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter')) {
+    e.preventDefault();
+    stopDeathcam();
+  }
+});
+document.getElementById('replay')!.onclick = playDeathcam;
+
 function toMenu(): void {
+  stopDeathcam(false);
   conn?.leave();
   conn = null;
+  showBoard();
   if (panel) panel.conn = null;
   runHud.hideResults();
   document.getElementById('hud')!.hidden = true;
@@ -278,7 +471,9 @@ paused.onclick = () => input.lock();
 
 playButton.onclick = play;
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Enter' && !conn && news.hidden && document.activeElement !== newsOpen) play();
+  // Enter plays from anywhere on the menu but its other buttons.
+  const active = document.activeElement;
+  if (e.code === 'Enter' && !conn && news.hidden && (!(active instanceof HTMLButtonElement) || active === playButton)) play();
 });
 playButton.focus();
 
@@ -302,7 +497,7 @@ function showRound(struck: Struck, dx: number, dy: number, dz: number, quiet: bo
  * body tests as the server, against the bodies as we see them. Damage waits
  * for the server to confirm.
  */
-function ownShot(shot: Shot): void {
+function ownShot(shot: Shot, players: readonly PlayerSnap[]): void {
   viewModel.fire(shot.weapon);
   sfx.shot(shot.weapon, undefined, shot.quiet);
   const { ox, oy, oz, dx, dy, dz } = shot;
@@ -310,7 +505,7 @@ function ownShot(shot: Shot): void {
   let t = world.raycast(ox, oy, oz, dx, dy, dz, range);
   let struck: Struck = t <= range ? 'world' : 'none';
   t = Math.min(t, range);
-  for (const p of conn?.interpolated() ?? []) {
+  for (const p of players) {
     if (p.dead) continue;
     const hit = rayBody(p, ox, oy, oz, dx, dy, dz, t);
     if (hit && hit.t < t) (t = hit.t), (struck = 'body');
@@ -320,8 +515,10 @@ function ownShot(shot: Shot): void {
   showRound(struck, dx, dy, dz, shot.quiet);
 }
 
-function onEvent(e: GameEvent): void {
+/** `replay` is set for events replayed in the death cam; live rounds and blasts aren't drawn over it. */
+function onEvent(e: GameEvent, replay = false): void {
   const me = conn?.predictor.state;
+  if (deathcam && !replay && (e.k === 'shot' || e.k === 'boom')) return;
   switch (e.k) {
     case 'hit':
       hud.hit(e.zone, e.killed, e.damage, e.x, e.y, e.z);
@@ -353,6 +550,9 @@ function onEvent(e: GameEvent): void {
     }
     case 'runEnd':
       endRun(e);
+      break;
+    case 'deathcam':
+      if (conn) killedBy = { e, recording: conn.recorded() };
       break;
     case 'break': {
       const color = new THREE.Color();
@@ -421,8 +621,11 @@ function orbitCamera(now: number): void {
   view.update(camera, focus, world.half);
 }
 
-/** First-person camera and weapon. Look uses the live mouse, not the last command, so aiming has no latency. */
-function eyeCamera(me: Rendered, s: PlayerState, dt: number): void {
+/**
+ * First-person camera and weapon, looking `yaw` and `pitch`. Our own look uses
+ * the live mouse, not the last command, so aiming has no latency.
+ */
+function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt: number): void {
   const w = WEAPONS[s.weapon];
   const aim = smoothstep(0, 1, me.aim);
   const zoom = lerp(1, w.zoom, aim);
@@ -433,11 +636,11 @@ function eyeCamera(me: Rendered, s: PlayerState, dt: number): void {
   }
   input.lookScale = 1 / zoom;
 
-  const eye = eyePosition(world, me.x, me.y, me.z, input.yaw, me.duck, me.lean);
+  const eye = eyePosition(world, me.x, me.y, me.z, yaw, me.duck, me.lean);
   deadFor = s.dead ? deadFor + dt : 0;
   const down = smoothstep(0, DEATH_FALL, deadFor);
   camera.position.set(eye.x, lerp(eye.y, me.y + 0.3, down), eye.z);
-  camera.rotation.set(input.pitch + me.recoilPitch, input.yaw + me.recoilYaw, eye.roll + down * 0.5);
+  camera.rotation.set(pitch + me.recoilPitch, yaw + me.recoilYaw, eye.roll + down * 0.5);
   shake = Math.max(shake - SHAKE_DECAY * dt * shake - dt * 0.2, 0);
   if (shake > 0) {
     const k = shake * shake * 0.05;
@@ -449,10 +652,10 @@ function eyeCamera(me: Rendered, s: PlayerState, dt: number): void {
   view.update(camera, focus, 70);
 
   const speed = Math.hypot(s.vx, s.vz);
-  const lookDx = angleDiff(lastYaw, input.yaw) * 600;
-  const lookDy = (lastPitch - input.pitch) * 600;
-  lastYaw = input.yaw;
-  lastPitch = input.pitch;
+  const lookDx = angleDiff(lastYaw, yaw) * 600;
+  const lookDy = (lastPitch - pitch) * 600;
+  lastYaw = yaw;
+  lastPitch = pitch;
   viewModel.update(dt, {
     weapon: s.weapon,
     aim: me.aim,
@@ -503,7 +706,7 @@ function sprinting(s: PlayerState): boolean {
 
 if (import.meta.env.DEV) {
   // For poking at the game from the console or a test browser.
-  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, sfx, world, viewModel, get conn() { return conn; } } });
+  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, sfx, world, viewModel, input, get conn() { return conn; }, get deathcam() { return deathcam; } } });
 }
 
 renderer.setAnimationLoop(() => {
@@ -512,23 +715,33 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(now - last, 0.1);
   last = now;
 
-  const players = conn ? (conn.update(dt), inputLoop.advance(now), conn.interpolated()) : [];
+  if (conn) {
+    conn.update(dt);
+    inputLoop.advance(now);
+  }
+  const cam = deathcam;
+  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true));
+  const players = cam ? cam.others() : (conn?.interpolated() ?? []);
   bodies.update(players, dt, camera);
   bags.update(conn?.bags ?? []);
-  grenades.update(conn?.grenades() ?? []);
+  grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? []));
   if (conn) view.setExtracts(conn.extracts, now);
 
   const me = conn?.predictor.render(inputLoop.alpha);
-  const state = conn?.predictor.state ?? null;
-  if (me && state) {
-    eyeCamera(me, state, dt);
+  const state = cam ? cam.state : (conn?.predictor.state ?? null);
+  if (cam) {
+    const killer = cam.view();
+    eyeCamera(killer, killer.yaw, killer.pitch, cam.state, dt);
+    deathcamScope.style.opacity = cam.state.weapon === BOLT ? String(Math.max((killer.aim - 0.8) / 0.2, 0)) : '0';
+  } else if (me && state) {
+    eyeCamera(me, input.yaw, input.pitch, state, dt);
     footsteps(state);
   } else orbitCamera(now);
   camera.updateMatrixWorld();
   sfx.listen(camera);
   effects.update(dt);
 
-  if (conn) {
+  if (conn && !cam) {
     const spread = state ? spreadOf(state) : 0;
     const spreadPx = (Math.tan(spread) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2);
     hud.update(dt, state, me?.aim ?? 0, clamp(spreadPx, 0, innerHeight / 3), !!state && sprinting(state), camera);
@@ -541,6 +754,7 @@ renderer.setAnimationLoop(() => {
     `res ${(resolution.share * 100).toFixed(0)}%  draws ${renderer.info.render.calls}  tris ${(renderer.info.render.triangles / 1000).toFixed(0)}k`,
   );
 
+  if (cam?.done) stopDeathcam();
   renderer.info.reset();
   renderer.clear();
   renderer.render(scene, camera);

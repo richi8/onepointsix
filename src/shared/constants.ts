@@ -120,6 +120,10 @@ export const GUARD_PATROLS = 3;
 export const GUARD_RESPAWN = 60;
 /** Seconds a fallen operator bot lies there before it leaves the game. */
 export const BODY_TIME = 5;
+/** The death cam replays the killer's view from this many seconds before the kill... */
+export const DEATHCAM_BEFORE = 5;
+/** ...until this many after it. */
+export const DEATHCAM_AFTER = 1;
 /** Seconds before an empty operator slot is filled by a new bot dropping in. */
 export const OPERATOR_REFILL = 12;
 
