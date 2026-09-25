@@ -53,7 +53,7 @@ import {
   WATER_SPEED_MUL,
 } from './constants.ts';
 import { clamp, lerp } from './geom.ts';
-import type { InputCmd } from './protocol.ts';
+import type { InputCmd, Motion } from './protocol.ts';
 import { blocksSprint, spawnWeapons, stepWeapon, WEAPONS, type WeaponFx, type WeaponState } from './weapons.ts';
 import type { Body, World } from './world.ts';
 
@@ -132,6 +132,11 @@ export function copyState(p: PlayerState): PlayerState {
     hp, dead, life, weapon, mag: [...mag], reserve: [...reserve], cooldown, reload, draw, triggerHeld, aim,
     recoilPitch, recoilYaw, burst, sinceShot, grenades, throwHeld, suppressed: [...suppressed],
   };
+}
+
+/** How a player is moving, as others see it. */
+export function motionOf(p: PlayerState): Motion {
+  return p.mantling ? 'mantle' : p.slide > 0 ? 'slide' : p.onGround ? 'ground' : 'air';
 }
 
 export function bodyHeight(p: PlayerState): number {

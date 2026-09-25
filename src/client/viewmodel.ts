@@ -1,13 +1,34 @@
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import { clamp, lerp } from '../shared/geom.ts';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { fitGun } from './guns.ts';
+import { type Bones, curl, findBones, findHand, type Hand, orientHand, placeWorld, reach, span, wristFor } from './rig.ts';
 
 // The weapon in your hands. It is drawn in its own scene after the world, over
 // a cleared depth buffer, so it never clips into walls. Simple shapes stand in
-// until the gun models have loaded.
+// until the gun models have loaded, and boxes for hands until the soldier has:
+// then your arms are the soldier's own, reaching for the gun. The left hand
+// fetches a fresh magazine on a reload and throws the grenades.
 
 const FOV = 60;
+/**
+ * The soldier's arms are short for how far out the gun is held here, so in
+ * first person they're drawn larger, from shoulders moved forward. Only the
+ * forearms and hands are ever on screen.
+ */
+const ARMS_SCALE = 1.15;
+const ARMS_AT = new THREE.Vector3(0, -1.6, 0);
+/**
+ * Where the shoulders are, in view space. The left one sits further forward
+ * than any real shoulder, so the left hand can reach the fore-end.
+ */
+const RIGHT_SHOULDER = new THREE.Vector3(0.2, -0.38, -0.1);
+const LEFT_SHOULDER = new THREE.Vector3(0, -0.45, -0.44);
+/** Only the parts of the soldier weighted to these bones are kept for the arms. */
+const ARM_BONES = /^(UpperArm|LowerArm|Wrist|Index|Middle|Ring|Pinky|Thumb)/;
+/** The uniform's colour on an operator, as the bodies in the world wear it. */
+const SLEEVE = 0x44566a;
 /** Length of a suppressor on the barrel. */
 const CAN_LENGTH = 0.15;
 const FLASH_TIME = 0.045;
@@ -47,6 +68,19 @@ export interface HeldState {
   sprinting: boolean;
   /** A suppressor is fitted: longer barrel, no flash. */
   suppressed: boolean;
+  /** 0 to 1 through a grenade throw, or -1 when not throwing. */
+  throwing: number;
+}
+
+/** The soldier's arms, posed to hold the gun. */
+interface Arms {
+  bones: Bones;
+  hands: [left: Hand, right: Hand];
+  /** Every bone's resting turn, put back before each pose so nothing drifts. */
+  rest: [THREE.Object3D, THREE.Quaternion][];
+  arm: number;
+  forearm: number;
+  nade: THREE.Mesh;
 }
 
 export class ViewModel {
@@ -62,6 +96,7 @@ export class ViewModel {
   private flashLeft = 0;
   private sprintBlend = 0;
   private suppressed = false;
+  private arms: Arms | null = null;
   private readonly tmp = new THREE.Vector3();
 
   constructor() {
@@ -96,6 +131,47 @@ export class ViewModel {
       m.hands[0].position.copy(gun.grip).add(m.grip).y -= 0.03;
       m.hands[1].position.copy(gun.support).add(m.grip).y -= 0.03;
     });
+  }
+
+  /** Swap the boxes for hands for the soldier's own arms. */
+  setArms(gltf: GLTF): void {
+    const model = SkeletonUtils.clone(gltf.scene);
+    const meshes: THREE.SkinnedMesh[] = [];
+    model.traverse((o) => {
+      const mesh = o as THREE.SkinnedMesh;
+      if (mesh.isSkinnedMesh) meshes.push(mesh);
+    });
+    for (const mesh of meshes) {
+      const geometry = armsOnly(mesh);
+      if (!geometry) {
+        mesh.removeFromParent();
+        continue;
+      }
+      mesh.geometry = geometry;
+      const m = (mesh.material as THREE.MeshStandardMaterial).clone();
+      if (m.name === 'Swat') m.color.setHex(SLEEVE);
+      mesh.material = m;
+      mesh.frustumCulled = false;
+    }
+    // The model faces +z; the view looks down -z.
+    const rig = new THREE.Group();
+    rig.scale.setScalar(ARMS_SCALE);
+    rig.position.copy(ARMS_AT).multiplyScalar(ARMS_SCALE);
+    rig.rotation.y = Math.PI;
+    rig.add(model);
+    this.root.add(rig);
+    this.root.updateMatrixWorld(true);
+    const bones = findBones(model);
+    const rest: [THREE.Object3D, THREE.Quaternion][] = [];
+    model.traverse((o) => rest.push([o, o.quaternion.clone()]));
+    const nade = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8).scale(1, 1.25, 1), GRENADE);
+    nade.visible = false;
+    this.root.add(nade);
+    this.arms = {
+      bones, hands: [findHand(model, 'L'), findHand(model, 'R')], rest,
+      arm: span(bones.rArm, bones.rForeArm), forearm: span(bones.rForeArm, bones.rHand), nade,
+    };
+    for (const m of this.models) for (const h of m.hands) h.visible = false;
   }
 
   resize(aspect: number): void {
@@ -147,6 +223,78 @@ export class ViewModel {
 
     this.flashLeft = Math.max(this.flashLeft - dt, 0);
     m.flash.visible = this.flashLeft > 0 && !this.suppressed;
+    if (this.arms) this.poseArms(this.arms, m, s);
+  }
+
+  /**
+   * Both hands on the gun: the right round the grip, the left under the
+   * fore-end, or both round a pistol's grip. A reload sends the left hand
+   * down out of sight for a magazine; a throw takes it up and forward.
+   */
+  private poseArms(a: Arms, m: Model, s: HeldState): void {
+    for (const [bone, q] of a.rest) bone.quaternion.copy(q);
+    this.root.updateMatrixWorld(true);
+    placeWorld(a.bones.rArm, this.root.localToWorld(this.tmp.copy(RIGHT_SHOULDER)));
+    placeWorld(a.bones.lArm, this.root.localToWorld(this.tmp.copy(LEFT_SHOULDER)));
+    const g = m.group;
+    const right = V_RIGHT.set(1, 0, 0).transformDirection(g.matrixWorld);
+    const up = V_UP.set(0, 1, 0).transformDirection(g.matrixWorld);
+    const forward = V_FORWARD.set(0, 0, -1).transformDirection(g.matrixWorld);
+    const pistol = m === this.models[1];
+    const b = a.bones;
+    const wrist = new THREE.Vector3();
+    const pole = new THREE.Vector3();
+
+    const grip = g.localToWorld(m.hands[0].position.clone().setY(m.hands[0].position.y + 0.03));
+    let along = new THREE.Vector3().copy(forward).addScaledVector(up, -0.3);
+    let thumb = new THREE.Vector3().copy(up);
+    wristFor('R', grip, along, thumb, wrist);
+    pole.set(0.5, -0.8, 0.3).add(wrist);
+    reach(b.rArm, b.rForeArm, b.rHand, wrist, pole, a.arm, a.forearm);
+    orientHand(a.hands[1], along, thumb);
+    curl(a.hands[1], 0.9);
+
+    let target = g.localToWorld(m.hands[1].position.clone().setY(m.hands[1].position.y + 0.03));
+    along = new THREE.Vector3().copy(right);
+    thumb = new THREE.Vector3().copy(forward);
+    if (pistol) {
+      target = grip.clone().addScaledVector(right, -0.03);
+      along = new THREE.Vector3().copy(forward).addScaledVector(up, -0.3);
+      thumb = new THREE.Vector3().copy(up).addScaledVector(forward, 0.5);
+    }
+    a.nade.visible = false;
+    let closed = 0.9;
+    if (s.reload > 0) {
+      // Under the magazine well, down out of sight and back with a fresh one.
+      const well = g.localToWorld(m.hands[0].position.clone().lerp(m.hands[1].position, pistol ? 0 : 0.4)).addScaledVector(up, -0.12);
+      const pouch = new THREE.Vector3(-0.1, -0.75, -0.3);
+      target = path(s.reload, [[0, target], [0.15, well], [0.35, pouch], [0.5, pouch], [0.7, well], [0.8, well], [0.95, target]]);
+    } else if (s.throwing >= 0) {
+      // Up beside the head, forward and away, then back down to the gun.
+      const t = s.throwing;
+      const cocked = new THREE.Vector3(-0.32, -0.02, -0.4);
+      const release = new THREE.Vector3(-0.12, 0.02, -0.7);
+      const follow = new THREE.Vector3(0.02, -0.35, -0.55);
+      const low = new THREE.Vector3(-0.25, -0.75, -0.3);
+      target = path(t, [[0, low], [0.1, cocked], [0.2, cocked], [0.32, release], [0.45, follow], [0.7, low], [1, low]]);
+      // Fingers up and the palm forward, the grenade in it.
+      along = new THREE.Vector3(0, 1, -0.3);
+      thumb = new THREE.Vector3(1, 0, 0);
+      closed = 0.7;
+      a.nade.visible = t < 0.3;
+    }
+    wristFor('L', target, along, thumb, wrist);
+    pole.set(-0.6, -0.8, 0.3).add(wrist);
+    reach(b.lArm, b.lForeArm, b.lHand, wrist, pole, a.arm, a.forearm);
+    orientHand(a.hands[0], along, thumb);
+    curl(a.hands[0], closed);
+    if (a.nade.visible) {
+      const hand = a.hands[0];
+      hand.wrist.updateMatrixWorld(true);
+      const at = hand.wrist.localToWorld(this.tmp.copy(hand.knuckles).multiplyScalar(0.6));
+      at.addScaledVector(V_FORWARD.crossVectors(along, thumb).normalize(), 0.05);
+      a.nade.position.copy(this.root.worldToLocal(at));
+    }
   }
 
   /** Hide the gun, as when looking through a scope. */
@@ -173,6 +321,7 @@ const TAN = new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 0.8 });
 const GLOVE = new THREE.MeshStandardMaterial({ color: 0x4b5240, roughness: 0.95 });
 const LENS = new THREE.MeshStandardMaterial({ color: 0x1c3a48, roughness: 0.1, metalness: 0.3 });
 const RED_DOT = new THREE.MeshBasicMaterial({ color: 0xff2a1a, toneMapped: false });
+const GRENADE = new THREE.MeshStandardMaterial({ color: 0x3b4a2a, roughness: 0.7 });
 const FLASH = new THREE.MeshBasicMaterial({
   color: 0xffc070, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
 });
@@ -290,4 +439,54 @@ function boltAction(): Model {
     [box(0.05, 0.06, 0.09, GLOVE, 0, -0.16, 0.12), box(0.05, 0.05, 0.1, GLOVE, -0.01, -0.12, -0.3)],
     -0.06, -0.71, 0.08, 0.02, new THREE.Vector3(0.2, -0.17, -0.66), -0.5, 0.1, 0.2,
   );
+}
+
+const V_RIGHT = new THREE.Vector3();
+const V_UP = new THREE.Vector3();
+const V_FORWARD = new THREE.Vector3();
+
+/** A point moving through keyframes [time, where], eased between them. */
+function path(t: number, keys: [number, THREE.Vector3][]): THREE.Vector3 {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [t1, p1] = keys[i];
+    if (t > t1) continue;
+    const [t0, p0] = keys[i - 1];
+    return p0.clone().lerp(p1, smoothstep(t0, t1, t));
+  }
+  return keys[keys.length - 1][1];
+}
+
+/**
+ * A copy of a soldier mesh's geometry with only the triangles that move
+ * with the arms, or null if there are none.
+ */
+function armsOnly(mesh: THREE.SkinnedMesh): THREE.BufferGeometry | null {
+  const geometry = mesh.geometry;
+  const index = geometry.index;
+  const joints = geometry.getAttribute('skinIndex');
+  const weights = geometry.getAttribute('skinWeight');
+  if (!index || !joints || !weights) return null;
+  const arm = mesh.skeleton.bones.map((b) => ARM_BONES.test(b.name));
+  // A vertex belongs to the bone that moves it most.
+  const onArm = (v: number): boolean => {
+    let best = 0;
+    let bone = 0;
+    for (let k = 0; k < 4; k++) {
+      const w = weights.getComponent(v, k);
+      if (w > best) (best = w), (bone = joints.getComponent(v, k));
+    }
+    return arm[bone];
+  };
+  const kept: number[] = [];
+  for (let i = 0; i < index.count; i += 3) {
+    const a = index.getX(i);
+    const b = index.getX(i + 1);
+    const c = index.getX(i + 2);
+    if (onArm(a) && onArm(b) && onArm(c)) kept.push(a, b, c);
+  }
+  if (!kept.length) return null;
+  const out = geometry.clone();
+  out.setIndex(kept);
+  return out;
 }

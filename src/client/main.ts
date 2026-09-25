@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CMD_DT, OPERATOR_CAPACITY, WALK_SPEED } from '../shared/constants.ts';
+import { CMD_DT, OPERATOR_CAPACITY, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
@@ -92,7 +92,7 @@ resize();
 
 const effects = new Effects(scene, (x, z) => world.floorHeight(x, z));
 const grenades = new Grenades(scene);
-const bodies = new Bodies(scene);
+const bodies = new Bodies(scene, world);
 const bags = new Bags(scene);
 const hud = new Hud();
 const runHud = new RunHud(world);
@@ -131,6 +131,7 @@ import('./assets.ts')
     view.applyAssets(assets);
     bodies.setModel(assets.soldier, assets.guns);
     viewModel.setGuns(assets.guns, assets.environment);
+    viewModel.setArms(assets.soldier);
     if (import.meta.env.DEV) Object.assign(window, { assets });
     orbitCamera(performance.now() / 1000);
     camera.updateMatrixWorld();
@@ -399,12 +400,28 @@ function play(): void {
 
 /** Sounds and effects of our own weapon, or of the killer's in a death cam; `players` are the bodies a round can hit. */
 function weaponFx(fx: WeaponFx, players: () => PlayerSnap[]): void {
-  if (fx.k === 'shot') ownShot(fx.shot, players());
-  else if (fx.k === 'throw') sfx.toss();
-  else if (fx.k === 'dry') sfx.dry();
-  else if (fx.k === 'reload') sfx.reload(fx.weapon);
-  else if (fx.k === 'reloaded') sfx.reloaded();
-  else sfx.draw();
+  switch (fx.k) {
+    case 'shot':
+      ownShot(fx.shot, players());
+      break;
+    case 'throw':
+      throwing = true;
+      sfx.toss();
+      break;
+    case 'dry':
+      sfx.dry();
+      break;
+    case 'reload':
+      sfx.reload(fx.weapon);
+      break;
+    case 'reloaded':
+      sfx.reloaded();
+      break;
+    case 'draw':
+      throwing = false;
+      sfx.draw();
+      break;
+  }
 }
 
 /** The results of the last run, shown again after watching the death cam. */
@@ -569,13 +586,14 @@ function onEvent(e: GameEvent, replay = false): void {
     case 'hit':
       hud.hit(e.zone, e.killed, e.damage, e.x, e.y, e.z);
       sfx.hit(e.zone === 'head', e.killed);
-      bodies.flash(e.target);
+      bodies.flash(e.target, e.x, e.y, e.z);
       break;
     case 'hurt':
       if (me) hud.hurtFrom(e.damage, bearing(me.x, me.z, input.yaw, e.x, e.z));
       sfx.hurt();
       break;
     case 'kill':
+      bodies.killed(e.victim, e.killer);
       hud.kill(e, conn!.id);
       break;
     case 'extract':
@@ -654,6 +672,8 @@ let last = start;
 let lastYaw = 0;
 let lastPitch = 0;
 let deadFor = 0;
+/** The weapon is down for our own grenade throw, not a switch. */
+let throwing = false;
 /** Camera shake, 0 to 1, decaying. */
 let shake = 0;
 /** Our own footfalls: where we were, distance since the last step, and how we were falling. */
@@ -711,6 +731,7 @@ function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt:
     onGround: s.onGround,
     sprinting: sprinting(s),
     suppressed: s.suppressed[s.weapon],
+    throwing: throwing && s.draw > 0 ? clamp(1 - s.draw / THROW_TIME, 0, 1) : -1,
   }, lookDx, lookDy);
   viewModel.hidden = s.dead || (s.weapon === BOLT && me.aim > 0.9);
 }

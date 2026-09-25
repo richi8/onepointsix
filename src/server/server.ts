@@ -27,17 +27,18 @@ import {
   SERVER_TICK_RATE,
   SPAWN_PROTECTION,
   SUPPRESSED_NOISE,
+  THROW_TIME,
 } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, yawToward } from '../shared/geom.ts';
 import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
 import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loot.ts';
 import type {
-  BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
+  Action, BagSnap, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
-import { applyCmd, copyState, spawnState, type PlayerState } from '../shared/sim.ts';
+import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { World, type Box, type Point } from '../shared/world.ts';
@@ -124,6 +125,8 @@ interface Player extends PlayerState {
   tape: Tape;
   /** Set for a human killed by someone else: who, and when, until the death cam is sent. */
   deathcam: { killer: Player; time: number } | null;
+  /** The weapon is down for a grenade throw, not a switch. */
+  threw: boolean;
 }
 
 interface PoseRecord extends Pose {
@@ -313,13 +316,17 @@ export class GameServer {
         const cmd = p.queue[i];
         applyCmd(this.world, p, cmd, CMD_DT, (fx) => {
           if (fx.k === 'shot') this.fire(p, fx.shot, cmd.view);
-          else if (fx.k === 'throw') this.toss(p, fx.toss);
+          else if (fx.k === 'throw') {
+            this.toss(p, fx.toss);
+            p.threw = true;
+          } else if (fx.k === 'draw') p.threw = false;
         });
         p.tape.record(cmd);
         if (p.run && !p.dead) this.use(p, cmd.buttons);
         p.lastSim = cmd.seq;
       }
       p.queue.splice(0, n);
+      if (p.draw <= 0) p.threw = false;
     }
 
     this.stepGrenades();
@@ -357,9 +364,7 @@ export class GameServer {
     if (this.history.length > HISTORY_TICKS) this.history.shift();
 
     const joined = [...this.players.values()].filter((p) => p.joined);
-    const players: PlayerSnap[] = joined.map(({ id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon }) => (
-      { id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon }
-    ));
+    const players = joined.map(snapOf);
     let extracts: ExtractView[] | null = null;
     let bags: BagSnap[] | null = null;
     const grenades: GrenadeSnap[] = this.grenades.map(({ id, x, y, z }) => ({ id, x, y, z }));
@@ -586,7 +591,7 @@ export class GameServer {
     const p: Player = {
       ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, queue: [], lastRecv: 0, lastSim: 0,
       respawn: 0, protection: 0, events: [], dummy: null, plan: null, bot: null, run: null, recall: 0,
-      tape: new Tape(), deathcam: null,
+      tape: new Tape(), deathcam: null, threw: false,
     };
     this.players.set(p.id, p);
     return p;
@@ -896,4 +901,22 @@ function newRun(start: number): Run {
 
 function poseOf(p: Player): PoseRecord {
   return { id: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw, duck: p.duck, lean: p.lean, dead: p.dead, life: p.life };
+}
+
+/** How everyone else sees a player. */
+function snapOf(p: Player): PlayerSnap {
+  const { id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon } = p;
+  let act: Action = 'none';
+  let actT = 0;
+  if (p.reload > 0) {
+    act = 'reload';
+    actT = 1 - p.reload / WEAPONS[weapon].reloadTime;
+  } else if (p.draw > 0) {
+    act = p.threw ? 'throw' : 'draw';
+    actT = 1 - p.draw / (p.threw ? THROW_TIME : WEAPONS[weapon].drawTime);
+  }
+  return {
+    id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon,
+    quiet: p.suppressed[weapon], motion: motionOf(p), act, actT: clamp(actT, 0, 1), commander: !!p.plan?.commander,
+  };
 }

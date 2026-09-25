@@ -29,6 +29,12 @@ export type Mode = 'mixed' | 'pve' | 'range';
 /** Operators are players and fill bots, each on their own side; guards defend outposts together; dummies stand on the range. */
 export type Team = 'operator' | 'guard' | 'dummy';
 
+/** How a body is moving: on its feet, in the air, sliding or climbing onto a ledge. */
+export type Motion = 'ground' | 'air' | 'slide' | 'mantle';
+
+/** What a body's hands are busy with, besides holding the gun. */
+export type Action = 'none' | 'reload' | 'draw' | 'throw';
+
 export interface PlayerSnap {
   id: number;
   team: Team;
@@ -45,6 +51,14 @@ export interface PlayerSnap {
   dead: boolean;
   /** Weapon in hand. */
   weapon: number;
+  /** A suppressor is fitted to it. */
+  quiet: boolean;
+  motion: Motion;
+  /** What the hands are doing, and how far through it, 0 to 1. */
+  act: Action;
+  actT: number;
+  /** A commander, the target of a contract. */
+  commander: boolean;
 }
 
 export type ContractKind = 'intel' | 'cache' | 'commander';

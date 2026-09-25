@@ -22,6 +22,8 @@ export interface BotPlan {
   follows?: number;
   /** Sent for one job, such as answering a called extraction: not replaced when it dies. */
   temporary?: boolean;
+  /** A commander, the target of a contract; drawn with its own markings. */
+  commander?: boolean;
 }
 
 /** Guards walk points this far from their outpost's centre: inside the walls and just outside. */
@@ -204,6 +206,7 @@ export function planCommander(world: World, nav: NavGrid, rand: () => number, o:
     primary: RIFLE,
     spawn: { ...route[0], yaw: rand() * Math.PI * 2 },
     temporary: true,
+    commander: true,
   };
 }
 

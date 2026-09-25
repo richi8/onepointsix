@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Soldiers that show what they’re doing',
+    notes: [
+      'You can now see what other soldiers are up to: crouch-walking, sliding, jumping, falling and climbing onto ledges each look different, and so do reloading, switching weapons and throwing a grenade. A running soldier carries their gun low.',
+      'Soldiers fall down dead instead of toppling over stiffly. They fall away from whoever shot them, turn aside rather than fall into a wall, lie along the slope of the ground, and drop their gun beside them.',
+      'Your own arms now hold your gun in first person, and your left hand fetches a fresh magazine when you reload and throws your grenades.',
+      'Hands close around the gun, and suppressors show on other soldiers’ guns.',
+      'Operators carry packs, guards wear brown webbing, and commanders have a red band on their helmet and a radio mast on their back, so you can spot the one you’re hunting.',
+      'A hit now flashes only where the round landed, and a leaning soldier’s head is exactly where you have to aim to hit it.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Playtest tuning',
     notes: [
       'Mixed games now hold 8 operators instead of 12, so you run into another operator every minute or two rather than every few seconds.',

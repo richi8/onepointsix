@@ -21,7 +21,7 @@ const SIZE = 512;
 const HDRI = 'kloofendal_48d_partly_cloudy_puresky';
 /** Quaternius's public-domain SWAT operator, from poly.pizza, and the clips the game plays. */
 const SOLDIER = 'https://static.poly.pizza/713f6535-f4f3-4367-a4c6-ced126ae0936.glb';
-const SOLDIER_CLIPS = ['Idle', 'Walk', 'Run'];
+const SOLDIER_CLIPS = ['Idle', 'Walk', 'Run', 'Death'];
 /** Quaternius's public-domain guns, from poly.pizza, in WEAPONS order. */
 const GUNS = {
   rifle: 'https://static.poly.pizza/9a0e478c-de82-4773-9b70-a0219bb0057c.glb',

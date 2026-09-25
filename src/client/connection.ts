@@ -248,6 +248,11 @@ export function playersAt(snaps: readonly Snapshot[], t: number): PlayerSnap[] {
       lean: lerp(pa.lean, pb.lean, f),
       dead: pb.dead,
       weapon: pb.weapon,
+      quiet: pb.quiet,
+      motion: pb.motion,
+      act: pb.act,
+      actT: pa.act === pb.act && pb.actT >= pa.actT ? lerp(pa.actT, pb.actT, f) : pb.actT,
+      commander: pb.commander,
     };
   });
 }

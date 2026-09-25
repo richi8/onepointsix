@@ -178,7 +178,7 @@ the Known Issues named in its scope.
 |---|---|---|---|---|
 | 11 | **Ship and load** | Verify GitHub Pages end to end (the live site, share links, `?world=`); a loading screen with progress instead of the flat-colour swap; KTX2 textures and meshopt glTF; code splitting so the first bundle is under 500 kB; build the texture arrays off the main thread (`createImageBitmap` / a Worker); replace the Mixamo soldier with a CC0 character (e.g. Quaternius); generate the texture layer list from one source | A stranger opens the live link on a mid-range laptop and is playing within about 5 s on a warm cache; no licensing doubts left | **Done** |
 | 12 | **Playtest and tuning** | A local run-stats log (length, cause of death, extraction used, contracts done, loot value) with a debug panel to read it; tune the operator cap, guard count, bot difficulty, weapon damage and recoil, extraction timings and loot values from playtests; fix what playtests find; mode-less links; the menu at small window sizes | Several full runs by other people; the average run lands in 3–10 minutes, and no single strategy dominates | **Partly done**: the run log, bot playtest, bot and cap tuning, mode-less links and small-window menu are in; runs by other people haven't happened yet |
-| 13 | **Animation** | Death animation with a simple ragdoll that doesn't sink into ground or walls; third-person crouch-walk, slide, mantle, jump and fall clips; third-person reload, weapon switch and grenade throw; suppressors on third-person guns; first-person arms with animated reloads; a distinct look for commanders and each side; hit flash only where the round landed; the body lean matches the lean hitbox | Watching another operator, you can tell what they are doing: crouching, sliding, reloading, throwing | Not started |
+| 13 | **Animation** | Death animation with a simple ragdoll that doesn't sink into ground or walls; third-person crouch-walk, slide, mantle, jump and fall clips; third-person reload, weapon switch and grenade throw; suppressors on third-person guns; first-person arms with animated reloads; a distinct look for commanders and each side; hit flash only where the round landed; the body lean matches the lean hitbox | Watching another operator, you can tell what they are doing: crouching, sliding, reloading, throwing | **Done** |
 | 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | Not started |
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | Not started |
 | 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards are kept per condition | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | Not started |
@@ -194,20 +194,49 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 ### Look and animation
 - **No death animation or ragdoll** (9). Bodies topple backward stiffly around their feet and
   can sink into the ground or walls.
+  **Resolved** (13): the soldier's death clip plays, and the body lies down away from its killer.
+  Before it falls, rays at knee and waist height check for room, and for the flung arms either
+  side. If there isn't enough room it turns up to 180° and slides back off a wall. Once down, it
+  tilts to the slope under it and lifts until its head, chest, hips, hands, feet, knees and pack
+  clear the ground. It isn't a physics ragdoll (see below).
 - **Third-person movement has no animations beyond idle, walk and run** (9). Crouch-walking is
   a bent walk posed in code. Sliding, mantling, jumping and falling still play the walk or run
   clip.
+  **Resolved** (13): snapshots now say whether a body is on the ground, in the air, sliding or
+  mantling. Each state has its own stance posed in code: foot targets reached with leg IK and a
+  bend at the waist, blended in and out at 12 per second. There are still no clips for them
+  (see below).
 - **Actions aren't animated in third person** (9). Reloading, switching weapons and throwing
   grenades don't show on other players.
+  **Resolved** (13): snapshots carry the action (reload, draw, throw) and how far through it is.
+  A reload tips the gun while the left hand goes down to a belt pouch and back to the magazine
+  well; a switch brings the gun up from low; a throw lowers the gun while the left hand cocks a
+  grenade over the shoulder and throws. The server tells a throw from a switch with a flag of
+  its own, since both only set `draw`.
 - **Third-person guns don't show suppressors** (9), although the viewmodel does.
+  **Resolved** (13): snapshots carry whether the weapon in hand is suppressed. The can is drawn,
+  and muzzle flashes and tracers start from its end.
 - **Distant bodies animate at 12 Hz and skip hand IK** (9), beyond 90 m. It's cheaper, but
   scoped players may notice the stutter.
 - **One soldier model for every side, told apart only by tint** (9). Commanders look like any
   other guard. Since chunk 11 only the uniform is recoloured, not the whole body.
+  **Resolved in part** (13): it's still one model, but the sides now differ in kit as well as
+  uniform. Operators carry a pack and bedroll with black webbing, and guards wear brown webbing.
+  Commanders (flagged in snapshots) wear a paler uniform, a red band round the helmet and a radio
+  with a mast on their back.
 - **The hit flash lights the whole body** (9), not just where the round landed.
+  **Resolved** (13): the soldier's materials glow round the point the round landed, fading out
+  over 30 cm. The point is kept in the body's own space, so the glow moves with it.
 - **The body lean is only an approximation of the lean hitbox** (9). The head ends up roughly
   over its hit sphere, but not exactly.
+  **Resolved** (13): a lean now shifts the hips 14 cm out over planted feet, then rolls the upper
+  body by a Newton step until the middle of the head is exactly as far to the side as the head
+  hitbox. Checked by drawing the hitbox over the body. The head still sits a few centimetres
+  lower than its hitbox at full lean (see below).
 - **First-person hands are boxes** (9), with no arms or animated reload.
+  **Resolved** (13): first person now draws the soldier's own arms, cut from the model by skin
+  weights, and reaches both hands to the gun with IK and closed fingers. The left hand goes down
+  for a magazine on a reload and throws the grenades.
 - **Buildings are still boxes** (9): the walls, watchtowers, containers and crates are textured,
   but the geometry is primitive. There are no doors, windows or interiors.
 - **Trees are procedural** (9), because Poly Haven's tree models are hundreds of MB each. They
@@ -222,14 +251,48 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
   best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
   helmet hides the face, and its hands stay open instead of gripping the gun.
+  **Resolved in part** (13): the fingers now close round the grip and fore-end. The model is still
+  stylized, and its helmet still hides the face.
 - **Walk and run speeds are estimated** (11). The clips' natural speeds (1.3 and 3.2 m/s) were
   worked out from how far the feet travel, not watched in motion, so feet may slide a little.
   Sprinting plays the run clip up to 1.8× faster.
 - **Crouch-walking looks like lunging** (11). The crouch drops the body and bends each leg with IK
   to where the walk clip puts the feet, and those feet are placed for standing height.
+  **Resolved** (13): crouched, the feet the walk clip places are pulled in under the hips (strides
+  45% shorter, lifted half as high and a little wider apart), so the legs stay folded under the
+  body.
 - **The soldier's other clips were dropped** (11) to save download size: death, shooting, hit
   reactions and rolls. Chunk 13 can bring back the death clip from the source file.
+  **Resolved in part** (13): the death clip is back (4.5 kB). Shooting, hit reactions and rolls
+  are still left out.
 
+- **Deaths aren't a physics ragdoll** (13). Every body plays the same death clip, laid on the
+  ground as above. Limbs can still pass through props, fences and other bodies, and a body never
+  slides down a slope or reacts to a round beyond which way it falls. It only falls away from
+  its killer if the kill event arrives before the snapshot that shows it dead, which it normally
+  does.
+- **The new stances are poses, not animations** (13). A slide, jump, fall and climb each hold a
+  single pose of the legs, and a crouch-walk is the walk clip squashed. A hop shorter than about
+  0.1 s barely shows. The source model has no clips for any of them.
+- **Every gun reloads the same way** (13), with a magazine change, even the bolt-action. The hand
+  paths are keyframes and don't depend on the gun's model.
+- **Hand grips were fitted by eye** (13), in a pose viewer, for the rifle and the pistol. The
+  bolt-action uses the rifle's. The directions for the fingers and thumb are guesses tuned by
+  screenshot.
+- **First-person arms are stretched to reach** (13). The soldier's arms are too short for where the
+  viewmodel holds the guns, so they're drawn 1.15× larger from shoulders placed where no real
+  shoulder is (the left one far forward). Aiming the pistol, the forearms fill the bottom of the
+  screen. The reload's hand movement mostly happens below the screen, so you mainly see the gun dip.
+- **The grenade in hand is a plain sphere** (13), not a grenade model.
+- **Only bodies that die on screen drop their gun** (13). A body that dies out of sight is drawn
+  without one. The gun falls straight to the ground height where it lands, with no collision.
+- **A leaning head sits a little low** (13). Side to side it's exactly over its hitbox, but at
+  full lean it's a few centimetres below it, and a crouched head is a few centimetres off too.
+- **The animation was checked by still screenshots** (13) of chosen moments in the new pose viewer
+  (`dev/pose.html`), plus one screenshot of a real game in first person. Nobody has watched it
+  moving at full speed in play, and its cost per frame with many bodies near wasn't measured.
+  Each near body now also runs leg IK when crouched, sliding, airborne or leaning, and hand
+  orientation and finger curl every update.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
@@ -283,6 +346,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   the live site until it's pushed.
 - **Skipping the loading screen brings back the flat-colour swap** (11), which then shows
   mid-game when the assets land.
+- **The game's entry chunk grew to 141 kB** (13), from 120 kB, with the body posing and the
+  first-person arms. The soldier model grew by 4.5 kB for the death clip.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
@@ -338,6 +403,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   The game and the script both import it; Node strips the TypeScript types.
 - **The client's rendering, animation and audio have no automated tests** (9). They were checked
   by screenshots only, and nobody has listened to the audio.
+  Still true of the rendering and animation after chunk 13; the new snapshot fields they draw from
+  (motion, action, suppressor, commander) are tested.
 - **The death cam, menu, leaderboard UI and share button have no automated tests** (10). The
   tape replay, share links and leaderboard storage are tested; the rest was checked by
   screenshots in a headless browser only.
@@ -355,6 +422,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The loading screen and asset pipeline have no automated tests** (11). They were checked in
   a headless browser with software and Metal rendering, by screenshot and by timing.
 
+- **Snapshots are bigger** (13): each player carries five more fields (motion, action and its
+  progress, suppressor, commander). That's fine through the Worker, but multiplayer should pack
+  them.
+- **The pose viewer isn't part of the build or the tests** (13). `dev/pose.html` runs on the dev
+  server only, and its screenshots were read by eye.
 ### Playtest and tuning
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
   the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
