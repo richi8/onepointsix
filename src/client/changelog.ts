@@ -14,7 +14,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     date: '2026-09-25',
     title: 'Run dashboard',
     notes: [
-      'Esc shows your run so far (the game carries on behind it): what you’d score if you got out now, your loot, kills and contracts, the time left and your best on this island. Click anywhere to carry on, or leave the game for the main menu.',
+      'Esc shows your run so far (the game carries on behind it): what you’d score if you got out now, your loot, kills and contracts, the time left and your best on this island. Click anywhere or press Esc again to carry on, or leave the game for the main menu.',
       'You can buy me a coffee from the main menu if you enjoy the game.',
     ],
   },

@@ -296,6 +296,29 @@ canvas {
   background: #d9534f;
 }
 
+.paused > .prompt {
+  display: none;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
+}
+
+.paused.closed {
+  background: rgb(0 0 0 / 0.2);
+  cursor: pointer;
+}
+
+.paused.closed .card {
+  display: none;
+}
+
+.paused.closed > .prompt {
+  display: block;
+}
+
 .paused .resume {
   margin: 12px 0 0;
   font-size: 13px;

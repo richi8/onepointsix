@@ -515,6 +515,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   blockers that block it leave no button. A plain styled link would avoid both.
   **Resolved** (pause dashboard commit): the widget is replaced by a plain link styled like it,
   with no script and no class names that ad blockers match.
+- **Esc can't always close the run dashboard straight back into the game** (run dashboard
+  commit). Browsers don't count Esc as a user gesture, and Chrome refuses to re-lock the mouse
+  for about a second after Esc freed it. When the lock is refused, the dashboard folds away to
+  a "Click to resume" prompt instead. The path where the lock succeeds is untested, because
+  headless Chrome never grants pointer lock.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
