@@ -205,18 +205,60 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
   color: #fff;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: rgb(0 0 0 / 0.35);
-  text-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
-  cursor: pointer;
+  background: rgb(0 0 0 / 0.45);
 }
 
 .paused[hidden] {
   display: none;
+}
+
+.paused .card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(280px, 100%);
+  padding: 20px 24px 24px;
+  background: rgb(14 16 18 / 0.88);
+  border-top: 4px solid #e8c35a;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+
+.paused h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.paused button {
+  padding: 10px 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1b1b1b;
+  background: #e8c35a;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.paused button:hover {
+  background: #f2d27a;
+}
+
+.paused button.secondary {
+  color: #eee;
+  background: rgb(255 255 255 / 0.12);
+}
+
+.paused button.secondary:hover {
+  background: rgb(255 255 255 / 0.2);
 }
 
 /* ------------------------------------------------------------------ HUD */
@@ -714,6 +756,20 @@ canvas {
   .menu .news-button {
     margin-top: 2px;
   }
+}
+
+/* The Buy Me a Coffee button, smaller than it comes. */
+.menu .coffee .bmc-btn {
+  min-width: 0;
+  height: 40px;
+  padding: 0 14px;
+  font-size: 16px;
+  border-radius: 8px;
+  text-shadow: none;
+}
+
+.menu .coffee .bmc-btn svg {
+  height: 24px !important;
 }
 
 /* ------------------------------------------------------------------ what's new */

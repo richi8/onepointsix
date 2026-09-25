@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Pause menu',
+    notes: [
+      'Esc opens a menu: resume, or leave the game and go back to the main menu.',
+      'You can buy me a coffee from the main menu if you enjoy the game.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Hide in the bushes',
     notes: [
       'Guards and operators can no longer see through bushes. Crouch behind a big one and they’ll walk past; stand up and they’ll spot you. Firing an unsuppressed gun still gives you away. Grass blocks their view too, though it’s short, so it only hides you when they look along the ground, such as over the brow of a hill.',

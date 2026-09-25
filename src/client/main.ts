@@ -541,7 +541,12 @@ document.getElementById('to-menu')!.onclick = toMenu;
 input.onLockChange = (locked) => {
   if (conn && !conn.over) paused.hidden = locked;
 };
-paused.onclick = () => input.lock();
+// Clicking beside the menu resumes too, as the whole screen did before it.
+paused.onclick = (e) => {
+  if (e.target === paused) input.lock();
+};
+document.getElementById('resume')!.onclick = () => input.lock();
+document.getElementById('leave')!.onclick = toMenu;
 
 playButton.onclick = play;
 window.addEventListener('keydown', (e) => {
