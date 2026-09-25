@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { KeyValue } from '../src/client/leaderboard.ts';
 import { LOG_SIZE, RunLog } from '../src/client/runlog.ts';
+import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 import { runRecord, summarize, type RunEndEvent, type RunRecord } from '../src/shared/runstats.ts';
 import { GRENADE } from '../src/shared/weapons.ts';
 
@@ -20,25 +21,25 @@ const names = (i: number) => ['North beach', 'East landing zone'][i];
 
 describe('run records', () => {
   it('records how a run got out', () => {
-    const r = runRecord(end(), 7, 'pve', names, new Date('2026-09-25T10:00:00Z'));
-    expect(r).toMatchObject({ at: '2026-09-25T10:00:00.000Z', seed: 7, mode: 'pve', outcome: 'extracted', time: 200, extract: 'East landing zone', cause: '' });
+    const r = runRecord(end(), { seed: 7, time: 'night', weather: 'fog' }, 'pve', names, new Date('2026-09-25T10:00:00Z'));
+    expect(r).toMatchObject({ at: '2026-09-25T10:00:00.000Z', seed: 7, conditions: 'night, fog', mode: 'pve', outcome: 'extracted', time: 200, extract: 'East landing zone', cause: '' });
   });
 
   it('records what killed a run', () => {
-    const r = runRecord(end({ outcome: 'killed', score: 0, extract: -1, death: { by: 'guard', weapon: 0, head: true } }), 1, 'mixed', names);
+    const r = runRecord(end({ outcome: 'killed', score: 0, extract: -1, death: { by: 'guard', weapon: 0, head: true } }), DEFAULT_WORLD, 'mixed', names);
     expect(r).toMatchObject({ extract: '', cause: 'guard, Assault rifle, head' });
-    expect(runRecord(end({ outcome: 'killed', death: { by: 'self', weapon: GRENADE, head: false } }), 1, 'mixed', names).cause).toBe('self, Grenade');
+    expect(runRecord(end({ outcome: 'killed', death: { by: 'self', weapon: GRENADE, head: false } }), DEFAULT_WORLD, 'mixed', names).cause).toBe('self, Grenade');
   });
 
   it('counts contracts done', () => {
     const c = { kind: 'intel', outpost: 0, x: 0, y: 0, z: 0, reward: 1, progress: 0, panel: -1, name: '' } as const;
-    const r = runRecord(end({ contracts: [{ ...c, state: 'done' }, { ...c, state: 'failed' }] }), 1, 'mixed', names);
+    const r = runRecord(end({ contracts: [{ ...c, state: 'done' }, { ...c, state: 'failed' }] }), DEFAULT_WORLD, 'mixed', names);
     expect(r).toMatchObject({ contracts: 2, contractsDone: 1 });
   });
 
   it('sums runs up', () => {
-    const out = runRecord(end({ time: 300 }), 1, 'mixed', names);
-    const dead = runRecord(end({ outcome: 'killed', score: 0, time: 60, extract: -1, death: { by: 'guard', weapon: 0, head: false } }), 1, 'mixed', names);
+    const out = runRecord(end({ time: 300 }), DEFAULT_WORLD, 'mixed', names);
+    const dead = runRecord(end({ outcome: 'killed', score: 0, time: 60, extract: -1, death: { by: 'guard', weapon: 0, head: false } }), DEFAULT_WORLD, 'mixed', names);
     const s = summarize([out, out, dead, { ...dead, time: 90 }]);
     expect(s).toMatchObject({ runs: 4, extracted: 0.5, killed: 0.5, mia: 0, meanTime: 187.5, medianTime: 195, meanExtractTime: 300, meanScore: 1000 });
     expect(s.causes).toEqual([['guard, Assault rifle', 2]]);
@@ -50,7 +51,7 @@ describe('run records', () => {
 describe('run log', () => {
   it('keeps the latest runs, newest first, and can be cleared', () => {
     const log = new RunLog(memory());
-    const r = (score: number): RunRecord => runRecord(end({ score }), 1, 'mixed', names);
+    const r = (score: number): RunRecord => runRecord(end({ score }), DEFAULT_WORLD, 'mixed', names);
     for (let i = 0; i < LOG_SIZE + 5; i++) log.add(r(i));
     expect(log.records()).toHaveLength(LOG_SIZE);
     expect(log.records()[0].score).toBe(LOG_SIZE + 4);
@@ -63,7 +64,7 @@ describe('run log', () => {
     store.setItem('runlog', '{not json');
     expect(new RunLog(store).records()).toEqual([]);
     const none = new RunLog(null);
-    none.add(runRecord(end(), 1, 'mixed', names));
+    none.add(runRecord(end(), DEFAULT_WORLD, 'mixed', names));
     expect(none.records()).toEqual([]);
   });
 });

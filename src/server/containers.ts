@@ -46,16 +46,19 @@ export class Containers {
   private readonly byPanel = new Map<number, Container>();
   private readonly world: World;
   private readonly rand: () => number;
+  /** Night crates hold more and better loot. */
+  private readonly night: boolean;
   private nextId = 0;
 
-  constructor(world: World, rand: () => number) {
+  constructor(world: World, rand: () => number, night = false) {
     this.world = world;
     this.rand = rand;
+    this.night = night;
     for (const { box, rich } of lootCrates(world)) {
       const { minX, minY, minZ, maxX, maxY, maxZ } = box;
       const id = this.nextId++;
       const c: Container = {
-        id, kind: 'crate', minX, minY, minZ, maxX, maxY, maxZ, rich, items: rollItems(rand, rich), searched: false, until: 0,
+        id, kind: 'crate', minX, minY, minZ, maxX, maxY, maxZ, rich, items: rollItems(rand, rich, night), searched: false, until: 0,
         panel: box.panel ?? -1, broken: false,
       };
       this.all.set(id, c);
@@ -83,7 +86,7 @@ export class Containers {
     c.broken = false;
     c.searched = false;
     c.until = 0;
-    c.items = rollItems(this.rand, c.rich);
+    c.items = rollItems(this.rand, c.rich, this.night);
   }
 
   /** Whether a bag lies inside the box. */
@@ -155,7 +158,7 @@ export class Containers {
       if (!c.searched || now < c.until) continue;
       if (c.kind === 'bag') this.all.delete(c.id);
       else {
-        c.items = rollItems(this.rand, c.rich);
+        c.items = rollItems(this.rand, c.rich, this.night);
         c.searched = false;
       }
     }

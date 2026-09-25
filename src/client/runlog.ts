@@ -88,7 +88,7 @@ export class RunLogPanel {
     const recent = records.slice(0, SHOWN).map((r) => {
       const how = r.outcome === 'extracted' ? `out at ${r.extract}` : r.outcome === 'killed' ? `killed by ${r.cause || '?'}` : 'MIA';
       return `${r.at.slice(5, 16).replace('T', ' ')}  ${r.mode.padEnd(5)} ${clock(r.time).padStart(5)}  ${String(r.score).padStart(6)}  ` +
-        `${r.contractsDone}/${r.contracts}  ${how}`;
+        `${r.contractsDone}/${r.contracts}  ${how}${r.conditions ? ` (${r.conditions})` : ''}`;
     });
     this.text.textContent = records.length
       ? `Run log (F4)\n${summaryText(summarize(records))}\n\nlatest:  mode  time   score  contracts\n${recent.join('\n')}`

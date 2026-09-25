@@ -11,6 +11,7 @@ import {
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
+import type { Senses } from '../shared/conditions.ts';
 import type { InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
@@ -21,8 +22,9 @@ import type { NavGrid, Waypoint } from './nav.ts';
 import type { Skill } from './skill.ts';
 
 // A bot is a player without a keyboard. It perceives the world through the
-// same senses for everyone (sight limited by range, view cone and cover;
-// hearing of footsteps, gunfire and rounds passing close), decides what to do
+// same senses for everyone (sight limited by range, view cone, cover, the dark
+// and the weather; hearing of footsteps, gunfire and rounds passing close),
+// decides what to do
 // with a small state machine, and acts only by producing input commands that
 // the server simulates exactly like a human's.
 
@@ -30,6 +32,8 @@ import type { Skill } from './skill.ts';
 export interface Agent extends PlayerState {
   readonly id: number;
   team: Team;
+  /** Their flashlight is on. */
+  light?: boolean;
 }
 
 export interface Post extends Point {
@@ -78,6 +82,8 @@ export interface BotContext {
   extracts: readonly ExtractPoint[];
   /** The container an agent faces within reach, as a player would see it. */
   lootView(self: Agent): LootView | null;
+  /** How far the time of day and the weather let everyone see and hear. */
+  senses: Senses;
 }
 
 /** Whether a would shoot b. Operators are each on their own side; guards stick together. */
@@ -96,6 +102,17 @@ const CONCEALED = 0.3;
 const CROUCH_SIGHT = 0.65;
 /** Awareness lost per second by a half-noticed target out of sight. */
 const AWARENESS_DECAY = 0.25;
+/**
+ * In the dark a lit flashlight shows from this many times the sight range for
+ * someone unlit, up to the range the weather allows; a muzzle flash does too.
+ * Someone in a bot's own beam this close is seen as if by day.
+ */
+const LIGHT_REACH = 2.5;
+const BEAM_RANGE = 40;
+/** Half-angle of a flashlight's beam, radians. */
+export const BEAM_ANGLE = 0.3;
+/** Operator bots switch their flashlight off this close to an outpost, and whenever they aren't just going about their run. */
+const OPERATOR_DARK = 110;
 /** Footstep hearing ranges: sprinting and walking. Crouch-walking is silent. */
 const STEPS_SPRINT = 22;
 const STEPS_WALK = 9;
@@ -320,7 +337,16 @@ export class Bot {
     for (const a of ctx.agents) {
       if (a.dead || !hostile(self, a)) continue;
       const d = Math.hypot(a.x - self.x, a.z - self.z);
-      const range = s.sight * (a.duck > 0.5 ? CROUCH_SIGHT : 1);
+      // In the dark, a light or a muzzle flash gives someone away from far off,
+      // and anyone in a bot's own beam is as plain as by day.
+      const flash = a.sinceShot < 1 && !a.suppressed[a.weapon];
+      const senses = ctx.senses;
+      const lit = senses.dark && (a.light || flash);
+      const beamed = senses.dark && !!self.light && d < BEAM_RANGE &&
+        Math.abs(angleDiff(yawToward(self.x, self.z, a.x, a.z), this.yaw)) < BEAM_ANGLE;
+      const range = lit
+        ? s.sight * Math.min(senses.sight * LIGHT_REACH, senses.haze)
+        : s.sight * (beamed ? senses.haze : senses.sight) * (a.duck > 0.5 ? CROUCH_SIGHT : 1);
       let c = this.contacts.get(a.id);
       let visible = false;
       let headOnly = false;
@@ -337,10 +363,9 @@ export class Bot {
           const body = through(h.torsoX, chest, h.torsoZ);
           const head = body >= CONCEALED ? 0 : through(h.headX, h.headY, h.headZ);
           shows = Math.max(body, head);
-          // A muzzle flash shows through leaves, unless it's suppressed.
+          // A muzzle flash or a flashlight shows through leaves, unless the shot's suppressed.
           // So does anyone close enough to touch.
-          const flash = a.sinceShot < 1 && !a.suppressed[a.weapon];
-          if (shows >= CONCEALED || (shows > 0 && (flash || d < TOUCH_RANGE))) {
+          if (shows >= CONCEALED || (shows > 0 && (flash || lit || d < TOUCH_RANGE))) {
             visible = true;
             headOnly = body < CONCEALED && head >= CONCEALED;
           }
@@ -354,8 +379,9 @@ export class Bot {
         time /= Math.max(shows, CONCEALED);
         if (a.duck > 0.5) time *= 1.6;
         if (speed > WALK_SPEED + 0.5) time *= 0.6;
-        // A muzzle flash gives a shooter away, unless it's suppressed.
-        if (a.sinceShot < 1 && !a.suppressed[a.weapon]) time *= 0.3;
+        // A muzzle flash gives a shooter away, unless it's suppressed; so does a light in the dark.
+        if (flash) time *= 0.3;
+        else if (lit) time *= 0.5;
         if (off > s.fov * 0.3) time *= 1.5;
         const was = c.level;
         c.level = Math.min(c.level + dt / time, 1);
@@ -383,7 +409,7 @@ export class Bot {
       }
       // Footsteps, when not in sight.
       const loud = !a.onGround ? 0 : speed > WALK_SPEED + 0.5 ? STEPS_SPRINT : speed > CROUCH_SPEED + 0.3 ? STEPS_WALK : 0;
-      if (d < loud) this.heard = { x: a.x, y: a.y, z: a.z, at: now };
+      if (d < loud * senses.hearing) this.heard = { x: a.x, y: a.y, z: a.z, at: now };
     }
     for (const id of this.contacts.keys()) {
       const a = ctx.agent(id);
@@ -748,6 +774,17 @@ export class Bot {
     return this.role.kind === 'operator' && ctx.agent(id)?.team === 'guard';
   }
 
+  /**
+   * Guards keep their flashlights on all night; at dusk it's still light enough to go without. Operators light their way
+   * across the open island but go dark near outposts and once anything happens.
+   */
+  private wantsLight(ctx: BotContext, self: Agent): boolean {
+    if (!ctx.senses.night) return false;
+    if (this.role.kind !== 'operator') return true;
+    if (!this.isRoutine(this.state)) return false;
+    return ctx.world.outposts.every((o) => Math.hypot(o.x - self.x, o.z - self.z) > OPERATOR_DARK);
+  }
+
   private isRoutine(state: BotState): boolean {
     return state === 'patrol' || state === 'loot' || state === 'extract';
   }
@@ -1020,6 +1057,7 @@ export class Bot {
     }
     // Firing or aiming stops a sprint in the simulation; don't also hold it.
     if (buttons & (Btn.Fire | Btn.Aim)) buttons &= ~Btn.Sprint;
+    if (this.wantsLight(ctx, self)) buttons |= Btn.Light;
 
     return { seq, buttons, yaw: this.yaw, pitch: this.pitch, weapon: this.weapon };
   }

@@ -29,6 +29,7 @@ import {
   SUPPRESSED_NOISE,
   THROW_TIME,
 } from '../shared/constants.ts';
+import { DEFAULT_CONDITIONS, isNight, sensesOf, type Conditions } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, yawToward } from '../shared/geom.ts';
 import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
@@ -128,6 +129,8 @@ interface Player extends PlayerState {
   deathcam: { killer: Player; time: number } | null;
   /** The weapon is down for a grenade throw, not a switch. */
   threw: boolean;
+  /** Their flashlight is on; only ever after dark. */
+  light: boolean;
 }
 
 interface PoseRecord extends Pose {
@@ -143,6 +146,8 @@ export interface ServerOptions {
   dummies?: boolean;
   /** Post guards at the outposts and send patrols between them (default false). */
   guards?: boolean;
+  /** The time of day and the weather (default a clear day). */
+  conditions?: Conditions;
   /** Operator slots, filled by bots where no player takes them (default 0, no operator bots). */
   operators?: number;
   /**
@@ -159,6 +164,7 @@ export interface ServerOptions {
 export class GameServer {
   readonly seed: number;
   readonly mode: Mode;
+  readonly conditions: Conditions;
   readonly world: World;
   readonly range: RangeLayout;
   readonly nav: NavGrid;
@@ -189,6 +195,8 @@ export class GameServer {
   constructor(seed: number, options: ServerOptions = {}) {
     this.seed = seed >>> 0;
     this.mode = options.mode ?? 'range';
+    this.conditions = options.conditions ?? DEFAULT_CONDITIONS;
+    const night = isNight(this.conditions);
     this.world = new World(this.seed);
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
@@ -197,7 +205,7 @@ export class GameServer {
     this.nav = new NavGrid(this.world);
     // Paint the ground now rather than on the first bot's first look.
     vegetationOf(this.world);
-    this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f));
+    this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f), night);
     this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1));
     this.cover = new Cover(this.world);
     this.operatorSlots = options.operators ?? 0;
@@ -216,6 +224,7 @@ export class GameServer {
         const p = players.get(a.id);
         return p ? this.lootView(p) : null;
       },
+      senses: sensesOf(this.conditions),
     };
     if (options.dummies ?? true) {
       this.range.dummies.forEach((post, index) => {
@@ -226,7 +235,7 @@ export class GameServer {
       });
     }
     if (options.guards) {
-      const plans = planGuards(this.world, this.nav, this.botRng);
+      const plans = planGuards(this.world, this.nav, this.botRng, night);
       const ids = plans.map((plan) => this.addBot(plan, 'guard').id);
       // Bots share their plan's role, so followers learn their leader's id here.
       for (const plan of plans) if (plan.follows !== undefined && plan.role.kind === 'guard') plan.role.leader = ids[plan.follows];
@@ -325,6 +334,7 @@ export class GameServer {
           } else if (fx.k === 'draw') p.threw = false;
         });
         p.tape.record(cmd);
+        p.light = this.ctx.senses.dark && !p.dead && (cmd.buttons & Btn.Light) !== 0;
         if (p.run && !p.dead) this.use(p, cmd.buttons);
         p.lastSim = cmd.seq;
       }
@@ -460,7 +470,7 @@ export class GameServer {
     const at = this.extracts.points[index];
     this.broadcast({ k: 'call', id: p.id, index, name: p.name });
     this.noise(at.x, at.y, at.z, CALL_NOISE, p.id, (g) => g.team === 'guard');
-    for (const plan of planResponse(this.world, this.nav, this.botRng, at, RESPONSE_SQUAD)) {
+    for (const plan of planResponse(this.world, this.nav, this.botRng, at, RESPONSE_SQUAD, isNight(this.conditions))) {
       const g = this.addBot(plan, 'guard');
       g.recall = at.pickup + RESPONSE_STAY;
     }
@@ -594,7 +604,7 @@ export class GameServer {
     const p: Player = {
       ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, queue: [], lastRecv: 0, lastSim: 0,
       respawn: 0, protection: 0, events: [], dummy: null, plan: null, bot: null, run: null, recall: 0,
-      tape: new Tape(), deathcam: null, threw: false,
+      tape: new Tape(), deathcam: null, threw: false, light: false,
     };
     this.players.set(p.id, p);
     return p;
@@ -682,6 +692,8 @@ export class GameServer {
    * bot within it hears it, or only those `who` picks.
    */
   private noise(x: number, y: number, z: number, radius: number, source: number, who?: (p: Player) => boolean): void {
+    // Rain drowns sounds out.
+    radius *= this.ctx.senses.hearing;
     const n: Noise = { x, y, z, radius, source };
     for (const p of this.players.values()) {
       if (!p.bot || p.dead || (who && !who(p)) || Math.hypot(p.x - x, p.z - z) > radius) continue;
@@ -921,5 +933,6 @@ function snapOf(p: Player): PlayerSnap {
   return {
     id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon,
     quiet: p.suppressed[weapon], motion: motionOf(p), act, actT: clamp(actT, 0, 1), commander: !!p.plan?.commander,
+    light: p.light && !dead,
   };
 }

@@ -1,5 +1,7 @@
+import { conditionsLabel } from './conditions.ts';
 import type { GameEvent, Mode, Team } from './protocol.ts';
 import { weaponName } from './weapons.ts';
+import type { WorldConfig } from './worldconfig.ts';
 
 // What a finished run is remembered by, for tuning: how long it lasted, how it
 // ended, what it carried, what it got done and how it got out or died. The
@@ -12,6 +14,8 @@ export interface RunRecord {
   /** When it ended, as an ISO date and time. */
   at: string;
   seed: number;
+  /** The time of day and weather, such as "night, fog", or '' for a clear day; missing from runs logged before chunk 16. */
+  conditions?: string;
   mode: Mode;
   outcome: 'extracted' | 'killed' | 'mia';
   /** Seconds it lasted. */
@@ -31,11 +35,12 @@ export interface RunRecord {
 
 /** A run's record, from how it ended. `extractName` names an extraction point by index. */
 export function runRecord(
-  e: RunEndEvent, seed: number, mode: Mode, extractName: (index: number) => string, at = new Date(),
+  e: RunEndEvent, world: WorldConfig, mode: Mode, extractName: (index: number) => string, at = new Date(),
 ): RunRecord {
   return {
     at: at.toISOString(),
-    seed,
+    seed: world.seed,
+    conditions: conditionsLabel(world).toLowerCase(),
     mode,
     outcome: e.outcome,
     time: Math.round(e.time),

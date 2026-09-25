@@ -105,9 +105,9 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
 - Difficulty levels, and special "commander" bots used as contract targets
 
 ### Shareable worlds and leaderboards
-- The world config (seed and settings) is encoded in the URL.
-- Each world has its own leaderboard: stored locally first, on the server once there is
-  multiplayer.
+- The world config (seed, time of day and weather) is encoded in the URL.
+- Each island has its own leaderboard, shared by every time of day and weather: stored locally
+  first, on the server once there is multiplayer.
 - A share button on the results screen.
 
 ### Replays (cheap because the simulation is deterministic)
@@ -180,7 +180,7 @@ the Known Issues named in its scope.
 | 13 | **Animation** | Death animation with a simple ragdoll that doesn't sink into ground or walls; third-person crouch-walk, slide, mantle, jump and fall clips; third-person reload, weapon switch and grenade throw; suppressors on third-person guns; first-person arms with animated reloads; a distinct look for commanders and each side; hit flash only where the round landed; the body lean matches the lean hitbox | Watching another operator, you can tell what they are doing: crouching, sliding, reloading, throwing | **Done** |
 | 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | **Done** |
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | **Done** (60 fps checked on an M3 Pro only, and slow hardware only simulated) |
-| 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards are kept per condition | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | Not started |
+| 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards stay universal, one per island and mode whatever the conditions (changed from "per condition" at the user's request) | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | **Done** |
 | 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | Not started |
 | 18 | **Rivals** | Operator bot personalities: the *rat* (sneaks, loots, avoids fights), the *hunter* (follows gunfire to find wounded operators), the *camper* (waits near extraction points) and the *looter* (goes for high-value crates); third-partying, so operators are drawn to fights between others; a bounty on the operator carrying the most value, who is marked or heard more easily; a kill feed; bags left by bodies show their value before you open them. Personalities carry over as fill bots in future multiplayer | In Mixed mode, meeting another operator plays out differently depending on who they are, and a big haul makes you feel hunted | Not started |
 
@@ -547,6 +547,43 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   hash) and the assets, and a `?world=4242&mode=pve&by=Tester&score=1234` link opened island
   #4242 in PvE with the challenge shown. Pages gzips `.hdr` and `.glb` and caches for 10 minutes.
 
+### Day, night and weather
+- **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
+  behind it. Shadows would need a shadow map per light, drawn every frame.
+- **Only the two nearest other flashlights light the world** (16). Farther ones show only a faint
+  beam and a glare when pointed your way. Three spotlights (yours and two others) are always in the
+  scene at dusk and night so switching one on never recompiles a material.
+- **Others' flashlights shine from their gun's muzzle** (16). There's no torch model on the gun,
+  and the death cam doesn't light your view from the killer's flashlight.
+- **Bots see a light only when they can see its holder** (16). A beam sweeping over a wall from
+  someone hidden behind it gives nothing away, and a light is judged by where its holder stands,
+  not where it points.
+- **Rain falls indoors** (16), through roofs. There are no splashes, wet surfaces, puddles or
+  thunder, and the streaks are 1-pixel lines.
+- **Fog is plain distance fog** (16), the same everywhere, with no banks drifting or thicker
+  patches in hollows.
+- **Rain only muffles noise for bots** (16). For the player, far-off shots and footsteps are as
+  loud as ever; the rain loop just plays over them.
+- **Night reflections are the day sky, dimmed** (16). The image-based light comes from the one
+  daytime HDRI turned down to 2%, so shiny things still reflect a faint blue daytime sky.
+- **Conditions aren't checked by the server** (16) beyond parsing the link. Every combination is a
+  separate game in the directory, so in multiplayer nine conditions per island would split the
+  players unless the server picks them.
+- **Night scores beat day scores** (16). Night crates hold an extra item and more valuables,
+  and the leaderboards are shared across conditions, so the best scores on a board will tend to
+  be night runs.
+- **The look was tuned by screenshots only** (16), on an M3 Pro through headless Chrome. The cost
+  of up to 24 beams and glares, three spotlights and the rain on a mid-range laptop wasn't
+  measured. The lighting presets, rain, flashlights and menu pickers have no automated tests; the
+  config, link, bot senses, night guards and loot do.
+- **The sounds grew to 1.3 MB** (16) with the rain and cricket loops, still downloaded behind the
+  menu (see Sound).
+- **Night tuning comes from bots only** (16). In a bot playtest (4 islands × 15 min each),
+  operator bots got out of 18% of runs on a clear day, 22% in rain, 26% in fog, 12% on a clear
+  night, 19% on a rainy night and 24% on a foggy night. So night is the hardest and fog the
+  easiest, as intended, but none of the numbers (sight multiples, one extra guard per outpost,
+  loot boost, flashlight reach) have been checked by humans.
+
 ### Death cam
 - **Only the killer is replayed from inputs** (10). Everyone else is drawn from the snapshots the
   victim's client received, so they're a little behind, and bots out of sight may pop in.
@@ -679,6 +716,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
   ambientCG, Quaternius). Chunk 9 also used a Mixamo soldier, which chunk 11 replaced to leave
   no licensing doubts.
+- **Leaderboards are universal across conditions** (16): one board per island and mode, whatever
+  the time of day or weather. The plan had them per condition; the user asked to keep them
+  universal. A link still carries its conditions, so a challenge is played as it was set.
+- **Conditions are fixed presets** (16): day, dusk or night, and clear, rain or fog, fixed for a
+  game. The time doesn't pass and the weather doesn't change during a run.
 - **Share links carry the sharer's score.** With no backend, leaderboards live in each browser,
   so the link encodes the world config plus the sharer's name and score as the target to beat.
 - **Hosting:** a static site (e.g. GitHub Pages or Cloudflare Pages) is needed in chunk 10 so

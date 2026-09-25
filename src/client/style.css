@@ -686,6 +686,46 @@ canvas {
   opacity: 0.85;
 }
 
+/* ------------------------------------------------------------------ conditions */
+
+.menu .conditions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.menu .seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: rgb(0 0 0 / 0.3);
+  border-radius: 5px;
+}
+
+.menu .seg button {
+  padding: 4px 10px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #ddd;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 3px;
+}
+
+.menu .seg button:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.menu .seg button.on {
+  color: #1b1b1b;
+  background: rgb(232 195 90 / 0.85);
+}
+
+.menu .mode-note[hidden] {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ leaderboard */
 
 .menu .board {

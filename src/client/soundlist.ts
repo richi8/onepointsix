@@ -62,6 +62,8 @@ export const SOUNDS: SoundSource[] = [
   { name: 'wind', freesound: 22331, author: 'sleepCircle', title: 'wind.ogg', from: 6, to: 30, kind: 'loop' },
   { name: 'sea', freesound: 531015, author: 'Noted451', title: 'Ocean Waves.wav', from: 48, to: 70, kind: 'loop' },
   { name: 'birds', freesound: 385280, author: 'bajko', title: 'sfx_amb_forest_spring_afternoon-01.wav', from: 60, to: 95, kind: 'loop' },
+  { name: 'rain', freesound: 525046, author: 'speakwithanimals', title: 'Rain Slowly Passing TREATED LOOP_Edgewater_06192020.wav', from: 100, to: 128, kind: 'loop' },
+  { name: 'crickets', freesound: 175020, author: 'sengjinn', title: 'AMBIENCE NIGHT FIELD CRICKET 01.wav', from: 8, to: 38, kind: 'loop' },
 ];
 
 /** Where each sound's variations sit in the packed file, in seconds: written by the script. */

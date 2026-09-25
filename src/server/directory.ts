@@ -1,6 +1,6 @@
 import { OPERATOR_CAPACITY, SERVER_DT } from '../shared/constants.ts';
 import type { Mode } from '../shared/protocol.ts';
-import type { WorldConfig } from '../shared/worldconfig.ts';
+import { sameWorld, type WorldConfig } from '../shared/worldconfig.ts';
 import { GameServer, type ServerOptions } from './server.ts';
 
 /** How each mode sets up a game, and how many humans fit in one. */
@@ -17,7 +17,7 @@ export const MODES: Record<Mode, { options: ServerOptions; capacity: number }> =
 const IDLE_TIME = 120;
 
 interface Entry {
-  seed: number;
+  world: WorldConfig;
   mode: Mode;
   server: GameServer;
   /** Seconds it has had no humans. */
@@ -26,7 +26,7 @@ interface Entry {
 
 /**
  * Every game this host runs. Quick join puts a player in the first game on
- * their island and mode that isn't full, or starts a new one. Locally there is
+ * their island, in its conditions and mode, that isn't full, or starts a new one. Locally there is
  * one player, so this is one game; a multiplayer host runs many.
  */
 export class Directory {
@@ -34,10 +34,11 @@ export class Directory {
 
   quickJoin(world: WorldConfig, mode: Mode): GameServer {
     const { options, capacity } = MODES[mode];
-    const found = this.games.find((g) => g.seed === world.seed >>> 0 && g.mode === mode && g.server.humans() < capacity);
+    const found = this.games.find((g) => sameWorld(g.world, world) && g.mode === mode && g.server.humans() < capacity);
     if (found) return found.server;
-    const server = new GameServer(world.seed, options);
-    this.games.push({ seed: server.seed, mode, server, idle: 0 });
+    const { time, weather } = world;
+    const server = new GameServer(world.seed, { ...options, conditions: { time, weather } });
+    this.games.push({ world: { seed: server.seed, time, weather }, mode, server, idle: 0 });
     return server;
   }
 

@@ -3,9 +3,10 @@
 // the tuning numbers can be checked without anyone playing. It also splits the
 // runs by how the bot played (skill, weapon, how much it was willing to
 // carry), to see whether one way of playing wins out.
-// Usage: npm run playtest [minutes per island] [islands] [first seed]
+// Usage: npm run playtest [minutes per island] [islands] [first seed] [time] [weather]
 
 import { SERVER_TICK_RATE } from '../shared/constants.ts';
+import { parseWorldParam } from '../shared/worldconfig.ts';
 import { extractName } from '../shared/loot.ts';
 import { runRecord, summarize, summaryText, type RunRecord } from '../shared/runstats.ts';
 import { WEAPONS } from '../shared/weapons.ts';
@@ -18,6 +19,7 @@ declare const process: { argv: string[] };
 const minutes = Number(process.argv[2] ?? 30);
 const islands = Number(process.argv[3] ?? 6);
 const firstSeed = Number(process.argv[4] ?? 1);
+const { time, weather } = parseWorldParam(null, process.argv[5] ?? null, process.argv[6] ?? null);
 
 interface Played {
   record: RunRecord;
@@ -28,10 +30,10 @@ const played: Played[] = [];
 const kills = new Map<string, number>();
 const start = performance.now();
 for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
-  const server = new GameServer(seed, MODES.mixed.options);
+  const server = new GameServer(seed, { ...MODES.mixed.options, conditions: { time, weather } });
   const names = server.world.extracts.map((_, i) => extractName(server.world, i));
   server.onRunEnd = (e, plan) => {
-    if (plan) played.push({ record: runRecord(e, seed, 'mixed', (i) => names[i]), plan });
+    if (plan) played.push({ record: runRecord(e, { seed, time, weather }, 'mixed', (i) => names[i]), plan });
   };
   server.onEvent = (e) => {
     if (e.k !== 'kill') return;
@@ -44,7 +46,7 @@ for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
 }
 const seconds = (performance.now() - start) / 1000;
 
-console.log(`${islands} islands from seed ${firstSeed}, ${minutes} min each, simulated in ${seconds.toFixed(0)} s`);
+console.log(`${islands} islands from seed ${firstSeed} (${time}, ${weather}), ${minutes} min each, simulated in ${seconds.toFixed(0)} s`);
 console.log('Runs still going when the game stopped are left out, so long runs are slightly undercounted.\n');
 console.log(summaryText(summarize(played.map((p) => p.record))));
 console.log(`\nkills per hour of game: ${[...kills].map(([k, n]) => `${k} ${(n / ((islands * minutes) / 60)).toFixed(0)}`).join(', ')}`);

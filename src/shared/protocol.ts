@@ -59,6 +59,8 @@ export interface PlayerSnap {
   actT: number;
   /** A commander, the target of a contract. */
   commander: boolean;
+  /** Their flashlight is on. */
+  light: boolean;
 }
 
 export type ContractKind = 'intel' | 'cache' | 'commander';

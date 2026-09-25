@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Conditions } from '../shared/conditions.ts';
 import type { ExtractView } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { HOUSE_WALL, type PropStyle, type World } from '../shared/world.ts';
@@ -6,6 +7,8 @@ import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
+import { lightingOf, type Lighting } from './lighting.ts';
+import { Rain } from './rain.ts';
 import { setRooms, surfaceMaterial } from './surfaces.ts';
 import { Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
@@ -16,12 +19,7 @@ import { wind } from './wind.ts';
 // assets have loaded: blended ground layers, props in wood, concrete and
 // metal, rocks and bark, all lit by a real sky. Near the camera it's dressed
 // in grass, bushes and pebbles; the terrain and trees get simpler farther off.
-
-const HORIZON = new THREE.Color(0xb9c9d6);
-const ZENITH = new THREE.Color(0x4f7fae);
-const SUN_DIR = new THREE.Vector3(0.45, 0.6, 0.35).normalize();
-const FOG_NEAR = 120;
-const FOG_FAR = 1100;
+// The time of day and the weather set the sky, the sun or moon and the fog.
 
 const FLAG_OPEN = 0x4fd06b;
 const FLAG_SHUT = 0xc4453a;
@@ -73,18 +71,27 @@ export class WorldView {
   private readonly water: Water;
   private readonly cover: GroundCover;
   private readonly hemi = new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.1);
+  private readonly fog = new THREE.Fog(0xffffff);
+  private readonly background = new THREE.Color();
+  private readonly rain = new Rain();
+  private lighting: Lighting;
+  private raining: boolean;
+  private textured = false;
 
-  constructor(world: World) {
+  constructor(world: World, conditions: Conditions) {
     const scene = this.scene;
-    scene.fog = new THREE.Fog(HORIZON, FOG_NEAR, FOG_FAR);
-    scene.background = HORIZON;
+    this.lighting = lightingOf(conditions);
+    this.raining = conditions.weather === 'rain';
+    scene.fog = this.fog;
+    scene.background = this.background;
 
     this.sky = makeSky();
     scene.add(this.sky);
 
     scene.add(this.hemi);
-    this.sun = new Sun(0xfff1dc, 3.3, SUN_DIR);
+    this.sun = new Sun(0xffffff, 1, this.lighting.sunDir);
     this.sun.addTo(scene);
+    this.light();
 
     this.world = world;
     setRooms(world.buildings, HOUSE_WALL);
@@ -98,7 +105,7 @@ export class WorldView {
     this.rocks = makeRocks(world);
     this.water = new Water(world);
     this.cover = new GroundCover(world);
-    scene.add(this.terrain.group, this.water.group, this.props, this.trees.group, this.rocks, extracts.group, this.cover.group);
+    scene.add(this.terrain.group, this.water.group, this.props, this.trees.group, this.rocks, extracts.group, this.cover.group, this.rain.mesh);
   }
 
   /** Work that needs the renderer: baking the far trees' picture. */
@@ -106,11 +113,44 @@ export class WorldView {
     this.trees.bake(renderer);
   }
 
+  /** How the island is lit now. */
+  get lit(): Readonly<Lighting> {
+    return this.lighting;
+  }
+
+  /** Light the island for another time of day or weather. */
+  setConditions(conditions: Conditions): void {
+    this.lighting = lightingOf(conditions);
+    this.raining = conditions.weather === 'rain';
+    this.light();
+  }
+
+  private light(): void {
+    const l = this.lighting;
+    this.sun.set(l.sunColor, l.sunIntensity, l.sunDir);
+    this.hemi.intensity = this.textured ? l.hemiTextured : l.hemi;
+    this.hemi.color.copy(l.hemiSky);
+    this.hemi.groundColor.copy(l.hemiGround);
+    this.scene.environmentIntensity = l.environment;
+    this.fog.color.copy(l.horizon);
+    this.background.copy(l.horizon);
+    this.fog.near = l.fogNear;
+    this.fog.far = l.fogFar;
+    const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
+    u.horizon.value.copy(l.horizon);
+    u.zenith.value.copy(l.zenith);
+    u.sunDir.value.copy(l.sunDir);
+    u.sunColor.value.copy(l.sunColor).multiplyScalar(l.disc);
+    u.stars.value = l.stars;
+    // The streaks catch the light of the sky around them.
+    this.rain.set(this.raining, l.horizon.clone().multiplyScalar(1.25));
+  }
+
   /** Swap the flat colours for textures and light everything from the sky. */
   applyAssets(assets: Assets): void {
     this.scene.environment = assets.environment;
-    this.scene.environmentIntensity = 1.0;
-    this.hemi.intensity = 0.3;
+    this.textured = true;
+    this.light();
 
     this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true }));
 
@@ -189,15 +229,18 @@ export class WorldView {
     this.water.update(camera, time, this.scene, this.sky);
     this.trees.update(camera.position);
     this.cover.update(camera.position);
+    this.rain.update(camera.position, time);
   }
 }
 
 function makeSky(): THREE.Mesh {
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      horizon: { value: HORIZON },
-      zenith: { value: ZENITH },
-      sunDir: { value: SUN_DIR },
+      horizon: { value: new THREE.Color() },
+      zenith: { value: new THREE.Color() },
+      sunDir: { value: new THREE.Vector3(0, 1, 0) },
+      sunColor: { value: new THREE.Color() },
+      stars: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -209,12 +252,21 @@ function makeSky(): THREE.Mesh {
       uniform vec3 horizon;
       uniform vec3 zenith;
       uniform vec3 sunDir;
+      uniform vec3 sunColor;
+      uniform float stars;
       varying vec3 vDir;
       void main() {
         vec3 dir = normalize(vDir);
         vec3 col = mix(horizon, zenith, pow(max(dir.y, 0.0), 0.6));
         float s = max(dot(dir, sunDir), 0.0);
-        col += vec3(1.0, 0.95, 0.85) * (pow(s, 1500.0) * 6.0 + pow(s, 12.0) * 0.18);
+        col += sunColor * (pow(s, 1500.0) * 6.0 + pow(s, 12.0) * 0.18);
+        if (stars > 0.0 && dir.y > 0.0) {
+          // A fixed scatter of stars, fading out toward the horizon's haze.
+          vec3 cell = floor(dir * 260.0);
+          float h = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float bright = smoothstep(0.9975, 1.0, h) * smoothstep(0.05, 0.35, dir.y);
+          col += vec3(0.8, 0.85, 1.0) * bright * stars;
+        }
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }`,

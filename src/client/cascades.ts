@@ -58,11 +58,11 @@ export class Sun {
   readonly light: THREE.DirectionalLight;
   /** Gives no light; only its far shadow map is used. */
   private readonly far: THREE.DirectionalLight;
-  private readonly dir: THREE.Vector3;
+  private readonly dir = new THREE.Vector3();
 
   constructor(color: THREE.ColorRepresentation, intensity: number, dir: THREE.Vector3) {
     patchLighting();
-    this.dir = dir;
+    this.dir.copy(dir);
     this.light = new THREE.DirectionalLight(color, intensity);
     this.far = new THREE.DirectionalLight(0x000000, 0);
     for (const [light, size] of [[this.light, NEAR_MAP], [this.far, FAR_MAP]] as const) {
@@ -78,6 +78,13 @@ export class Sun {
   /** Add to the scene, in this order: the chunk relies on the near light coming first. */
   addTo(scene: THREE.Scene): void {
     scene.add(this.light, this.light.target, this.far, this.far.target);
+  }
+
+  /** Light from `dir` (towards the sun or moon) in `color` at `intensity`. */
+  set(color: THREE.Color, intensity: number, dir: THREE.Vector3): void {
+    this.light.color.copy(color);
+    this.light.intensity = intensity;
+    this.dir.copy(dir);
   }
 
   /** Centre both cascades on `focus`, `near` and `far` metres out. */

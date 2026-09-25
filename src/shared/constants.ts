@@ -202,4 +202,6 @@ export const Btn = {
   Drop: 8192,
   /** Throw a grenade. */
   Throw: 16384,
+  /** Held while the flashlight is on; the client keeps the toggle. It only lights anything after dark. */
+  Light: 32768,
 } as const;

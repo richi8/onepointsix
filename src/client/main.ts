@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CMD_DT, OPERATOR_CAPACITY, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
+import { sensesOf, TIMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
@@ -20,6 +21,7 @@ import { ContractProps } from './contractprops.ts';
 import { Connection, WorkerTransport, type Recording, type ReplayEvent } from './connection.ts';
 import { Deathcam, type DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
+import { Flashlights } from './flashlights.ts';
 import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
@@ -67,10 +69,20 @@ const MODE_NOTES: Record<Mode, string> = {
   range: 'Target practice. No clock, and you respawn.',
 };
 
+const CONDITION_NOTES: Record<TimeOfDay | Weather, string> = {
+  day: '',
+  dusk: 'Dusk: the light is going. T for a flashlight.',
+  night: 'Night: more and tougher guards, better loot. A flashlight (T) shows you the way, and shows you to them.',
+  clear: '',
+  rain: 'Rain: shorter sight, and it drowns out footsteps and far-off shots.',
+  fog: 'Fog: nobody sees far, you included.',
+};
+
 const link = parseShareLink(location.search);
-const config = link.world;
+/** The island from the link, in the conditions picked on the menu. */
+let config = link.world;
 const world = new World(config.seed);
-const view = new WorldView(world);
+const view = new WorldView(world, config);
 const scene = view.scene;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -80,7 +92,7 @@ const resolution = new Resolution(renderer);
 renderer.info.autoReset = false;
 // Neutral keeps the colours ACES would bleach; the sun outweighs the sky light so shadows read.
 renderer.toneMapping = THREE.NeutralToneMapping;
-renderer.toneMappingExposure = 0.9;
+renderer.toneMappingExposure = view.lit.exposure;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 // The viewmodel draws in a second pass over a cleared depth buffer.
@@ -102,12 +114,14 @@ resize();
 
 const effects = new Effects(scene, (x, z) => world.floorHeight(x, z));
 const grenades = new Grenades(scene);
+const flashlights = new Flashlights(scene);
 const bodies = new Bodies(scene, world);
 const bags = new Bags(scene);
 const hud = new Hud();
 const runHud = new RunHud(world);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
+sfx.conditions = config;
 const surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
@@ -226,7 +240,7 @@ function shareIsland(): void {
 
 document.getElementById('share-island')!.onclick = shareIsland;
 document.getElementById('new-island')!.onclick = () => {
-  location.search = shareQuery({ seed: 1 + Math.floor(Math.random() * NEW_ISLAND_SEEDS) }, mode);
+  location.search = shareQuery({ ...config, seed: 1 + Math.floor(Math.random() * NEW_ISLAND_SEEDS) }, mode);
 };
 
 const challengeEl = document.getElementById('challenge')!;
@@ -321,6 +335,50 @@ function selectMode(m: Mode): void {
 }
 for (const b of modeButtons) b.onclick = () => selectMode(b.dataset.mode as Mode);
 selectMode(mode);
+
+// ------------------------------------------------------------- conditions
+
+const timeButtons = [...document.querySelectorAll<HTMLButtonElement>('#times button')];
+const weatherButtons = [...document.querySelectorAll<HTMLButtonElement>('#weathers button')];
+const conditionsNote = document.getElementById('conditions-note')!;
+
+/**
+ * Play the island at another time of day or in other weather: relit behind
+ * the menu, and kept in the address so the page's link reproduces it.
+ */
+function setConditions(c: Conditions): void {
+  config = { ...config, ...c };
+  for (const b of timeButtons) {
+    const on = b.dataset.time === c.time;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+  for (const b of weatherButtons) {
+    const on = b.dataset.weather === c.weather;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+  const note = [CONDITION_NOTES[c.time], CONDITION_NOTES[c.weather]].filter(Boolean).join(' ');
+  conditionsNote.textContent = note;
+  conditionsNote.hidden = !note;
+  view.setConditions(c);
+  const lit = view.lit;
+  renderer.toneMappingExposure = lit.exposure;
+  viewModel.setLight(lit.ambient, lit.sunColor, lit.sunIntensity / 3.3, lit.hemiSky, lit.hemiGround);
+  flashlights.setConditions(sensesOf(c).dark, lit.fogNear, lit.fogFar);
+  input.lightable = sensesOf(c).dark;
+  sfx.conditions = c;
+  const q = new URLSearchParams(location.search);
+  for (const [k, v] of [['time', c.time], ['weather', c.weather]] as const) {
+    if (v === TIMES[0] || v === WEATHERS[0]) q.delete(k);
+    else q.set(k, v);
+  }
+  const search = q.size ? `?${q}` : '';
+  if (search !== location.search) history.replaceState(null, '', `${location.pathname}${search}${location.hash}`);
+}
+for (const b of timeButtons) b.onclick = () => setConditions({ time: b.dataset.time as TimeOfDay, weather: config.weather });
+for (const b of weatherButtons) b.onclick = () => setConditions({ time: config.time, weather: b.dataset.weather as Weather });
+setConditions(config);
 
 // ------------------------------------------------------------- what's new
 
@@ -448,7 +506,7 @@ function endRun(e: RunEnd): void {
   if (!conn) return;
   conn.over = true;
   sfx.runEnd(e.outcome === 'extracted');
-  runLog.add(runRecord(e, config.seed, mode, (i) => extractNames[i]));
+  runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
   runLogPanel.render();
   const standing: string[] = [];
   const place = board.add(config.seed, mode, { name: playerName(), score: e.score, date: today() });
@@ -868,6 +926,9 @@ renderer.setAnimationLoop(() => {
     footsteps(state);
   } else orbitCamera(now);
   camera.updateMatrixWorld();
+  const torch = !cam && !!state && !state.dead && input.light;
+  flashlights.update(camera, torch, players, (id, out) => bodies.muzzle(id, out));
+  viewModel.torchOn = torch;
   sfx.update(camera, dt);
   effects.update(dt);
 

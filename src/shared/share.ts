@@ -1,5 +1,5 @@
 import type { Mode } from './protocol.ts';
-import { parseWorldParam, worldParam, type WorldConfig } from './worldconfig.ts';
+import { parseWorldParam, worldParams, type WorldConfig } from './worldconfig.ts';
 
 /** Longest player name kept, in characters. */
 export const NAME_MAX = 16;
@@ -13,7 +13,7 @@ export interface Challenge {
 }
 
 /**
- * What a share link says: the island, the mode to play it in, and who shared
+ * What a share link says: the island and its conditions, the mode to play it in, and who shared
  * it with what score. With no backend, the link is the only way a score
  * travels, so anyone could edit it; it's a friendly challenge, not a record.
  */
@@ -31,12 +31,12 @@ export function parseShareLink(search: string): ShareLink {
   const s = q.get('score') ?? '';
   const score = /^\d{1,8}$/.test(s) ? Number(s) : NaN;
   const challenge = name && score > 0 && score <= SCORE_MAX && mode !== 'range' ? { name, score } : null;
-  return { world: parseWorldParam(q.get('world')), mode, challenge };
+  return { world: parseWorldParam(q.get('world'), q.get('time'), q.get('weather')), mode, challenge };
 }
 
-/** The query string of a link to an island, optionally in a mode and with a score to beat. */
+/** The query string of a link to an island in its conditions, optionally in a mode and with a score to beat. */
 export function shareQuery(world: WorldConfig, mode?: Mode, challenge?: Challenge): string {
-  const q = new URLSearchParams({ world: worldParam(world) });
+  const q = new URLSearchParams(worldParams(world));
   if (mode) q.set('mode', mode);
   if (challenge && challenge.score > 0) {
     q.set('by', cleanName(challenge.name) || 'someone');

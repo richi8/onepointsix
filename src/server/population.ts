@@ -43,30 +43,38 @@ const LOOT_STOPS: [number, number] = [1, 3];
 /** A response squad sets off from this far from the extraction point it answers. */
 const RESPONSE_DISTANCE: [number, number] = [150, 190];
 const RESPONSE_LEASH = 40;
+/** Extra guards walking each outpost at night. */
+const NIGHT_GUARDS = 1;
 const CALLSIGNS = [
   'Viper', 'Nomad', 'Rook', 'Ghost', 'Havoc', 'Mako', 'Jackal', 'Raven', 'Onyx', 'Talon', 'Sable', 'Kestrel',
   'Wolf', 'Brick', 'Dune', 'Echo', 'Fox', 'Hex', 'Lynx', 'Moth', 'Pike', 'Quill', 'Rust', 'Tusk',
 ];
 
-export function planGuards(world: World, nav: NavGrid, rand: () => number): BotPlan[] {
+/**
+ * The guards: a sentry per watchtower, guards walking each outpost and
+ * patrols between them. At `night` each outpost has one guard more, and
+ * every guard is a grade tougher.
+ */
+export function planGuards(world: World, nav: NavGrid, rand: () => number, night = false): BotPlan[] {
   const plans: BotPlan[] = [];
+  const perOutpost = GUARDS_PER_OUTPOST + (night ? NIGHT_GUARDS : 0);
   for (const o of world.outposts) {
     const { x: tx, y: ty, z: tz } = watchtower(o);
     if (world.fits(tx, ty, tz, PLAYER_HEIGHT)) {
       const post = { x: tx, y: ty, z: tz, yaw: yawToward(o.x, o.z, tx, tz) };
-      plans.push({ name: `${o.name} sentry`, role: { kind: 'sentry', post }, skill: 'normal', primary: RIFLE, spawn: post });
+      plans.push({ name: `${o.name} sentry`, role: { kind: 'sentry', post }, skill: tougher('normal', night), primary: RIFLE, spawn: post });
     }
     const route = outpostRoute(world, nav, o, rand);
     if (route.length < 2) continue;
-    for (let g = 0; g < GUARDS_PER_OUTPOST; g++) {
+    for (let g = 0; g < perOutpost; g++) {
       // Each guard walks the loop from a different point, some the other way round.
-      const start = Math.floor((g * route.length) / GUARDS_PER_OUTPOST);
+      const start = Math.floor((g * route.length) / perOutpost);
       const mine = [...route.slice(start), ...route.slice(0, start)];
       if (g % 2 === 1) mine.reverse();
       plans.push({
         name: `${o.name} guard`,
         role: { kind: 'guard', route: mine, leash: OUTPOST_LEASH, home: o },
-        skill: rand() < 0.5 ? 'easy' : 'normal',
+        skill: tougher(rand() < 0.5 ? 'easy' : 'normal', night),
         primary: RIFLE,
         spawn: { ...mine[0], yaw: rand() * Math.PI * 2 },
       });
@@ -87,7 +95,7 @@ export function planGuards(world: World, nav: NavGrid, rand: () => number): BotP
     if (route.length < 2) continue;
     const leader = plans.length;
     const yaw = yawToward(route[0].x, route[0].z, route[1].x, route[1].z);
-    const skill: Difficulty = 'normal';
+    const skill = tougher('normal', night);
     plans.push({ name: 'Patrol', role: { kind: 'guard', route, leash: PATROL_LEASH }, skill, primary: RIFLE, spawn: { ...route[0], yaw } });
     const behind = nav.nearestWalkable(route[0].x + Math.sin(yaw) * 3, route[0].z + Math.cos(yaw) * 3) ?? route[0];
     plans.push({
@@ -161,7 +169,7 @@ export function planOperator(world: World, nav: NavGrid, rand: () => number, avo
  * Guards sent to a called extraction point: they set off together from
  * inland and hold the landing zone until they die or are recalled.
  */
-export function planResponse(world: World, nav: NavGrid, rand: () => number, at: Point, count: number): BotPlan[] {
+export function planResponse(world: World, nav: NavGrid, rand: () => number, at: Point, count: number, night = false): BotPlan[] {
   // From inland, where the outposts are.
   const inland = Math.atan2(-at.x, -at.z) + (rand() - 0.5) * 1.2;
   const d = RESPONSE_DISTANCE[0] + rand() * (RESPONSE_DISTANCE[1] - RESPONSE_DISTANCE[0]);
@@ -181,7 +189,7 @@ export function planResponse(world: World, nav: NavGrid, rand: () => number, at:
     plans.push({
       name: 'Response',
       role: { kind: 'guard', route, leash: RESPONSE_LEASH, home: at },
-      skill: rand() < 0.5 ? 'easy' : 'normal',
+      skill: tougher(rand() < 0.5 ? 'easy' : 'normal', night),
       primary: RIFLE,
       spawn: { ...ground(world, p.x, p.z), yaw },
       temporary: true,
@@ -208,6 +216,12 @@ export function planCommander(world: World, nav: NavGrid, rand: () => number, o:
     temporary: true,
     commander: true,
   };
+}
+
+/** A grade up at night: night guards are picked from the better ones. */
+function tougher(skill: Difficulty, night: boolean): Difficulty {
+  if (!night) return skill;
+  return skill === 'easy' ? 'normal' : 'hard';
 }
 
 /** Walkable points around an outpost for guards to walk between, in order around it. */

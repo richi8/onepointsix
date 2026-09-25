@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Day, night and weather',
+    notes: [
+      'Pick the time of day (day, dusk or night) and the weather (clear, rain or fog) on the main menu. They go into the island’s link, so a friend plays it in exactly the same conditions.',
+      'At night the island is lit only by the moon and stars. Outposts have more guards, and tougher ones, but every crate holds an extra item and valuables turn up more often.',
+      'Press T for a flashlight at dusk and at night. It lights your way, but anyone can see it from far off, and guards spot you much sooner. Guards carry theirs lit all night, so you can see them coming. Operators light their way across the open island and go dark near outposts.',
+      'Rain shortens how far everyone sees and drowns out footsteps and far-off shots, so it’s easier to sneak up on someone. In fog nobody sees far, you included.',
+      'The sound follows the weather and the hour: rain drums down, and crickets take over from the birds after dark.',
+      'Leaderboards stay the same across all conditions: your best on an island counts whatever the weather.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Run dashboard',
     notes: [
       'Esc shows your run so far (the game carries on behind it): what you’d score if you got out now, your loot, kills and contracts, the time left and your best on this island. Click anywhere to carry on, or leave the game for the main menu.',

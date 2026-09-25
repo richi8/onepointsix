@@ -4,6 +4,7 @@ import { NavGrid } from '../src/server/nav.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
 import { GUARD_RESPAWN, OPERATOR_REFILL, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { DEFAULT_CONDITIONS, sensesOf, type Senses } from '../src/shared/conditions.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
@@ -39,12 +40,13 @@ function openGround(dist: number): { ax: number; az: number; bx: number; bz: num
 function watch(
   self: Agent, others: Agent[], yaw: number, seconds: number, before?: (bot: Bot, ctx: BotContext) => void,
   role: Role = { kind: 'sentry', post: { x: self.x, y: self.y, z: self.z, yaw } },
+  senses: Senses = sensesOf(DEFAULT_CONDITIONS),
 ) {
   const bot = new Bot(role, SKILLS.normal, RIFLE, yaw, mulberry32(1));
   const all = [self, ...others];
   const ctx: BotContext = {
     world, nav, time: 0, agents: all, agent: (id) => all.find((a) => a.id === id), pathBudget: 10, callout: () => {},
-    extracts: [], lootView: () => null,
+    extracts: [], lootView: () => null, senses,
   };
   before?.(bot, ctx);
   for (let t = 0; t < seconds; t += 0.1) {
@@ -120,6 +122,38 @@ describe('bot perception', () => {
     expect(bot.state).toBe('investigate');
   });
 
+  it('sees less far at night and in fog, except someone with a light on', () => {
+    const far = openGround(60);
+    const yaw = yawToward(far.ax, far.az, far.bx, far.bz);
+    const sentry: Role = { kind: 'sentry', post: { x: far.ax, y: 0, z: far.az, yaw } };
+    const spots = (senses: Senses, light: boolean): number => {
+      const enemy = { ...agent(2, 'operator', far.bx, far.bz), light };
+      return watch(agent(1, 'guard', far.ax, far.az), [enemy], yaw, 3, undefined, sentry, senses).awareness(2);
+    };
+    const night = sensesOf({ time: 'night', weather: 'clear' });
+    const fog = sensesOf({ time: 'day', weather: 'fog' });
+    expect(spots(night, false)).toBe(0);
+    expect(spots(night, true)).toBe(1);
+    expect(spots(fog, false)).toBe(0);
+    // A light doesn't cut through fog.
+    expect(spots(fog, true)).toBe(0);
+    expect(spots(sensesOf({ time: 'day', weather: 'rain' }), false)).toBe(1);
+  });
+
+  it('sees someone crouching in the dark only in its own beam', () => {
+    const near = openGround(35);
+    const yaw = yawToward(near.ax, near.az, near.bx, near.bz);
+    const sentry: Role = { kind: 'sentry', post: { x: near.ax, y: 0, z: near.az, yaw } };
+    const night = sensesOf({ time: 'night', weather: 'clear' });
+    const spots = (light: boolean): number => {
+      const self = { ...agent(1, 'guard', near.ax, near.az), light };
+      const enemy = { ...agent(2, 'operator', near.bx, near.bz), crouched: true, duck: 1 };
+      return watch(self, [enemy], yaw, 3, undefined, sentry, night).awareness(2);
+    };
+    expect(spots(false)).toBe(0);
+    expect(spots(true)).toBe(1);
+  });
+
   it('knows where a shooter it cannot see is once hit', () => {
     const self = agent(1, 'guard', g.ax, g.az);
     const enemy = agent(2, 'operator', g.bx, g.bz);
@@ -169,6 +203,23 @@ describe('guards', () => {
     const kill = h.events().find((e) => e.k === 'kill' && e.victim === h.id);
     expect(kill).toBeDefined();
     expect(server.bots().find((b) => kill?.k === 'kill' && b.id === kill.killer)?.team).toBe('guard');
+  });
+
+  it('are more and tougher at night, and carry their flashlights lit', () => {
+    const day = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
+    const night = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true, conditions: { time: 'night', weather: 'clear' } });
+    expect(night.bots().length).toBeGreaterThan(day.bots().length);
+    const easy = (s: GameServer) => s.bots().filter((b) => b.bot.skill.name === 'easy').length;
+    expect(easy(day)).toBeGreaterThan(0);
+    expect(easy(night)).toBe(0);
+    const lit = (s: GameServer) => {
+      const h = human(s);
+      for (let t = 0; t < 3; t++) s.step();
+      const players = (s as unknown as { players: Map<number, { light: boolean }> }).players;
+      return s.bots().filter((b) => players.get(b.id)!.light).length + (players.get(h.id)!.light ? 100 : 0);
+    };
+    expect(lit(day)).toBe(0);
+    expect(lit(night)).toBe(night.bots().length);
   });
 
   it('come back to their post after being killed', () => {

@@ -6,7 +6,7 @@ import {
   Btn, CALL_TIME, EXTRACT_TIME, OPERATOR_CAPACITY, RESPONSE_SQUAD, RUN_TIME, SEARCH_TIME, SERVER_TICK_RATE,
 } from '../src/shared/constants.ts';
 import { yawToward } from '../src/shared/geom.ts';
-import { ITEMS, lootMass, rollItems, runScore, sortForTaking } from '../src/shared/loot.ts';
+import { ITEMS, lootMass, lootValue, rollItems, runScore, sortForTaking } from '../src/shared/loot.ts';
 import type { GameEvent, ServerMsg } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import type { PlayerState } from '../src/shared/sim.ts';
@@ -91,6 +91,16 @@ describe('loot', () => {
       return n / 500;
     };
     expect(avg(true)).toBeGreaterThan(avg(false) + 1);
+  });
+
+  it('is richer at night', () => {
+    const worth = (night: boolean) => {
+      const rand = mulberry32(9);
+      let v = 0;
+      for (let i = 0; i < 500; i++) v += lootValue(rollItems(rand, false, night));
+      return v / 500;
+    };
+    expect(worth(true)).toBeGreaterThan(worth(false) * 1.5);
   });
 
   it('is taken supplies first, then the most valuable', () => {
@@ -280,9 +290,10 @@ describe('quick join', () => {
     // PvE holds one human, so the next gets their own island.
     const pve2 = dir.quickJoin(DEFAULT_WORLD, 'pve');
     expect(pve2).not.toBe(pve);
-    expect(dir.quickJoin({ seed: 7 }, 'pve')).not.toBe(pve2);
+    expect(dir.quickJoin({ ...DEFAULT_WORLD, seed: 7 }, 'pve')).not.toBe(pve2);
+    expect(dir.quickJoin({ ...DEFAULT_WORLD, time: 'night' }, 'pve')).not.toBe(pve2);
     expect(dir.quickJoin(DEFAULT_WORLD, 'range').mode).toBe('range');
-    expect(dir.count).toBe(4);
+    expect(dir.count).toBe(5);
   });
 
   it('fills Mixed with operator bots that humans replace', () => {

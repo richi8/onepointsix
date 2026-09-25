@@ -98,12 +98,18 @@ export class ViewModel {
   private suppressed = false;
   private arms: Arms | null = null;
   private readonly tmp = new THREE.Vector3();
+  private readonly hemi = new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.4);
+  private readonly sun = new THREE.DirectionalLight(0xfff1dc, 2);
+  /** The spill of your own flashlight on the gun, always there so switching it never recompiles. */
+  private readonly torch = new THREE.PointLight(0xfff2de, 0, 3, 2);
+  private sky = 1;
 
   constructor() {
-    this.scene.add(new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.4));
-    const sun = new THREE.DirectionalLight(0xfff1dc, 2);
-    sun.position.set(0.4, 1, 0.3);
-    this.scene.add(sun);
+    this.scene.add(this.hemi);
+    this.sun.position.set(0.4, 1, 0.3);
+    this.scene.add(this.sun);
+    this.torch.position.set(0.25, -0.1, -0.2);
+    this.camera.add(this.torch);
     this.scene.add(this.camera);
     this.camera.add(this.root);
     // In WEAPONS order.
@@ -114,10 +120,29 @@ export class ViewModel {
     }
   }
 
+  /**
+   * Light the gun like the world round it: `ambient` is the share of a clear
+   * day's light, `sun` the sun's or moon's colour and `sunShare` its share.
+   */
+  setLight(ambient: number, sun: THREE.Color, sunShare: number, sky: THREE.Color, ground: THREE.Color): void {
+    this.hemi.intensity = 1.4 * ambient;
+    this.hemi.color.copy(sky);
+    this.hemi.groundColor.copy(ground);
+    this.sun.color.copy(sun);
+    this.sun.intensity = 2 * sunShare;
+    this.sky = ambient;
+    this.scene.environmentIntensity = 0.8 * ambient;
+  }
+
+  /** Your flashlight is on, lighting the gun from the side. */
+  set torchOn(on: boolean) {
+    this.torch.intensity = on ? 1.5 : 0;
+  }
+
   /** Swap the stand-in shapes for real guns, in WEAPONS order, lit by the sky. */
   setGuns(guns: GLTF[], environment: THREE.Texture): void {
     this.scene.environment = environment;
-    this.scene.environmentIntensity = 0.8;
+    this.scene.environmentIntensity = 0.8 * this.sky;
     this.models.forEach((m, i) => {
       const gun = fitGun(guns[i], i);
       for (const part of m.body) m.group.remove(part);

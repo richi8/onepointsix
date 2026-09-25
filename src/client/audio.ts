@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import { DEFAULT_CONDITIONS, type Conditions, type TimeOfDay } from '../shared/conditions.ts';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
@@ -102,7 +103,13 @@ interface Ambience {
   sea: GainNode;
   seaPanner: PannerNode;
   birds: GainNode;
+  rain: GainNode;
+  crickets: GainNode;
 }
+
+/** How loud the birds sing and the crickets chirp at each time of day. */
+const BIRDS: Record<TimeOfDay, number> = { day: 1, dusk: 0.45, night: 0 };
+const CRICKETS: Record<TimeOfDay, number> = { day: 0, dusk: 0.35, night: 1 };
 
 export class Sfx {
   private readonly world: World;
@@ -125,6 +132,8 @@ export class Sfx {
   private scaredAt = -Infinity;
   /** Where the listener is, for how far sounds are. */
   private readonly ear = { x: 0, y: 0, z: 0 };
+  /** The time of day and weather, for the ambience. */
+  conditions: Conditions = DEFAULT_CONDITIONS;
 
   constructor(world: World) {
     this.world = world;
@@ -414,7 +423,7 @@ export class Sfx {
     src.start(t, start, duration);
   }
 
-  /** Wind, the sea and birds, looping from the moment the recordings are in. */
+  /** Wind, the sea, birds or crickets and rain, looping from the moment the recordings are in. */
   private startAmbience(): void {
     const ctx = this.ctx!;
     const loop = (name: string, out: AudioNode): GainNode => {
@@ -438,6 +447,8 @@ export class Sfx {
       sea: loop('sea', seaPanner),
       seaPanner,
       birds: loop('birds', this.master!),
+      rain: loop('rain', this.master!),
+      crickets: loop('crickets', this.master!),
     };
     this.ambienceIn = 0;
   }
@@ -464,7 +475,15 @@ export class Sfx {
     }
     const calm = clamp((now - this.scaredAt - SCARED_FOR) / CALMING, 0, 1);
     const trees = woodland(w, ear.x, ear.z);
-    amb.birds.gain.setTargetAtTime(0.45 * (0.25 + 0.75 * trees) * (1 - smoothstep(40, 90, ear.y)) * calm, now, calm < 1 ? 0.3 : 2);
+    const { time, weather } = this.conditions;
+    const raining = weather === 'rain';
+    const low = 1 - smoothstep(40, 90, ear.y);
+    // Birds and crickets hush in the rain, and for a while after a shot.
+    const hush = raining ? 0.25 : 1;
+    amb.birds.gain.setTargetAtTime(0.45 * BIRDS[time] * hush * (0.25 + 0.75 * trees) * low * calm, now, calm < 1 ? 0.3 : 2);
+    amb.crickets.gain.setTargetAtTime(0.3 * CRICKETS[time] * hush * (0.6 + 0.4 * open) * low * calm, now, calm < 1 ? 0.3 : 2);
+    // Under a roof the rain drums on it rather than all around.
+    amb.rain.gain.setTargetAtTime(raining ? 0.55 * (0.45 + 0.55 * open) : 0, now, 1);
   }
 
   /** Filtered noise with an instant attack and exponential fade. */
