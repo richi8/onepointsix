@@ -11,48 +11,6 @@ canvas {
   display: block;
 }
 
-.netpanel {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  width: 300px;
-  padding: 10px 12px;
-  background: rgb(0 0 0 / 0.7);
-  color: #eee;
-  font-size: 12px;
-  border-radius: 6px;
-}
-
-.netpanel pre {
-  margin: 0 0 8px;
-  font-size: 12px;
-}
-
-.netpanel label {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 8px;
-  margin-bottom: 6px;
-}
-
-.netpanel label div {
-  width: 100%;
-}
-
-.netpanel label input {
-  flex: 1;
-}
-
-.netpanel label span {
-  width: 2.5em;
-  text-align: right;
-}
-
-.netpanel button {
-  margin-right: 4px;
-}
-
 .menu {
   position: fixed;
   inset: 0;
@@ -1493,16 +1451,4 @@ canvas {
 
 .toast[hidden] {
   display: none;
-}
-
-.netpanel.runlog {
-  left: 12px;
-  right: auto;
-  width: min(600px, calc(100vw - 48px));
-  max-height: calc(100vh - 48px);
-  overflow: auto;
-}
-
-.netpanel.runlog pre {
-  white-space: pre-wrap;
 }

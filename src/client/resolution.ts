@@ -44,10 +44,6 @@ export class Resolution {
     renderer.setPixelRatio(this.ratio);
   }
 
-  get fps(): number {
-    return 1000 / this.frameMs;
-  }
-
   /** How much of the device's resolution is being drawn, 0 to 1. */
   get share(): number {
     return this.ratio / Math.min(devicePixelRatio, MAX_RATIO);

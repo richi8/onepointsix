@@ -673,8 +673,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
   the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
   far comes from bots.
-- **The run log stays in one browser** (12). There's no backend, so a playtester has to copy it
-  from the F4 panel (Copy as JSON) and send it by hand. It keeps the last 200 runs.
+- **The run log stays in one browser** (12). There's no backend, and since the F4 panel was
+  removed there's no way in the game to see or copy it; it's only in localStorage (`runlog`). It
+  keeps the last 200 runs.
 - **Bot runs can't check run length** (12). An operator bot searches only 1–3 crates and leaves,
   so even its extracted runs last about 1:20. The bot playtest (`npm run playtest`) is good for
   comparing ways of playing and how often operators meet, not for how long a human run lasts.
@@ -699,7 +700,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops
   in at any land point, possibly next to an outpost. How often that happens wasn't measured.
 - **The run log panel has no automated tests** (12). The records, summary and storage are tested;
-  the F4 panel was only checked by typecheck.
+  the F4 panel was only checked by typecheck. Resolved: the F4 panel (and the F3 net panel with
+  its fake-lag sliders) were removed.
 
 ## Future
 - **Multiplayer**

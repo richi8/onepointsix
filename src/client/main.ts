@@ -26,10 +26,9 @@ import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
 import { Leaderboard, localStore } from './leaderboard.ts';
-import { NetPanel } from './netpanel.ts';
 import type { Rendered } from './prediction.ts';
 import { Resolution } from './resolution.ts';
-import { RunLog, RunLogPanel } from './runlog.ts';
+import { RunLog } from './runlog.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
 import { surfaceMaterial } from './surfaces.ts';
@@ -89,8 +88,6 @@ const scene = view.scene;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 view.prepare(renderer);
 const resolution = new Resolution(renderer);
-// Two passes a frame; count both.
-renderer.info.autoReset = false;
 // Neutral keeps the colours ACES would bleach; the sun outweighs the sky light so shadows read.
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = view.lit.exposure;
@@ -213,10 +210,6 @@ function toast(text: string): void {
   toastTimer = window.setTimeout(() => (toastEl.hidden = true), 2500);
 }
 
-const runLogPanel = new RunLogPanel(runLog, (text) => {
-  navigator.clipboard.writeText(text).then(() => toast('Run log copied.'), () => window.prompt('Copy the run log:', text));
-});
-
 /** Copy a link to this page with `query`, or failing that, show it to copy by hand. */
 async function copyLink(query: string): Promise<void> {
   const url = new URL(query, location.href).href;
@@ -309,7 +302,6 @@ function today(): string {
 }
 
 let conn: Connection | null = null;
-let panel: NetPanel | null = null;
 /** One pipe to the local game host for the whole session; each run joins through it. */
 let transport: LagTransport<ClientMsg, ServerMsg> | null = null;
 const input = new Input(window, renderer.domElement);
@@ -474,7 +466,6 @@ window.addEventListener('keydown', (e) => {
 /** Quick join: a new connection, and so a new run, through the shared transport. */
 function join(): void {
   transport ??= new LagTransport(new WorkerTransport(), isReliable);
-  panel ??= new NetPanel(transport);
   stopDeathcam(false);
   killedBy = null;
   conn = new Connection(config, world, mode, playerName(), transport);
@@ -488,7 +479,6 @@ function join(): void {
     input.yaw = s.yaw;
     input.pitch = s.pitch;
   };
-  panel.conn = conn;
   hud.reset();
   hud.show();
   runHud.hideResults();
@@ -543,7 +533,6 @@ function endRun(e: RunEnd): void {
   conn.over = true;
   sfx.runEnd(e.outcome === 'extracted');
   runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
-  runLogPanel.render();
   const standing: string[] = [];
   const place = board.add(config.seed, mode, { name: playerName(), score: e.score, date: today() });
   if (place === 1) standing.push('New best on this island!');
@@ -617,7 +606,6 @@ function toMenu(): void {
   conn?.leave();
   conn = null;
   showBoard();
-  if (panel) panel.conn = null;
   runHud.hideResults();
   document.getElementById('hud')!.hidden = true;
   paused.hidden = true;
@@ -977,13 +965,8 @@ renderer.setAnimationLoop(() => {
     if (!paused.hidden) runHud.updatePause(conn.run, pauseStanding());
   }
   contractProps.update(conn && !conn.over ? (conn.run?.contracts ?? []) : []);
-  panel?.update(
-    `${resolution.fps.toFixed(0)} fps  ${resolution.frameMs.toFixed(1)} ms  ` +
-    `res ${(resolution.share * 100).toFixed(0)}%  draws ${renderer.info.render.calls}  tris ${(renderer.info.render.triangles / 1000).toFixed(0)}k`,
-  );
 
   if (cam?.done) stopDeathcam();
-  renderer.info.reset();
   renderer.clear();
   renderer.render(scene, camera);
   if (state) {
