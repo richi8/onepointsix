@@ -221,21 +221,13 @@ canvas {
   max-height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 20px 24px 16px;
+  padding: 16px 24px;
   background: rgb(14 16 18 / 0.88);
   border-top: 4px solid #e8c35a;
   border-radius: 6px;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
   font-variant-numeric: tabular-nums;
   cursor: default;
-}
-
-.paused h2 {
-  margin: 0 0 4px;
-  font-size: 13px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  opacity: 0.7;
 }
 
 .paused .score {
