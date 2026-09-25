@@ -50,7 +50,6 @@ export const SOUNDS: SoundSource[] = [
   // Bodies.
   { name: 'hurt', freesound: 423301, author: 'u1769092', title: 'VisceralBulletImpacts.wav', from: 0.1, to: 0.45, kind: 'shot' },
   { name: 'land', freesound: 364690, author: 'alegemaate', title: 'Human Impact on Ground', from: 0.06, to: 0.6, kind: 'shot' },
-  { name: 'slide', freesound: 630008, author: 'trexlasso', title: 'SLIDING ON GRAVEL.wav', from: 0, to: 1.23, kind: 'shot' },
   // Footsteps, by surface.
   step('grass', 206030, 'Yuval', 'footsteps grass.wav', 0, 35),
   step('dirt', 352870, 'PotatokingXII', 'Footsteps Dirt Gravel', 4, 35),

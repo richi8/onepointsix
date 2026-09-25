@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'No more sliding',
+    notes: [
+      'Sliding is gone. Crouching while you sprint now just crouches.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Real sound',
     notes: [
       'Guns, grenades, reloads, footsteps and breaking cover are now real recordings instead of synthesized beeps and hiss.',
@@ -20,7 +27,6 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Shots ring off the walls when you’re inside an outpost, and sound open out in the fields.',
       'You can hear the wind, the sea getting louder toward the shore and coming from its direction, and birds among the trees, which go quiet for a while after shooting nearby.',
       'Footsteps now match exactly what you see underfoot: grass, dirt, sand, rock, concrete, wood, metal or water.',
-      'Slides scrape along the ground, yours and everyone else’s.',
     ],
   },
   {

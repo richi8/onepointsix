@@ -12,7 +12,7 @@ import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/wea
 import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
-import { Sfx, type Playing } from './audio.ts';
+import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies, strideLength } from './bodies.ts';
 import { CHANGELOG } from './changelog.ts';
@@ -100,7 +100,6 @@ const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
 const surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
-bodies.onSlide = (x, y, z) => sfx.slide({ x, y, z });
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
 
 // ---------------------------------------------------------------- loading
@@ -679,8 +678,8 @@ let deadFor = 0;
 let throwing = false;
 /** Camera shake, 0 to 1, decaying. */
 let shake = 0;
-/** Our own footfalls: where we were, distance since the last step, how we were falling, and the scrape of a slide. */
-const own = { x: 0, z: 0, stride: 0, air: false, fall: 0, slide: null as Playing | null };
+/** Our own footfalls: where we were, distance since the last step, and how we were falling. */
+const own = { x: 0, z: 0, stride: 0, air: false, fall: 0 };
 
 function orbitCamera(now: number): void {
   const a = (now - start) * MENU_ORBIT_SPEED + 0.6;
@@ -744,10 +743,6 @@ function footsteps(s: PlayerState): void {
   const moved = Math.hypot(s.x - own.x, s.z - own.z);
   own.x = s.x;
   own.z = s.z;
-  if (s.slide <= 0 || s.dead) {
-    own.slide?.stop();
-    own.slide = null;
-  }
   if (s.dead || moved > 3) {
     own.stride = 0;
     return;
@@ -764,11 +759,6 @@ function footsteps(s: PlayerState): void {
     own.fall = 0;
     own.stride = 0;
   }
-  // A slide scrapes along rather than stepping.
-  if (s.slide > 0) {
-    own.slide ??= sfx.slide();
-    return;
-  }
   own.stride += moved;
   const speed = Math.hypot(s.vx, s.vz);
   if (own.stride >= strideLength(speed)) {
@@ -778,7 +768,7 @@ function footsteps(s: PlayerState): void {
 }
 
 function sprinting(s: PlayerState): boolean {
-  return s.onGround && !s.crouched && s.slide <= 0 && Math.hypot(s.vx, s.vz) > WALK_SPEED + 0.3;
+  return s.onGround && !s.crouched && Math.hypot(s.vx, s.vz) > WALK_SPEED + 0.3;
 }
 
 if (import.meta.env.DEV) {

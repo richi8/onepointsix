@@ -46,21 +46,10 @@ export const MAX_FALL_SPEED = 30;
 // Stamina, as a fraction of a full bar. Spending it pauses regeneration.
 export const SPRINT_DRAIN = 1 / 7;
 export const JUMP_STAMINA = 0.08;
-export const SLIDE_STAMINA = 0.15;
 export const STAMINA_REGEN = 1 / 4;
 export const STAMINA_REGEN_DELAY = 0.8;
 /** After running dry, sprinting waits until the bar refills this far. */
 export const STAMINA_RECOVER = 0.3;
-
-// Slide: a sprint plus a fresh crouch press trades control for momentum.
-export const SLIDE_MIN_SPEED = 7;
-export const SLIDE_BOOST = 2.5;
-export const SLIDE_MAX_SPEED = 12;
-export const SLIDE_FRICTION = 1.1;
-export const SLIDE_DURATION = 0.9;
-export const SLIDE_COOLDOWN = 0.5;
-/** A slide ends early once it is slower than this. */
-export const SLIDE_END_SPEED = 3.5;
 
 // Mantle: jump + forward at a ledge climbs onto it.
 /** Highest ledge above the feet that can be mantled. */
@@ -83,7 +72,7 @@ export const LEAN_RATE = 6;
 export const LEAN_SPEED_MUL = 0.7;
 
 // Carry weight in kg. Heavier loads are slower and tire faster; past
-// CARRY_HEAVY you can no longer slide or mantle.
+// CARRY_HEAVY you can no longer mantle.
 export const CARRY_FREE = 10;
 export const CARRY_HEAVY = 30;
 export const CARRY_MAX = 50;

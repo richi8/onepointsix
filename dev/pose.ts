@@ -9,7 +9,7 @@ import type { PlayerSnap } from '../src/shared/protocol.ts';
 // bodies, each frozen in one state, or the first-person arms. Run `npm run dev`
 // and open it:
 //
-//   /dev/pose.html?show=stand,crouchwalk,slide&view=side
+//   /dev/pose.html?show=stand,crouchwalk,jump&view=side
 //   /dev/pose.html?show=reload:0.1,reload:0.4,throw:0.2&view=front
 //   /dev/pose.html?view=fp&weapon=0&act=reload&t=0.3
 //
@@ -26,7 +26,7 @@ const q = new URLSearchParams(location.search);
 const view = q.get('view') ?? 'side';
 const T = Number(q.get('t') ?? 0.4);
 const weapon = Number(q.get('weapon') ?? 0);
-const show = (q.get('show') ?? 'stand,walk,run,crouch,crouchwalk,slide,jump,fall,mantle,reload,draw,throw,lean,dead').split(',');
+const show = (q.get('show') ?? 'stand,walk,run,crouch,crouchwalk,jump,fall,mantle,reload,draw,throw,lean,dead').split(',');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
@@ -92,7 +92,6 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
     case 'run': move(5.5); break;
     case 'crouch': base.duck = 1; break;
     case 'crouchwalk': base.duck = 1; move(2.2); break;
-    case 'slide': base.duck = 1; base.motion = 'slide'; move(8); break;
     case 'jump': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * -3; break;
     case 'fall': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * 5; break;
     case 'mantle': base.motion = 'mantle'; base.y = 0.3 + (s - end) * 2; break;

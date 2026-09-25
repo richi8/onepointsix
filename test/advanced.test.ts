@@ -11,7 +11,6 @@ import {
   LEAN_OFFSET,
   LEAN_SPEED_MUL,
   PLAYER_RADIUS,
-  SLIDE_DURATION,
   SPRINT_DRAIN,
   SPRINT_SPEED,
   STAMINA_RECOVER,
@@ -150,66 +149,15 @@ describe('mantle', () => {
   });
 });
 
-describe('slide', () => {
-  it('trades a sprint for a fast crouched slide that bleeds off', () => {
+describe('crouching from a sprint', () => {
+  it('just slows to crouch speed: there is no slide', () => {
     const p = openGround();
     run(p, SPRINT, 60);
     run(p, SPRINT | Btn.Crouch, 1);
-    expect(p.slide).toBeGreaterThan(0);
     expect(p.crouched).toBe(true);
-    expect(speed(p)).toBeGreaterThan(SPRINT_SPEED);
-    run(p, SPRINT | Btn.Crouch, seconds(SLIDE_DURATION / 2));
-    expect(p.slide).toBeGreaterThan(0);
-    expect(speed(p)).toBeGreaterThan(WALK_SPEED);
-    run(p, SPRINT | Btn.Crouch, seconds(SLIDE_DURATION));
-    expect(p.slide).toBe(0);
+    expect(speed(p)).toBeLessThanOrEqual(SPRINT_SPEED + 1e-6);
     run(p, SPRINT | Btn.Crouch, 60);
     expect(speed(p)).toBeCloseTo(CROUCH_SPEED, 2);
-  });
-
-  it('goes further than crouching from a sprint', () => {
-    const slide = openGround();
-    const crouch = openGround();
-    run(slide, SPRINT, 60);
-    run(crouch, SPRINT, 60);
-    crouch.slideCooldown = 10;
-    const z0 = slide.z;
-    run(slide, SPRINT | Btn.Crouch, 60);
-    run(crouch, SPRINT | Btn.Crouch, 60);
-    expect(crouch.slide).toBe(0);
-    expect(slide.z - z0).toBeGreaterThan(crouch.z - z0 + 2);
-  });
-
-  it('needs a sprint and a fresh crouch press', () => {
-    const walk = openGround();
-    run(walk, Btn.Forward, 60);
-    run(walk, Btn.Forward | Btn.Crouch, 1);
-    expect(walk.slide).toBe(0);
-
-    const held = openGround();
-    run(held, SPRINT, 60);
-    held.crouchHeld = true;
-    run(held, SPRINT | Btn.Crouch, 1);
-    expect(held.slide).toBe(0);
-  });
-
-  it('ends when crouch is released and cannot be chained right away', () => {
-    const p = openGround();
-    run(p, SPRINT, 60);
-    run(p, SPRINT | Btn.Crouch, 5);
-    expect(p.slide).toBeGreaterThan(0);
-    run(p, SPRINT, 1);
-    expect(p.slide).toBe(0);
-    run(p, SPRINT | Btn.Crouch, 1);
-    expect(p.slide).toBe(0);
-  });
-
-  it('is impossible when carrying a heavy load', () => {
-    const p = openGround();
-    p.carry = CARRY_HEAVY;
-    run(p, SPRINT, 60);
-    run(p, SPRINT | Btn.Crouch, 1);
-    expect(p.slide).toBe(0);
   });
 });
 

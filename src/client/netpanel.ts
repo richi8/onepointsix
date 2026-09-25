@@ -80,7 +80,7 @@ export class NetPanel {
     const speed = me ? Math.hypot(me.vx, me.vz).toFixed(1) : '-';
     const state = me
       ? (me.mantling ? 'mantle' : me.onGround ? 'ground' : 'air') +
-        (me.slide > 0 ? ' slide' : me.crouched ? ' crouched' : '') +
+        (me.crouched ? ' crouched' : '') +
         (me.lean !== 0 ? ` lean ${me.lean.toFixed(1)}` : '')
       : '-';
     const stamina = me ? `stamina ${(me.stamina * 100).toFixed(0)}%${me.winded ? ' winded' : ''}  carry ${me.carry} kg` : '';

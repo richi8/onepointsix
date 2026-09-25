@@ -68,10 +68,9 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
 
 ### Movement (grounded, no grapple)
 - Sprint with stamina, crouch, jump
-- Slide
 - Mantle over walls and crates
 - Lean left and right (Q/E), which pairs with destructible cover
-- **Carry weight.** Heavy loot slows you down and disables slide and mantle, so loot and movement
+- **Carry weight.** Heavy loot slows you down and disables mantling, so loot and movement
   work against each other.
 
 ### Gunplay
@@ -159,7 +158,7 @@ something outside the code) or **Not started**.
 | 0 | **Foundations** | Vite + TS setup, `shared/server/client` layout, local server in a Worker, message protocol types, fixed tick loop, fake-lag/loss toggle | A box moves when you press keys, driven by the server | **Done** |
 | 1 | **World and menu** | Seeded island terrain, outposts, props, trees and rocks; renderer, sky, fog; collision; **default world**; main menu with **Play** over the rendered island; `?world=` param | Load the page, press Play, and you're on the default island; the same seed gives the same island | **Done** |
 | 2 | **Movement** | Pointer lock, CS-like movement, sprint, crouch, jump; client prediction and reconciliation against the Worker server | Movement feels tight even with 100 ms fake lag | **Done** |
-| 3 | **Advanced movement** | Slide, mantle, lean, stamina, carry-weight hooks | You can mantle a crate and slide into cover | **Done** |
+| 3 | **Advanced movement** | Slide, mantle, lean, stamina, carry-weight hooks | You can mantle a crate and slide into cover | **Done** (the slide was removed after chunk 14) |
 | 4 | **Gunplay** | The 3 weapons (assault rifle, pistol, bolt-action), weapon switching, hitscan, recoil and spread, hitboxes, ammo and reload, damage and death, HUD, hit markers; lag-compensation scaffolding | You can shoot target dummies with a satisfying feel | **Done** |
 | 5 | **Bots** | Navigation grid, perception (sight and hearing), state machine (patrol, investigate, engage, cover, flank), difficulty levels; **guards** at outposts and **fill-bot operators** that play runs like a player | Guards defend outposts; operator bots loot and extract | **Done** |
 | 6 | **Run loop** | Quick join through the local "game directory" (first game not full, capped at 12 operators), PvE and Mixed modes, drop-in insertion, run clock and MIA, loot containers, inventory and weight, extraction points opening and closing, call-and-hold extraction, results screen and score | **The full PvE and Mixed loop is playable. First real playtest.** | **Done** |
@@ -274,6 +273,7 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The new stances are poses, not animations** (13). A slide, jump, fall and climb each hold a
   single pose of the legs, and a crouch-walk is the walk clip squashed. A hop shorter than about
   0.1 s barely shows. The source model has no clips for any of them.
+  The slide pose went with the slide (after 14).
 - **Every gun reloads the same way** (13), with a magazine change, even the bolt-action. The hand
   paths are keyframes and don't depend on the gun's model.
 - **Hand grips were fitted by eye** (13), in a pose viewer, for the rifle and the pistol. The
@@ -302,10 +302,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
-  **Resolved** (14): guns, the grenade, reloads, footsteps, breaking cover, landing, sliding, being
-  hit and the ambience are 29 CC0 recordings from Freesound, listed in `src/client/soundlist.ts`.
+  **Resolved** (14): guns, the grenade, reloads, footsteps, breaking cover, landing, being
+  hit and the ambience are 28 CC0 recordings from Freesound, listed in `src/client/soundlist.ts`.
   `scripts/fetch-sounds.mjs` checks each one's page says CC0, cuts it and packs them all into
-  `sounds.m4a` (AAC, 107 s, 865 kB) with `sounds.json` saying where each sits. Footsteps are four
+  `sounds.m4a` (AAC, 105 s, 854 kB) with `sounds.json` saying where each sits. Footsteps are four
   footfalls per surface cut from walking recordings by loudness. The interface's beeps (hit marker,
   pickup, call, run end) are still synthesized on purpose.
 - **Sound ignores walls** (9): there's no occlusion and no reverb, and footsteps can be heard
@@ -328,8 +328,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   after blending the three vertices of the triangle underfoot. Tests check the normals match
   three.js's and the chosen layer is the strongest at each vertex.
 - **No sliding scrape** (9). Slides are silent.
-  **Resolved** (14): a gravel slide plays for your own slides (cut short when the slide ends) and
-  for other bodies when their snapshot starts one.
+  **Resolved** (14): a gravel slide played for your own slides and other bodies' ones.
+  **Moot** (after 14): sliding was removed from the game, and its sound with it.
 
 - **Nobody has listened to the new sound** (14). This machine has no way to hear it. The
   recordings were chosen by title, description, rating and waveform, the cuts were placed from
@@ -356,7 +356,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   2 s tail, so a long firefight far off keeps most of the 24 voices busy. When all are busy, the
   quietest sound is cut off (or the new one isn't played), so near sounds still win.
 - **A slide from someone else always scrapes for the slide's full 0.9 s**, even if it ends early.
-- **Sounds arrive after the game starts** (14). The 865 kB file downloads in the background and
+  **Moot** (after 14): sliding was removed.
+- **Sounds arrive after the game starts** (14). The 854 kB file downloads in the background and
   isn't on the loading bar, and nothing plays until it's decoded (the game is playable
   meanwhile). If it fails, the game is silent apart from the beeps.
 - **AAC playback was only checked in Chrome** (14): the packed offsets depend on the browser
@@ -538,6 +539,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - Global leaderboards and seasonal featured islands
 
 ## Decisions
+- **No slide:** removed after chunk 14 at the user's request. Crouching while sprinting just
+  crouches; `Motion` no longer has `'slide'`.
 - **Weapons for the proof of concept:** assault rifle, pistol and bolt-action rifle
 - **Capacity:** 8 operators (12 until chunk 12's playtest) and about 24 guards per game (tunable constant)
 - **Backend:** none for now; the game is local only. Multiplayer is a future feature.

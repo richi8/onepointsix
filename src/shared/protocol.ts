@@ -29,8 +29,8 @@ export type Mode = 'mixed' | 'pve' | 'range';
 /** Operators are players and fill bots, each on their own side; guards defend outposts together; dummies stand on the range. */
 export type Team = 'operator' | 'guard' | 'dummy';
 
-/** How a body is moving: on its feet, in the air, sliding or climbing onto a ledge. */
-export type Motion = 'ground' | 'air' | 'slide' | 'mantle';
+/** How a body is moving: on its feet, in the air or climbing onto a ledge. */
+export type Motion = 'ground' | 'air' | 'mantle';
 
 /** What a body's hands are busy with, besides holding the gun. */
 export type Action = 'none' | 'reload' | 'draw' | 'throw';

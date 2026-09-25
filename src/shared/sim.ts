@@ -33,14 +33,6 @@ import {
   MAX_PITCH,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
-  SLIDE_BOOST,
-  SLIDE_COOLDOWN,
-  SLIDE_DURATION,
-  SLIDE_END_SPEED,
-  SLIDE_FRICTION,
-  SLIDE_MAX_SPEED,
-  SLIDE_MIN_SPEED,
-  SLIDE_STAMINA,
   SPRINT_DRAIN,
   SPRINT_SPEED,
   STAMINA_RECOVER,
@@ -79,18 +71,12 @@ export interface PlayerState extends Body, WeaponState {
   duck: number;
   /** Jump was held last command; jumping needs a fresh press. */
   jumpHeld: boolean;
-  /** Crouch was held last command; sliding needs a fresh press. */
-  crouchHeld: boolean;
   /** 0 empty to 1 full. */
   stamina: number;
   /** Seconds until stamina starts refilling. */
   staminaDelay: number;
   /** Ran dry; no sprinting until stamina recovers to STAMINA_RECOVER. */
   winded: boolean;
-  /** Seconds of slide left; sliding while above 0. */
-  slide: number;
-  /** Seconds until another slide may start. */
-  slideCooldown: number;
   /** Climbing onto a ledge at (mantleX, mantleY, mantleZ); input is ignored meanwhile. */
   mantling: boolean;
   mantleX: number;
@@ -111,8 +97,8 @@ export interface PlayerState extends Body, WeaponState {
 export function spawnState(x: number, y: number, z: number): PlayerState {
   return {
     x, y, z, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, onGround: true,
-    crouched: false, duck: 0, jumpHeld: false, crouchHeld: false,
-    stamina: 1, staminaDelay: 0, winded: false, slide: 0, slideCooldown: 0,
+    crouched: false, duck: 0, jumpHeld: false,
+    stamina: 1, staminaDelay: 0, winded: false,
     mantling: false, mantleX: 0, mantleY: 0, mantleZ: 0, lean: 0, carry: 0,
     hp: MAX_HP, dead: false, life: 0, ...spawnWeapons(),
   };
@@ -121,14 +107,14 @@ export function spawnState(x: number, y: number, z: number): PlayerState {
 /** A plain copy of just the player state fields, safe to send or snapshot. */
 export function copyState(p: PlayerState): PlayerState {
   const {
-    x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld, crouchHeld,
-    stamina, staminaDelay, winded, slide, slideCooldown, mantling, mantleX, mantleY, mantleZ, lean, carry,
+    x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld,
+    stamina, staminaDelay, winded, mantling, mantleX, mantleY, mantleZ, lean, carry,
     hp, dead, life, weapon, mag, reserve, cooldown, reload, draw, triggerHeld, aim,
     recoilPitch, recoilYaw, burst, sinceShot, grenades, throwHeld, suppressed,
   } = p;
   return {
-    x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld, crouchHeld,
-    stamina, staminaDelay, winded, slide, slideCooldown, mantling, mantleX, mantleY, mantleZ, lean, carry,
+    x, y, z, vx, vy, vz, yaw, pitch, onGround, crouched, duck, jumpHeld,
+    stamina, staminaDelay, winded, mantling, mantleX, mantleY, mantleZ, lean, carry,
     hp, dead, life, weapon, mag: [...mag], reserve: [...reserve], cooldown, reload, draw, triggerHeld, aim,
     recoilPitch, recoilYaw, burst, sinceShot, grenades, throwHeld, suppressed: [...suppressed],
   };
@@ -136,7 +122,7 @@ export function copyState(p: PlayerState): PlayerState {
 
 /** How a player is moving, as others see it. */
 export function motionOf(p: PlayerState): Motion {
-  return p.mantling ? 'mantle' : p.slide > 0 ? 'slide' : p.onGround ? 'ground' : 'air';
+  return p.mantling ? 'mantle' : p.onGround ? 'ground' : 'air';
 }
 
 export function bodyHeight(p: PlayerState): number {
@@ -148,7 +134,7 @@ function loadFactor(carry: number): number {
   return clamp((carry - CARRY_FREE) / (CARRY_MAX - CARRY_FREE), 0, 1);
 }
 
-/** Too loaded to slide or mantle. */
+/** Too loaded to mantle. */
 export function overweight(p: PlayerState): boolean {
   return p.carry >= CARRY_HEAVY;
 }
@@ -159,7 +145,7 @@ export function overweight(p: PlayerState): boolean {
  *
  * Quake/GoldSrc-style movement: ground friction and acceleration toward the
  * wished velocity, and weak capped air acceleration so air strafing works.
- * On top of that: stamina, sliding, mantling, leaning and carry weight, and
+ * On top of that: stamina, mantling, leaning and carry weight, and
  * then the weapon (see stepWeapon), whose shots and effects go to `onFx`.
  * Yaw 0 faces -z, matching Three.js cameras.
  */
@@ -172,14 +158,11 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
     return;
   }
   const eye = () => eyePosition(world, p.x, p.y, p.z, p.yaw, p.duck, p.lean);
-  p.slideCooldown = Math.max(p.slideCooldown - dt, 0);
 
   const jump = (b & Btn.Jump) !== 0;
   const crouch = (b & Btn.Crouch) !== 0;
   const jumpPressed = jump && !p.jumpHeld;
-  const crouchPressed = crouch && !p.crouchHeld;
   p.jumpHeld = jump;
-  p.crouchHeld = crouch;
 
   let fwd = 0;
   let side = 0;
@@ -199,22 +182,8 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
     return;
   }
 
-  // Slide: sprinting on the ground plus a fresh crouch press.
-  let speed = Math.hypot(p.vx, p.vz);
-  if (
-    crouchPressed && p.onGround && p.slide <= 0 && p.slideCooldown <= 0 && !heavy &&
-    (b & Btn.Sprint) !== 0 && fwd > 0 && speed >= SLIDE_MIN_SPEED && p.stamina >= SLIDE_STAMINA
-  ) {
-    const boosted = Math.min(speed + SLIDE_BOOST, Math.max(speed, SLIDE_MAX_SPEED));
-    p.vx *= boosted / speed;
-    p.vz *= boosted / speed;
-    speed = boosted;
-    p.slide = SLIDE_DURATION;
-    spendStamina(p, SLIDE_STAMINA);
-  }
-
   // Crouch is instant going down; standing up needs headroom.
-  if (crouch || p.slide > 0) p.crouched = true;
+  if (crouch) p.crouched = true;
   else if (p.crouched && world.ceilingHeight(p.x, p.z, p.y + CROUCH_HEIGHT) >= p.y + PLAYER_HEIGHT) p.crouched = false;
 
   let jumped = false;
@@ -225,24 +194,15 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
     spendStamina(p, JUMP_STAMINA);
   }
 
-  if (p.slide > 0) {
-    p.slide -= dt;
-    if (p.slide <= 0 || jumped || !crouch || !p.onGround || speed < SLIDE_END_SPEED) {
-      p.slide = 0;
-      p.slideCooldown = SLIDE_COOLDOWN;
-    }
-  }
-  const sliding = p.slide > 0;
-
-  if (p.onGround && !jumped) friction(p, sliding ? SLIDE_FRICTION : FRICTION, dt);
+  if (p.onGround && !jumped) friction(p, FRICTION, dt);
 
   const load = loadFactor(p.carry);
   const len = Math.hypot(fwd, side);
   const sprint = (b & Btn.Sprint) !== 0 && fwd > 0 && !p.crouched && !p.winded && len > 0 && !blocksSprint(b);
-  const leanTarget = sprint || sliding ? 0 : ((b & Btn.LeanRight) !== 0 ? 1 : 0) - ((b & Btn.LeanLeft) !== 0 ? 1 : 0);
+  const leanTarget = sprint ? 0 : ((b & Btn.LeanRight) !== 0 ? 1 : 0) - ((b & Btn.LeanLeft) !== 0 ? 1 : 0);
   ease(p, leanTarget, dt);
 
-  if (len > 0 && !sliding) {
+  if (len > 0) {
     const sin = Math.sin(p.yaw);
     const cos = Math.cos(p.yaw);
     const wx = (-sin * fwd + cos * side) / len;
@@ -260,7 +220,7 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
   if (sprint && p.onGround) spendStamina(p, SPRINT_DRAIN * (1 + CARRY_DRAIN * load) * dt);
   else regenStamina(p, dt);
 
-  speed = Math.hypot(p.vx, p.vz);
+  const speed = Math.hypot(p.vx, p.vz);
   if (speed > MAX_HORIZONTAL_SPEED) {
     p.vx *= MAX_HORIZONTAL_SPEED / speed;
     p.vz *= MAX_HORIZONTAL_SPEED / speed;
@@ -323,7 +283,6 @@ function startMantle(world: World, p: PlayerState): void {
   p.mantleZ = tz;
   p.vx = p.vy = p.vz = 0;
   p.onGround = false;
-  p.slide = 0;
 }
 
 /** Rise straight up to the ledge, then move over onto it. */

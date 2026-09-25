@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import { SLIDE_DURATION, WATER_LEVEL } from '../shared/constants.ts';
+import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
@@ -95,13 +95,6 @@ interface PlayOptions {
   cutoff?: number;
   /** Share sent to the reverb. */
   send?: number;
-  /** Cut it short after this many seconds, with a quick fade. */
-  length?: number;
-}
-
-/** A sound that can be cut short. */
-export interface Playing {
-  stop(): void;
 }
 
 interface Ambience {
@@ -336,18 +329,6 @@ export class Sfx {
     this.play(STEPS[surface].clip, { gain: gain * 0.5, rate: STEPS[surface].rate * 0.9 });
   }
 
-  /** A slide scraping along the ground, from `at` or your own; stop it when the slide ends. */
-  slide(at?: At): Playing | null {
-    const d = this.distance(at);
-    if (d > STEP_RANGE) return null;
-    const occ = at ? this.occlusion(at) : 0;
-    const falloff = 1 - d / STEP_RANGE;
-    return this.play('slide', {
-      at, gain: 0.55 * falloff * falloff * (1 - occ * 0.6), rate: jitter(0.06), length: SLIDE_DURATION,
-      cutoff: at ? this.cutoff(d * 4, occ) : undefined, send: 0.1,
-    });
-  }
-
   /** An item taken from a container. */
   pickup(): void {
     this.click(900, 0, 0.3);
@@ -392,15 +373,15 @@ export class Sfx {
    * Play one of the recordings, picking among its variations at random: out
    * in the world at `at` on a pooled voice, or in your head.
    */
-  private play(name: string, o: PlayOptions = {}): Playing | null {
+  private play(name: string, o: PlayOptions = {}): void {
     const variants = this.clips?.[name];
-    if (!this.ready || !this.bank || !variants?.length || (o.gain ?? 1) < MIN_GAIN) return null;
+    if (!this.ready || !this.bank || !variants?.length || (o.gain ?? 1) < MIN_GAIN) return;
     const ctx = this.ctx!;
     const [start, duration] = variants[Math.floor(Math.random() * variants.length)];
     const rate = o.rate ?? 1;
     const now = ctx.currentTime;
     const t = now + (o.delay ?? 0);
-    const length = Math.min(o.length ?? Infinity, duration / rate);
+    const length = duration / rate;
     const src = ctx.createBufferSource();
     src.buffer = this.bank;
     src.playbackRate.value = rate;
@@ -410,7 +391,7 @@ export class Sfx {
     let voice: Voice | null = null;
     if (o.at) {
       const taken = this.pool!.take(now, t + length + 0.05, level);
-      if (!taken) return null;
+      if (!taken) return;
       voice = taken.voice;
       if (taken.stolen) stop(voice.source);
       voice.source = src;
@@ -429,28 +410,8 @@ export class Sfx {
     }
     if (!voice) src.onended = () => gain.disconnect();
     set(gain.gain, level);
-    gain.gain.setValueAtTime(level, t);
-    if (length < duration / rate) {
-      gain.gain.setValueAtTime(level, t + length - 0.15);
-      gain.gain.linearRampToValueAtTime(0, t + length);
-    }
     src.connect(gain);
-    src.start(t, start, length * rate);
-    return {
-      stop: () => {
-        // A pooled voice may have moved on to another sound.
-        if (voice && voice.source !== src) return;
-        const at = Math.max(ctx.currentTime, t);
-        gain.gain.cancelScheduledValues(at);
-        gain.gain.setValueAtTime(gain.gain.value, at);
-        gain.gain.linearRampToValueAtTime(0, at + 0.12);
-        try {
-          src.stop(at + 0.13);
-        } catch {
-          // Already stopped.
-        }
-      },
-    };
+    src.start(t, start, duration);
   }
 
   /** Wind, the sea and birds, looping from the moment the recordings are in. */

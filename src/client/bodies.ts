@@ -5,7 +5,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { LEAN_OFFSET, PLAYER_HEIGHT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
-import type { Motion, PlayerSnap, Team } from '../shared/protocol.ts';
+import type { PlayerSnap, Team } from '../shared/protocol.ts';
 import { PISTOL } from '../shared/weapons.ts';
 import { fitGun } from './guns.ts';
 import {
@@ -13,7 +13,7 @@ import {
 } from './rig.ts';
 
 // Everyone else. Once the soldier model has loaded, each body is an animated
-// soldier: it walks and runs at the pace it moves, crouches, slides, jumps,
+// soldier: it walks and runs at the pace it moves, crouches, jumps,
 // climbs, leans and aims where the player looks, with its hands closed on the
 // gun, and it reloads, switches weapons and throws grenades where others can
 // see. Until then, bodies are drawn from the hit volumes themselves. Either
@@ -51,7 +51,7 @@ const RUN_CLIP_SPEED = 3.2;
 const LEAN_HIPS = 0.14;
 /** Length of a suppressor on the barrel, as in first person. */
 const CAN_LENGTH = 0.15;
-/** How fast poses such as a slide or a jump blend in and out, per second. */
+/** How fast poses such as a jump or a climb blend in and out, per second. */
 const BLEND_RATE = 12;
 /** Room a body needs to lie down in, from its feet. */
 const LIE_LENGTH = 1.9;
@@ -146,10 +146,7 @@ interface Figure {
   /** Direction of travel relative to facing, radians. */
   heading: number;
   stride: number;
-  /** The motion in the last snapshot, to catch a slide starting. */
-  motion: Motion;
-  /** Poses blended in and out: sliding, in the air and climbing. */
-  slide: number;
+  /** Poses blended in and out: in the air and climbing. */
   air: number;
   mantle: number;
   /** Seconds to the next animation update, when far away. */
@@ -189,12 +186,8 @@ interface Soldier {
 /** Called for each footfall of a body, with how fast it was moving. */
 export type StepListener = (x: number, y: number, z: number, speed: number, crouched: boolean) => void;
 
-/** Called when a body starts a slide. */
-export type SlideListener = (x: number, y: number, z: number) => void;
-
 export class Bodies {
   onStep: StepListener | null = null;
-  onSlide: SlideListener | null = null;
   private readonly scene: THREE.Scene;
   private readonly ground: Ground;
   private readonly figures = new Map<number, Figure>();
@@ -311,8 +304,8 @@ export class Bodies {
       group, materials: [], hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
       gun, held, can, flashMesh, weapon: 0, quiet: false,
       deadFor: -1, fallYaw: 0, fallX: 0, fallZ: 0, tilt: new THREE.Quaternion(), lift: 0, killer: null, drop: null,
-      flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0, motion: 'ground',
-      slide: 0, air: 0, mantle: 0, wait: 0, soldier: null,
+      flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
+      air: 0, mantle: 0, wait: 0, soldier: null,
     };
     placeCan(f);
     if (this.model) f.soldier = this.soldier(f, team, commander);
@@ -452,7 +445,6 @@ export class Bodies {
         f.heading += angleDiff(angleDiff(travel, p.yaw), f.heading) * (1 - Math.exp(-8 * dt));
       }
       const k = 1 - Math.exp(-BLEND_RATE * dt);
-      f.slide += ((p.motion === 'slide' ? 1 : 0) - f.slide) * k;
       f.air += ((p.motion === 'air' ? 1 : 0) - f.air) * k;
       f.mantle += ((p.motion === 'mantle' ? 1 : 0) - f.mantle) * k;
     }
@@ -460,8 +452,6 @@ export class Bodies {
     f.lastY = p.y;
     f.lastZ = p.z;
 
-    if (!p.dead && p.motion === 'slide' && f.motion !== 'slide' && !teleported) this.onSlide?.(p.x, p.y, p.z);
-    f.motion = p.motion;
 
     // Footfalls, spaced by a stride that lengthens with speed.
     if (!p.dead && p.motion === 'ground' && !teleported) {
@@ -637,37 +627,37 @@ export class Bodies {
     const forward = V_FORWARD.set(0, 0, -1).applyQuaternion(facing);
 
     // Legs and feet turn toward where it's going, within reason; the body keeps facing its aim.
-    const legYaw = moving * (1 - f.slide) * clamp(back ? angleDiff(f.heading, Math.PI) : f.heading, -1.1, 1.1);
+    const legYaw = moving * clamp(back ? angleDiff(f.heading, Math.PI) : f.heading, -1.1, 1.1);
     rotateWorld(b.root, up, legYaw);
     rotateWorld(b.spine, up, -legYaw);
 
-    // Crouch: sink the body to the hitbox's hip height. A slide sits lower still.
+    // Crouch: sink the body to the hitbox's hip height.
     const duck = p.duck;
     const drop = hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck: 0, lean: 0 }).hipY -
-      hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck, lean: 0 }).hipY + duck * 0.06 + f.slide * 0.06;
+      hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck, lean: 0 }).hipY + duck * 0.06;
     // Leaning, the hips move out over the feet too.
     const hips = V_TMP2.set(0, -drop, 0).addScaledVector(right, p.lean * LEAN_HIPS);
     if (hips.lengthSq() > 1e-5) moveWorld(b.body, hips);
     this.legs(f, s, duck, p.lean, legYaw);
 
-    // Bent forward over the knees in a crouch, back in a slide, forward climbing.
-    rotateWorld(b.spine, right, -0.25 * duck * (1 - f.slide) + 0.45 * f.slide - 0.45 * f.mantle - 0.12 * f.air);
+    // Bent forward over the knees in a crouch, forward climbing.
+    rotateWorld(b.spine, right, -0.25 * duck - 0.45 * f.mantle - 0.12 * f.air);
     // Lean rolls the upper body sideways from the waist until the head is where its hitbox is.
     this.trueLean(f, s, p, right, forward);
     // Aim: the chest and head follow the pitch.
     rotateWorld(b.spine2, right, p.pitch * 0.5);
     rotateWorld(b.neck, right, p.pitch * 0.35);
 
-    this.arms(f, s, p, near, running * (1 - f.slide), right, forward);
+    this.arms(f, s, p, near, running, right, forward);
   }
 
   /**
    * Where the feet go. The clips place them for walking upright; a crouch
-   * pulls them in under the lowered hips, and a slide, a jump, a fall and a
-   * climb each have their own stance. The legs then bend to reach them.
+   * pulls them in under the lowered hips, and a jump, a fall and a climb
+   * each have their own stance. The legs then bend to reach them.
    */
   private legs(f: Figure, s: Soldier, duck: number, lean: number, legYaw: number): void {
-    const custom = Math.max(f.slide, f.air, f.mantle);
+    const custom = Math.max(f.air, f.mantle);
     if (duck < 0.01 && custom < 0.01 && Math.abs(lean) < 0.01) return;
     const b = s.bones;
     const origin = f.group.position;
@@ -686,26 +676,21 @@ export class Bodies {
       x *= 1 + 0.2 * duck;
       y *= 1 - 0.5 * duck;
       z *= 1 - 0.45 * duck;
-      // A slide leads with the left leg out straight, the right folded under.
-      const slide = left ? [-0.12, 0.12, 0.7] : [0.2, 0.05, 0.05];
       // Rising, one knee drives up; falling, both feet reach down.
       const jump = left ? [-0.12, 0.45, 0.25] : [0.12, 0.2, -0.2];
       const drop = left ? [-0.15, 0.22, 0.12] : [0.15, 0.15, -0.08];
       // Climbing, the right knee comes up onto the ledge.
       const climb = left ? [-0.12, 0.1, -0.12] : [0.12, 0.6, 0.3];
-      for (const [pose, w] of [[jump, f.air * rising], [drop, f.air * (1 - rising)], [slide, f.slide], [climb, f.mantle]] as const) {
+      for (const [pose, w] of [[jump, f.air * rising], [drop, f.air * (1 - rising)], [climb, f.mantle]] as const) {
         x = lerp(x, pose[0], w);
         y = lerp(y, pose[1], w);
         z = lerp(z, pose[2], w);
       }
       const target = V_TMP3.copy(origin).addScaledVector(right, x).addScaledVector(V_UP, y).addScaledVector(forward, z);
       placeWorld(foot, target);
-      // Knees out front, and the folded leg's knee out to the side in a slide.
+      // Knees out front.
       const pole = thigh.getWorldPosition(V_TMP2).addScaledVector(forward, 1);
-      if (!left) pole.addScaledVector(right, f.slide * 1.2).addScaledVector(V_UP, -f.slide * 0.8);
       reach(thigh, shin, ankle, target, pole, s.thigh, s.shin);
-      // A slide's lead foot points its toes up.
-      if (left && f.slide > 0.01) rotateWorld(foot, right, 0.8 * f.slide);
     });
   }
 
