@@ -121,7 +121,7 @@ describe('grenade flight', () => {
 function client(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'range' });
+  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'offline' });
   let seq = 0;
   let yaw = 0;
   let pitch = 0;
@@ -167,7 +167,7 @@ function body(server: GameServer, id: number): PlayerState & { protection: numbe
   return (server as unknown as { players: Map<number, PlayerState & { protection: number }> }).players.get(id)!;
 }
 
-/** A shooter 6 m in front of a tall wall and a still dummy just behind it. */
+/** A shooter 6 m in front of a tall wall and a second player standing just behind it. */
 function atWall(server: GameServer) {
   const world = server.world;
   const wall = tallWall(world);
@@ -178,11 +178,11 @@ function atWall(server: GameServer) {
     s.y = world.groundHeight(x, z, world.terrainHeight(x, z));
     s.vx = s.vz = 0;
   };
-  const target = server.range.dummies.findIndex((d) => d.kind === 'still') + 1;
   const c = client(server);
+  const target = client(server).id;
   put(body(server, target), wall.minZ - 2);
   put(body(server, c.id), wall.maxZ + 6);
-  body(server, c.id).protection = 0;
+  body(server, c.id).protection = body(server, target).protection = 0;
   tick(server, [c], 1);
   return { wall, x, target, c };
 }
@@ -212,7 +212,7 @@ describe('cover on the server', () => {
     const broke = events.find((e) => e.k === 'break');
     expect(broke?.k === 'break' && broke.panels).toEqual(expect.arrayContaining([bottom, top]));
     expect(server.world.panels[bottom].box.gone).toBe(true);
-    // The wall shielded the dummy from the blast.
+    // The wall shielded the target from the blast.
     expect(body(server, target).hp).toBe(100);
 
     tick(server, [c], SERVER_TICK_RATE * 2, Btn.Aim);

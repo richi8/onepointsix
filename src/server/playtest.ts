@@ -30,10 +30,10 @@ const played: Played[] = [];
 const kills = new Map<string, number>();
 const start = performance.now();
 for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
-  const server = new GameServer(seed, { ...MODES.mixed.options, conditions: { time, weather } });
+  const server = new GameServer(seed, { ...MODES.offline.options, conditions: { time, weather } });
   const names = server.world.extracts.map((_, i) => extractName(server.world, i));
   server.onRunEnd = (e, plan) => {
-    if (plan) played.push({ record: runRecord(e, { seed, time, weather }, 'mixed', (i) => names[i]), plan });
+    if (plan) played.push({ record: runRecord(e, { seed, time, weather }, 'offline', (i) => names[i]), plan });
   };
   server.onEvent = (e) => {
     if (e.k !== 'kill') return;

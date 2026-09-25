@@ -90,20 +90,18 @@ describe('bot perception', () => {
     expect(['engage', 'cover']).toContain(shot.state);
   });
 
-  it('ignores friends and dummies', () => {
+  it('ignores friends', () => {
     const self = agent(1, 'guard', g.ax, g.az);
-    const bot = watch(self, [agent(2, 'guard', g.bx, g.bz), agent(3, 'dummy', g.bx, g.bz)], yawToward(g.ax, g.az, g.bx, g.bz), 2);
+    const bot = watch(self, [agent(2, 'guard', g.bx, g.bz)], yawToward(g.ax, g.az, g.bx, g.bz), 2);
     expect(bot.awareness(2)).toBe(0);
-    expect(bot.awareness(3)).toBe(0);
   });
 
   it('knows who is hostile', () => {
-    const [op, op2, guard, guard2, dummy] = [agent(1, 'operator', 0, 0), agent(2, 'operator', 0, 0), agent(3, 'guard', 0, 0), agent(4, 'guard', 0, 0), agent(5, 'dummy', 0, 0)];
+    const [op, op2, guard, guard2] = [agent(1, 'operator', 0, 0), agent(2, 'operator', 0, 0), agent(3, 'guard', 0, 0), agent(4, 'guard', 0, 0)];
     expect(hostile(op, op2)).toBe(true);
     expect(hostile(op, guard)).toBe(true);
     expect(hostile(guard, op)).toBe(true);
     expect(hostile(guard, guard2)).toBe(false);
-    expect(hostile(op, dummy)).toBe(false);
     expect(hostile(op, op)).toBe(false);
   });
 
@@ -171,13 +169,13 @@ function body(server: GameServer, id: number): PlayerState {
 function human(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: 'human', world: DEFAULT_WORLD, mode: 'range' });
+  server.receive(id, { t: 'hello', name: 'human', world: DEFAULT_WORLD, mode: 'offline' });
   return { id, events: (): GameEvent[] => inbox.flatMap((m) => (m.t === 'events' ? m.events : [])) };
 }
 
 describe('guards', () => {
   it('man every outpost and patrol between them', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
+    const server = new GameServer(DEFAULT_WORLD.seed, { guards: true });
     const bots = server.bots();
     expect(bots.every((b) => b.team === 'guard')).toBe(true);
     expect(bots.filter((b) => b.bot.role.kind === 'sentry')).toHaveLength(world.outposts.length);
@@ -186,7 +184,7 @@ describe('guards', () => {
   });
 
   it('defend their outpost against an intruder', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
+    const server = new GameServer(DEFAULT_WORLD.seed, { guards: true });
     const h = human(server);
     const o = server.world.outposts[0];
     // Out in the open, where the sentry in the watchtower can see.
@@ -206,8 +204,8 @@ describe('guards', () => {
   });
 
   it('are more and tougher at night, and carry their flashlights lit', () => {
-    const day = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
-    const night = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true, conditions: { time: 'night', weather: 'clear' } });
+    const day = new GameServer(DEFAULT_WORLD.seed, { guards: true });
+    const night = new GameServer(DEFAULT_WORLD.seed, { guards: true, conditions: { time: 'night', weather: 'clear' } });
     expect(night.bots().length).toBeGreaterThan(day.bots().length);
     const easy = (s: GameServer) => s.bots().filter((b) => b.bot.skill.name === 'easy').length;
     expect(easy(day)).toBeGreaterThan(0);
@@ -223,7 +221,7 @@ describe('guards', () => {
   });
 
   it('come back to their post after being killed', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
+    const server = new GameServer(DEFAULT_WORLD.seed, { guards: true });
     const sentry = server.bots().find((b) => b.bot.role.kind === 'sentry')!;
     Object.assign(body(server, sentry.id), { dead: true });
     (server as unknown as { players: Map<number, { respawn: number }> }).players.get(sentry.id)!.respawn = GUARD_RESPAWN;
@@ -236,14 +234,14 @@ describe('guards', () => {
 
 describe('operator bots', () => {
   it('fill the empty operator slots', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, operators: 5 });
+    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 5 });
     expect(server.bots().filter((b) => b.team === 'operator')).toHaveLength(5);
     const names = server.bots().map((b) => b.name);
     expect(new Set(names).size).toBe(5);
   });
 
   it('loot, extract and are replaced by a new bot', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, operators: 1 });
+    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 1 });
     const [op] = server.bots();
     expect(op.bot.role.kind === 'operator' && op.bot.role.loot.length).toBeGreaterThan(0);
     let extract: GameEvent | undefined;

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { GameServer } from '../src/server/server.ts';
-import { Btn, CMDS_PER_TICK, DEATHCAM_AFTER, DEATHCAM_BEFORE, EYE_HEIGHT, MAX_HP, RESPAWN_TIME, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import {
+  BODY_TIME, Btn, CMDS_PER_TICK, DEATHCAM_AFTER, DEATHCAM_BEFORE, EYE_HEIGHT, MAX_HP, PLAYER_HEIGHT, SERVER_TICK_RATE,
+} from '../src/shared/constants.ts';
 import { hitboxes, type Pose } from '../src/shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, ServerMsg } from '../src/shared/protocol.ts';
+import { mulberry32 } from '../src/shared/rng.ts';
 import type { PlayerState } from '../src/shared/sim.ts';
 import { TapePlayer } from '../src/shared/tape.ts';
 import { BOLT, WEAPONS } from '../src/shared/weapons.ts';
@@ -12,7 +15,7 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 function client(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'range' });
+  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'offline' });
   let seq = 0;
   let yaw = 0;
   let pitch = 0;
@@ -63,8 +66,37 @@ function body(server: GameServer, id: number): PlayerState {
   return (server as unknown as { players: Map<number, PlayerState> }).players.get(id)!;
 }
 
-const dummyId = (server: GameServer, kind: string, nth = 0) =>
-  server.range.dummies.map((d, i) => ({ ...d, id: i + 1 })).filter((d) => d.kind === kind)[nth].id;
+/** Stand a body on the ground at (x, z), still and unprotected. */
+function put(server: GameServer, id: number, x: number, z: number, yaw = 0) {
+  const s = body(server, id) as PlayerState & { protection: number };
+  const world = server.world;
+  Object.assign(s, { x, z, y: world.groundHeight(x, z, world.terrainHeight(x, z)), vx: 0, vy: 0, vz: 0, yaw, protection: 0 });
+}
+
+/**
+ * A shooter and a second player `dist` metres in front of it, in the open
+ * with a clear line between them, away from the outposts and their commanders.
+ */
+function lane(server: GameServer, dist: number) {
+  const world = server.world;
+  const rand = mulberry32(7);
+  const shooter = client(server);
+  const target = client(server);
+  for (;;) {
+    const o = world.randomLandPoint(rand);
+    const yaw = rand() * Math.PI * 2;
+    const x = o.x - Math.sin(yaw) * dist;
+    const z = o.z - Math.cos(yaw) * dist;
+    const y = world.groundHeight(x, z, world.terrainHeight(x, z));
+    if (world.outposts.some((p) => Math.hypot(p.x - o.x, p.z - o.z) < 120)) continue;
+    if (!world.fits(o.x, o.y, o.z, PLAYER_HEIGHT) || !world.fits(x, y, z, PLAYER_HEIGHT)) continue;
+    if (!world.hasLineOfSight(o.x, o.y + EYE_HEIGHT, o.z, x, y + 1.2, z)) continue;
+    put(server, shooter.id, o.x, o.z, yaw);
+    put(server, target.id, x, z, yaw + Math.PI);
+    tick(server, [shooter, target], 1);
+    return { shooter, target };
+  }
+}
 
 /** Bring up the bolt-action, go down the sights, and settle. */
 function readyBolt(server: GameServer, c: Client) {
@@ -80,91 +112,67 @@ function fireAt(server: GameServer, c: Client, target: Pose, part: 'head' | 'tor
   server.step();
 }
 
-describe('shooting range', () => {
-  it('lays out every dummy in view of the spawn', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed);
-    expect(server.range.dummies).toHaveLength(10);
-    const c = client(server);
-    server.step();
-    const me = c.me();
-    const o = server.range.origin;
-    expect(Math.hypot(me.x - o.x, me.z - o.z)).toBeLessThan(3.5);
-    expect(me.yaw).toBeCloseTo(o.yaw);
-    for (const d of server.range.dummies) {
-      expect(server.world.hasLineOfSight(o.x, o.y + EYE_HEIGHT, o.z, d.x, d.y + 1.2, d.z)).toBe(true);
-    }
-  });
-
-  it('lets tests turn the dummies off', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false });
-    const c = client(server);
-    tick(server, [c], 1);
-    expect(server.range.dummies.length).toBeGreaterThan(0);
-    expect(c.other(1)).toBeDefined();
-    expect(c.other(2)).toBeUndefined();
-  });
-});
-
 describe('hits', () => {
-  it('damages a dummy by zone and reports the hit to the shooter', () => {
+  it('damages by zone and reports the hit to the shooter', () => {
     const server = new GameServer(DEFAULT_WORLD.seed);
-    const c = client(server);
-    const target = dummyId(server, 'still', 1);
+    const { shooter: c, target } = lane(server, 15);
     readyBolt(server, c);
-    fireAt(server, c, c.other(target), 'torso');
+    fireAt(server, c, c.other(target.id), 'torso');
     const hit = c.events().find((e) => e.k === 'hit');
-    expect(hit).toMatchObject({ k: 'hit', target, zone: 'torso', damage: WEAPONS[BOLT].damage >= MAX_HP ? MAX_HP : WEAPONS[BOLT].damage });
+    expect(hit).toMatchObject({ k: 'hit', target: target.id, zone: 'torso', damage: WEAPONS[BOLT].damage >= MAX_HP ? MAX_HP : WEAPONS[BOLT].damage });
   });
 
-  it('kills with a headshot, tells everyone, and respawns the dummy', () => {
+  it('kills with a headshot, tells everyone, and ends the victim\'s run', () => {
     const server = new GameServer(DEFAULT_WORLD.seed);
-    const c = client(server);
-    const target = dummyId(server, 'still', 2);
+    const { shooter: c, target } = lane(server, 22);
     readyBolt(server, c);
-    const before = body(server, target).life;
-    fireAt(server, c, c.other(target), 'head');
-    expect(c.events()).toContainEqual(expect.objectContaining({ k: 'hit', target, zone: 'head', killed: true }));
+    fireAt(server, c, c.other(target.id), 'head');
+    expect(c.events()).toContainEqual(expect.objectContaining({ k: 'hit', target: target.id, zone: 'head', killed: true }));
     expect(c.events()).toContainEqual(
-      expect.objectContaining({ k: 'kill', killer: c.id, victim: target, head: true, weapon: BOLT }),
+      expect.objectContaining({ k: 'kill', killer: c.id, victim: target.id, head: true, weapon: BOLT }),
     );
-    expect(c.other(target).dead).toBe(true);
-    tick(server, [c], RESPAWN_TIME * SERVER_TICK_RATE + 1);
-    expect(c.other(target).dead).toBe(false);
-    expect(body(server, target).hp).toBe(MAX_HP);
-    expect(body(server, target).life).toBe(before + 1);
+    expect(c.other(target.id).dead).toBe(true);
+    expect(target.events()).toContainEqual(expect.objectContaining({ k: 'runEnd', outcome: 'killed' }));
+    tick(server, [c], BODY_TIME * SERVER_TICK_RATE + 1);
+    expect(c.other(target.id)).toBeUndefined();
+    expect(server.humans()).toBe(1);
   });
 
   it('is stopped by walls', () => {
     const server = new GameServer(DEFAULT_WORLD.seed);
     const c = client(server);
-    const target = dummyId(server, 'still');
+    const target = client(server);
     const world = server.world;
     const wall = world.walls.find((b) => world.outposts.some((o) => Math.abs(b.maxY - o.y - 3) < 1e-6) && b.maxX - b.minX > 5)!;
     const x = (wall.minX + wall.maxX) / 2;
-    const put = (s: PlayerState, z: number) => {
-      s.x = x;
-      s.z = z;
-      s.y = world.groundHeight(x, z, world.terrainHeight(x, z));
-    };
-    put(body(server, target), wall.minZ - 2);
-    put(body(server, c.id), wall.maxZ + 2);
-    body(server, c.id).yaw = 0;
+    put(server, target.id, x, wall.minZ - 2);
+    put(server, c.id, x, wall.maxZ + 2);
+    tick(server, [c], 1);
     readyBolt(server, c);
-    fireAt(server, c, c.other(target), 'head');
+    fireAt(server, c, c.other(target.id), 'head');
     expect(c.events().filter((e) => e.k === 'hit')).toEqual([]);
-    expect(body(server, target).hp).toBe(MAX_HP);
+    expect(body(server, target.id).hp).toBe(MAX_HP);
   });
+
+  /** A target strafing across the shooter's view, and where the shooter saw it before it moved on. */
+  function strafe(server: GameServer, ticks: number) {
+    const { shooter: c, target } = lane(server, 15);
+    readyBolt(server, c);
+    const seen = { ...c.other(target.id) };
+    const seenTick = server.tick;
+    for (let i = 0; i < ticks; i++) {
+      c.send(Btn.Aim);
+      target.send(Btn.Left);
+      server.step();
+    }
+    return { c, target, seen, seenTick };
+  }
 
   it('judges shots against where the shooter saw a moving target', () => {
     const shoot = (rewind: boolean) => {
       const server = new GameServer(DEFAULT_WORLD.seed);
-      const c = client(server);
-      const target = dummyId(server, 'strafe');
-      readyBolt(server, c);
-      const seen = { ...c.other(target) };
-      const seenTick = server.tick;
-      tick(server, [c], 6, Btn.Aim);
-      const moved = Math.hypot(c.other(target).x - seen.x, c.other(target).z - seen.z);
+      const { c, target, seen, seenTick } = strafe(server, 6);
+      const moved = Math.hypot(c.other(target.id).x - seen.x, c.other(target.id).z - seen.z);
       fireAt(server, c, seen, 'torso', rewind ? seenTick : undefined);
       return { moved, hit: c.events().some((e) => e.k === 'hit') };
     };
@@ -177,20 +185,15 @@ describe('hits', () => {
 
   it('never rewinds further than the limit', () => {
     const server = new GameServer(DEFAULT_WORLD.seed);
-    const c = client(server);
-    const target = dummyId(server, 'strafe');
-    readyBolt(server, c);
-    const seen = { ...c.other(target) };
-    const seenTick = server.tick;
-    tick(server, [c], SERVER_TICK_RATE, Btn.Aim);
+    const { c, seen, seenTick } = strafe(server, SERVER_TICK_RATE);
     fireAt(server, c, seen, 'torso', seenTick);
     expect(c.events().some((e) => e.k === 'hit')).toBe(false);
   });
 });
 
 describe('player versus player', () => {
-  it('protects fresh spawns, then kills, freezes and respawns the victim', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false });
+  it('protects fresh spawns, then kills and freezes the victim', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed);
     const a = client(server);
     const b = client(server);
     // Stand b well in front of a.
@@ -216,24 +219,16 @@ describe('player versus player', () => {
     tick(server, [b], 10, Btn.Forward | Btn.Fire);
     expect([b.me().x, b.me().z, b.me().mag[0]]).toEqual([dead.x, dead.z, dead.mag[0]]);
 
-    tick(server, [a, b], RESPAWN_TIME * SERVER_TICK_RATE);
-    expect(b.me()).toMatchObject({ dead: false, hp: MAX_HP, life: 2 });
+    expect(b.events()).toContainEqual(expect.objectContaining({ k: 'runEnd', outcome: 'killed' }));
   });
 
   it('sends the victim a death cam that replays the killer exactly', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false });
-    const a = client(server);
-    const b = client(server);
-    tick(server, [a, b], 1);
-    const s = body(server, b.id);
-    const me = a.me();
-    s.x = me.x - Math.sin(me.yaw) * 12;
-    s.z = me.z - Math.cos(me.yaw) * 12;
-    s.y = server.world.groundHeight(s.x, s.z, server.world.terrainHeight(s.x, s.z));
-    s.hp = 1;
+    const server = new GameServer(DEFAULT_WORLD.seed);
+    const { shooter: a, target: b } = lane(server, 12);
+    body(server, b.id).hp = 1;
     a.wield(BOLT);
-    // Walk about first, so there's movement to replay; spawn protection wears off meanwhile.
-    tick(server, [a, b], 180, Btn.Left);
+    // Walk about first, side by side, so there's movement to replay.
+    tick(server, [a, b], 150, Btn.Left);
     tick(server, [a, b], 30, Btn.Aim);
     fireAt(server, a, a.other(b.id), 'torso');
     expect(b.me().dead).toBe(true);
@@ -255,7 +250,7 @@ describe('player versus player', () => {
   });
 
   it('sends other players the tracer of every shot', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false });
+    const server = new GameServer(DEFAULT_WORLD.seed);
     const a = client(server);
     const b = client(server);
     tick(server, [a, b], 1);

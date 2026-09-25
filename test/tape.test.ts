@@ -62,7 +62,7 @@ describe('tape', () => {
   });
 
   it('replays bots on the server exactly', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true, operators: 4, runs: true });
+    const server = new GameServer(DEFAULT_WORLD.seed, { guards: true, operators: 4 });
     for (let i = 0; i < SERVER_TICK_RATE * 20; i++) server.step();
     let compared = 0;
     for (const b of server.bots()) {

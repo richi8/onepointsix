@@ -32,8 +32,12 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 
 | Mode | Description |
 |---|---|
-| **PvE (solo)** | You versus AI on your own island. Played just for fun. |
-| **Mixed** | Other operators share the island with you. Locally they are all bots. In future multiplayer, bots fill empty slots and are removed as humans join. |
+| **Online** | 8 operator slots, every one starting as a bot. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
+| **Offline** | Plays the same way as Online, but the other 7 operators are always bots and nobody else joins. |
+
+Mixed was renamed Online, and old `mode=mixed` links and scores count as Online. PvE and the
+shooting range were removed after chunk 16: PvE became Offline, which has 7 bot operators, and the
+range with its target dummies is gone. Every game is a run.
 
 ### World capacity
 
@@ -41,7 +45,7 @@ The island is 800 × 800 m, with 6 outposts.
 
 | Kind | Count | Notes |
 |---|---|---|
-| **Operators** (players and fill bots) | **8** per game | Mixed mode: every slot starts as a bot, and humans replace them in the future. PvE: only you. |
+| **Operators** (players and fill bots) | **8** per game | Every slot starts as a bot. Online: joining players replace them. Offline: only you and bots. |
 | **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Present in both modes. |
 
 **Why 8:** that's roughly 80,000 m² per operator, which is about a 280 m square each. Runs are
@@ -427,6 +431,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   magazine sound.
 - **Only real fights make distant fighting** (14). In PvE the guards only fight you, so the
   island is quiet apart from your own fights.
+  **Resolved** (modes change): PvE is gone. Offline has 7 operator bots, and they fight the guards
+  and each other across the island.
 - **Occlusion is three steps and only along lines** (14): clear, over the top or blocked. It
   doesn't bend round corners, the thickness of what's in between doesn't count, and a tree trunk
   exactly on the line muffles a sound as much as a building does.
@@ -534,6 +540,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   and no `mode` compares against Mixed runs.
   **Resolved** (12): a link without a mode keeps the mode you last played, and its score is the one
   to beat in whichever mode you pick (except the range). The menu then doesn't name a mode.
+- **Online and Offline play the same until there is a multiplayer server** (modes change). Both
+  run in the local Worker, so nobody can join an Online game yet. The only difference today is
+  that Offline never takes a second human.
+- **PvE scores were left behind** (modes change). Offline has 7 bot operators where PvE had none,
+  so its scores don't compare, and PvE's board is still in storage but never shown.
 - **Names aren't filtered** (10). Locally only you and the bots see yours, but multiplayer will
   need filtering and length checks on the server.
 - **"New island" only picks seeds up to 999,999** (10), to keep the numbers short. Typed
@@ -604,6 +615,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   in case they kill someone. It's cheap, but it isn't free.
 - **Deaths on the range get no death cam**, and neither does a self-kill with a grenade.
   Replays can't be shared yet either (see Future).
+  **Resolved** for the range only (modes change): the range was removed. A self-kill with a
+  grenade still gets no death cam.
 
 ### Licensing
 - **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but

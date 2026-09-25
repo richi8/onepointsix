@@ -4,10 +4,10 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 describe('share links', () => {
   it('round-trips the island, mode and score to beat', () => {
-    const q = shareQuery({ seed: 4242, time: 'night', weather: 'rain' }, 'pve', { name: 'Ana Nováková', score: 5400 });
+    const q = shareQuery({ seed: 4242, time: 'night', weather: 'rain' }, 'offline', { name: 'Ana Nováková', score: 5400 });
     expect(q).toContain('time=night&weather=rain');
     expect(parseShareLink(q)).toEqual({
-      world: { seed: 4242, time: 'night', weather: 'rain' }, mode: 'pve', challenge: { name: 'Ana Nováková', score: 5400 },
+      world: { seed: 4242, time: 'night', weather: 'rain' }, mode: 'offline', challenge: { name: 'Ana Nováková', score: 5400 },
     });
   });
 
@@ -16,15 +16,20 @@ describe('share links', () => {
   });
 
   it('shares just the island when there is no score', () => {
-    expect(shareQuery({ seed: 7, time: 'day', weather: 'clear' }, 'mixed', { name: 'x', score: 0 })).toBe('?world=7&mode=mixed');
+    expect(shareQuery({ seed: 7, time: 'day', weather: 'clear' }, 'online', { name: 'x', score: 0 })).toBe('?world=7&mode=online');
     expect(parseShareLink('?world=7&by=x').challenge).toBeNull();
   });
 
   it('ignores nonsense', () => {
-    for (const q of ['?by=x&score=-5', '?by=x&score=1e9', '?by=x&score=12abc', '?by=%20&score=10', '?by=x&score=10&mode=range']) {
+    for (const q of ['?by=x&score=-5', '?by=x&score=1e9', '?by=x&score=12abc', '?by=%20&score=10', '?by=%20&score=10&mode=online']) {
       expect(parseShareLink(q).challenge).toBeNull();
     }
     expect(parseShareLink('?mode=deathmatch').mode).toBeNull();
+    expect(parseShareLink('?mode=range').mode).toBeNull();
+  });
+
+  it('reads old Mixed links as Online', () => {
+    expect(parseShareLink('?mode=mixed').mode).toBe('online');
   });
 
   it('keeps names short and printable', () => {

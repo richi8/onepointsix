@@ -1,4 +1,4 @@
-import type { Mode } from './protocol.ts';
+import { parseMode, type Mode } from './protocol.ts';
 import { parseWorldParam, worldParams, type WorldConfig } from './worldconfig.ts';
 
 /** Longest player name kept, in characters. */
@@ -25,12 +25,11 @@ export interface ShareLink {
 
 export function parseShareLink(search: string): ShareLink {
   const q = new URLSearchParams(search);
-  const m = q.get('mode');
-  const mode = m === 'mixed' || m === 'pve' || m === 'range' ? m : null;
+  const mode = parseMode(q.get('mode'));
   const name = cleanName(q.get('by') ?? '');
   const s = q.get('score') ?? '';
   const score = /^\d{1,8}$/.test(s) ? Number(s) : NaN;
-  const challenge = name && score > 0 && score <= SCORE_MAX && mode !== 'range' ? { name, score } : null;
+  const challenge = name && score > 0 && score <= SCORE_MAX ? { name, score } : null;
   return { world: parseWorldParam(q.get('world'), q.get('time'), q.get('weather')), mode, challenge };
 }
 

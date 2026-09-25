@@ -30,7 +30,7 @@ function body(server: GameServer, id: number): PlayerState & { run: RunState; pr
 function human(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `h${id}`, world: DEFAULT_WORLD, mode: 'pve' });
+  server.receive(id, { t: 'hello', name: `h${id}`, world: DEFAULT_WORLD, mode: 'offline' });
   let seq = 0;
   let yaw = 0;
   return {
@@ -79,7 +79,7 @@ function besideCrate(server: GameServer) {
   throw new Error('no crate to stand at');
 }
 
-const runsServer = () => new GameServer(DEFAULT_WORLD.seed, { mode: 'pve', dummies: false, runs: true });
+const runsServer = () => new GameServer(DEFAULT_WORLD.seed, { mode: 'offline' });
 
 describe('loot', () => {
   it('rolls the same crates from the same seed, with more in guarded ones', () => {
@@ -284,34 +284,28 @@ describe('extraction points', () => {
 describe('quick join', () => {
   it('puts players in the first game on their island and mode that is not full', () => {
     const dir = new Directory();
-    const pve = dir.quickJoin(DEFAULT_WORLD, 'pve');
-    expect(dir.quickJoin(DEFAULT_WORLD, 'pve')).toBe(pve);
-    pve.connect(() => {});
-    // PvE holds one human, so the next gets their own island.
-    const pve2 = dir.quickJoin(DEFAULT_WORLD, 'pve');
-    expect(pve2).not.toBe(pve);
-    expect(dir.quickJoin({ ...DEFAULT_WORLD, seed: 7 }, 'pve')).not.toBe(pve2);
-    expect(dir.quickJoin({ ...DEFAULT_WORLD, time: 'night' }, 'pve')).not.toBe(pve2);
-    expect(dir.quickJoin(DEFAULT_WORLD, 'range').mode).toBe('range');
+    const solo = dir.quickJoin(DEFAULT_WORLD, 'offline');
+    expect(dir.quickJoin(DEFAULT_WORLD, 'offline')).toBe(solo);
+    solo.connect(() => {});
+    // Offline holds one human, so the next gets their own island.
+    const solo2 = dir.quickJoin(DEFAULT_WORLD, 'offline');
+    expect(solo2).not.toBe(solo);
+    expect(dir.quickJoin({ ...DEFAULT_WORLD, seed: 7 }, 'offline')).not.toBe(solo2);
+    expect(dir.quickJoin({ ...DEFAULT_WORLD, time: 'night' }, 'offline')).not.toBe(solo2);
+    expect(dir.quickJoin(DEFAULT_WORLD, 'online').mode).toBe('online');
     expect(dir.count).toBe(5);
   });
 
-  it('fills Mixed with operator bots that humans replace', () => {
+  it.each(['online', 'offline'] as const)('fills %s with operator bots that humans replace', (mode) => {
     const dir = new Directory();
-    const game = dir.quickJoin(DEFAULT_WORLD, 'mixed');
+    const game = dir.quickJoin(DEFAULT_WORLD, mode);
     const operators = () => game.bots().filter((b) => b.team === 'operator').length;
     expect(operators()).toBe(OPERATOR_CAPACITY);
     const id = game.connect(() => {});
     expect(operators()).toBe(OPERATOR_CAPACITY - 1);
-    expect(dir.quickJoin(DEFAULT_WORLD, 'mixed')).toBe(game);
+    if (mode === 'online') expect(dir.quickJoin(DEFAULT_WORLD, mode)).toBe(game);
+    else expect(dir.quickJoin(DEFAULT_WORLD, mode)).not.toBe(game);
     game.disconnect(id);
     expect(game.humans()).toBe(0);
-  });
-
-  it('gives no run on the range', () => {
-    const server = new GameServer(DEFAULT_WORLD.seed);
-    const h = human(server);
-    server.step();
-    expect(h.snap().run).toBeNull();
   });
 });

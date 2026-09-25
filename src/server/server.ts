@@ -19,7 +19,6 @@ import {
   OPERATOR_REFILL,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
-  RESPAWN_TIME,
   RESPONSE_SQUAD,
   RUN_TIME,
   SEARCH_TIME,
@@ -44,21 +43,18 @@ import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
 import { World, type Box, type Point } from '../shared/world.ts';
-import { Bot, hostile, type Agent, type BotContext, type Noise } from './bot.ts';
+import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
 import { Cover } from './cover.ts';
 import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
 import { insertionPoint, planCommander, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
-import { dummyCmds, layoutRange, type DummyKind, type Post, type RangeLayout } from './range.ts';
 import { SKILLS } from './skill.ts';
 
 /** Commands buffered beyond this are dropped; the client is too far ahead. */
 const MAX_QUEUED_CMDS = MAX_CMDS_PER_TICK * 4;
 const HISTORY_TICKS = Math.ceil(MAX_REWIND * SERVER_TICK_RATE) + 2;
-/** Humans spawn spread sideways across the range origin by up to this much. */
-const SPAWN_SPREAD = 3;
 /** Bots think every this many ticks, staggered so only some think each tick. */
 const THINK_TICKS = 3;
 /** Path searches all bots together may start per tick. */
@@ -114,8 +110,6 @@ interface Player extends PlayerState {
   protection: number;
   /** Events to send this tick. */
   events: GameEvent[];
-  /** Set for target dummies: where they stand and how they move. */
-  dummy: (Post & { kind: DummyKind; index: number }) | null;
   /** Set for bots: the plan it was made from, and the bot for its current life. */
   plan: BotPlan | null;
   bot: Bot | null;
@@ -140,21 +134,14 @@ interface PoseRecord extends Pose {
 }
 
 export interface ServerOptions {
-  /** How the game is played, as told to clients (default 'range'). */
+  /** How the game is played, as told to clients (default 'offline'). */
   mode?: Mode;
-  /** Populate the shooting range with target dummies (default true). */
-  dummies?: boolean;
   /** Post guards at the outposts and send patrols between them (default false). */
   guards?: boolean;
   /** The time of day and the weather (default a clear day). */
   conditions?: Conditions;
   /** Operator slots, filled by bots where no player takes them (default 0, no operator bots). */
   operators?: number;
-  /**
-   * Humans play runs: they drop in, loot, and extract or die, with no
-   * respawn (default false: they respawn at the range). Operator bots always do.
-   */
-  runs?: boolean;
 }
 
 /**
@@ -166,7 +153,6 @@ export class GameServer {
   readonly mode: Mode;
   readonly conditions: Conditions;
   readonly world: World;
-  readonly range: RangeLayout;
   readonly nav: NavGrid;
   readonly containers: Containers;
   readonly extracts: Extracts;
@@ -183,7 +169,6 @@ export class GameServer {
   private readonly botRng: () => number;
   private readonly contractRng: () => number;
   private readonly operatorSlots: number;
-  private readonly runs: boolean;
   /** When each operator slot emptied by a bot leaving gets filled again, soonest first. */
   private readonly refills: number[] = [];
   private readonly ctx: BotContext;
@@ -194,14 +179,13 @@ export class GameServer {
 
   constructor(seed: number, options: ServerOptions = {}) {
     this.seed = seed >>> 0;
-    this.mode = options.mode ?? 'range';
+    this.mode = options.mode ?? 'offline';
     this.conditions = options.conditions ?? DEFAULT_CONDITIONS;
     const night = isNight(this.conditions);
     this.world = new World(this.seed);
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
     this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);
-    this.range = layoutRange(this.world, mulberry32(this.seed ^ 0x2545f491));
     this.nav = new NavGrid(this.world);
     // Paint the ground now rather than on the first bot's first look.
     vegetationOf(this.world);
@@ -209,7 +193,6 @@ export class GameServer {
     this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1));
     this.cover = new Cover(this.world);
     this.operatorSlots = options.operators ?? 0;
-    this.runs = options.runs ?? false;
     const players = this.players;
     this.ctx = {
       world: this.world,
@@ -226,14 +209,6 @@ export class GameServer {
       },
       senses: sensesOf(this.conditions),
     };
-    if (options.dummies ?? true) {
-      this.range.dummies.forEach((post, index) => {
-        const p = this.add(`Dummy ${index + 1}`, 'dummy', () => {});
-        p.joined = true;
-        p.dummy = { ...post, index };
-        this.spawn(p);
-      });
-    }
     if (options.guards) {
       const plans = planGuards(this.world, this.nav, this.botRng, night);
       const ids = plans.map((plan) => this.addBot(plan, 'guard').id);
@@ -249,9 +224,9 @@ export class GameServer {
 
   connect(send: (msg: ServerMsg) => void): number {
     const p = this.add('player', 'operator', send);
-    if (this.runs) p.run = newRun(this.time);
+    p.run = newRun(this.time);
     this.spawn(p);
-    if (p.run) this.assignContracts(p);
+    this.assignContracts(p);
     // A human takes an operator slot from a bot: the one farthest from anyone.
     while (this.operatorSlots > 0 && this.operatorCount() > this.operatorSlots) {
       const bots = [...this.players.values()].filter((b) => b.team === 'operator' && b.plan);
@@ -307,7 +282,7 @@ export class GameServer {
   /** Humans in the game. */
   humans(): number {
     let n = 0;
-    for (const p of this.players.values()) if (!p.plan && !p.dummy) n++;
+    for (const p of this.players.values()) if (!p.plan) n++;
     return n;
   }
 
@@ -321,7 +296,6 @@ export class GameServer {
         if ((this.tick + p.id) % THINK_TICKS === 0) p.bot.think(ctx, p, THINK_TICKS * SERVER_DT);
         p.queue.push(...p.bot.commands(ctx, p, p.lastSim));
       }
-      if (p.dummy) p.queue.push(...dummyCmds(p.dummy, p.dummy.index, this.tick, p.lastSim));
       const n = Math.min(p.queue.length, MAX_CMDS_PER_TICK);
       p.tape.beginTick(p, now - SERVER_DT);
       for (let i = 0; i < n; i++) {
@@ -382,8 +356,8 @@ export class GameServer {
     let bags: BagSnap[] | null = null;
     const grenades: GrenadeSnap[] = this.grenades.map(({ id, x, y, z }) => ({ id, x, y, z }));
     for (const p of joined) {
-      // Bots and dummies see the game directly.
-      if (p.plan || p.dummy) {
+      // Bots see the game directly.
+      if (p.plan) {
         p.events = [];
         continue;
       }
@@ -603,7 +577,7 @@ export class GameServer {
   private add(name: string, team: Team, send: (msg: ServerMsg) => void): Player {
     const p: Player = {
       ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, queue: [], lastRecv: 0, lastSim: 0,
-      respawn: 0, protection: 0, events: [], dummy: null, plan: null, bot: null, run: null, recall: 0,
+      respawn: 0, protection: 0, events: [], plan: null, bot: null, run: null, recall: 0,
       tape: new Tape(), deathcam: null, threw: false, light: false,
     };
     this.players.set(p.id, p);
@@ -623,8 +597,7 @@ export class GameServer {
   private addOperatorBot(): void {
     const others = [...this.players.values()].filter((p) => p.team === 'operator' && !p.dead);
     const taken = new Set(others.map((p) => p.name));
-    const avoid: Point[] = [...others, this.range.origin];
-    this.addBot(planOperator(this.world, this.nav, this.botRng, avoid, taken), 'operator');
+    this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken), 'operator');
   }
 
   /** Players and bots taking operator slots. */
@@ -644,27 +617,19 @@ export class GameServer {
     if (p.team === 'operator') this.refills.push(this.time + OPERATOR_REFILL);
   }
 
-  /** (Re)spawn a player with full health and ammo: bots at their post, runs at an insertion point, others at the range. */
+  /** (Re)spawn a player with full health and ammo: bots at their post, humans at an insertion point. */
   private spawn(p: Player): void {
-    let post: Post & { pitch?: number };
-    if (p.dummy) post = p.dummy;
-    else if (p.plan) post = p.plan.spawn;
-    else if (p.run) {
+    let post: Post;
+    if (p.plan) post = p.plan.spawn;
+    else {
       const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
       const at = insertionPoint(this.world, this.nav, this.spawnRng, others);
       post = { ...at, yaw: yawToward(at.x, at.z, 0, 0) };
-    } else {
-      const o = this.range.origin;
-      const side = (this.spawnRng() * 2 - 1) * SPAWN_SPREAD;
-      const x = o.x + Math.cos(o.yaw) * side;
-      const z = o.z - Math.sin(o.yaw) * side;
-      const y = this.world.groundHeight(x, z, o.y + 1);
-      post = this.world.fits(x, y, z, PLAYER_HEIGHT) ? { x, y, z, yaw: o.yaw, pitch: o.pitch } : o;
     }
     const carry = p.run ? lootMass(p.run.items) : 0;
-    Object.assign(p, spawnState(post.x, post.y, post.z), { yaw: post.yaw, pitch: post.pitch ?? 0, carry, life: p.life + 1 });
+    Object.assign(p, spawnState(post.x, post.y, post.z), { yaw: post.yaw, pitch: 0, carry, life: p.life + 1 });
     p.respawn = 0;
-    p.protection = p.dummy || p.plan ? 0 : SPAWN_PROTECTION;
+    p.protection = p.plan ? 0 : SPAWN_PROTECTION;
     p.queue = [];
     if (p.plan) {
       const { role, skill, primary } = p.plan;
@@ -852,7 +817,7 @@ export class GameServer {
     if (attacker !== victim) victim.bot?.hurt(attacker, this.time);
     if (!killed) return;
     victim.dead = true;
-    victim.respawn = victim.run || victim.plan?.temporary ? BODY_TIME : victim.team === 'guard' ? GUARD_RESPAWN : RESPAWN_TIME;
+    victim.respawn = victim.team === 'guard' && !victim.plan?.temporary ? GUARD_RESPAWN : BODY_TIME;
     victim.vx = victim.vy = victim.vz = 0;
     if (attacker.run && attacker !== victim) {
       if (victim.team === 'operator') attacker.run.kills++;
@@ -863,7 +828,7 @@ export class GameServer {
       weapon, head: zone === 'head',
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
-    if (!victim.plan && !victim.dummy && attacker !== victim) victim.deathcam = { killer: attacker, time: this.time };
+    if (!victim.plan && attacker !== victim) victim.deathcam = { killer: attacker, time: this.time };
     if (victim.run) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
       victim.run.death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head' };

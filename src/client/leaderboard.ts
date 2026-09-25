@@ -31,7 +31,9 @@ export class Leaderboard {
   /** Best first. */
   entries(seed: number, mode: Mode): BoardEntry[] {
     try {
-      const raw = JSON.parse(this.store?.getItem(key(seed, mode)) ?? '[]') as unknown;
+      // Online plays as Mixed did, so it starts from Mixed's scores.
+      const saved = this.store?.getItem(key(seed, mode)) ?? (mode === 'online' ? this.store?.getItem(`board:${seed >>> 0}:mixed`) : null);
+      const raw = JSON.parse(saved ?? '[]') as unknown;
       if (!Array.isArray(raw)) return [];
       return raw.filter((e): e is BoardEntry =>
         !!e && typeof e.name === 'string' && typeof e.score === 'number' && typeof e.date === 'string');

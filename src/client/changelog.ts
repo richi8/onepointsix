@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Online and Offline',
+    notes: [
+      'The modes are now Online and Offline. Both put you on the island with the guards and 7 other operators.',
+      'Online: the other operators start as bots, and anyone who joins your island takes a bot’s place.',
+      'Offline: the same run, but the other operators are always bots and nobody else joins. It replaces PvE, so you’re no longer alone with the guards.',
+      'The shooting range is gone.',
+      'Your best scores from Mixed carry over to Online.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Day, night and weather',
     notes: [
       'Pick the time of day (day, dusk or night) and the weather (clear, rain or fog) on the main menu. They go into the island’s link, so a friend plays it in exactly the same conditions.',

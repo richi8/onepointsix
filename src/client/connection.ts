@@ -58,7 +58,7 @@ export class Connection {
   readonly predictor: Predictor;
   id = 0;
   seed = 0;
-  mode: Mode = 'range';
+  mode: Mode = 'offline';
   /** The local player's run, the extraction points and the bags on the ground, as of the latest snapshot. */
   run: RunView | null = null;
   extracts: ExtractView[] = [];

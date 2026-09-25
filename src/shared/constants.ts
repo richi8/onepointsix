@@ -83,7 +83,6 @@ export const CARRY_DRAIN = 1;
 
 // Combat
 export const MAX_HP = 100;
-export const RESPAWN_TIME = 3;
 /** Seconds after spawning during which a player takes no damage. */
 export const SPAWN_PROTECTION = 1.5;
 export const HEADSHOT_MUL = 2.5;

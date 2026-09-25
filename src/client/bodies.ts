@@ -20,7 +20,7 @@ import {
 // way they are posed to match the hitboxes, so what you see is what you hit.
 // Sides are told apart by colour and kit: operators in grey-blue with a pack,
 // guards in olive with brown webbing, commanders with a red band on the helmet
-// and a radio mast, and target dummies in orange.
+// and a radio mast.
 
 const FALL_TIME = 0.45;
 const FLASH_TIME = 0.12;
@@ -28,11 +28,11 @@ const FLASH_TIME = 0.12;
 const FLASH_REACH = 0.3;
 const MUZZLE_TIME = 0.05;
 const HEAD = 0xd8c3a0;
-const TORSO: Record<Team, number> = { operator: 0x3f556e, guard: 0x5a6638, dummy: 0xc4652b };
-const LEGS: Record<Team, number> = { operator: 0x2e3238, guard: 0x4a4636, dummy: 0x4a4636 };
+const TORSO: Record<Team, number> = { operator: 0x3f556e, guard: 0x5a6638 };
+const LEGS: Record<Team, number> = { operator: 0x2e3238, guard: 0x4a4636 };
 /** The soldier's uniform and webbing, per side; its skin and visor keep the model's own colours. */
-const UNIFORM: Record<Team, number> = { operator: 0x44566a, guard: 0x5c6a3a, dummy: 0xc4652b };
-const GEAR: Record<Team, number> = { operator: 0x26282b, guard: 0x4a3f2c, dummy: 0x3a3a3a };
+const UNIFORM: Record<Team, number> = { operator: 0x44566a, guard: 0x5c6a3a };
+const GEAR: Record<Team, number> = { operator: 0x26282b, guard: 0x4a3f2c };
 const COMMANDER_UNIFORM = 0x4f5a34;
 const COMMANDER_GEAR = 0x6b5a3a;
 const UNIFORM_MATERIAL = 'Swat';

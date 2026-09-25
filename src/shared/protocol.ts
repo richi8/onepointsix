@@ -23,11 +23,19 @@ export interface InputCmd {
   view?: number;
 }
 
-/** How a game is played: runs against bots and other operators, runs against guards alone, or practice on the range. */
-export type Mode = 'mixed' | 'pve' | 'range';
+/**
+ * How a game is played. Both are runs against guards and 8 operators; Online lets other players
+ * take bot operators' places, Offline keeps them all bots.
+ */
+export type Mode = 'online' | 'offline';
 
-/** Operators are players and fill bots, each on their own side; guards defend outposts together; dummies stand on the range. */
-export type Team = 'operator' | 'guard' | 'dummy';
+/** A mode named in a link or saved setting; Mixed, from before, is now Online. */
+export function parseMode(m: string | null): Mode | null {
+  return m === 'online' || m === 'offline' ? m : m === 'mixed' ? 'online' : null;
+}
+
+/** Operators are players and fill bots, each on their own side; guards defend outposts together. */
+export type Team = 'operator' | 'guard';
 
 /** How a body is moving: on its feet, in the air or climbing onto a ledge. */
 export type Motion = 'ground' | 'air' | 'mantle';
@@ -208,7 +216,7 @@ export type ServerMsg =
   // `ack` is the highest command seq the server has simulated for the recipient,
   // and `you` its full movement state right after that command, which the
   // client replays its unacknowledged commands on top of.
-  // `run` is null outside runs, such as on the range.
+  // `run` is null until the player's run is set up.
   | {
       t: 'snapshot'; tick: number; ack: number; you: PlayerState; players: PlayerSnap[];
       run: RunView | null; extracts: ExtractView[]; bags: BagSnap[]; grenades: GrenadeSnap[];

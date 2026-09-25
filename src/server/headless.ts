@@ -12,7 +12,7 @@ declare const process: { argv: string[] };
 const seconds = Number(process.argv[2] ?? 60);
 const seed = Number(process.argv[3] ?? DEFAULT_WORLD.seed);
 const { time, weather } = parseWorldParam(null, process.argv[4] ?? null, process.argv[5] ?? null);
-const server = new GameServer(seed, { ...MODES.mixed.options, conditions: { time, weather } });
+const server = new GameServer(seed, { ...MODES.online.options, conditions: { time, weather } });
 const counts = { kills: 0, headshots: 0, extracts: 0, calls: 0 };
 const killers = new Map<string, number>();
 server.onEvent = (e) => {

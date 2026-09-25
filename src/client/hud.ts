@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MAX_HP, RESPAWN_TIME } from '../shared/constants.ts';
+import { MAX_HP } from '../shared/constants.ts';
 import { wrapAngle } from '../shared/geom.ts';
 import type { Zone } from '../shared/hitbox.ts';
 import type { GameEvent } from '../shared/protocol.ts';
@@ -51,9 +51,6 @@ export class Hud {
   private marker = 0;
   private hurt = 0;
   private killer = '';
-  private respawnIn = 0;
-  /** Playing a run, where the dead don't respawn. */
-  runs = false;
 
   constructor() {
     const slotsRoot = $('ammo').querySelector('.slots')!;
@@ -105,11 +102,7 @@ export class Hud {
     this.stamina.classList.toggle('winded', s.winded);
 
     this.death.hidden = !s.dead;
-    if (s.dead) {
-      this.respawnIn = Math.max(this.respawnIn - dt, 0);
-      const by = this.killer ? `by ${this.killer}` : '';
-      this.deathText.textContent = this.runs ? by : `${by ? `${by} · ` : ''}respawning in ${this.respawnIn.toFixed(1)}`;
-    }
+    if (s.dead) this.deathText.textContent = this.killer ? `by ${this.killer}` : '';
   }
 
   /** The server confirmed one of our rounds hit. */
@@ -143,10 +136,7 @@ export class Hud {
     row.append(how, victim);
     if (e.killer === me || e.victim === me) row.className = 'you';
     this.pushFeed(row);
-    if (e.victim === me) {
-      this.killer = e.killer === me ? '' : e.killerName;
-      this.respawnIn = RESPAWN_TIME;
-    }
+    if (e.victim === me) this.killer = e.killer === me ? '' : e.killerName;
   }
 
   /** Someone left the island. */

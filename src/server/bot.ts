@@ -88,7 +88,7 @@ export interface BotContext {
 
 /** Whether a would shoot b. Operators are each on their own side; guards stick together. */
 export function hostile(a: Agent, b: Agent): boolean {
-  if (a === b || a.team === 'dummy' || b.team === 'dummy') return false;
+  if (a === b) return false;
   return a.team === 'operator' || a.team !== b.team;
 }
 

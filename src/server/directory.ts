@@ -5,12 +5,10 @@ import { GameServer, type ServerOptions } from './server.ts';
 
 /** How each mode sets up a game, and how many humans fit in one. */
 export const MODES: Record<Mode, { options: ServerOptions; capacity: number }> = {
-  // Every operator slot starts as a bot; humans take them over.
-  mixed: { options: { mode: 'mixed', dummies: false, guards: true, operators: OPERATOR_CAPACITY, runs: true }, capacity: OPERATOR_CAPACITY },
-  // You against the guards, alone on the island.
-  pve: { options: { mode: 'pve', dummies: false, guards: true, operators: 0, runs: true }, capacity: 1 },
-  // Target practice: respawning, no runs.
-  range: { options: { mode: 'range', dummies: true }, capacity: OPERATOR_CAPACITY },
+  // Every operator slot starts as a bot; each player who joins takes one over.
+  online: { options: { mode: 'online', guards: true, operators: OPERATOR_CAPACITY }, capacity: OPERATOR_CAPACITY },
+  // The same island, but the other operators are always bots.
+  offline: { options: { mode: 'offline', guards: true, operators: OPERATOR_CAPACITY }, capacity: 1 },
 };
 
 /** Seconds a game with nobody in it is kept, so another run can join the same island state. */

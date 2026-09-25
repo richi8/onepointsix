@@ -16,7 +16,7 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 function client(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'range' });
+  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'offline' });
   let seq = 0;
   let weapon = 0;
   return {
@@ -53,7 +53,7 @@ function body(server: GameServer, id: number): PlayerState {
 }
 
 function setup() {
-  const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false });
+  const server = new GameServer(DEFAULT_WORLD.seed);
   const watcher = client(server);
   const actor = client(server);
   // Settle onto the ground and let spawn draws finish.

@@ -5,7 +5,7 @@ import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
 import { extractName } from '../shared/loot.ts';
-import { isReliable, type ClientMsg, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
+import { isReliable, parseMode, type ClientMsg, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
 import { runRecord } from '../shared/runstats.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared/share.ts';
@@ -56,7 +56,7 @@ const SHAKE_RANGE = 30;
 const SHAKE_DECAY = 5;
 /** Seconds before the loading screen offers to play without waiting for the textures. */
 const SKIP_LOADING_AFTER = 8;
-const MODE_NAMES: Record<Mode, string> = { mixed: 'Mixed', pve: 'PvE', range: 'Range' };
+const MODE_NAMES: Record<Mode, string> = { online: 'Online', offline: 'Offline' };
 /** Milliseconds a click on the run dashboard keeps trying to take the mouse back. */
 const RELOCK_RETRY = 2000;
 /** Leaderboard rows shown on the menu. */
@@ -64,9 +64,8 @@ const BOARD_SHOWN = 5;
 /** Islands from "New island" get seeds up to this, so their numbers stay short. */
 const NEW_ISLAND_SEEDS = 999_999;
 const MODE_NOTES: Record<Mode, string> = {
-  mixed: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators.`,
-  pve: 'Loot and get out. Just you against the guards.',
-  range: 'Target practice. No clock, and you respawn.',
+  online: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators. Players who join take a bot's place.`,
+  offline: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} bot operators. Nobody else joins.`,
 };
 
 const CONDITION_NOTES: Record<TimeOfDay | Weather, string> = {
@@ -229,12 +228,12 @@ async function copyLink(query: string): Promise<void> {
 
 /** The score to beat from the link we came in on, if it's for `m`; a link without a mode counts for any. */
 function challengeFor(m: Mode): Challenge | null {
-  return link.challenge && m !== 'range' && (link.mode ?? m) === m ? link.challenge : null;
+  return link.challenge && (link.mode ?? m) === m ? link.challenge : null;
 }
 
 /** Share the island in the current mode, with your best score on it to beat. */
 function shareIsland(): void {
-  const best = mode === 'range' ? null : board.best(config.seed, mode);
+  const best = board.best(config.seed, mode);
   void copyLink(shareQuery(config, mode, best ?? undefined));
 }
 
@@ -254,8 +253,6 @@ function showBoard(): void {
     const where = link.mode ? ` in ${MODE_NAMES[link.mode]}` : '';
     challengeEl.textContent = `${c.name} scored ${c.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
   }
-  boardEl.hidden = mode === 'range';
-  if (mode === 'range') return;
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
   const rows: { name: string; score: number; note: string; rival: boolean }[] = board.entries(config.seed, mode)
     .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), rival: false }));
@@ -308,10 +305,9 @@ const inputLoop = new FixedLoop(CMD_DT, () => conn?.sendCmd(input.sample(), inpu
 
 const modeNote = document.getElementById('mode-note')!;
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
-let mode: Mode = 'mixed';
+let mode: Mode = 'online';
 try {
-  const saved = localStorage.getItem('mode');
-  if (saved === 'mixed' || saved === 'pve' || saved === 'range') mode = saved;
+  mode = parseMode(localStorage.getItem('mode')) ?? mode;
 } catch {
   // Storage may be blocked; the default will do.
 }
@@ -453,7 +449,6 @@ function join(): void {
     input.pitch = s.pitch;
   };
   panel.conn = conn;
-  hud.runs = mode !== 'range';
   hud.reset();
   hud.show();
   runHud.hideResults();
@@ -625,7 +620,6 @@ leaveButton.onclick = toMenu;
 
 /** Under the score in the pause menu: the best run on this island and the challenge from the link. */
 function pauseStanding(): string {
-  if (mode === 'range') return '';
   const best = board.best(config.seed, mode);
   const c = challengeFor(mode);
   return [
