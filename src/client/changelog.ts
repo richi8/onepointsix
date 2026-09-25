@@ -12,6 +12,20 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Buildings, grass and waves',
+    notes: [
+      'Every outpost now has a concrete building with two rooms, doorways at the front, the end and between the rooms, and windows you can shoot through. Fight through it room by room, blow holes in its walls, and search the guarded crates inside.',
+      'Outposts have been rearranged to make room, so an island from an older link looks a little different inside its walls.',
+      'Grass, low bushes and pebbles cover the ground around you, and the grass and trees sway in the wind.',
+      'The sea has waves, clear pale water over the sand, darker water farther out and foam lapping along the shore. Sink below the surface and everything turns murky green.',
+      'Shadows reach much farther out and stay sharp close by, and rooms under a roof are dim.',
+      'Debris from broken cover looks like what it came from: concrete, planks or boards.',
+      'Distant hills and trees are drawn more simply, so the game runs smoother.',
+      'On slower computers the picture no longer keeps switching between sharp and blurry.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'No more sliding',
     notes: [
       'Sliding is gone. Crouching while you sprint now just crouches.',

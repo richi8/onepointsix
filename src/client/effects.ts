@@ -70,6 +70,8 @@ export class Effects {
   private readonly dummy = new THREE.Object3D();
   private readonly ground: (x: number, z: number) => number;
   private readonly debris: THREE.InstancedMesh;
+  /** Each chunk's texture layer, once the debris is textured. */
+  private readonly debrisLayer = new THREE.InstancedBufferAttribute(new Float32Array(MAX_DEBRIS), 1);
   private readonly chunks: Chunk[] = [];
   private nextChunk = 0;
   private readonly smoke: Puff[] = [];
@@ -111,18 +113,27 @@ export class Effects {
     this.fireball.visible = false;
     scene.add(this.fireball, this.boomLight);
 
-    this.debris = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.9 }), MAX_DEBRIS);
+    const chunkGeo = new THREE.BoxGeometry(1, 1, 1);
+    chunkGeo.setAttribute('layer', this.debrisLayer);
+    this.debris = new THREE.InstancedMesh(chunkGeo, new THREE.MeshStandardMaterial({ roughness: 0.9 }), MAX_DEBRIS);
     this.debris.count = 0;
     this.debris.frustumCulled = false;
     this.debris.castShadow = true;
     scene.add(this.debris);
   }
 
+  /** Texture the debris like the panels it comes from, each chunk in its own frame. */
+  setDebrisMaterial(material: THREE.Material): void {
+    const old = this.debris.material as THREE.Material;
+    this.debris.material = material;
+    old.dispose();
+  }
+
   /**
-   * A panel coming apart: chunks of it in its colour fly away from (fx, fy, fz),
-   * where the force came from, harder the closer it was.
+   * A panel coming apart: chunks of it in its colour and texture `layer` fly
+   * away from (fx, fy, fz), where the force came from, harder the closer it was.
    */
-  shatter(box: Box, color: THREE.Color, fx: number, fy: number, fz: number): void {
+  shatter(box: Box, color: THREE.Color, layer: number, fx: number, fy: number, fz: number): void {
     const sx = box.maxX - box.minX;
     const sy = box.maxY - box.minY;
     const sz = box.maxZ - box.minZ;
@@ -161,9 +172,11 @@ export class Effects {
       this.chunks[idx] = chunk;
       this.debris.setMatrixAt(idx, HIDDEN);
       this.debris.setColorAt(idx, color);
+      this.debrisLayer.setX(idx, layer);
       this.debris.count = Math.max(this.debris.count, idx + 1);
     }
     if (this.debris.instanceColor) this.debris.instanceColor.needsUpdate = true;
+    this.debrisLayer.needsUpdate = true;
     this.dust(cx, cy, cz, Math.max(sx, sy, sz));
   }
 

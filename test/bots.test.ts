@@ -9,7 +9,7 @@ import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { spawnState, type PlayerState } from '../src/shared/sim.ts';
 import { RIFLE } from '../src/shared/weapons.ts';
-import { World } from '../src/shared/world.ts';
+import { watchtower, World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const world = new World(DEFAULT_WORLD.seed);
@@ -155,7 +155,11 @@ describe('guards', () => {
     const server = new GameServer(DEFAULT_WORLD.seed, { dummies: false, guards: true });
     const h = human(server);
     const o = server.world.outposts[0];
-    const spot = server.nav.nearestWalkable(o.x + 2, o.z + 2)!;
+    // Out in the open, where the sentry in the watchtower can see.
+    const tower = watchtower(o);
+    const spot = [...Array(40).keys()]
+      .map((i) => server.nav.nearestWalkable(o.x + Math.sin(i) * (3 + i / 8), o.z + Math.cos(i) * (3 + i / 8))!)
+      .find((p) => p && server.world.hasLineOfSight(tower.x, tower.y + 1.6, tower.z, p.x, o.y + 1.2, p.z))!;
     for (let t = 0; t < SERVER_TICK_RATE * 20; t++) {
       const me = body(server, h.id);
       if (t === 0) Object.assign(me, { x: spot.x, z: spot.z, y: server.world.groundHeight(spot.x, spot.z, o.y) });

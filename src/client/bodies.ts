@@ -111,6 +111,8 @@ let GUNS: GunShape[] = [gunShape(0.85, true), gunShape(0.2, false), gunShape(1.1
 
 interface Figure {
   group: THREE.Group;
+  /** While too far to cast a visible shadow: the parts that cast one up close. */
+  casters: THREE.Object3D[] | null;
   materials: THREE.MeshStandardMaterial[];
   /** Where the last round landed, in the figure's own space, and how bright its flash is. */
   hit: { value: THREE.Vector4 };
@@ -305,7 +307,7 @@ export class Bodies {
       gun, held, can, flashMesh, weapon: 0, quiet: false,
       deadFor: -1, fallYaw: 0, fallX: 0, fallZ: 0, tilt: new THREE.Quaternion(), lift: 0, killer: null, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
-      air: 0, mantle: 0, wait: 0, soldier: null,
+      air: 0, mantle: 0, wait: 0, soldier: null, casters: null,
     };
     placeCan(f);
     if (this.model) f.soldier = this.soldier(f, team, commander);
@@ -487,6 +489,16 @@ export class Bodies {
     this.bounds.center.set(p.x, p.y + 0.9, p.z);
     const distance = this.camera.distanceTo(this.bounds.center);
     f.group.visible = distance < SHADOW_REACH || (distance < FOG_END && this.frustum.intersectsSphere(this.bounds));
+    // Beyond that, a body's shadow is too small to see but costs a draw in each shadow map.
+    const shadow = distance < SHADOW_REACH;
+    if (!shadow && !f.casters) {
+      f.casters = [];
+      f.group.traverse((o) => o.castShadow && f.casters!.push(o));
+      for (const o of f.casters) o.castShadow = false;
+    } else if (shadow && f.casters) {
+      for (const o of f.casters) o.castShadow = true;
+      f.casters = null;
+    }
     // A dead soldier's gun is on the ground, or not drawn at all if it died out of sight.
     f.gun.visible = !p.dead || !f.soldier || !!f.drop;
     if (f.drop) this.dropGun(f, dt);

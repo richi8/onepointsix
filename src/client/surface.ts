@@ -9,7 +9,7 @@ import { Layer } from './layers.ts';
 export type Surface = 'grass' | 'dirt' | 'sand' | 'rock' | 'concrete' | 'wood' | 'metal' | 'water';
 
 const PROP_SURFACE: Record<PropStyle, Surface> = {
-  crate: 'wood', wall: 'concrete', wood: 'wood', metal: 'metal', fence: 'wood',
+  crate: 'wood', wall: 'concrete', wood: 'wood', metal: 'metal', fence: 'wood', roof: 'metal',
 };
 /** The sound of each ground layer, by Layer index. */
 const GROUND_SURFACE: Surface[] = [];

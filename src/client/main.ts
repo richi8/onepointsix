@@ -30,6 +30,7 @@ import { Resolution } from './resolution.ts';
 import { RunLog, RunLogPanel } from './runlog.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
+import { surfaceMaterial } from './surfaces.ts';
 import { ViewModel } from './viewmodel.ts';
 import { WorldView } from './worldview.ts';
 import './style.css';
@@ -37,6 +38,10 @@ import './style.css';
 const MENU_ORBIT_RADIUS = 360;
 const MENU_ORBIT_SPEED = 0.025;
 const MENU_FOV = 60;
+/** Metres the sharp and the coarse shadows reach from the player, and the sharp ones round the menu's island. */
+const NEAR_SHADOWS = 32;
+const FAR_SHADOWS = 230;
+const MENU_SHADOWS = 140;
 const PLAY_FOV = 75;
 /** How far other players' tracers start in front of their eye, roughly at the muzzle. */
 const MUZZLE_REACH = 0.7;
@@ -67,6 +72,7 @@ const view = new WorldView(world);
 const scene = view.scene;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+view.prepare(renderer);
 const resolution = new Resolution(renderer);
 // Two passes a frame; count both.
 renderer.info.autoReset = false;
@@ -131,6 +137,7 @@ import('./assets.ts')
     loadingBar.style.width = '100%';
     loadingEl.querySelector('p')!.textContent = 'Preparing the island…';
     view.applyAssets(assets);
+    effects.setDebrisMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true }));
     bodies.setModel(assets.soldier, assets.guns);
     viewModel.setGuns(assets.guns, assets.environment);
     viewModel.setArms(assets.soldier);
@@ -625,7 +632,7 @@ function onEvent(e: GameEvent, replay = false): void {
       for (const id of e.panels) {
         world.setPanel(id, false);
         view.updatePanel(id);
-        effects.shatter(world.panels[id].box, view.panelColor(id, color), e.x, e.y, e.z);
+        effects.shatter(world.panels[id].box, view.panelColor(id, color), view.panelLayer(id), e.x, e.y, e.z);
       }
       const first = world.panels[e.panels[0]];
       if (first) {
@@ -681,12 +688,33 @@ let shake = 0;
 /** Our own footfalls: where we were, distance since the last step, and how we were falling. */
 const own = { x: 0, z: 0, stride: 0, air: false, fall: 0 };
 
+/**
+ * In development, `?cam=x,y,z,tx,ty,tz` holds the menu camera at (x, y, z)
+ * looking at (tx, ty, tz), with `o` meaning relative to outpost o, e.g.
+ * `?cam=o0,-20,6,-20,0,2,0`. For screenshots of one spot.
+ */
+const devCam = ((): number[] | null => {
+  const v = import.meta.env.DEV ? new URLSearchParams(location.search).get('cam') : null;
+  if (!v) return null;
+  const parts = v.split(',');
+  const at = parts[0].startsWith('o') ? world.outposts[Number(parts.shift()!.slice(1))] : { x: 0, y: 0, z: 0 };
+  const n = parts.map(Number);
+  return [n[0] + at.x, n[1] + at.y, n[2] + at.z, n[3] + at.x, n[4] + at.y, n[5] + at.z];
+})();
+
 function orbitCamera(now: number): void {
+  if (devCam) {
+    camera.position.set(devCam[0], devCam[1], devCam[2]);
+    camera.lookAt(devCam[3], devCam[4], devCam[5]);
+    focus.set(devCam[3], devCam[4], devCam[5]);
+    view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, now);
+    return;
+  }
   const a = (now - start) * MENU_ORBIT_SPEED + 0.6;
   camera.position.set(Math.sin(a) * MENU_ORBIT_RADIUS, world.maxHeight + 90, Math.cos(a) * MENU_ORBIT_RADIUS);
   camera.lookAt(0, 0, 0);
   focus.set(0, 0, 0);
-  view.update(camera, focus, world.half);
+  view.update(camera, focus, MENU_SHADOWS, world.half, now);
 }
 
 /**
@@ -717,7 +745,7 @@ function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt:
     camera.rotation.z += (Math.random() - 0.5) * k * 0.5;
   }
   focus.set(me.x, me.y, me.z);
-  view.update(camera, focus, 70);
+  view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, performance.now() / 1000);
 
   const speed = Math.hypot(s.vx, s.vz);
   const lookDx = angleDiff(lastYaw, yaw) * 600;
@@ -773,7 +801,7 @@ function sprinting(s: PlayerState): boolean {
 
 if (import.meta.env.DEV) {
   // For poking at the game from the console or a test browser.
-  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, sfx, world, viewModel, input, get conn() { return conn; }, get deathcam() { return deathcam; } } });
+  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, get conn() { return conn; }, get deathcam() { return deathcam; } } });
 }
 
 renderer.setAnimationLoop(() => {

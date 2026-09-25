@@ -45,15 +45,18 @@ export class Tape {
   private readonly cmds: TapedCmd[] = [];
   private tickCmds = 0;
   private tickStart = -1;
+  private carry = 0;
 
   /** Call at the start of each server tick, before the player's commands, with the time it starts from. */
   beginTick(p: PlayerState, time: number): void {
     this.tickStart = time;
     this.tickCmds = 0;
     const last = this.keys[this.keys.length - 1];
-    if (!last || time - last.at >= KEY_EVERY - EPS || last.state.life !== p.life) {
+    // Commands never change the carry weight, so a new one is loot the server handed over, which changes the pace.
+    if (!last || time - last.at >= KEY_EVERY - EPS || last.state.life !== p.life || p.carry !== this.carry) {
       this.keys.push({ at: time, state: copyState(p) });
     }
+    this.carry = p.carry;
     const old = time - TAPE_TIME;
     // Keep one key at or before the oldest time kept, so all of it can be rebuilt.
     while (this.keys.length > 1 && this.keys[1].at <= old) this.keys.shift();

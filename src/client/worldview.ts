@@ -1,36 +1,27 @@
 import * as THREE from 'three';
-import { WATER_LEVEL } from '../shared/constants.ts';
 import type { ExtractView } from '../shared/protocol.ts';
-import { smoothstep } from '../shared/geom.ts';
-import { fbm, mulberry32 } from '../shared/rng.ts';
-import type { PropStyle, World } from '../shared/world.ts';
+import { mulberry32 } from '../shared/rng.ts';
+import { HOUSE_WALL, type PropStyle, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
+import { Sun } from './cascades.ts';
+import { GroundCover } from './groundcover.ts';
 import { Layer } from './layers.ts';
-import { paint } from './ground.ts';
-import { surfaceMaterial } from './surfaces.ts';
+import { setRooms, surfaceMaterial } from './surfaces.ts';
+import { Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
+import { Water } from './water.ts';
+import { wind } from './wind.ts';
 
 // The island starts out in flat colours and takes on its textures once the
 // assets have loaded: blended ground layers, props in wood, concrete and
-// metal, rocks and bark, all lit by a real sky.
+// metal, rocks and bark, all lit by a real sky. Near the camera it's dressed
+// in grass, bushes and pebbles; the terrain and trees get simpler farther off.
 
 const HORIZON = new THREE.Color(0xb9c9d6);
 const ZENITH = new THREE.Color(0x4f7fae);
 const SUN_DIR = new THREE.Vector3(0.45, 0.6, 0.35).normalize();
 const FOG_NEAR = 60;
 const FOG_FAR = 750;
-const SHADOW_MAP = 2048;
-
-const SAND = new THREE.Color(0xb8a57a);
-const GRASS = new THREE.Color(0x5b7338);
-const GRASS_DRY = new THREE.Color(0x857a45);
-const DIRT = new THREE.Color(0x76674c);
-const ROCK = new THREE.Color(0x6f6b63);
-const SEABED = new THREE.Color(0x6b6450);
-const TINT_LUSH = new THREE.Color(0xa4c886);
-const TINT_GRASS = new THREE.Color(0xcfe0b8);
-const WHITE = new THREE.Color(0xffffff);
-const TINT_SEABED = new THREE.Color(0x7d7460);
 
 const FLAG_OPEN = 0x4fd06b;
 const FLAG_SHUT = 0xc4453a;
@@ -42,6 +33,7 @@ const PROP_COLORS: Record<PropStyle, number[]> = {
   wood: [0x6b4f33],
   metal: [0x7a3b2e, 0x2f5a73, 0x4e6b3a, 0x8a7a3a, 0x5d6166],
   fence: [0x7d6a4f, 0x6e5c42],
+  roof: [0x55595c],
 };
 /** With textures, props are tinted rather than coloured. */
 const PROP_TINTS: Record<PropStyle, number[]> = {
@@ -50,6 +42,7 @@ const PROP_TINTS: Record<PropStyle, number[]> = {
   wood: [0xb0a292],
   metal: [0xc0584a, 0x5d8aad, 0x7d9a5e, 0xc8ae62, 0xa4a8ac],
   fence: [0xffffff, 0xe0d4c0],
+  roof: [0xa09a90],
 };
 /** Wood textures are dark; they're brightened past themselves. */
 const GAIN: Partial<Record<PropStyle, number>> = { crate: 1.7, wood: 1.8, fence: 1.5 };
@@ -59,19 +52,14 @@ const PROP_LAYERS: Record<PropStyle, number> = {
   wood: Layer.boards,
   metal: Layer.metal,
   fence: Layer.boards,
-};
-/** Each layer's average colour, for debris flying off it. */
-const LAYER_MEAN: Partial<Record<number, number>> = {
-  [Layer.planks]: 0x6e5d4b,
-  [Layer.concrete]: 0x9a968a,
-  [Layer.boards]: 0x75614d,
+  roof: Layer.metal,
 };
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
 
 /** The rendered island: terrain, water, sky, props, vegetation and lighting. */
 export class WorldView {
   readonly scene = new THREE.Scene();
-  private readonly sun: THREE.DirectionalLight;
+  private readonly sun: Sun;
   private readonly sky: THREE.Mesh;
   /** Each extraction point's flag, coloured by whether it's open. */
   private readonly flags: THREE.MeshStandardMaterial[];
@@ -79,11 +67,12 @@ export class WorldView {
   private readonly props: THREE.InstancedMesh;
   /** Each prop's matrix while it stands. */
   private readonly propMatrices: THREE.Matrix4[];
-  private readonly terrain: THREE.Mesh;
+  private readonly terrain: Terrain;
   private readonly trees: Trees;
   private readonly rocks: THREE.InstancedMesh;
+  private readonly water: Water;
+  private readonly cover: GroundCover;
   private readonly hemi = new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.1);
-  private textured = false;
 
   constructor(world: World) {
     const scene = this.scene;
@@ -94,35 +83,36 @@ export class WorldView {
     scene.add(this.sky);
 
     scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.04;
-    scene.add(this.sun, this.sun.target);
+    this.sun = new Sun(0xfff1dc, 2.6, SUN_DIR);
+    this.sun.addTo(scene);
 
     this.world = world;
+    setRooms(world.buildings, HOUSE_WALL);
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
     const props = makeProps(world);
     this.props = props.mesh;
     this.propMatrices = props.matrices;
-    this.terrain = makeTerrain(world);
+    this.terrain = new Terrain(world);
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
-    scene.add(this.terrain, makeWater(), this.props, this.trees.group, this.rocks, extracts.group);
+    this.water = new Water(world);
+    this.cover = new GroundCover(world);
+    scene.add(this.terrain.group, this.water.group, this.props, this.trees.group, this.rocks, extracts.group, this.cover.group);
+  }
+
+  /** Work that needs the renderer: baking the far trees' picture. */
+  prepare(renderer: THREE.WebGLRenderer): void {
+    this.trees.bake(renderer);
   }
 
   /** Swap the flat colours for textures and light everything from the sky. */
   applyAssets(assets: Assets): void {
-    this.textured = true;
     this.scene.environment = assets.environment;
     this.scene.environmentIntensity = 1.7;
     this.hemi.intensity = 0.4;
 
-    const terrain = this.terrain.geometry;
-    terrain.setAttribute('color', terrain.getAttribute('tint'));
-    this.terrain.material = surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 });
+    this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true }));
 
     const props = this.props;
     const layers = new Float32Array(this.world.props.length);
@@ -134,10 +124,11 @@ export class WorldView {
     props.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers, 1));
     props.instanceColor!.needsUpdate = true;
     const old = props.material as THREE.Material;
-    props.material = surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0 });
+    props.material = surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0 }, 1, { indoor: true });
     old.dispose();
 
     this.trees.applyAssets(assets);
+    this.cover.applyAssets(assets);
     this.rocks.material = surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 });
     const rand = mulberry32(this.world.seed + 29);
     for (let i = 0; i < this.rocks.count; i++) {
@@ -161,14 +152,17 @@ export class WorldView {
     this.props.instanceMatrix.needsUpdate = true;
   }
 
-  /** A panel's colour, for its debris. */
+  /** A panel's colour, for its debris: flat, or a tint over its texture once textured. */
   panelColor(id: number, out: THREE.Color): THREE.Color {
     const p = this.world.panels[id];
-    if (!p) return out;
-    this.props.getColorAt(p.prop, out);
-    const mean = LAYER_MEAN[PROP_LAYERS[this.world.props[p.prop].style]];
-    if (this.textured && mean !== undefined) out.multiply(new THREE.Color(mean));
+    if (p) this.props.getColorAt(p.prop, out);
     return out;
+  }
+
+  /** A panel's texture layer, for its debris. */
+  panelLayer(id: number): number {
+    const p = this.world.panels[id];
+    return p ? PROP_LAYERS[this.world.props[p.prop].style] : Layer.concrete;
   }
 
   /** Green flags fly over open extraction points, red over shut ones; a called pickup flashes amber. */
@@ -183,21 +177,18 @@ export class WorldView {
     });
   }
 
-  /** Keep the sky around the camera and the shadow frustum over what matters. */
-  update(camera: THREE.Camera, focus: THREE.Vector3, shadowRadius: number): void {
+  /**
+   * Once a frame: keep the sky and sea round the camera, the shadow cascades
+   * `near` and `far` metres round `focus`, the detail near the camera, and
+   * the wind and waves at `time` seconds.
+   */
+  update(camera: THREE.Camera, focus: THREE.Vector3, near: number, far: number, time: number): void {
     this.sky.position.copy(camera.position);
-    const cam = this.sun.shadow.camera;
-    cam.left = cam.bottom = -shadowRadius;
-    cam.right = cam.top = shadowRadius;
-    cam.near = 1;
-    cam.far = shadowRadius * 2 + 400;
-    cam.updateProjectionMatrix();
-    // Snap to shadow texels so shadows don't shimmer as the focus moves.
-    const texel = (shadowRadius * 2) / SHADOW_MAP;
-    const fx = Math.round(focus.x / texel) * texel;
-    const fz = Math.round(focus.z / texel) * texel;
-    this.sun.target.position.set(fx, focus.y, fz);
-    this.sun.position.copy(this.sun.target.position).addScaledVector(SUN_DIR, shadowRadius + 200);
+    this.sun.update(focus, near, far);
+    wind.value = time;
+    this.water.update(camera, time, this.scene, this.sky);
+    this.trees.update(camera.position);
+    this.cover.update(camera.position);
   }
 }
 
@@ -238,79 +229,6 @@ function makeSky(): THREE.Mesh {
   sky.renderOrder = -1;
   sky.frustumCulled = false;
   return sky;
-}
-
-/** Heightfield mesh whose triangulation matches World.terrainHeight exactly. */
-function makeTerrain(world: World): THREE.Mesh {
-  const n = world.res + 1;
-  const pos = new Float32Array(n * n * 3);
-  for (let iz = 0; iz < n; iz++) {
-    for (let ix = 0; ix < n; ix++) {
-      const i = (iz * n + ix) * 3;
-      pos[i] = -world.half + ix * world.cell;
-      pos[i + 1] = world.heights[iz * n + ix];
-      pos[i + 2] = -world.half + iz * world.cell;
-    }
-  }
-  const index: number[] = [];
-  for (let iz = 0; iz < world.res; iz++) {
-    for (let ix = 0; ix < world.res; ix++) {
-      const a = iz * n + ix;
-      const b = a + 1;
-      const c = a + n;
-      const d = c + 1;
-      index.push(a, c, b, b, c, d);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setIndex(index);
-  geo.computeVertexNormals();
-
-  // Each vertex gets a flat colour for before the textures arrive, the weights
-  // of the five ground layers, and a tint over them for variety and the sea bed.
-  const normals = geo.getAttribute('normal');
-  const colors = new Float32Array(n * n * 3);
-  const tints = new Float32Array(n * n * 3);
-  const splatA = new Float32Array(n * n * 4);
-  const splatB = new Float32Array(n * n);
-  const c = new THREE.Color();
-  for (let i = 0; i < n * n; i++) {
-    const x = pos[i * 3];
-    const y = pos[i * 3 + 1];
-    const z = pos[i * 3 + 2];
-    const { dry, dirt, rock, sand, seabed, weights } = paint(world, x, y, z, normals.getY(i));
-
-    c.copy(GRASS).lerp(GRASS_DRY, smoothstep(0.45, 0.7, dry));
-    c.lerp(DIRT, dirt).lerp(ROCK, rock).lerp(SAND, sand).lerp(SEABED, seabed);
-    c.toArray(colors, i * 3);
-
-    splatA.set(weights.slice(0, 4), i * 4);
-    splatB[i] = weights[4];
-
-    const lush = fbm(x / 23, z / 23, world.seed + 11, 2);
-    c.copy(TINT_GRASS).lerp(TINT_LUSH, smoothstep(0.35, 0.75, lush)).lerp(WHITE, Math.max(sand, rock));
-    c.lerp(TINT_SEABED, seabed);
-    c.toArray(tints, i * 3);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.setAttribute('tint', new THREE.BufferAttribute(tints, 3));
-  geo.setAttribute('splatA', new THREE.BufferAttribute(splatA, 4));
-  geo.setAttribute('splatB', new THREE.BufferAttribute(splatB, 1));
-
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function makeWater(): THREE.Mesh {
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: 0x2b5a6e, roughness: 0.12, metalness: 0.2, transparent: true, opacity: 0.82 }),
-  );
-  mesh.position.y = WATER_LEVEL;
-  mesh.receiveShadow = true;
-  return mesh;
 }
 
 function pick(palette: number[], t: number): number {

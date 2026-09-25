@@ -179,7 +179,7 @@ the Known Issues named in its scope.
 | 12 | **Playtest and tuning** | A local run-stats log (length, cause of death, extraction used, contracts done, loot value) with a debug panel to read it; tune the operator cap, guard count, bot difficulty, weapon damage and recoil, extraction timings and loot values from playtests; fix what playtests find; mode-less links; the menu at small window sizes | Several full runs by other people; the average run lands in 3–10 minutes, and no single strategy dominates | **Partly done**: the run log, bot playtest, bot and cap tuning, mode-less links and small-window menu are in; runs by other people haven't happened yet |
 | 13 | **Animation** | Death animation with a simple ragdoll that doesn't sink into ground or walls; third-person crouch-walk, slide, mantle, jump and fall clips; third-person reload, weapon switch and grenade throw; suppressors on third-person guns; first-person arms with animated reloads; a distinct look for commanders and each side; hit flash only where the round landed; the body lean matches the lean hitbox | Watching another operator, you can tell what they are doing: crouching, sliding, reloading, throwing | **Done** |
 | 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | **Done** |
-| 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | Not started |
+| 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | **Done** (60 fps checked on an M3 Pro only, and slow hardware only simulated) |
 | 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards are kept per condition | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | Not started |
 | 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | Not started |
 | 18 | **Rivals** | Operator bot personalities: the *rat* (sneaks, loots, avoids fights), the *hunter* (follows gunfire to find wounded operators), the *camper* (waits near extraction points) and the *looter* (goes for high-value crates); third-partying, so operators are drawn to fights between others; a bounty on the operator carrying the most value, who is marked or heard more easily; a kill feed; bags left by bodies show their value before you open them. Personalities carry over as fill bots in future multiplayer | In Mixed mode, meeting another operator plays out differently depending on who they are, and a big haul makes you feel hunted | Not started |
@@ -238,15 +238,41 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   for a magazine on a reload and throws the grenades.
 - **Buildings are still boxes** (9): the walls, watchtowers, containers and crates are textured,
   but the geometry is primitive. There are no doors, windows or interiors.
+  **Resolved in part** (15): every outpost has a two-room concrete building (see below). Its walls
+  are breakable panels with doorways and window openings, and lintels over each opening rest on
+  the columns either side. Corner posts hold up an unbreakable roof, and there's a table and a
+  guarded crate in each room. Everything is still built from boxes, and the watchtowers and
+  containers are unchanged.
 - **Trees are procedural** (9), because Poly Haven's tree models are hundreds of MB each. They
   have no LOD or impostors, and they don't sway.
+  **Resolved in part** (15): trees are split into 100 m tiles. Tiles within 170–190 m of the
+  camera draw every tree in full, and their crowns sway in one wind. Farther tiles draw each tree
+  as an impostor: a card facing the camera, with a picture of the tree baked at startup. In the
+  shadow pass the card faces the sun, so far trees still cast shadows. The trees are still
+  procedural.
 - **There is no ground cover** (9): no grass blades, bushes or small rocks near the player.
+  **Resolved** (15): grass clumps (to 42 m), low bushes (to 75 m) and pebbles (to 35 m) are
+  scattered round the camera. Each 8 m cell scatters them the same way every time, thickest where
+  the ground is painted grass, and never on props, under roofs or in the sea. They shrink away
+  toward the edge of their range, and the grass and bushes sway.
 - **Water is a flat, see-through plane** (9), with no waves, reflections, shoreline foam or
   underwater effect.
+  **Resolved in part** (15): a 240 m grid round the camera rolls with four wave trains, inside a
+  flat ring out to the horizon. The sea's depth comes from a height map of the island: shallow
+  water is clear and pale, deep water dark, waves die down toward the shore and foam laps along
+  it in bands. Below the surface the fog turns murky green. It reflects the sky through the
+  environment map, but not the island (see below).
 - **Debris is coloured with each layer's average** (9), not textured like the panel it came
   from.
+  **Resolved** (15): debris uses the panel's texture layer and tint. Each chunk is textured in its
+  own frame, so the texture tumbles with it instead of sliding through a world-space projection.
 - **Shadows use one fixed 2048 px map** (9), with no cascades, so distant shadows are coarse or
   missing.
+  **Resolved** (15): two cascades of 2048 px each, 32 m and 230 m round the player, blending over
+  the near one's edge. three.js's CSM addon would have taken over every material's
+  onBeforeCompile, so `src/client/cascades.ts` patches the stock lighting chunk instead: the
+  second sun gives no light and only lends its shadow map. Bodies now cast shadows only within
+  60 m. Before, every soldier on screen was drawn into the shadow map however far away it was.
 - **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
   best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
   helmet hides the face, and its hands stay open instead of gripping the gun.
@@ -299,6 +325,46 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   moving at full speed in play, and its cost per frame with many bodies near wasn't measured.
   Each near body now also runs leg IK when crouched, sliding, airborne or leaning, and hand
   orientation and finger curl every update.
+
+- **Doors are open doorways** (15). There are no door leaves to open or shut. Doorways are 2.2 m
+  wide so a bot's path always fits through the 1 m nav grid. Windows are open holes with no glass.
+- **One building plan for every outpost** (15): two rooms, a front door, an end door and a door
+  between them. It varies only in size, the placement of its openings and which of four corners
+  and turns it takes. There are no buildings outside the outposts.
+- **Outposts were rearranged** (15). The building takes a corner, so the containers and crates
+  landed elsewhere on every island. An older link or leaderboard score is for the old layout of
+  the same island. Only the outposts' insides changed; terrain, trees, rocks, fences and
+  extraction points didn't move.
+- **The roof can't be broken** (15), though every wall can. With all the walls blown out, a
+  roof is left standing on its four corner posts.
+- **Indoor light is a flat cut** (15). Surfaces inside a building's walls and under its roof get
+  30% of the sky's light, with a hard edge at the doorway. Light through doors and windows isn't
+  modelled, and soldiers and debris inside aren't dimmed.
+- **Ground cover is only for looks** (15). Nothing collides with grass, bushes or pebbles, and bots
+  see straight through them, so bushes are kept under 0.9 m and grass under 0.6 m. Near the
+  coast grass can stand on sand, because each tuft reads the paint at the nearest terrain vertex.
+- **The tree impostors are rough** (15). There's one picture from the side, lit evenly and then
+  darkened by a hand-set 0.4 to match the full trees. Trees switch between full and impostor at
+  170–190 m with no cross-fade. A sun-facing card only approximates a crown's shadow, and
+  swaying crowns cast still shadows.
+- **The sea reflects only the sky** (15), through the environment map. There are no reflections
+  of the island. Out past the rolling grid the waves are only in the normals. Far off, the sea
+  looks pale, reflecting the bright horizon. The underwater effect is only fog: no muffling and no
+  distortion. It can only be seen when the death camera sinks into the sea.
+- **Shadows end at 230 m** (15), and bodies cast them only within 60 m. The cascade patch changes
+  three.js's lighting chunk for every scene: any scene with exactly two shadow-casting directional
+  lights is taken as cascades. It matches the chunk's text, and fails loudly if a three.js update
+  changes it.
+- **Far terrain doesn't carry what stands on it** (15). Trees, rocks and props sit on the exact
+  ground, so on a coarse far tile they can float or sink a little.
+- **The textured island looks washed out** (noticed in 15, from 11). The strong sky light
+  (environment intensity 1.7) flattens the ground's colours and makes the sun's shadows faint.
+  Checked against the build before chunk 15: it looked the same.
+- **World detail was checked by screenshots on one machine** (15). Headless Chrome on an M3 Pro
+  holds 60 fps (median 16.7 ms, 95th percentile 18.2 ms) at 1280 × 720 in a Mixed game.
+  Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A
+  mid-range laptop wasn't tried, nobody has watched the swaying and waves in motion, and the
+  ground cover's rebuild, when the camera crosses an 8 m cell, wasn't timed.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
@@ -350,6 +416,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The reverb is one generated room** (14), the same everywhere, only louder when walled in.
   It isn't placed in 3D, and a place with no roof yet (every building so far) rings like a room
   when its walls are close.
+  **Improved** (15): the outposts' buildings have roofs, so inside them the reverb is right. The
+  walled yards around them still ring like a room.
 - **The sea's bearing is an average** (14) of the directions that found water at the nearest
   radius, so on a narrow point with sea on both sides it can seem to come from inland.
 - **Far fights fill the voice pool** (14). A distant shot holds a voice through its delay and its
@@ -387,7 +455,16 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   352 kB). The game's entry chunk is 120 kB, and the asset loaders (133 kB) load lazily. No chunk
   is over 500 kB, but the total loaded at start barely changed (see below).
 - **The terrain is one full-resolution mesh**, with no LOD.
+  **Resolved** (15): 5 × 5 tiles of 160 m, each with three levels (every vertex, every second
+  and every fourth) switching at 230 m and 460 m from the tile's middle. The nearest level is
+  exactly the collision triangles. Coarser tiles hang a 4 m skirt to hide cracks, and every
+  level takes its normals and paint from the full-detail vertices. In the orbiting menu view the
+  island draws 289k triangles instead of 689k.
 - **Adaptive resolution is untested on slow hardware** (9) and could flip back and forth.
+  **Resolved in part** (15): it did flip. A test with a simulated GPU that is too slow at full
+  resolution and comfortably fast one step down saw 121 switches in 10 minutes. Now a step up
+  that turns slow within 10 s isn't tried again for 30 s, then 60 s, and so on up to 10 minutes;
+  the same test sees fewer than 12. It still hasn't run on real slow hardware.
 - **Every positional sound creates its own panner node** (9), released on a timer. Heavy
   fights create a lot of them.
   **Resolved** (14): sounds out in the world take turns on a pool of 24 voices (gain, low-pass,
@@ -413,6 +490,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   mid-game when the assets land.
 - **The game's entry chunk grew to 141 kB** (13), from 120 kB, with the body posing and the
   first-person arms. The soldier model grew by 4.5 kB for the death clip.
+- **The entry chunk grew again, to 172 kB** (15), with the terrain tiles, water, ground cover,
+  impostors and cascades. It all ships in the entry chunk rather than loading lazily.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
@@ -445,6 +524,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The killer's state can drift between keyframes** (10). The server changes a few things
   outside the commands (health, ammo from loot, dying). The replay re-syncs to a full state
   every 0.5 s, so errors are small and short-lived, but they're there.
+  **Improved** (15): a new carry weight now writes a keyframe at once, since it changes how fast
+  the player moves. Chunk 15's new outpost layouts had a bot take loot just before the end of
+  the tape test, and its replay drifted 3 cm. Health and ammo still wait for the next key.
 - **No HUD in the death cam** (10): there's no hit marker, killer health or ammo. The bolt
   scope overlay is the only thing shown besides the banner.
 - **Death cam clips are big** (10): about 6 s of commands and keyframes as plain JSON, some tens
@@ -496,6 +578,15 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   them.
 - **The pose viewer isn't part of the build or the tests** (13). `dev/pose.html` runs on the dev
   server only, and its screenshots were read by eye.
+- **The world's new rendering has few automated tests** (15). The terrain tiles (exact heights
+  up close, skirts), the wave height, adaptive resolution and the buildings (placement, bot paths
+  into both rooms, walking through doorways, lintels falling, crates) are tested. The water
+  shader, ground cover, impostors, cascades and indoor light were checked by screenshots only.
+  In development, `?cam=x,y,z,tx,ty,tz` (or `?cam=o<outpost>,...` relative to an outpost) holds
+  the menu camera for such screenshots.
+- **Two tests had leaned on the old outpost layout** (15): the guard test put the intruder at a
+  fixed spot, which now sits between two containers, and the mantle test picked a crate that now
+  has another stacked on it. They now pick a spot the sentry can see, and an unstacked crate.
 ### Playtest and tuning
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
   the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
@@ -514,6 +605,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   came out even (about 210 and 190 points per run), as did light and heavy carrying, so there was
   nothing to fix there without human data. Only the operator cap and operator bot behaviour were
   tuned.
+- **The buildings haven't been tuned for** (15). In a 10-minute, 6-island bot playtest, operator
+  bots got out of 19% of runs, against 18% before the buildings. The bolt-action's rate fell from
+  22% to 11%, but on only about 70 runs each.
 - **Operator bots now leave far-off enemies alone** (12). They fight guards only within 40 m, and
   other operators only within their gun's effective range, unless shot at in the last 10 s. That
   applies to human players too, so a bot you spot at long range won't open fire first.

@@ -83,7 +83,8 @@ describe('firing', () => {
   });
 
   it('cannot fire while mantling', () => {
-    const crate = w.props.find((q) => q.style === 'crate' && Math.abs(q.box.maxY - o.y - 1.2) < 1e-6)!.box;
+    // One with nothing stacked on it, so there's room on top to climb onto.
+    const crate = w.props.find((q) => q.style === 'crate' && Math.abs(q.box.maxY - o.y - 1.2) < 1e-6 && !w.panels[q.panel].carries.length)!.box;
     const p = spawnState((crate.minX + crate.maxX) / 2, 0, crate.maxZ + 0.6);
     p.y = w.groundHeight(p.x, p.z, o.y + 0.5);
     run(p, Btn.Forward | Btn.Jump, 1, { yaw: 0 });
