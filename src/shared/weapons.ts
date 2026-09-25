@@ -161,6 +161,8 @@ export interface Shot {
   dx: number;
   dy: number;
   dz: number;
+  /** Fired through a suppressor. */
+  quiet: boolean;
 }
 
 /** A thrown grenade: where it left the hand and how fast. */
@@ -210,6 +212,8 @@ export interface WeaponState {
   grenades: number;
   /** Throw was held last command; each throw needs a fresh press. */
   throwHeld: boolean;
+  /** Which weapons have a suppressor fitted, by weapon index. */
+  suppressed: boolean[];
 }
 
 export function spawnWeapons(): WeaponState {
@@ -219,6 +223,7 @@ export function spawnWeapons(): WeaponState {
     reserve: WEAPONS.map((w) => w.reserve),
     cooldown: 0, reload: 0, draw: 0, triggerHeld: false, aim: 0,
     recoilPitch: 0, recoilYaw: 0, burst: 0, sinceShot: 1, grenades: GRENADES, throwHeld: false,
+    suppressed: WEAPONS.map(() => false),
   };
 }
 
@@ -385,7 +390,7 @@ function fireRound(
   p.cooldown += w.interval;
   const [dx, dy, dz] = shotDirection(aimYaw(p), aimPitch(p), spreadOf(p), seq);
   const o = eye();
-  onFx?.({ k: 'shot', shot: { weapon: p.weapon, seq, ox: o.x, oy: o.y, oz: o.z, dx, dy, dz } });
+  onFx?.({ k: 'shot', shot: { weapon: p.weapon, seq, ox: o.x, oy: o.y, oz: o.z, dx, dy, dz, quiet: p.suppressed[p.weapon] } });
 
   // Recoil climbs hard for the first rounds, then settles while wandering sideways.
   const steady = lerp(1, 0.8, p.aim) * lerp(1, 0.85, p.duck);

@@ -20,6 +20,8 @@ const VOICES: ShotVoice[] = [
   { cutoff: 6500, decay: 0.1, thump: 0.5, tail: 0.3, gain: 0.45 },
   { cutoff: 3800, decay: 0.3, thump: 1.2, tail: 1.2, gain: 0.8 },
 ];
+/** A suppressed shot fades out over this share of the distance. */
+const SUPPRESSED_REACH = 0.3;
 /** Metres over which a distant shot drops to half volume. */
 const HALF_DISTANCE = 40;
 
@@ -45,16 +47,18 @@ export class Sfx {
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   }
 
-  /** A gunshot, `distance` metres away (0 for your own). */
-  shot(weapon: number, distance = 0): void {
+  /** A gunshot, `distance` metres away (0 for your own); `quiet` through a suppressor. */
+  shot(weapon: number, distance = 0, quiet = false): void {
     const v = VOICES[weapon] ?? VOICES[0];
-    const far = distance / (distance + HALF_DISTANCE);
-    const gain = v.gain * (1 - far * 0.85);
-    const cutoff = v.cutoff * (1 - far * 0.75);
-    this.burst(cutoff, v.decay, gain, 0);
-    this.thump(110, 40, 0.12, gain * v.thump);
-    // A quieter, darker echo tail.
-    this.burst(cutoff * 0.25, v.tail, gain * 0.18, 0.04);
+    const far = distance / (distance + HALF_DISTANCE * (quiet ? SUPPRESSED_REACH : 1));
+    const gain = v.gain * (1 - far * 0.85) * (quiet ? 0.4 : 1);
+    const cutoff = v.cutoff * (1 - far * 0.75) * (quiet ? 0.35 : 1);
+    this.burst(cutoff, v.decay * (quiet ? 0.6 : 1), gain, 0);
+    if (!quiet) {
+      this.thump(110, 40, 0.12, gain * v.thump);
+      // A quieter, darker echo tail.
+      this.burst(cutoff * 0.25, v.tail, gain * 0.18, 0.04);
+    }
     if (weapon === BOLT && distance === 0) {
       // Work the bolt.
       this.click(2400, 0.5, 0.35);

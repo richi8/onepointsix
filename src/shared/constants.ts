@@ -177,6 +177,19 @@ export const GRENADE_PANEL_RADIUS = 2.2;
 /** How far away a blast can be heard, in metres. */
 export const GRENADE_NOISE = 320;
 
+// Noise. Bots hear what happens within its radius and come to look.
+/** Share of a gun's noise radius left with a suppressor fitted. */
+export const SUPPRESSED_NOISE = 0.3;
+/** How far away breaking a panel can be heard, metres. */
+export const BREAK_NOISE = { wall: 140, fence: 50, crate: 70 } as const;
+
+// Contracts: objectives handed out with each run, paid only if you get out.
+/** Contracts per run, fewest and most. */
+export const CONTRACTS: [number, number] = [1, 2];
+export const CONTRACT_REWARD = { intel: 1500, cache: 1200, commander: 2500 } as const;
+/** Seconds of holding Interact to grab the intel. */
+export const INTEL_TIME = 4;
+
 export const Btn = {
   Forward: 1,
   Back: 2,

@@ -91,7 +91,7 @@ export class Hud {
     this.health.classList.toggle('low', s.hp <= 30);
 
     this.slots.forEach((el, i) => el.classList.toggle('on', i === s.weapon));
-    this.weaponName.textContent = w.name;
+    this.weaponName.textContent = s.suppressed[s.weapon] ? `${w.name} · suppressed` : w.name;
     this.mag.textContent = String(s.mag[s.weapon]);
     this.mag.classList.toggle('low', s.mag[s.weapon] <= w.magSize / 5);
     this.reserve.textContent = `/ ${s.reserve[s.weapon]}`;
@@ -168,6 +168,17 @@ export class Hud {
     how.textContent = `called a pickup · ${where}`;
     row.append(how);
     row.className = 'extract';
+    this.pushFeed(row);
+  }
+
+  /** One of our contracts was done, or someone else got to it first. */
+  contract(title: string, state: 'done' | 'failed'): void {
+    const row = document.createElement('div');
+    row.append('Contract');
+    const how = document.createElement('em');
+    how.textContent = `${title} · ${state === 'done' ? 'done — get out to be paid' : 'failed'}`;
+    row.append(how);
+    row.className = state === 'done' ? 'you extract' : 'you';
     this.pushFeed(row);
   }
 

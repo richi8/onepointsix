@@ -44,6 +44,29 @@ export interface PlayerSnap {
   weapon: number;
 }
 
+export type ContractKind = 'intel' | 'cache' | 'commander';
+
+/** One of the recipient's contracts. */
+export interface ContractView {
+  kind: ContractKind;
+  /** Index into World.outposts of the outpost it's at. */
+  outpost: number;
+  /** Where to go: the intel on the watchtower, the top of the cache, or the commander's outpost. */
+  x: number;
+  y: number;
+  z: number;
+  /** Added to the score if you get out with it done. */
+  reward: number;
+  /** Failed when someone else got there first, such as killing your commander. */
+  state: 'open' | 'done' | 'failed';
+  /** Intel: how far along grabbing it is, 0 to 1. */
+  progress: number;
+  /** Cache: its panel in the world, or -1. */
+  panel: number;
+  /** Commander: its name, or ''. */
+  name: string;
+}
+
 /** Something that happened during a server tick, sent reliably to whoever should hear. */
 export type GameEvent =
   // To the shooter: their round hit `target` for `damage` at (x, y, z).
@@ -66,10 +89,14 @@ export type GameEvent =
       /** What the loot carried was worth, and the items. */
       value: number; items: number[];
       kills: number; guardKills: number;
+      /** How the run's contracts ended up; the done ones are paid if extracted. */
+      contracts: ContractView[];
       /** Seconds the run lasted. */
       time: number;
       killer: string;
     }
+  // To the player: one of their contracts, by index, was done or failed.
+  | { k: 'contract'; index: number; state: 'done' | 'failed' }
   // To everyone: panels broke, knocked from around (x, y, z).
   | { k: 'break'; panels: number[]; x: number; y: number; z: number }
   // To everyone: broken panels were rebuilt.
@@ -82,6 +109,8 @@ export type GameEvent =
       ox: number; oy: number; oz: number; ex: number; ey: number; ez: number;
       /** What it stopped in: a body, the world, or nothing within range. */
       struck: 'body' | 'world' | 'none';
+      /** Fired through a suppressor. */
+      quiet: boolean;
     };
 
 export type ClientMsg =
@@ -126,6 +155,9 @@ export interface RunView {
   /** Extraction point the player stands in, or -1, and seconds held there. */
   zone: number;
   hold: number;
+  contracts: ContractView[];
+  /** The intel contract, by index, that the player is facing within reach, or -1. */
+  intel: number;
 }
 
 /** A live grenade. */

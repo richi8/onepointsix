@@ -1,6 +1,7 @@
+import * as THREE from 'three';
 import { CALL_TIME, CARRY_HEAVY, EXTRACT_TIME, KILL_SCORE_GUARD, KILL_SCORE_OPERATOR } from '../shared/constants.ts';
 import { extractKind, extractName, ITEMS, lootMass, lootValue } from '../shared/loot.ts';
-import type { ExtractView, GameEvent, RunView } from '../shared/protocol.ts';
+import type { ContractView, ExtractView, GameEvent, RunView } from '../shared/protocol.ts';
 import type { World } from '../shared/world.ts';
 import { bearing } from './hud.ts';
 
@@ -8,6 +9,8 @@ const $ = (id: string) => document.getElementById(id)!;
 
 /** Items listed in the pack before the rest are summed up. */
 const PACK_SHOWN = 8;
+/** Contract markers float this far above their target, metres. */
+const MARKER_LIFT = 2.5;
 
 export type RunEnd = Extract<GameEvent, { k: 'runEnd' }>;
 
@@ -15,6 +18,9 @@ export type RunEnd = Extract<GameEvent, { k: 'runEnd' }>;
 export class RunHud {
   private readonly clock = $('clock');
   private readonly extracts = $('extracts');
+  private readonly contracts = $('contracts');
+  private readonly markers = $('markers');
+  private readonly tmp = new THREE.Vector3();
   private readonly prompt = $('prompt');
   private readonly promptTitle = this.prompt.querySelector('.title')!;
   private readonly promptList = this.prompt.querySelector('ul')!;
@@ -27,7 +33,7 @@ export class RunHud {
   private readonly world: World;
   private readonly names: string[];
   /** Last rendered text of each part, so the DOM is only touched on change. */
-  private shown = { extracts: '', prompt: '', pack: '' };
+  private shown = { extracts: '', contracts: '', prompt: '', pack: '' };
 
   constructor(world: World) {
     this.world = world;
@@ -35,8 +41,9 @@ export class RunHud {
   }
 
   /** Call once per frame while a run is on; null hides it all (e.g. on the range). */
-  update(run: RunView | null, views: readonly ExtractView[], x: number, z: number, yaw: number): void {
-    for (const el of [this.clock, this.extracts, this.prompt, this.pack]) el.hidden = !run;
+  update(run: RunView | null, views: readonly ExtractView[], x: number, z: number, yaw: number, camera: THREE.Camera): void {
+    for (const el of [this.clock, this.extracts, this.prompt, this.pack, this.markers]) el.hidden = !run;
+    this.contracts.hidden = !run?.contracts.length;
     if (!run) return;
 
     this.clock.textContent = clock(run.time);
@@ -55,6 +62,7 @@ export class RunHud {
       })
       .join('');
     this.set('extracts', this.extracts, rows);
+    this.updateContracts(run.contracts, x, z, yaw, camera);
 
     this.updatePrompt(run, views);
 
@@ -73,13 +81,51 @@ export class RunHud {
     });
   }
 
+  /** Your contracts in the corner, and a marker over each one still open. */
+  private updateContracts(contracts: readonly ContractView[], x: number, z: number, yaw: number, camera: THREE.Camera): void {
+    const rows = contracts.map((c) => {
+      const d = Math.hypot(c.x - x, c.z - z);
+      const wrecked = c.kind === 'cache' && c.state === 'open' && this.world.panels[c.panel]?.box.gone;
+      const status = c.state === 'done' ? `done · +${money(c.reward)} on extraction`
+        : c.state === 'failed' ? 'failed — someone else got there first'
+        : wrecked ? 'wrecked by someone else — rebuilt in a few minutes'
+        : `${this.where(c)} · ${money(c.reward)}`;
+      const arrow = c.state === 'open' ? arrowFor(bearing(x, z, yaw, c.x, c.z)) : c.state === 'done' ? '✓' : '✗';
+      const far = c.state === 'open' ? `${Math.round(d)} m` : '';
+      return `<div class="${c.state}"><b>${arrow}</b><span>${contractTitle(c)}</span><em>${far}</em><i>${status}</i></div>`;
+    });
+    this.set('contracts', this.contracts, rows.join(''));
+
+    while (this.markers.children.length < contracts.length) this.markers.append(document.createElement('div'));
+    [...this.markers.children].forEach((el, i) => {
+      const m = el as HTMLElement;
+      const c = contracts[i];
+      const v = c && c.state === 'open' ? this.tmp.set(c.x, c.y + MARKER_LIFT, c.z).project(camera) : null;
+      m.hidden = !v || v.z > 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1;
+      if (m.hidden || !v) return;
+      const text = `${Math.round(Math.hypot(c.x - x, c.z - z))} m`;
+      if (m.textContent !== text) m.textContent = text;
+      m.style.transform = `translate(${((v.x + 1) / 2) * innerWidth}px, ${((1 - v.y) / 2) * innerHeight}px)`;
+    });
+  }
+
+  /** Where a contract is, e.g. "Outpost Kilo watchtower". */
+  private where(c: ContractView): string {
+    const name = this.world.outposts[c.outpost]?.name ?? '';
+    return c.kind === 'intel' ? `${name} watchtower` : name;
+  }
+
   /** What you're facing or standing in, and what pressing F would do. */
   private updatePrompt(run: RunView, views: readonly ExtractView[]): void {
     let title = '';
     let items: string[] = [];
     let bar = -1;
     const loot = run.loot;
-    if (loot) {
+    const intel = run.contracts[run.intel];
+    if (intel) {
+      title = `Hold <kbd>F</kbd> grab the intel`;
+      bar = intel.progress;
+    } else if (loot) {
       const what = loot.kind === 'bag' ? 'bag' : 'crate';
       if (!loot.searched) {
         title = `Hold <kbd>F</kbd> search ${what}`;
@@ -127,6 +173,10 @@ export class RunHud {
       ['Loot', out ? money(e.value) : `<s>${money(e.value)}</s>`],
       [`Operators killed × ${KILL_SCORE_OPERATOR}`, String(e.kills)],
       [`Guards killed × ${KILL_SCORE_GUARD}`, String(e.guardKills)],
+      ...e.contracts.map((c): [string, string] => {
+        const pay = c.state === 'done' ? `+${money(c.reward)}` : c.state === 'failed' ? 'failed' : 'not done';
+        return [contractTitle(c), c.state === 'done' && !out ? `<s>${pay}</s>` : pay];
+      }),
       ['Time', clock(e.time)],
     ];
     const counts = new Map<number, number>();
@@ -153,6 +203,13 @@ export class RunHud {
     this.shown[key] = html;
     apply();
   }
+}
+
+/** What a contract asks for. */
+export function contractTitle(c: ContractView): string {
+  if (c.kind === 'intel') return 'Grab the intel';
+  if (c.kind === 'cache') return 'Destroy the supply cache';
+  return `Eliminate ${c.name || 'the commander'}`;
 }
 
 function clock(seconds: number): string {

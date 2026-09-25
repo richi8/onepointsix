@@ -1,5 +1,6 @@
 import {
   BODY_TIME,
+  BREAK_NOISE,
   Btn,
   CMD_DT,
   EXTRACT_TIME,
@@ -9,6 +10,7 @@ import {
   GRENADE_RADIUS,
   GRENADES,
   GUARD_RESPAWN,
+  INTEL_TIME,
   MAX_CMDS_PER_TICK,
   MAX_HP,
   MAX_REWIND,
@@ -22,6 +24,7 @@ import {
   SERVER_DT,
   SERVER_TICK_RATE,
   SPAWN_PROTECTION,
+  SUPPRESSED_NOISE,
 } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, yawToward } from '../shared/geom.ts';
 import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
@@ -36,10 +39,11 @@ import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '
 import { World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise } from './bot.ts';
 import { Containers } from './containers.ts';
+import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
 import { Cover } from './cover.ts';
 import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
-import { insertionPoint, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
+import { insertionPoint, planCommander, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
 import { dummyCmds, layoutRange, type DummyKind, type Post, type RangeLayout } from './range.ts';
 import { SKILLS } from './skill.ts';
 
@@ -79,6 +83,8 @@ interface Run {
   hold: number;
   /** Who killed them, once dead. */
   killer: string;
+  /** Objectives paid on extraction; only humans get them. */
+  contracts: Contract[];
 }
 
 interface Player extends PlayerState {
@@ -153,6 +159,7 @@ export class GameServer {
   private readonly players = new Map<number, Player>();
   private readonly spawnRng: () => number;
   private readonly botRng: () => number;
+  private readonly contractRng: () => number;
   private readonly operatorSlots: number;
   private readonly runs: boolean;
   /** When each operator slot emptied by a bot leaving gets filled again, soonest first. */
@@ -169,6 +176,7 @@ export class GameServer {
     this.world = new World(this.seed);
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
+    this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);
     this.range = layoutRange(this.world, mulberry32(this.seed ^ 0x2545f491));
     this.nav = new NavGrid(this.world);
     this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f));
@@ -216,6 +224,7 @@ export class GameServer {
     const p = this.add('player', 'operator', send);
     if (this.runs) p.run = newRun(this.time);
     this.spawn(p);
+    if (p.run) this.assignContracts(p);
     // A human takes an operator slot from a bot: the one farthest from anyone.
     while (this.operatorSlots > 0 && this.operatorCount() > this.operatorSlots) {
       const bots = [...this.players.values()].filter((b) => b.team === 'operator' && b.plan);
@@ -375,6 +384,16 @@ export class GameServer {
     run.dropHeld = drop;
     if (!interact) {
       run.search = null;
+      for (const k of run.contracts) k.held = 0;
+      return;
+    }
+
+    const intel = run.contracts.findIndex((k) => reachesIntel(k, p.x, p.y, p.z, p.yaw));
+    if (intel >= 0) {
+      run.search = null;
+      const k = run.contracts[intel];
+      k.held += CMD_DT;
+      if (k.held >= INTEL_TIME - 1e-9) this.settle(p, intel, 'done');
       return;
     }
 
@@ -399,7 +418,10 @@ export class GameServer {
         p.grenades = Math.max(p.grenades, GRENADES);
       }
       else if (def.use === 'heal') p.hp = Math.min(p.hp + MEDKIT_HEAL, MAX_HP);
-      else {
+      else if (def.use === 'suppressor') {
+        const w = p.suppressed[p.weapon] ? p.suppressed.indexOf(false) : p.weapon;
+        if (w >= 0) p.suppressed[w] = true;
+      } else {
         run.items.push(item);
         p.carry = lootMass(run.items);
       }
@@ -414,11 +436,7 @@ export class GameServer {
   private called(p: Player, index: number): void {
     const at = this.extracts.points[index];
     this.broadcast({ k: 'call', id: p.id, index, name: p.name });
-    const now = this.time;
-    for (const g of this.players.values()) {
-      if (g.team !== 'guard' || g.dead || !g.bot || Math.hypot(g.x - at.x, g.z - at.z) > CALL_NOISE) continue;
-      g.bot.hear(g, { x: at.x, y: at.y, z: at.z, radius: CALL_NOISE, source: p.id }, now);
-    }
+    this.noise(at.x, at.y, at.z, CALL_NOISE, p.id, (g) => g.team === 'guard');
     for (const plan of planResponse(this.world, this.nav, this.botRng, at, RESPONSE_SQUAD)) {
       const g = this.addBot(plan, 'guard');
       g.recall = at.pickup + RESPONSE_STAY;
@@ -453,11 +471,13 @@ export class GameServer {
   private endRun(p: Player, outcome: 'extracted' | 'killed' | 'mia'): void {
     const run = p.run!;
     const value = lootValue(run.items);
-    const score = outcome === 'extracted' ? runScore(value, run.kills, run.guardKills) : 0;
+    const contracts = run.contracts.map(contractView);
+    const score = outcome === 'extracted' ? runScore(value, run.kills, run.guardKills, contractReward(contracts)) : 0;
     p.events.push({
       k: 'runEnd', outcome, score, value, items: [...run.items], kills: run.kills, guardKills: run.guardKills,
-      time: this.time - run.start, killer: run.killer,
+      contracts, time: this.time - run.start, killer: run.killer,
     });
+    this.dismiss(run);
     if (outcome === 'extracted') this.broadcast({ k: 'extract', id: p.id, name: p.name, value });
     if (outcome === 'killed') this.containers.drop(p.x, p.y, p.z, run.items, this.time);
     run.items = [];
@@ -484,7 +504,54 @@ export class GameServer {
       loot: p.dead ? null : this.lootView(p),
       zone: run.zone,
       hold: run.hold,
+      contracts: run.contracts.map(contractView),
+      intel: p.dead ? -1 : run.contracts.findIndex((k) => reachesIntel(k, p.x, p.y, p.z, p.yaw)),
     };
+  }
+
+  // -------------------------------------------------------------- contracts
+
+  /** A human's run gets its contracts, and the commanders among them are put on the island. */
+  private assignContracts(p: Player): void {
+    const run = p.run!;
+    run.contracts = planContracts(this.world, this.contractRng);
+    for (const c of run.contracts) {
+      if (c.kind !== 'commander') continue;
+      const taken = new Set([...this.players.values()].map((q) => q.name));
+      const plan = planCommander(this.world, this.nav, this.contractRng, this.world.outposts[c.outpost], taken);
+      if (!plan) {
+        c.state = 'failed';
+        continue;
+      }
+      const g = this.addBot(plan, 'guard');
+      c.bot = g.id;
+      c.name = g.name;
+    }
+  }
+
+  /** A contract was done, or failed because someone else got there first. */
+  private settle(p: Player, index: number, state: 'done' | 'failed'): void {
+    const c = p.run!.contracts[index];
+    if (c.state !== 'open') return;
+    c.state = state;
+    c.held = 0;
+    p.events.push({ k: 'contract', index, state });
+  }
+
+  /** A run is over: its commanders still on the island are called away. */
+  private dismiss(run: Run): void {
+    for (const c of run.contracts) {
+      const g = c.bot ? this.players.get(c.bot) : undefined;
+      if (g && !g.dead) g.recall = Math.max(this.time, SERVER_DT);
+    }
+  }
+
+  /** Someone died: a commander's contract is done if its holder killed it, and failed otherwise. */
+  private commanderDown(victim: Player, attacker: Player): void {
+    for (const p of this.players.values()) {
+      const i = p.run?.contracts.findIndex((c) => c.bot === victim.id) ?? -1;
+      if (i >= 0) this.settle(p, i, attacker === p ? 'done' : 'failed');
+    }
   }
 
   // -------------------------------------------------------------- population
@@ -525,6 +592,7 @@ export class GameServer {
   /** Someone leaves the game; an operator's slot opens up for a new bot after a while. */
   private leave(p: Player): void {
     if (!this.players.delete(p.id)) return;
+    if (p.run) this.dismiss(p.run);
     // Whatever happened this tick still reaches them, such as how their run ended.
     if (p.events.length) p.send({ t: 'events', tick: this.tick, events: p.events });
     p.events = [];
@@ -574,6 +642,18 @@ export class GameServer {
     this.onEvent?.(e);
   }
 
+  /**
+   * A sound at (x, y, z) that carries `radius` metres, made by `source`: every
+   * bot within it hears it, or only those `who` picks.
+   */
+  private noise(x: number, y: number, z: number, radius: number, source: number, who?: (p: Player) => boolean): void {
+    const n: Noise = { x, y, z, radius, source };
+    for (const p of this.players.values()) {
+      if (!p.bot || p.dead || (who && !who(p)) || Math.hypot(p.x - x, p.z - z) > radius) continue;
+      p.bot.hear(p, n, this.time);
+    }
+  }
+
   // -------------------------------------------------------------- combat
 
   /**
@@ -608,25 +688,37 @@ export class GameServer {
     const struck = victim ? 'body' : wall <= w.range ? 'world' : 'none';
     const now = this.time;
     for (const p of this.players.values()) {
-      if (p !== shooter) p.events.push({ k: 'shot', id: shooter.id, weapon: shot.weapon, ox, oy, oz, ex, ey, ez, struck });
-      // Bots hear the shot, and feel rounds that pass close.
-      if (!p.bot || p.dead || p === shooter) continue;
-      const d = Math.hypot(p.x - ox, p.z - oz);
-      if (d <= w.noise) p.bot.hear(p, { x: ox, y: oy, z: oz, radius: w.noise, source: shooter.id }, now);
-      if (p !== victim && hostile(p, shooter) && Bot.nearMiss(p, ox, oy, oz, dx, dy, dz, t)) p.bot.underFire(shooter, now);
+      if (p !== shooter) p.events.push({ k: 'shot', id: shooter.id, weapon: shot.weapon, ox, oy, oz, ex, ey, ez, struck, quiet: shot.quiet });
+      // Bots feel rounds that pass close, suppressed or not.
+      if (!p.bot || p.dead || p === shooter || p === victim || !hostile(p, shooter)) continue;
+      if (Bot.nearMiss(p, ox, oy, oz, dx, dy, dz, t)) p.bot.underFire(shooter, now);
     }
+    this.noise(ox, oy, oz, w.noise * (shot.quiet ? SUPPRESSED_NOISE : 1), shooter.id);
     if (victim) this.damage(victim, shooter, damageAt(shot.weapon, t, zone), zone, shot.weapon, ex, ey, ez);
-    else if (panel >= 0) this.panelsBroke(this.cover.damage(panel, damageAt(shot.weapon, t, 'torso'), now), ox, oy, oz);
+    else if (panel >= 0) this.panelsBroke(this.cover.damage(panel, damageAt(shot.weapon, t, 'torso'), now), ox, oy, oz, shooter);
   }
 
-  /** Panels broke: everyone sees them come down, bots path around the change, and crates spill their loot. */
-  private panelsBroke(panels: number[], x: number, y: number, z: number): void {
+  /**
+   * Panels broke, knocked from (x, y, z) by `by`: everyone sees them come
+   * down, bots hear it and path around the change, crates spill their loot,
+   * and a supply cache counts for whoever had the contract on it if they broke it.
+   */
+  private panelsBroke(panels: number[], x: number, y: number, z: number, by: Player | undefined): void {
     if (!panels.length) return;
+    let loudest = 0;
     for (const i of panels) {
       this.nav.refresh(this.world.panels[i].box);
       this.containers.broke(i, this.time);
+      const n = BREAK_NOISE[this.world.panels[i].kind];
+      if (n > loudest) loudest = n;
     }
     this.broadcast({ k: 'break', panels, x, y, z });
+    const b = this.world.panels[panels[0]].box;
+    this.noise((b.minX + b.maxX) / 2, b.minY, (b.minZ + b.maxZ) / 2, loudest, by?.id ?? 0);
+    if (!by?.run) return;
+    by.run.contracts.forEach((c, i) => {
+      if (c.kind === 'cache' && panels.includes(c.panel)) this.settle(by, i, 'done');
+    });
   }
 
   /** Whether rebuilding a panel here would trap someone or bury a bag. */
@@ -694,11 +786,9 @@ export class GameServer {
         const amount = Math.round(GRENADE_DAMAGE * f * f);
         if (amount > 0) this.damage(p, owner ?? p, amount, 'torso', GRENADE, h.torsoX, chest, h.torsoZ, { x, z });
       }
-      if (p.bot && !p.dead && Math.hypot(p.x - x, p.z - z) <= GRENADE_NOISE) {
-        p.bot.hear(p, { x, y, z, radius: GRENADE_NOISE, source: g.owner }, now);
-      }
     }
-    this.panelsBroke(this.cover.blast(x, y, z, now), x, y, z);
+    this.noise(x, y, z, GRENADE_NOISE, g.owner);
+    this.panelsBroke(this.cover.blast(x, y, z, now), x, y, z, owner);
   }
 
   /** `from` is where the damage came from, if not the attacker, such as a grenade. */
@@ -725,6 +815,7 @@ export class GameServer {
       k: 'kill', killer: attacker.id, victim: victim.id, killerName: attacker.name, victimName: victim.name,
       weapon, head: zone === 'head',
     });
+    if (victim.plan?.temporary) this.commanderDown(victim, attacker);
     if (victim.run) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
       this.endRun(victim, 'killed');
@@ -768,7 +859,9 @@ export class GameServer {
 }
 
 function newRun(start: number): Run {
-  return { start, items: [], kills: 0, guardKills: 0, search: null, useHeld: false, dropHeld: false, zone: -1, hold: 0, killer: '' };
+  return {
+    start, items: [], kills: 0, guardKills: 0, search: null, useHeld: false, dropHeld: false, zone: -1, hold: 0, killer: '', contracts: [],
+  };
 }
 
 function poseOf(p: Player): PoseRecord {

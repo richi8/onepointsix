@@ -6,13 +6,18 @@ import { clamp, lerp } from '../shared/geom.ts';
 // chunk 9 brings real models.
 
 const FOV = 60;
+/** Length of a suppressor on the barrel. */
+const CAN_LENGTH = 0.15;
 const FLASH_TIME = 0.045;
 
 interface Model {
   group: THREE.Group;
   flash: THREE.Mesh;
-  /** Muzzle position in the model's space. */
+  /** The suppressor on the barrel, shown when fitted. */
+  can: THREE.Mesh;
+  /** Muzzle position in the model's space, bare and with the suppressor on. */
   muzzle: THREE.Vector3;
+  canMuzzle: THREE.Vector3;
   /** Resting position from the hip, and aimed (sight on the screen centre). */
   hip: THREE.Vector3;
   ads: THREE.Vector3;
@@ -32,6 +37,8 @@ export interface HeldState {
   speed: number;
   onGround: boolean;
   sprinting: boolean;
+  /** A suppressor is fitted: longer barrel, no flash. */
+  suppressed: boolean;
 }
 
 export class ViewModel {
@@ -46,6 +53,7 @@ export class ViewModel {
   private flip = 0;
   private flashLeft = 0;
   private sprintBlend = 0;
+  private suppressed = false;
   private readonly tmp = new THREE.Vector3();
 
   constructor() {
@@ -84,6 +92,7 @@ export class ViewModel {
     }
     const m = this.models[this.current];
     m.group.visible = true;
+    m.can.visible = this.suppressed = s.suppressed;
 
     // Springs back from recoil, sway toward the mouse, bob with the stride.
     this.kick *= Math.exp(-14 * dt);
@@ -110,7 +119,7 @@ export class ViewModel {
     );
 
     this.flashLeft = Math.max(this.flashLeft - dt, 0);
-    m.flash.visible = this.flashLeft > 0;
+    m.flash.visible = this.flashLeft > 0 && !this.suppressed;
   }
 
   /** Hide the gun, as when looking through a scope. */
@@ -122,7 +131,7 @@ export class ViewModel {
   muzzleOffset(): THREE.Vector3 {
     const m = this.models[this.current];
     this.root.updateMatrixWorld(true);
-    this.tmp.copy(m.muzzle);
+    this.tmp.copy(this.suppressed ? m.canMuzzle : m.muzzle);
     m.group.localToWorld(this.tmp);
     return this.camera.worldToLocal(this.tmp);
   }
@@ -169,12 +178,21 @@ function flashAt(z: number, size: number): THREE.Mesh {
 }
 
 /** A gun model with its sight line on y = 0, the barrel along -z. */
-function model(parts: THREE.Object3D[], muzzleZ: number, flashSize: number, hip: THREE.Vector3, adsZ: number, shove: number, flip: number): Model {
+function model(
+  parts: THREE.Object3D[], muzzleY: number, muzzleZ: number, flashSize: number, canRadius: number,
+  hip: THREE.Vector3, adsZ: number, shove: number, flip: number,
+): Model {
   const group = new THREE.Group();
   group.add(...parts);
   const flash = flashAt(muzzleZ, flashSize);
-  group.add(flash);
-  return { group, flash, muzzle: new THREE.Vector3(0, -0.035, muzzleZ), hip, ads: new THREE.Vector3(0, 0, adsZ), shove, flip };
+  flash.position.y = muzzleY;
+  const can = tube(canRadius, CAN_LENGTH, DARK, 0, muzzleY, muzzleZ - CAN_LENGTH / 2);
+  can.visible = false;
+  group.add(flash, can);
+  return {
+    group, flash, can, muzzle: new THREE.Vector3(0, muzzleY, muzzleZ), canMuzzle: new THREE.Vector3(0, muzzleY, muzzleZ - CAN_LENGTH),
+    hip, ads: new THREE.Vector3(0, 0, adsZ), shove, flip,
+  };
 }
 
 function rifle(): Model {
@@ -192,7 +210,7 @@ function rifle(): Model {
       box(0.05, 0.06, 0.09, GLOVE, 0.0, -0.15, 0.08),
       box(0.05, 0.05, 0.1, GLOVE, -0.01, -0.1, -0.3),
     ],
-    -0.63, 0.06, new THREE.Vector3(0.2, -0.17, -0.62), -0.5, 0.045, 0.06,
+    -0.04, -0.62, 0.06, 0.02, new THREE.Vector3(0.2, -0.17, -0.62), -0.5, 0.045, 0.06,
   );
 }
 
@@ -206,7 +224,7 @@ function pistol(): Model {
       box(0.012, 0.008, 0.006, DARK, 0, 0.002, 0.04),
       box(0.05, 0.08, 0.07, GLOVE, 0, -0.12, 0.05),
     ],
-    -0.15, 0.04, new THREE.Vector3(0.17, -0.15, -0.5), -0.42, 0.05, 0.14,
+    -0.02, -0.145, 0.04, 0.014, new THREE.Vector3(0.17, -0.15, -0.5), -0.42, 0.05, 0.14,
   );
 }
 
@@ -228,6 +246,6 @@ function boltAction(): Model {
       box(0.05, 0.05, 0.1, GLOVE, -0.01, -0.12, -0.3),
       box(0.02, 0.02, 0.02, WOOD, 0, -0.14, 0.18),
     ],
-    -0.71, 0.08, new THREE.Vector3(0.2, -0.17, -0.66), -0.5, 0.1, 0.2,
+    -0.06, -0.71, 0.08, 0.02, new THREE.Vector3(0.2, -0.17, -0.66), -0.5, 0.1, 0.2,
   );
 }

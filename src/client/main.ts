@@ -14,6 +14,7 @@ import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies } from './bodies.ts';
 import { CHANGELOG } from './changelog.ts';
+import { ContractProps } from './contractprops.ts';
 import { Connection, WorkerTransport } from './connection.ts';
 import { Effects, type Struck } from './effects.ts';
 import { Grenades } from './grenades.ts';
@@ -21,7 +22,7 @@ import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
 import { NetPanel } from './netpanel.ts';
 import type { Rendered } from './prediction.ts';
-import { RunHud, type RunEnd } from './runhud.ts';
+import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { ViewModel } from './viewmodel.ts';
 import { WorldView } from './worldview.ts';
 import './style.css';
@@ -78,6 +79,7 @@ const bodies = new Bodies(scene);
 const bags = new Bags(scene);
 const hud = new Hud();
 const runHud = new RunHud(world);
+const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx();
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
 
@@ -272,13 +274,13 @@ const from = new THREE.Vector3();
 const to = new THREE.Vector3();
 const normal = new THREE.Vector3();
 
-/** Show where a round stopped: tracer from `from` to `to`, and the impact there. */
-function showRound(struck: Struck, dx: number, dy: number, dz: number): void {
+/** Show where a round stopped: tracer from `from` to `to`, and the impact there; a suppressed one has no flash. */
+function showRound(struck: Struck, dx: number, dy: number, dz: number, quiet: boolean): void {
   effects.tracer(from, to);
   if (struck === 'world') normal.fromArray(world.surfaceNormal(to.x, to.y, to.z));
   else normal.set(-dx, -dy, -dz);
   effects.impact(to, struck, normal);
-  effects.muzzleLight(from);
+  if (!quiet) effects.muzzleLight(from);
 }
 
 /**
@@ -288,7 +290,7 @@ function showRound(struck: Struck, dx: number, dy: number, dz: number): void {
  */
 function ownShot(shot: Shot): void {
   viewModel.fire(shot.weapon);
-  sfx.shot(shot.weapon);
+  sfx.shot(shot.weapon, 0, shot.quiet);
   const { ox, oy, oz, dx, dy, dz } = shot;
   const range = WEAPONS[shot.weapon].range;
   let t = world.raycast(ox, oy, oz, dx, dy, dz, range);
@@ -301,7 +303,7 @@ function ownShot(shot: Shot): void {
   }
   from.copy(viewModel.muzzleOffset()).applyQuaternion(camera.quaternion).add(camera.position);
   to.set(ox + dx * t, oy + dy * t, oz + dz * t);
-  showRound(struck, dx, dy, dz);
+  showRound(struck, dx, dy, dz, shot.quiet);
 }
 
 function onEvent(e: GameEvent): void {
@@ -329,6 +331,12 @@ function onEvent(e: GameEvent): void {
     case 'took':
       sfx.pickup();
       break;
+    case 'contract': {
+      const c = conn?.run?.contracts[e.index];
+      if (c) hud.contract(contractTitle(c), e.state);
+      if (e.state === 'done') sfx.pickup();
+      break;
+    }
     case 'runEnd':
       endRun(e);
       break;
@@ -367,8 +375,8 @@ function onEvent(e: GameEvent): void {
       const dz = (e.ez - e.oz) / d;
       from.set(e.ox + dx * MUZZLE_REACH, e.oy - 0.1, e.oz + dz * MUZZLE_REACH);
       to.set(e.ex, e.ey, e.ez);
-      showRound(e.struck, dx, dy, dz);
-      sfx.shot(e.weapon, me ? Math.hypot(e.ox - me.x, e.oz - me.z) : 0);
+      showRound(e.struck, dx, dy, dz, e.quiet);
+      sfx.shot(e.weapon, me ? Math.hypot(e.ox - me.x, e.oz - me.z) : 0, e.quiet);
       break;
     }
   }
@@ -433,6 +441,7 @@ function eyeCamera(me: Rendered, s: PlayerState, dt: number): void {
     speed,
     onGround: s.onGround,
     sprinting: sprinting(s),
+    suppressed: s.suppressed[s.weapon],
   }, lookDx, lookDy);
   viewModel.hidden = s.dead || (s.weapon === BOLT && me.aim > 0.9);
 }
@@ -462,9 +471,10 @@ renderer.setAnimationLoop(() => {
     const spread = state ? spreadOf(state) : 0;
     const spreadPx = (Math.tan(spread) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2);
     hud.update(dt, state, me?.aim ?? 0, clamp(spreadPx, 0, innerHeight / 3), !!state && sprinting(state), camera);
-    if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw);
-    else runHud.update(null, [], 0, 0, 0);
+    if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera);
+    else runHud.update(null, [], 0, 0, 0, camera);
   }
+  contractProps.update(conn && !conn.over ? (conn.run?.contracts ?? []) : []);
   panel?.update();
 
   renderer.clear();

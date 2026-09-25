@@ -2,7 +2,7 @@ import { GUARD_PATROLS, GUARDS_PER_OUTPOST, PLAYER_HEIGHT } from '../shared/cons
 import { yawToward } from '../shared/geom.ts';
 import { lootCrates } from '../shared/loot.ts';
 import { BOLT, RIFLE } from '../shared/weapons.ts';
-import type { Point, World } from '../shared/world.ts';
+import { watchtower, type Outpost, type Point, type World } from '../shared/world.ts';
 import type { LootSpot, Post, Role } from './bot.ts';
 import type { NavGrid } from './nav.ts';
 import type { Difficulty } from './skill.ts';
@@ -24,10 +24,6 @@ export interface BotPlan {
   temporary?: boolean;
 }
 
-/** Height of a watchtower's platform above its outpost. Matches World.buildOutpost. */
-const TOWER_TOP = 4;
-/** Offset of the watchtower from its outpost's centre on both axes. */
-const TOWER_OFFSET = -6;
 /** Guards walk points this far from their outpost's centre: inside the walls and just outside. */
 const ROUTE_RADIUS: [number, number] = [5, 20];
 const ROUTE_POINTS = 4;
@@ -51,9 +47,7 @@ const CALLSIGNS = [
 export function planGuards(world: World, nav: NavGrid, rand: () => number): BotPlan[] {
   const plans: BotPlan[] = [];
   for (const o of world.outposts) {
-    const tx = o.x + TOWER_OFFSET;
-    const tz = o.z + TOWER_OFFSET;
-    const ty = o.y + TOWER_TOP;
+    const { x: tx, y: ty, z: tz } = watchtower(o);
     if (world.fits(tx, ty, tz, PLAYER_HEIGHT)) {
       const post = { x: tx, y: ty, z: tz, yaw: yawToward(o.x, o.z, tx, tz) };
       plans.push({ name: `${o.name} sentry`, role: { kind: 'sentry', post }, skill: 'normal', primary: RIFLE, spawn: post });
@@ -190,6 +184,25 @@ export function planResponse(world: World, nav: NavGrid, rand: () => number, at:
     });
   }
   return plans;
+}
+
+/**
+ * A commander, the target of a contract: a tough guard walking an outpost
+ * with its guards, there for one run. `taken` are callsigns already in use.
+ */
+export function planCommander(world: World, nav: NavGrid, rand: () => number, o: Outpost, taken: Set<string>): BotPlan | null {
+  const route = outpostRoute(world, nav, o, rand);
+  if (route.length < 2) return null;
+  const free = CALLSIGNS.filter((c) => !taken.has(`Commander ${c}`));
+  const callsign = free.length ? free[Math.floor(rand() * free.length)] : String(Math.floor(rand() * 100));
+  return {
+    name: `Commander ${callsign}`,
+    role: { kind: 'guard', route, leash: OUTPOST_LEASH, home: o },
+    skill: 'hard',
+    primary: RIFLE,
+    spawn: { ...route[0], yaw: rand() * Math.PI * 2 },
+    temporary: true,
+  };
 }
 
 /** Walkable points around an outpost for guards to walk between, in order around it. */

@@ -666,17 +666,25 @@ canvas {
   color: #ff5a3c;
 }
 
-.extracts {
+.side {
   position: absolute;
   right: 12px;
   top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.extracts,
+.contracts {
   display: flex;
   flex-direction: column;
   gap: 3px;
   font-size: 12px;
 }
 
-.extracts div {
+.extracts div,
+.contracts div {
   display: grid;
   grid-template-columns: 1.2em 1fr auto;
   gap: 0 8px;
@@ -699,18 +707,21 @@ canvas {
   background: rgb(40 60 40 / 0.7);
 }
 
-.extracts b {
+.extracts b,
+.contracts b {
   grid-row: span 2;
   align-self: center;
   font-size: 15px;
 }
 
-.extracts em {
+.extracts em,
+.contracts em {
   font-style: normal;
   opacity: 0.8;
 }
 
-.extracts i {
+.extracts i,
+.contracts i {
   grid-column: 2 / 4;
   font-style: normal;
   font-size: 11px;
@@ -719,6 +730,51 @@ canvas {
 
 .extracts .shut i {
   color: #ff8a7a;
+}
+
+.contracts div {
+  border-color: #e8c35a;
+}
+
+.contracts div.done {
+  border-color: #4fd06b;
+}
+
+.contracts div.done i {
+  color: #7fd98f;
+}
+
+.contracts div.failed {
+  border-color: #777;
+  opacity: 0.6;
+}
+
+.markers div {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: -26px 0 0 -30px;
+  width: 60px;
+  padding-top: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+  color: #e8c35a;
+  pointer-events: none;
+}
+
+.markers div::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 11px;
+  height: 11px;
+  margin-left: -6px;
+  border: 2px solid #e8c35a;
+  background: rgb(232 195 90 / 0.25);
+  transform: rotate(45deg);
 }
 
 .prompt {

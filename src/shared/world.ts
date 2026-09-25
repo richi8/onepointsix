@@ -92,6 +92,15 @@ export interface Point {
   z: number;
 }
 
+/** Height of a watchtower's platform above its outpost, and its offset from the outpost's centre on both axes. */
+const TOWER_TOP = 4;
+const TOWER_OFFSET = -6;
+
+/** The middle of an outpost's watchtower platform, on its floor. */
+export function watchtower(o: Outpost): Point {
+  return { x: o.x + TOWER_OFFSET, y: o.y + TOWER_TOP, z: o.z + TOWER_OFFSET };
+}
+
 /** Anything that moves through the world with a player-sized collision hull. */
 export interface Body {
   x: number;
@@ -679,9 +688,7 @@ export class World {
     }
 
     // Watchtower: raised platform with parapets, reached by stairs on +x.
-    const px = o.x - 6;
-    const pz = o.z - 6;
-    const top = y + 4;
+    const { x: px, y: top, z: pz } = watchtower(o);
     this.addProp(px - 2, top - 0.4, pz - 2, px + 2, top, pz + 2, 'wood');
     for (const cx of [-1.75, 1.75]) {
       for (const cz of [-1.75, 1.75]) {

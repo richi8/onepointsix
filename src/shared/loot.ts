@@ -13,8 +13,12 @@ export interface ItemDef {
   mass: number;
   /** How often it turns up, relative to the others. */
   rarity: number;
-  /** Supplies are used when taken instead of carried: ammo refills every weapon's reserve, a medkit heals. */
-  use?: 'ammo' | 'heal';
+  /**
+   * Supplies are used when taken instead of carried: ammo refills every
+   * weapon's reserve, a medkit heals, and a suppressor is fitted to the weapon
+   * in hand, or the next one without.
+   */
+  use?: 'ammo' | 'heal' | 'suppressor';
 }
 
 export const ITEMS: readonly ItemDef[] = [
@@ -29,6 +33,7 @@ export const ITEMS: readonly ItemDef[] = [
   { name: 'Fuel can', value: 1100, mass: 9, rarity: 6 },
   { name: 'Generator core', value: 3000, mass: 16, rarity: 3 },
   { name: 'Gold bar', value: 4000, mass: 12, rarity: 2 },
+  { name: 'Suppressor', value: 0, mass: 0, rarity: 5, use: 'suppressor' },
 ];
 
 /** Health a medkit gives back. */
@@ -68,8 +73,9 @@ export function lootMass(items: readonly number[]): number {
   return Math.round(items.reduce((sum, i) => sum + ITEMS[i].mass, 0) * 10) / 10;
 }
 
-export function runScore(value: number, kills: number, guardKills: number): number {
-  return value + kills * KILL_SCORE_OPERATOR + guardKills * KILL_SCORE_GUARD;
+/** `contracts` is the reward for the contracts done. */
+export function runScore(value: number, kills: number, guardKills: number, contracts = 0): number {
+  return value + kills * KILL_SCORE_OPERATOR + guardKills * KILL_SCORE_GUARD + contracts;
 }
 
 /** Crates standing on the ground, in outposts and out in the open; stacked ones are just cover. */

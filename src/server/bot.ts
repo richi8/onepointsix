@@ -321,7 +321,8 @@ export class Bot {
         let time = s.spotTime + (d / 100) * s.spotPerDistance;
         if (a.duck > 0.5) time *= 1.6;
         if (speed > WALK_SPEED + 0.5) time *= 0.6;
-        if (a.sinceShot < 1) time *= 0.3;
+        // A muzzle flash gives a shooter away, unless it's suppressed.
+        if (a.sinceShot < 1 && !a.suppressed[a.weapon]) time *= 0.3;
         if (off > s.fov * 0.3) time *= 1.5;
         const was = c.level;
         c.level = Math.min(c.level + dt / time, 1);

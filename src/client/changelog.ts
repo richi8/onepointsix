@@ -11,6 +11,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-09-25',
+    title: 'Contracts and suppressors',
+    notes: [
+      'Every run now comes with one or two contracts: grab the intel from an outpost’s watchtower, destroy an outpost’s supply cache, or eliminate a commander. They’re listed top right and marked on screen.',
+      'Contracts pay on top of your loot, but only if you get off the island.',
+      'The intel is in a radio case on the watchtower: hold F on it to grab it. The supply cache is the crate with red straps, so shoot it apart or blow it up.',
+      'A commander is a tough guard who walks their outpost for as long as your run lasts. If someone else kills yours first, the contract is lost.',
+      'Suppressors turn up in crates. Taking one fits it to the gun in your hands, or to the next one without. Suppressed shots carry much less far and have no muzzle flash, so guards find it harder to spot you.',
+      'Guards now hear walls, fences and crates breaking, and come to look.',
+    ],
+  },
+  {
     date: '2026-09-24',
     title: 'Things break',
     notes: [
