@@ -5,7 +5,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { LEAN_OFFSET, PLAYER_HEIGHT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
-import type { PlayerSnap, Team } from '../shared/protocol.ts';
+import type { Motion, PlayerSnap, Team } from '../shared/protocol.ts';
 import { PISTOL } from '../shared/weapons.ts';
 import { fitGun } from './guns.ts';
 import {
@@ -146,6 +146,8 @@ interface Figure {
   /** Direction of travel relative to facing, radians. */
   heading: number;
   stride: number;
+  /** The motion in the last snapshot, to catch a slide starting. */
+  motion: Motion;
   /** Poses blended in and out: sliding, in the air and climbing. */
   slide: number;
   air: number;
@@ -187,8 +189,12 @@ interface Soldier {
 /** Called for each footfall of a body, with how fast it was moving. */
 export type StepListener = (x: number, y: number, z: number, speed: number, crouched: boolean) => void;
 
+/** Called when a body starts a slide. */
+export type SlideListener = (x: number, y: number, z: number) => void;
+
 export class Bodies {
   onStep: StepListener | null = null;
+  onSlide: SlideListener | null = null;
   private readonly scene: THREE.Scene;
   private readonly ground: Ground;
   private readonly figures = new Map<number, Figure>();
@@ -305,7 +311,7 @@ export class Bodies {
       group, materials: [], hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
       gun, held, can, flashMesh, weapon: 0, quiet: false,
       deadFor: -1, fallYaw: 0, fallX: 0, fallZ: 0, tilt: new THREE.Quaternion(), lift: 0, killer: null, drop: null,
-      flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
+      flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0, motion: 'ground',
       slide: 0, air: 0, mantle: 0, wait: 0, soldier: null,
     };
     placeCan(f);
@@ -453,6 +459,9 @@ export class Bodies {
     f.lastX = p.x;
     f.lastY = p.y;
     f.lastZ = p.z;
+
+    if (!p.dead && p.motion === 'slide' && f.motion !== 'slide' && !teleported) this.onSlide?.(p.x, p.y, p.z);
+    f.motion = p.motion;
 
     // Footfalls, spaced by a stride that lengthens with speed.
     if (!p.dead && p.motion === 'ground' && !teleported) {

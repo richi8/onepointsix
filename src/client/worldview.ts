@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import type { ExtractView } from '../shared/protocol.ts';
-import { clamp, smoothstep } from '../shared/geom.ts';
+import { smoothstep } from '../shared/geom.ts';
 import { fbm, mulberry32 } from '../shared/rng.ts';
 import type { PropStyle, World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Layer } from './layers.ts';
+import { paint } from './ground.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { Trees } from './trees.ts';
 
@@ -274,35 +275,18 @@ function makeTerrain(world: World): THREE.Mesh {
   const splatA = new Float32Array(n * n * 4);
   const splatB = new Float32Array(n * n);
   const c = new THREE.Color();
-  const w = [0, 0, 0, 0, 0];
-  const toward = (layer: number, t: number): void => {
-    t = clamp(t, 0, 1);
-    for (let k = 0; k < w.length; k++) w[k] = w[k] * (1 - t) + (k === layer ? t : 0);
-  };
   for (let i = 0; i < n * n; i++) {
     const x = pos[i * 3];
     const y = pos[i * 3 + 1];
     const z = pos[i * 3 + 2];
-    const flat = normals.getY(i);
-    const dry = fbm(x / 60, z / 60, world.seed + 5, 3);
-    const outpost = world.nearestOutpost(x, z);
-    const dirt = outpost ? smoothstep(26, 16, outpost.dist) : 0;
-    const rock = smoothstep(0.86, 0.72, flat) + smoothstep(38, 52, y);
-    const sand = smoothstep(2.2, 0.8, y);
-    const seabed = smoothstep(-0.5, -3, y);
+    const { dry, dirt, rock, sand, seabed, weights } = paint(world, x, y, z, normals.getY(i));
 
     c.copy(GRASS).lerp(GRASS_DRY, smoothstep(0.45, 0.7, dry));
     c.lerp(DIRT, dirt).lerp(ROCK, rock).lerp(SAND, sand).lerp(SEABED, seabed);
     c.toArray(colors, i * 3);
 
-    w.fill(0);
-    w[Layer.grass] = 1;
-    toward(Layer.dryGrass, smoothstep(0.42, 0.72, dry));
-    toward(Layer.dirt, dirt);
-    toward(Layer.rock, rock);
-    toward(Layer.sand, sand);
-    splatA.set(w.slice(0, 4), i * 4);
-    splatB[i] = w[4];
+    splatA.set(weights.slice(0, 4), i * 4);
+    splatB[i] = weights[4];
 
     const lush = fbm(x / 23, z / 23, world.seed + 11, 2);
     c.copy(TINT_GRASS).lerp(TINT_LUSH, smoothstep(0.35, 0.75, lush)).lerp(WHITE, Math.max(sand, rock));

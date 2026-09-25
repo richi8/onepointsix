@@ -1,14 +1,23 @@
 import { WATER_LEVEL } from '../shared/constants.ts';
 import type { PropStyle, World } from '../shared/world.ts';
+import { groundLayerAt } from './ground.ts';
+import { Layer } from './layers.ts';
 
-// What a body is standing on, for how its footsteps sound. Matches what the
-// ground is painted with in WorldView, near enough.
+// What a body is standing on, for how its footsteps sound: a prop's top, the
+// water, or whichever ground layer is painted strongest underfoot.
 
 export type Surface = 'grass' | 'dirt' | 'sand' | 'rock' | 'concrete' | 'wood' | 'metal' | 'water';
 
 const PROP_SURFACE: Record<PropStyle, Surface> = {
   crate: 'wood', wall: 'concrete', wood: 'wood', metal: 'metal', fence: 'wood',
 };
+/** The sound of each ground layer, by Layer index. */
+const GROUND_SURFACE: Surface[] = [];
+GROUND_SURFACE[Layer.grass] = 'grass';
+GROUND_SURFACE[Layer.dryGrass] = 'grass';
+GROUND_SURFACE[Layer.dirt] = 'dirt';
+GROUND_SURFACE[Layer.rock] = 'rock';
+GROUND_SURFACE[Layer.sand] = 'sand';
 /** Metres across a cell of the prop lookup. */
 const CELL = 8;
 
@@ -43,12 +52,7 @@ export class Surfaces {
       }
     }
     if (terrain < WATER_LEVEL - 0.1) return 'water';
-    if (terrain < 1.6) return 'sand';
-    const slope = Math.hypot(w.terrainHeight(x + 1, z) - w.terrainHeight(x - 1, z), w.terrainHeight(x, z + 1) - w.terrainHeight(x, z - 1)) / 2;
-    if (slope > 0.6 || terrain > 44) return 'rock';
-    const outpost = w.nearestOutpost(x, z);
-    if (outpost && outpost.dist < 21) return 'dirt';
-    return 'grass';
+    return GROUND_SURFACE[groundLayerAt(w, x, z)] ?? 'grass';
   }
 }
 

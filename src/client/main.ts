@@ -12,7 +12,7 @@ import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/wea
 import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
-import { Sfx } from './audio.ts';
+import { Sfx, type Playing } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies, strideLength } from './bodies.ts';
 import { CHANGELOG } from './changelog.ts';
@@ -97,9 +97,10 @@ const bags = new Bags(scene);
 const hud = new Hud();
 const runHud = new RunHud(world);
 const contractProps = new ContractProps(scene, world);
-const sfx = new Sfx();
+const sfx = new Sfx(world);
 const surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
+bodies.onSlide = (x, y, z) => sfx.slide({ x, y, z });
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
 
 // ---------------------------------------------------------------- loading
@@ -126,6 +127,8 @@ setTimeout(() => (loadingSkip.hidden = false), SKIP_LOADING_AFTER * 1000);
 import('./assets.ts')
   .then(({ loadAssets }) => loadAssets(renderer, (f) => (loadingBar.style.width = `${Math.round(f * 100)}%`)))
   .then(async (assets) => {
+    // The sounds download behind the menu, after what the loading screen waits for.
+    sfx.load();
     loadingBar.style.width = '100%';
     loadingEl.querySelector('p')!.textContent = 'Preparing the island…';
     view.applyAssets(assets);
@@ -415,7 +418,7 @@ function weaponFx(fx: WeaponFx, players: () => PlayerSnap[]): void {
       sfx.reload(fx.weapon);
       break;
     case 'reloaded':
-      sfx.reloaded();
+      sfx.reloaded(fx.weapon);
       break;
     case 'draw':
       throwing = false;
@@ -676,8 +679,8 @@ let deadFor = 0;
 let throwing = false;
 /** Camera shake, 0 to 1, decaying. */
 let shake = 0;
-/** Our own footfalls: where we were, distance since the last step, and how we were falling. */
-const own = { x: 0, z: 0, stride: 0, air: false, fall: 0 };
+/** Our own footfalls: where we were, distance since the last step, how we were falling, and the scrape of a slide. */
+const own = { x: 0, z: 0, stride: 0, air: false, fall: 0, slide: null as Playing | null };
 
 function orbitCamera(now: number): void {
   const a = (now - start) * MENU_ORBIT_SPEED + 0.6;
@@ -741,6 +744,10 @@ function footsteps(s: PlayerState): void {
   const moved = Math.hypot(s.x - own.x, s.z - own.z);
   own.x = s.x;
   own.z = s.z;
+  if (s.slide <= 0 || s.dead) {
+    own.slide?.stop();
+    own.slide = null;
+  }
   if (s.dead || moved > 3) {
     own.stride = 0;
     return;
@@ -758,7 +765,10 @@ function footsteps(s: PlayerState): void {
     own.stride = 0;
   }
   // A slide scrapes along rather than stepping.
-  if (s.slide > 0) return;
+  if (s.slide > 0) {
+    own.slide ??= sfx.slide();
+    return;
+  }
   own.stride += moved;
   const speed = Math.hypot(s.vx, s.vz);
   if (own.stride >= strideLength(speed)) {
@@ -805,7 +815,7 @@ renderer.setAnimationLoop(() => {
     footsteps(state);
   } else orbitCamera(now);
   camera.updateMatrixWorld();
-  sfx.listen(camera);
+  sfx.update(camera, dt);
   effects.update(dt);
 
   if (conn && !cam) {

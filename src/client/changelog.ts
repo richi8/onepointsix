@@ -12,6 +12,19 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Real sound',
+    notes: [
+      'Guns, grenades, reloads, footsteps and breaking cover are now real recordings instead of synthesized beeps and hiss.',
+      'Distant gunfire sounds distant: it’s duller, arrives after you see the muzzle flash (about a second per 340 m), and a far-off fight rolls across the island like the real thing.',
+      'Walls and hills muffle what’s behind them. A wall you could shoot over still lets the sound over the top; a hill or a building doesn’t.',
+      'Shots ring off the walls when you’re inside an outpost, and sound open out in the fields.',
+      'You can hear the wind, the sea getting louder toward the shore and coming from its direction, and birds among the trees, which go quiet for a while after shooting nearby.',
+      'Footsteps now match exactly what you see underfoot: grass, dirt, sand, rock, concrete, wood, metal or water.',
+      'Slides scrape along the ground, yours and everyone else’s.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Soldiers that show what they’re doing',
     notes: [
       'You can now see what other soldiers are up to: crouch-walking, sliding, jumping, falling and climbing onto ledges each look different, and so do reloading, switching weapons and throwing a grenade. A running soldier carries their gun low.',

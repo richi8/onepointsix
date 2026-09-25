@@ -179,7 +179,7 @@ the Known Issues named in its scope.
 | 11 | **Ship and load** | Verify GitHub Pages end to end (the live site, share links, `?world=`); a loading screen with progress instead of the flat-colour swap; KTX2 textures and meshopt glTF; code splitting so the first bundle is under 500 kB; build the texture arrays off the main thread (`createImageBitmap` / a Worker); replace the Mixamo soldier with a CC0 character (e.g. Quaternius); generate the texture layer list from one source | A stranger opens the live link on a mid-range laptop and is playing within about 5 s on a warm cache; no licensing doubts left | **Done** |
 | 12 | **Playtest and tuning** | A local run-stats log (length, cause of death, extraction used, contracts done, loot value) with a debug panel to read it; tune the operator cap, guard count, bot difficulty, weapon damage and recoil, extraction timings and loot values from playtests; fix what playtests find; mode-less links; the menu at small window sizes | Several full runs by other people; the average run lands in 3–10 minutes, and no single strategy dominates | **Partly done**: the run log, bot playtest, bot and cap tuning, mode-less links and small-window menu are in; runs by other people haven't happened yet |
 | 13 | **Animation** | Death animation with a simple ragdoll that doesn't sink into ground or walls; third-person crouch-walk, slide, mantle, jump and fall clips; third-person reload, weapon switch and grenade throw; suppressors on third-person guns; first-person arms with animated reloads; a distinct look for commanders and each side; hit flash only where the round landed; the body lean matches the lean hitbox | Watching another operator, you can tell what they are doing: crouching, sliding, reloading, throwing | **Done** |
-| 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | Not started |
+| 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | **Done** |
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | Not started |
 | 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards are kept per condition | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | Not started |
 | 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | Not started |
@@ -302,12 +302,67 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
+  **Resolved** (14): guns, the grenade, reloads, footsteps, breaking cover, landing, sliding, being
+  hit and the ambience are 29 CC0 recordings from Freesound, listed in `src/client/soundlist.ts`.
+  `scripts/fetch-sounds.mjs` checks each one's page says CC0, cuts it and packs them all into
+  `sounds.m4a` (AAC, 107 s, 865 kB) with `sounds.json` saying where each sits. Footsteps are four
+  footfalls per surface cut from walking recordings by loudness. The interface's beeps (hit marker,
+  pickup, call, run end) are still synthesized on purpose.
 - **Sound ignores walls** (9): there's no occlusion and no reverb, and footsteps can be heard
   through walls.
+  **Resolved** (14): every sound out in the world casts a ray from the ear. If it's blocked it
+  casts another 2.5 m higher at both ends: when that one's clear the sound is half muffled (it
+  gets over a wall), and otherwise fully (a building or a hill). Muffled sounds are quieter and
+  low-passed. A reverb from a generated impulse rings louder the more the listener is walled in,
+  measured by 12 rays round the horizon out to 30 m. Distant sounds send more to it.
 - **There's no ambient sound** (9): no wind, sea, birds or distant fighting.
+  **Resolved** (14): wind grows with height and in the open. The sea is placed at the nearest
+  water found in 16 directions out to 220 m and grows toward the shore. Birds grow with the trees
+  within 40 m and go quiet for 20 s after a shot or blast nearby. Distant fighting is the real
+  fighting: every shot on the island is heard, dulled by distance, delayed at the speed of sound,
+  and past 60 m blended into a recording made at long range.
 - **Surface detection for footsteps is rough** (9). It uses thresholds on height, slope and
   distance to an outpost, and doesn't match the painted terrain exactly.
+  **Resolved** (14): `src/client/ground.ts` works out each terrain vertex's layer weights once,
+  and both the renderer's paint and the footsteps use them. A footstep takes the strongest layer
+  after blending the three vertices of the triangle underfoot. Tests check the normals match
+  three.js's and the chosen layer is the strongest at each vertex.
 - **No sliding scrape** (9). Slides are silent.
+  **Resolved** (14): a gravel slide plays for your own slides (cut short when the slide ends) and
+  for other bodies when their snapshot starts one.
+
+- **Nobody has listened to the new sound** (14). This machine has no way to hear it. The
+  recordings were chosen by title, description, rating and waveform, the cuts were placed from
+  loudness envelopes, and the levels were set by rendering each sound offline in headless Chrome
+  and measuring its peak and RMS. Mix, reverb amount and ambience levels need a listening pass.
+- **The recordings are Freesound's previews** (14), 128 kbps MP3, not the original files, which
+  need a Freesound account or API key to download. They're re-encoded once more to 64 kbps AAC.
+- **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,
+  the rifle and pistol reloads are mixes of other recordings, the bolt-action's shot is a .405
+  Winchester lever-action, and concrete footsteps reuse the stone ones played 10% faster. Every
+  gun shares the one suppressed shot, pitched per gun, and the bolt-action reloads with the rifle's
+  magazine sound.
+- **Only real fights make distant fighting** (14). In PvE the guards only fight you, so the
+  island is quiet apart from your own fights.
+- **Occlusion is three steps and only along lines** (14): clear, over the top or blocked. It
+  doesn't bend round corners, the thickness of what's in between doesn't count, and a tree trunk
+  exactly on the line muffles a sound as much as a building does.
+- **The reverb is one generated room** (14), the same everywhere, only louder when walled in.
+  It isn't placed in 3D, and a place with no roof yet (every building so far) rings like a room
+  when its walls are close.
+- **The sea's bearing is an average** (14) of the directions that found water at the nearest
+  radius, so on a narrow point with sea on both sides it can seem to come from inland.
+- **Far fights fill the voice pool** (14). A distant shot holds a voice through its delay and its
+  2 s tail, so a long firefight far off keeps most of the 24 voices busy. When all are busy, the
+  quietest sound is cut off (or the new one isn't played), so near sounds still win.
+- **A slide from someone else always scrapes for the slide's full 0.9 s**, even if it ends early.
+- **Sounds arrive after the game starts** (14). The 865 kB file downloads in the background and
+  isn't on the loading bar, and nothing plays until it's decoded (the game is playable
+  meanwhile). If it fails, the game is silent apart from the beeps.
+- **AAC playback was only checked in Chrome** (14): the packed offsets depend on the browser
+  trimming the encoder's priming samples, which Chrome does exactly. Safari should (it's Apple's
+  format) and Firefox should, but neither was tried.
+- **The sound script needs a Mac** (14): it uses `afconvert` to decode and encode.
 
 ### Performance and loading
 - **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat
@@ -334,6 +389,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Adaptive resolution is untested on slow hardware** (9) and could flip back and forth.
 - **Every positional sound creates its own panner node** (9), released on a timer. Heavy
   fights create a lot of them.
+  **Resolved** (14): sounds out in the world take turns on a pool of 24 voices (gain, low-pass,
+  HRTF panner and reverb send) built once when audio unlocks. Only the buffer source is new for
+  each sound, as the Web Audio API requires.
 - **The total JavaScript loaded at start barely changed** (11): about 740 kB minified (200 kB
   gzipped), now in four chunks that load in parallel. Splitting keeps three.js cached across
   game updates, but it doesn't shrink the download.
@@ -411,6 +469,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   by screenshots only, and nobody has listened to the audio.
   Still true of the rendering and animation after chunk 13; the new snapshot fields they draw from
   (motion, action, suppressor, commander) are tested.
+  After chunk 14, the ground paint, occlusion, enclosure, finding the sea, the voice pool and the
+  packed sound list are tested. The audio engine itself was only checked in headless Chrome by a
+  script outside the repo (offline renders of each sound, and a Mixed game checking the recordings
+  decode and the ambience comes up), and still nobody has listened to it.
 - **The death cam, menu, leaderboard UI and share button have no automated tests** (10). The
   tape replay, share links and leaderboard storage are tested; the rest was checked by
   screenshots in a headless browser only.

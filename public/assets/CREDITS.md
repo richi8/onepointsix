@@ -13,3 +13,16 @@ the web.
   and run clips are kept.
 - **Guns** (`guns/`) by [Quaternius](https://quaternius.com), public domain (CC0), via
   [Poly Pizza](https://poly.pizza): Assault Rifle, Pistol and Sniper Rifle.
+- **Sounds** (`sounds.m4a`) from [Freesound](https://freesound.org), each one CC0, checked on its
+  page by `scripts/fetch-sounds.mjs`. Cut from Freesound's previews and packed into one file;
+  `sounds.json` says where each sits. By sound: AR15 rifle shot, 9mm pistol shot (michorvath);
+  405Win.wav (Jon285); gun shot.aif (trip2000); Silenced Gunshot 3.wav (morganpurkis); 22 Bolt.wav
+  (Danwardvs); A rifle being dry fired once (serøutōnin--deprivəd); Rifle-or-shotgun-reload.wav,
+  PistolReloadSound.wav (MaximBomba); 1911 Reload (nioczkus); Whoosh (qubodup); Explosion_01.wav
+  (tommccann); Smash.ogg (egomassive); Concrete Breaks Several Denoised (loganzsound);
+  VisceralBulletImpacts.wav (u1769092); Human Impact on Ground (alegemaate); SLIDING ON GRAVEL.wav
+  (trexlasso); footsteps grass.wav (Yuval); Footsteps Dirt Gravel (PotatokingXII);
+  Foot_Step_grit_Sand.wav (savataivanov); Footsteps - Stone, Rock, Concrete, Cement (SecureSubset);
+  footsteps on wood (Mydo1); Metal Steps (Phil25); puddlewalk.wav (j1987); wind.ogg (sleepCircle);
+  Ocean Waves.wav (Noted451); sfx_amb_forest_spring_afternoon-01.wav (bajko). The Freesound ids
+  are in `src/client/soundlist.ts`.
