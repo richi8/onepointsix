@@ -254,17 +254,18 @@ export class ViewModel {
     orientHand(a.hands[1], along, thumb);
     curl(a.hands[1], 0.9);
 
-    let target = g.localToWorld(m.hands[1].position.clone().setY(m.hands[1].position.y + 0.03));
-    along = new THREE.Vector3().copy(right);
-    thumb = new THREE.Vector3().copy(forward);
+    let target = g.localToWorld(m.hands[1].position.clone());
+    along = new THREE.Vector3().copy(right).addScaledVector(forward, 0.9);
+    thumb = new THREE.Vector3().copy(forward).addScaledVector(right, -0.5).addScaledVector(up, 0.4);
     if (pistol) {
       target = grip.clone().addScaledVector(right, -0.03);
       along = new THREE.Vector3().copy(forward).addScaledVector(up, -0.3);
       thumb = new THREE.Vector3().copy(up).addScaledVector(forward, 0.5);
     }
     a.nade.visible = false;
-    let closed = 0.9;
+    let closed = pistol ? 0.9 : 0.8;
     if (s.reload > 0) {
+      closed = 0.8;
       // Under the magazine well, down out of sight and back with a fresh one.
       const well = g.localToWorld(m.hands[0].position.clone().lerp(m.hands[1].position, pistol ? 0 : 0.4)).addScaledVector(up, -0.12);
       const pouch = new THREE.Vector3(-0.1, -0.75, -0.3);

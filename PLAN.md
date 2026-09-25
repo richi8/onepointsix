@@ -279,6 +279,12 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Hand grips were fitted by eye** (13), in a pose viewer, for the rifle and the pistol. The
   bolt-action uses the rifle's. The directions for the fingers and thumb are guesses tuned by
   screenshot.
+  **Improved** (13, follow-up): the fingers curled so far that they came back over the top of
+  the fore-end and showed above the gun. The curl is now gentler, the support hand sits under
+  the fore-end with its fingers angled forward round the far side, the grip hand's thumb folds
+  in, and the hands are drawn at 80%, since the model's gloves are oversized next to real guns.
+  Checked from both sides and in first person for all three guns. The pistol still looks a
+  little small in the fist.
 - **First-person arms are stretched to reach** (13). The soldier's arms are too short for where the
   viewmodel holds the guns, so they're drawn 1.15× larger from shoulders placed where no real
   shoulder is (the left one far forward). Aiming the pistol, the forearms fill the bottom of the

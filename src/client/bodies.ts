@@ -763,13 +763,16 @@ export class Bodies {
     // The left hand: under the fore-end, or off doing something else.
     const body = (x: number, y: number, z: number): THREE.Vector3 =>
       new THREE.Vector3().copy(f.group.position).addScaledVector(right, x).addScaledVector(up, y).addScaledVector(forward, z);
-    let target: THREE.Vector3 = f.gun.localToWorld(V_TMP.copy(gun.support));
-    // Palm up under it, fingers round its far side, thumb along it.
-    along = V_TMP3.copy(gunRight);
-    thumb = V_TMP4.copy(gunForward);
+    // Palm up under it, a little below its middle, fingers loosely round its far side.
+    let target: THREE.Vector3 = f.gun.localToWorld(V_TMP.copy(gun.support)).addScaledVector(gunUp, -0.025);
+    // Fingers angled forward round its far side, the thumb along the near side.
+    let closed = 0.8;
+    along = V_TMP3.copy(gunRight).addScaledVector(gunForward, 0.9);
+    thumb = V_TMP4.copy(gunForward).addScaledVector(gunRight, -0.5).addScaledVector(gunUp, 0.4);
     if (pistol) {
       // Wrapped round the right hand, from the other side.
       target = f.gun.localToWorld(V_TMP.copy(gun.grip)).addScaledVector(gunRight, -0.03);
+      closed = 0.9;
       along = V_TMP3.copy(gunForward).addScaledVector(gunUp, -0.3);
       thumb = V_TMP4.copy(gunUp).addScaledVector(gunForward, 0.5);
     }
@@ -800,6 +803,7 @@ export class Bodies {
     pole.copy(right).multiplyScalar(-0.6).addScaledVector(up, -0.8).add(wrist);
     reach(b.lArm, b.lForeArm, b.lHand, wrist, pole, s.arm, s.forearm);
     orientHand(s.hands[0], along, thumb);
+    curl(s.hands[0], p.act === 'none' || p.act === 'draw' ? closed : 0.8);
     if (s.nade.visible) {
       s.hands[0].wrist.updateMatrixWorld(true);
       s.nade.position.copy(s.hands[0].wrist.localToWorld(V_TMP.copy(s.hands[0].knuckles).multiplyScalar(0.8)));

@@ -36,6 +36,12 @@ function bone(model: THREE.Object3D, name: string): THREE.Object3D {
   return b;
 }
 
+/**
+ * The model's gloved hands are oversized for real guns (it's stylized), so
+ * they're drawn smaller. Only the hands: the arms keep their length.
+ */
+const HAND_SCALE = 0.8;
+
 /** A hand's finger joints, to curl around a grip, with the pose they rest in. */
 export interface Hand {
   wrist: THREE.Object3D;
@@ -56,12 +62,13 @@ export function findHand(model: THREE.Object3D, side: 'L' | 'R'): Hand {
   // Fingers run along their bones' y axes; the middle knuckle marks the palm's far edge.
   const knuckles = wrist.worldToLocal(joints[1][1].getWorldPosition(new THREE.Vector3()));
   const thumb = wrist.worldToLocal(joints[4][2].getWorldPosition(new THREE.Vector3()));
+  wrist.scale.multiplyScalar(HAND_SCALE);
   return { wrist, joints, rest: joints.map((js) => js.map((j) => j.quaternion.clone())), knuckles, thumb };
 }
 
 /** How far each joint bends in a closed hand, knuckle to tip, and the thumb's. */
-const FINGER_CURL = [0.05, 1.25, 1.05, 0.7];
-const THUMB_CURL = [0, -0.3, -0.4];
+const FINGER_CURL = [0.05, 1.0, 0.85, 0.5];
+const THUMB_CURL = [0.8, -0.4, -0.4];
 
 /** Curl the fingers by `amount`, 0 open to 1 closed around a grip. */
 export function curl(hand: Hand, amount: number): void {
@@ -69,7 +76,7 @@ export function curl(hand: Hand, amount: number): void {
     const bend = f === 4 ? THUMB_CURL : FINGER_CURL;
     joints.forEach((j, i) => {
       j.quaternion.copy(hand.rest[f][i]);
-      // Fingers close about their joints' x axes.
+      // Fingers close about their joints' x axes; the thumb folds in across the palm.
       j.quaternion.multiply(Q_A.setFromAxisAngle(X_AXIS, -bend[i] * amount));
     });
   });
@@ -100,8 +107,8 @@ export function orientHand(hand: Hand, along: THREE.Vector3, thumb: THREE.Vector
 }
 
 /** How far the middle of the palm is from the wrist, along the fingers and out of the palm. */
-const PALM_LENGTH = 0.07;
-const PALM_DEPTH = 0.035;
+const PALM_LENGTH = 0.07 * HAND_SCALE;
+const PALM_DEPTH = 0.035 * HAND_SCALE;
 
 /**
  * Where a wrist goes so the palm closes on `point`, with the fingers along
