@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clamp, lerp } from '../shared/geom.ts';
+import { fitGun } from './guns.ts';
 
 // The weapon in your hands. It is drawn in its own scene after the world, over
-// a cleared depth buffer, so it never clips into walls. Placeholder shapes until
-// chunk 9 brings real models.
+// a cleared depth buffer, so it never clips into walls. Simple shapes stand in
+// until the gun models have loaded.
 
 const FOV = 60;
 /** Length of a suppressor on the barrel. */
@@ -12,6 +14,12 @@ const FLASH_TIME = 0.045;
 
 interface Model {
   group: THREE.Group;
+  /** The gun itself, swapped for the loaded model. */
+  body: THREE.Object3D[];
+  /** Gloved hands, on the grip and the fore-end. */
+  hands: [THREE.Object3D, THREE.Object3D];
+  /** Where the grip sits in the model's space. */
+  grip: THREE.Vector3;
   flash: THREE.Mesh;
   /** The suppressor on the barrel, shown when fitted. */
   can: THREE.Mesh;
@@ -69,6 +77,25 @@ export class ViewModel {
       m.group.visible = false;
       this.root.add(m.group);
     }
+  }
+
+  /** Swap the stand-in shapes for real guns, in WEAPONS order, lit by the sky. */
+  setGuns(guns: GLTF[], environment: THREE.Texture): void {
+    this.scene.environment = environment;
+    this.scene.environmentIntensity = 0.8;
+    this.models.forEach((m, i) => {
+      const gun = fitGun(guns[i], i);
+      for (const part of m.body) m.group.remove(part);
+      gun.object.position.copy(m.grip);
+      m.group.add(gun.object);
+      m.body = [gun.object];
+      m.muzzle.copy(gun.muzzle).add(m.grip);
+      m.canMuzzle.copy(m.muzzle).z -= CAN_LENGTH;
+      m.flash.position.copy(m.muzzle);
+      m.can.position.copy(m.muzzle).z -= CAN_LENGTH / 2;
+      m.hands[0].position.copy(gun.grip).add(m.grip).y -= 0.03;
+      m.hands[1].position.copy(gun.support).add(m.grip).y -= 0.03;
+    });
   }
 
   resize(aspect: number): void {
@@ -157,6 +184,12 @@ function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y:
   return mesh;
 }
 
+function ring(radius: number, thickness: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.TorusGeometry(radius, thickness, 8, 24), mat);
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
 function tube(r: number, len: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12).rotateX(Math.PI / 2), mat);
   mesh.position.set(x, y, z);
@@ -177,20 +210,25 @@ function flashAt(z: number, size: number): THREE.Mesh {
   return flash;
 }
 
-/** A gun model with its sight line on y = 0, the barrel along -z. */
+/**
+ * A gun model with its sight line on y = 0, the barrel along -z: the gun's
+ * parts, the extras kept on the real model (optics), and the two hands.
+ */
 function model(
-  parts: THREE.Object3D[], muzzleY: number, muzzleZ: number, flashSize: number, canRadius: number,
+  body: THREE.Object3D[], extras: THREE.Object3D[], hands: [THREE.Mesh, THREE.Mesh],
+  muzzleY: number, muzzleZ: number, flashSize: number, canRadius: number,
   hip: THREE.Vector3, adsZ: number, shove: number, flip: number,
 ): Model {
   const group = new THREE.Group();
-  group.add(...parts);
+  group.add(...body, ...extras, ...hands);
   const flash = flashAt(muzzleZ, flashSize);
   flash.position.y = muzzleY;
   const can = tube(canRadius, CAN_LENGTH, DARK, 0, muzzleY, muzzleZ - CAN_LENGTH / 2);
   can.visible = false;
   group.add(flash, can);
   return {
-    group, flash, can, muzzle: new THREE.Vector3(0, muzzleY, muzzleZ), canMuzzle: new THREE.Vector3(0, muzzleY, muzzleZ - CAN_LENGTH),
+    group, body, hands, grip: hands[0].position.clone().setY(0),
+    flash, can, muzzle: new THREE.Vector3(0, muzzleY, muzzleZ), canMuzzle: new THREE.Vector3(0, muzzleY, muzzleZ - CAN_LENGTH),
     hip, ads: new THREE.Vector3(0, 0, adsZ), shove, flip,
   };
 }
@@ -204,12 +242,14 @@ function rifle(): Model {
       box(0.035, 0.14, 0.07, DARK, 0, -0.15, -0.1, 0.25),
       box(0.035, 0.1, 0.045, POLYMER, 0, -0.13, 0.08, -0.35),
       box(0.045, 0.07, 0.2, POLYMER, 0, -0.07, 0.25),
-      // Reflex sight: housing and dot on the sight line.
-      box(0.035, 0.03, 0.05, DARK, 0, -0.018, -0.02),
-      box(0.004, 0.004, 0.002, RED_DOT, 0, 0, -0.045),
-      box(0.05, 0.06, 0.09, GLOVE, 0.0, -0.15, 0.08),
-      box(0.05, 0.05, 0.1, GLOVE, -0.01, -0.1, -0.3),
     ],
+    [
+      // Reflex sight: a ring around the dot on the sight line, on a mount.
+      ring(0.017, 0.0035, DARK, 0, 0, -0.03),
+      box(0.03, 0.014, 0.04, DARK, 0, -0.024, -0.03),
+      box(0.004, 0.004, 0.002, RED_DOT, 0, 0, -0.045),
+    ],
+    [box(0.05, 0.06, 0.09, GLOVE, 0.0, -0.15, 0.08), box(0.05, 0.05, 0.1, GLOVE, -0.01, -0.1, -0.3)],
     -0.04, -0.62, 0.06, 0.02, new THREE.Vector3(0.2, -0.17, -0.62), -0.5, 0.045, 0.06,
   );
 }
@@ -222,8 +262,10 @@ function pistol(): Model {
       box(0.03, 0.11, 0.05, POLYMER, 0, -0.11, 0.03, -0.25),
       box(0.004, 0.008, 0.004, DARK, 0, 0.002, -0.14),
       box(0.012, 0.008, 0.006, DARK, 0, 0.002, 0.04),
-      box(0.05, 0.08, 0.07, GLOVE, 0, -0.12, 0.05),
     ],
+    [],
+    // Both hands wrap the grip.
+    [box(0.05, 0.08, 0.07, GLOVE, 0, -0.12, 0.05), box(0.045, 0.07, 0.06, GLOVE, -0.02, -0.12, 0.04)],
     -0.02, -0.145, 0.04, 0.014, new THREE.Vector3(0.17, -0.15, -0.5), -0.42, 0.05, 0.14,
   );
 }
@@ -242,10 +284,10 @@ function boltAction(): Model {
       box(0.01, 0.03, 0.01, DARK, 0, -0.025, -0.1),
       box(0.01, 0.03, 0.01, DARK, 0, -0.025, 0.05),
       tube(0.006, 0.05, DARK, 0.035, -0.05, 0.06).rotateY(Math.PI / 2),
-      box(0.05, 0.06, 0.09, GLOVE, 0, -0.16, 0.12),
-      box(0.05, 0.05, 0.1, GLOVE, -0.01, -0.12, -0.3),
       box(0.02, 0.02, 0.02, WOOD, 0, -0.14, 0.18),
     ],
+    [],
+    [box(0.05, 0.06, 0.09, GLOVE, 0, -0.16, 0.12), box(0.05, 0.05, 0.1, GLOVE, -0.01, -0.12, -0.3)],
     -0.06, -0.71, 0.08, 0.02, new THREE.Vector3(0.2, -0.17, -0.66), -0.5, 0.1, 0.2,
   );
 }

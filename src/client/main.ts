@@ -10,9 +10,10 @@ import { BOLT, spreadOf, WEAPONS, type Shot } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD, parseWorldParam } from '../shared/worldconfig.ts';
+import { loadAssets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
-import { Bodies } from './bodies.ts';
+import { Bodies, strideLength } from './bodies.ts';
 import { CHANGELOG } from './changelog.ts';
 import { ContractProps } from './contractprops.ts';
 import { Connection, WorkerTransport } from './connection.ts';
@@ -22,7 +23,9 @@ import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
 import { NetPanel } from './netpanel.ts';
 import type { Rendered } from './prediction.ts';
+import { Resolution } from './resolution.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
+import { Surfaces } from './surface.ts';
 import { ViewModel } from './viewmodel.ts';
 import { WorldView } from './worldview.ts';
 import './style.css';
@@ -51,8 +54,10 @@ const world = new World(config.seed);
 const view = new WorldView(world);
 const scene = view.scene;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const resolution = new Resolution(renderer);
+// Two passes a frame; count both.
+renderer.info.autoReset = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -81,7 +86,16 @@ const hud = new Hud();
 const runHud = new RunHud(world);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx();
+const surfaces = new Surfaces(world);
+bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
+
+loadAssets(renderer).then((assets) => {
+  view.applyAssets(assets);
+  bodies.setModel(assets.soldier, assets.guns);
+  viewModel.setGuns(assets.guns, assets.environment);
+  if (import.meta.env.DEV) Object.assign(window, { assets });
+}, (err: unknown) => console.warn('Assets failed to load; staying with flat colours.', err));
 
 // ------------------------------------------------------------------ menu
 
@@ -290,7 +304,7 @@ function showRound(struck: Struck, dx: number, dy: number, dz: number, quiet: bo
  */
 function ownShot(shot: Shot): void {
   viewModel.fire(shot.weapon);
-  sfx.shot(shot.weapon, 0, shot.quiet);
+  sfx.shot(shot.weapon, undefined, shot.quiet);
   const { ox, oy, oz, dx, dy, dz } = shot;
   const range = WEAPONS[shot.weapon].range;
   let t = world.raycast(ox, oy, oz, dx, dy, dz, range);
@@ -350,8 +364,7 @@ function onEvent(e: GameEvent): void {
       const first = world.panels[e.panels[0]];
       if (first) {
         const b = first.box;
-        const d = me ? Math.hypot((b.minX + b.maxX) / 2 - me.x, (b.minZ + b.maxZ) / 2 - me.z) : 0;
-        sfx.crumble(first.kind !== 'wall', d);
+        sfx.crumble(first.kind !== 'wall', { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 });
       }
       break;
     }
@@ -364,7 +377,7 @@ function onEvent(e: GameEvent): void {
     case 'boom': {
       const d = me ? Math.hypot(e.x - me.x, e.y - me.y, e.z - me.z) : Infinity;
       effects.explosion(to.set(e.x, e.y, e.z));
-      sfx.boom(Number.isFinite(d) ? d : 0);
+      sfx.boom(e);
       shake = Math.max(shake, clamp(1 - d / SHAKE_RANGE, 0, 1));
       break;
     }
@@ -373,10 +386,15 @@ function onEvent(e: GameEvent): void {
       const dx = (e.ex - e.ox) / d;
       const dy = (e.ey - e.oy) / d;
       const dz = (e.ez - e.oz) / d;
-      from.set(e.ox + dx * MUZZLE_REACH, e.oy - 0.1, e.oz + dz * MUZZLE_REACH);
+      // From the shooter's muzzle as drawn, unless it's somewhere else entirely.
+      bodies.fire(e.id, e.quiet);
+      const muzzle = bodies.muzzle(e.id, from);
+      if (!muzzle || muzzle.distanceToSquared(to.set(e.ox, e.oy, e.oz)) > 9) {
+        from.set(e.ox + dx * MUZZLE_REACH, e.oy - 0.1, e.oz + dz * MUZZLE_REACH);
+      }
       to.set(e.ex, e.ey, e.ez);
       showRound(e.struck, dx, dy, dz, e.quiet);
-      sfx.shot(e.weapon, me ? Math.hypot(e.ox - me.x, e.oz - me.z) : 0, e.quiet);
+      sfx.shot(e.weapon, { x: e.ox, y: e.oy, z: e.oz }, e.quiet);
       break;
     }
   }
@@ -392,6 +410,8 @@ let lastPitch = 0;
 let deadFor = 0;
 /** Camera shake, 0 to 1, decaying. */
 let shake = 0;
+/** Our own footfalls: where we were, distance since the last step, and how we were falling. */
+const own = { x: 0, z: 0, stride: 0, air: false, fall: 0 };
 
 function orbitCamera(now: number): void {
   const a = (now - start) * MENU_ORBIT_SPEED + 0.6;
@@ -446,25 +466,66 @@ function eyeCamera(me: Rendered, s: PlayerState, dt: number): void {
   viewModel.hidden = s.dead || (s.weapon === BOLT && me.aim > 0.9);
 }
 
+/** Our own footsteps and landings, from the predicted state. */
+function footsteps(s: PlayerState): void {
+  const moved = Math.hypot(s.x - own.x, s.z - own.z);
+  own.x = s.x;
+  own.z = s.z;
+  if (s.dead || moved > 3) {
+    own.stride = 0;
+    return;
+  }
+  if (!s.onGround) {
+    own.air = true;
+    own.fall = Math.max(own.fall, -s.vy);
+    return;
+  }
+  const surface = surfaces.at(s.x, s.y, s.z);
+  if (own.air) {
+    if (own.fall > 4) sfx.land(surface, own.fall);
+    own.air = false;
+    own.fall = 0;
+    own.stride = 0;
+  }
+  // A slide scrapes along rather than stepping.
+  if (s.slide > 0) return;
+  own.stride += moved;
+  const speed = Math.hypot(s.vx, s.vz);
+  if (own.stride >= strideLength(speed)) {
+    own.stride = 0;
+    sfx.step(surface, speed, s.crouched);
+  }
+}
+
 function sprinting(s: PlayerState): boolean {
   return s.onGround && !s.crouched && s.slide <= 0 && Math.hypot(s.vx, s.vz) > WALK_SPEED + 0.3;
 }
 
+if (import.meta.env.DEV) {
+  // For poking at the game from the console or a test browser.
+  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, sfx, world, viewModel, get conn() { return conn; } } });
+}
+
 renderer.setAnimationLoop(() => {
   const now = performance.now() / 1000;
+  resolution.update(now - last);
   const dt = Math.min(now - last, 0.1);
   last = now;
 
   const players = conn ? (conn.update(dt), inputLoop.advance(now), conn.interpolated()) : [];
-  bodies.update(players, dt);
+  bodies.update(players, dt, camera);
   bags.update(conn?.bags ?? []);
   grenades.update(conn?.grenades() ?? []);
   if (conn) view.setExtracts(conn.extracts, now);
 
   const me = conn?.predictor.render(inputLoop.alpha);
   const state = conn?.predictor.state ?? null;
-  if (me && state) eyeCamera(me, state, dt);
-  else orbitCamera(now);
+  if (me && state) {
+    eyeCamera(me, state, dt);
+    footsteps(state);
+  } else orbitCamera(now);
+  camera.updateMatrixWorld();
+  sfx.listen(camera);
   effects.update(dt);
 
   if (conn) {
@@ -475,8 +536,12 @@ renderer.setAnimationLoop(() => {
     else runHud.update(null, [], 0, 0, 0, camera);
   }
   contractProps.update(conn && !conn.over ? (conn.run?.contracts ?? []) : []);
-  panel?.update();
+  panel?.update(
+    `${resolution.fps.toFixed(0)} fps  ${resolution.frameMs.toFixed(1)} ms  ` +
+    `res ${(resolution.share * 100).toFixed(0)}%  draws ${renderer.info.render.calls}  tris ${(renderer.info.render.triangles / 1000).toFixed(0)}k`,
+  );
 
+  renderer.info.reset();
   renderer.clear();
   renderer.render(scene, camera);
   if (state) {

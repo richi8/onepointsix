@@ -70,7 +70,8 @@ export class NetPanel {
     });
   }
 
-  update(): void {
+  /** `perf` is a line about how fast the game is drawing. */
+  update(perf: string): void {
     const c = this.conn;
     if (this.root.hidden || !c) return;
     const pr = c.predictor;
@@ -93,7 +94,8 @@ export class NetPanel {
       `${stamina}\n` +
       `${weapon}\n` +
       `rtt ${c.rtt.toFixed(0)} ms  unacked cmds ${c.pendingCmds}\n` +
-      `corrections ${pr.corrections}  last ${pr.lastError.toFixed(3)} m`;
+      `corrections ${pr.corrections}  last ${pr.lastError.toFixed(3)} m\n` +
+      perf;
   }
 
   private apply(preset: NetConditions): void {

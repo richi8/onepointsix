@@ -35,6 +35,8 @@ export interface PlayerSnap {
   y: number;
   z: number;
   yaw: number;
+  /** Where they look up or down, for drawing their aim. */
+  pitch: number;
   /** 0 standing to 1 crouched. */
   duck: number;
   /** -1 leaning left to 1 leaning right. */

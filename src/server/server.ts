@@ -342,8 +342,8 @@ export class GameServer {
     if (this.history.length > HISTORY_TICKS) this.history.shift();
 
     const joined = [...this.players.values()].filter((p) => p.joined);
-    const players: PlayerSnap[] = joined.map(({ id, team, x, y, z, yaw, duck, lean, dead, weapon }) => (
-      { id, team, x, y, z, yaw, duck, lean, dead, weapon }
+    const players: PlayerSnap[] = joined.map(({ id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon }) => (
+      { id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon }
     ));
     let extracts: ExtractView[] | null = null;
     let bags: BagSnap[] | null = null;

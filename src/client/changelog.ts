@@ -12,6 +12,21 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Look and sound',
+    notes: [
+      'The island has real textures now: grass, dry meadow, dirt around the outposts, rock on the slopes and sand on the beaches, lit by a real sky.',
+      'Walls are concrete, crates and fences are wooden planks and containers are corrugated metal. The watchtowers are timber.',
+      'New trees: ragged firs with drooping branches instead of green cones.',
+      'Operators and guards are soldiers now. They walk and run, crouch, lean and aim where they look, with their guns in their hands. Guards wear olive.',
+      'Your guns are proper models: a carbine with a red dot, a pistol and a scoped hunting rifle. Everyone else carries them too.',
+      'You can see other people’s muzzle flashes, and their tracers start at their guns.',
+      'Sound is 3D. Gunfire, explosions and breaking cover come from where they happen, so you can tell where a fight is by ear.',
+      'Footsteps: yours and everyone else’s, and they sound different on grass, sand, rock, concrete, wood, metal and in the water. Sprinting is loud, and crouching is nearly silent. Landing from a big drop thuds.',
+      'On slower computers the game now lowers its resolution a little to keep the frame rate up. F3 shows the frame rate.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Contracts and suppressors',
     notes: [
       'Every run now comes with one or two contracts: grab the intel from an outpost’s watchtower, destroy an outpost’s supply cache, or eliminate a commander. They’re listed top right and marked on screen.',

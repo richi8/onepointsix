@@ -148,6 +148,7 @@ export class Connection {
         y: lerp(pa.y, pb.y, f),
         z: lerp(pa.z, pb.z, f),
         yaw: pa.yaw + angleDiff(pb.yaw, pa.yaw) * f,
+        pitch: lerp(pa.pitch, pb.pitch, f),
         duck: lerp(pa.duck, pb.duck, f),
         lean: lerp(pa.lean, pb.lean, f),
         dead: pb.dead,
