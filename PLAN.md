@@ -179,7 +179,7 @@ the Known Issues named in its scope.
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop |
 | 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards are kept per condition | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions |
 | 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened |
-| 18 | **Squads (with bots)** | A PvE option to drop in with 1–3 bot squadmates; a downed state and revive for both you and them; simple squad commands (follow, hold, regroup); squadmates share the run and the score. Humans taking those slots stays Future | A downed player gets revived by a bot squadmate under fire, and the squad extracts together |
+| 18 | **Rivals** | Operator bot personalities: the *rat* (sneaks, loots, avoids fights), the *hunter* (follows gunfire to find wounded operators), the *camper* (waits near extraction points) and the *looter* (goes for high-value crates); third-partying, so operators are drawn to fights between others; a bounty on the operator carrying the most value, who is marked or heard more easily; a kill feed; bags left by bodies show their value before you open them. Personalities carry over as fill bots in future multiplayer | In Mixed mode, meeting another operator plays out differently depending on who they are, and a big haul makes you feel hunted |
 
 ## Known Issues
 
@@ -301,7 +301,6 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   - Anonymous identity, basic anti-cheat, deployment
 - **Transport upgrade:** WebTransport or WebRTC DataChannels (UDP-like), server-side visibility
   culling, server leaderboards
-- **Squads with humans:** friends take the bot squadmate slots from chunk 18
 - **Replay links:** shareable through the server instead of as files (chunk 17 covers local
   replays)
 - Global leaderboards and seasonal featured islands
@@ -312,6 +311,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Backend:** none for now; the game is local only. Multiplayer is a future feature.
 - **After the proof of concept:** chunks 11–18 polish and deepen the local game. Multiplayer
   stays in Future and comes after them.
+- **No squads:** operators play free-for-all. Squads were dropped because the game's pitch
+  ("beat my score") is a solo challenge, and revive would soften "die = score 0".
 - **Platform:** desktop only (keyboard and mouse) in current Chrome, Firefox and Safari. Target
   is 60 fps on a mid-range laptop. No touch or mobile support for now.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
