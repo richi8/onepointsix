@@ -167,7 +167,8 @@ Everything runs locally in the browser; there is no backend.
 ## Known Issues
 
 Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
-leaves here. Each item notes the chunk it came from, and fixed items are removed.
+leaves here. Each item notes the chunk it came from. Fixed items stay in the list: they are
+marked **Resolved** with the chunk or commit that fixed them and how.
 
 ### Look and animation
 - **No death animation or ragdoll** (9). Bodies topple backward stiffly around their feet and
