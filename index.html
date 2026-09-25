@@ -54,10 +54,7 @@
         <p class="empty"></p>
       </div>
       <button type="button" class="news-button" id="news-open">What's new<span class="dot" hidden></span></button>
-      <div class="coffee">
-        <!-- Writes its button in place as the page loads. -->
-        <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="richi8" data-color="#FFDD00" data-emoji="☕" data-font="Lato" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff"></script>
-      </div>
+      <a class="support" href="https://buymeacoffee.com/richi8" target="_blank" rel="noopener"><span aria-hidden="true">☕</span>Buy me a coffee</a>
     </div>
     <div class="news" id="news" hidden role="dialog" aria-modal="true" aria-labelledby="news-title">
       <div class="card">
@@ -103,8 +100,11 @@
     <div class="paused" id="paused" hidden>
       <div class="card" role="dialog" aria-labelledby="paused-title">
         <h2 id="paused-title">Paused</h2>
-        <button type="button" id="resume">Resume</button>
+        <div class="score"><span></span><small>if you extract now</small></div>
+        <p class="standing"></p>
+        <dl></dl>
         <button type="button" id="leave" class="secondary">Leave game</button>
+        <p class="resume">Click anywhere to resume</p>
       </div>
     </div>
     <div class="deathcam" id="deathcam" hidden>

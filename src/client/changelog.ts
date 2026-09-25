@@ -14,7 +14,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     date: '2026-09-25',
     title: 'Pause menu',
     notes: [
-      'Esc opens a menu: resume, or leave the game and go back to the main menu.',
+      'Esc pauses and shows your run so far: what you’d score if you got out now, your loot, kills and contracts, the time left and your best on this island. Click anywhere to carry on, or leave the game for the main menu.',
       'You can buy me a coffee from the main menu if you enjoy the game.',
     ],
   },

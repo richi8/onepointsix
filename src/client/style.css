@@ -217,21 +217,73 @@ canvas {
 .paused .card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: min(280px, 100%);
-  padding: 20px 24px 24px;
+  width: min(360px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px 24px 16px;
   background: rgb(14 16 18 / 0.88);
   border-top: 4px solid #e8c35a;
   border-radius: 6px;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
 }
 
 .paused h2 {
-  margin: 0 0 8px;
-  font-size: 24px;
-  letter-spacing: 0.06em;
-  text-align: center;
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.paused .score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.paused .score span {
+  font-size: 44px;
+  font-weight: 800;
+  color: #e8c35a;
+}
+
+.paused .score small {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.paused .standing {
+  margin: -4px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8c35a;
+}
+
+.paused dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+.paused dt {
+  opacity: 0.75;
+}
+
+.paused dd {
+  margin: 0;
+  text-align: right;
+}
+
+.paused [hidden] {
+  display: none;
 }
 
 .paused button {
@@ -241,24 +293,22 @@ canvas {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #1b1b1b;
-  background: #e8c35a;
+  color: #eee;
+  background: rgb(255 255 255 / 0.12);
   border: 0;
   border-radius: 4px;
   cursor: pointer;
 }
 
 .paused button:hover {
-  background: #f2d27a;
+  background: #d9534f;
 }
 
-.paused button.secondary {
-  color: #eee;
-  background: rgb(255 255 255 / 0.12);
-}
-
-.paused button.secondary:hover {
-  background: rgb(255 255 255 / 0.2);
+.paused .resume {
+  margin: 12px 0 0;
+  font-size: 13px;
+  text-align: center;
+  opacity: 0.6;
 }
 
 /* ------------------------------------------------------------------ HUD */
@@ -758,18 +808,27 @@ canvas {
   }
 }
 
-/* The Buy Me a Coffee button, smaller than it comes. */
-.menu .coffee .bmc-btn {
-  min-width: 0;
-  height: 40px;
-  padding: 0 14px;
-  font-size: 16px;
-  border-radius: 8px;
+/* Buy me a coffee: a plain link rather than the widget, which ad blockers hide. */
+.menu .support {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #000;
+  text-decoration: none;
   text-shadow: none;
+  background: #fd0;
+  border-radius: 8px;
 }
 
-.menu .coffee .bmc-btn svg {
-  height: 24px !important;
+.menu .support:hover {
+  background: #ffe54d;
+}
+
+.menu .support span {
+  font-size: 18px;
 }
 
 /* ------------------------------------------------------------------ what's new */

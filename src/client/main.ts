@@ -541,12 +541,23 @@ document.getElementById('to-menu')!.onclick = toMenu;
 input.onLockChange = (locked) => {
   if (conn && !conn.over) paused.hidden = locked;
 };
-// Clicking beside the menu resumes too, as the whole screen did before it.
+// Clicking anywhere but the Leave button resumes.
 paused.onclick = (e) => {
-  if (e.target === paused) input.lock();
+  if (e.target !== leaveButton) input.lock();
 };
-document.getElementById('resume')!.onclick = () => input.lock();
-document.getElementById('leave')!.onclick = toMenu;
+const leaveButton = document.getElementById('leave')!;
+leaveButton.onclick = toMenu;
+
+/** Under the score in the pause menu: the best run on this island and the challenge from the link. */
+function pauseStanding(): string {
+  if (mode === 'range') return '';
+  const best = board.best(config.seed, mode);
+  const c = challengeFor(mode);
+  return [
+    best ? `Your best here: ${best.score.toLocaleString('en-US')}` : '',
+    c ? `${c.name}’s to beat: ${c.score.toLocaleString('en-US')}` : '',
+  ].filter(Boolean).join(' · ');
+}
 
 playButton.onclick = play;
 window.addEventListener('keydown', (e) => {
@@ -849,6 +860,7 @@ renderer.setAnimationLoop(() => {
     hud.update(dt, state, me?.aim ?? 0, clamp(spreadPx, 0, innerHeight / 3), !!state && sprinting(state), camera);
     if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera);
     else runHud.update(null, [], 0, 0, 0, camera);
+    if (!paused.hidden) runHud.updatePause(conn.run, pauseStanding());
   }
   contractProps.update(conn && !conn.over ? (conn.run?.contracts ?? []) : []);
   panel?.update(

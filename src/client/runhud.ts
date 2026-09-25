@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CALL_TIME, CARRY_HEAVY, EXTRACT_TIME, KILL_SCORE_GUARD, KILL_SCORE_OPERATOR } from '../shared/constants.ts';
-import { extractKind, extractName, ITEMS, lootMass, lootValue } from '../shared/loot.ts';
+import { extractKind, extractName, ITEMS, lootMass, lootValue, runScore } from '../shared/loot.ts';
 import type { ContractView, ExtractView, GameEvent, RunView } from '../shared/protocol.ts';
 import type { World } from '../shared/world.ts';
 import { bearing } from './hud.ts';
@@ -30,10 +30,11 @@ export class RunHud {
   private readonly packSum = this.pack.querySelector('.sum')!;
   private readonly packList = this.pack.querySelector('ul')!;
   private readonly results = $('results');
+  private readonly pause = $('paused');
   private readonly world: World;
   private readonly names: string[];
   /** Last rendered text of each part, so the DOM is only touched on change. */
-  private shown = { extracts: '', contracts: '', prompt: '', pack: '' };
+  private shown = { extracts: '', contracts: '', prompt: '', pack: '', pause: '' };
 
   constructor(world: World) {
     this.world = world;
@@ -158,6 +159,39 @@ export class RunHud {
     });
     this.promptBar.hidden = bar < 0;
     this.promptFill.style.width = `${Math.min(Math.max(bar, 0), 1) * 100}%`;
+  }
+
+  /** The pause menu's dashboard: what the run would score if you got out now, and what it's made of. Null on the range. */
+  updatePause(run: RunView | null, standing: string): void {
+    let score = '';
+    let rows: [string, string][] = [];
+    if (run) {
+      const value = lootValue(run.items);
+      const done = run.contracts.filter((c) => c.state === 'done').reduce((sum, c) => sum + c.reward, 0);
+      score = runScore(value, run.kills, run.guardKills, done).toLocaleString('en-US');
+      rows = [
+        ['Loot', money(value)],
+        [`Operators killed × ${KILL_SCORE_OPERATOR}`, String(run.kills)],
+        [`Guards killed × ${KILL_SCORE_GUARD}`, String(run.guardKills)],
+        ...run.contracts.map((c): [string, string] => [
+          contractTitle(c),
+          c.state === 'done' ? `+${money(c.reward)}` : c.state === 'failed' ? 'failed' : `open · ${money(c.reward)}`,
+        ]),
+        ['Time left', clock(run.time)],
+      ];
+    }
+    const html = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+    this.set('pause', this.pause, `${score}|${standing}|${html}`, () => {
+      const p = this.pause;
+      (p.querySelector('.score') as HTMLElement).hidden = !run;
+      p.querySelector('.score span')!.textContent = score;
+      const stand = p.querySelector('.standing') as HTMLElement;
+      stand.textContent = standing;
+      stand.hidden = !standing;
+      const dl = p.querySelector('dl') as HTMLElement;
+      dl.innerHTML = html;
+      dl.hidden = !run;
+    });
   }
 
   /** The run is over: show how it went, and `standing` below the score, such as a place on the leaderboard. */

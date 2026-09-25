@@ -513,6 +513,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   script writes the button in place with `document.writeln`, so it has to be a plain blocking
   script in `index.html`. A slow buymeacoffee.com CDN holds up the rest of the page, and ad
   blockers that block it leave no button. A plain styled link would avoid both.
+  **Resolved** (pause dashboard commit): the widget is replaced by a plain link styled like it,
+  with no script and no class names that ad blockers match.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
