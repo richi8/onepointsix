@@ -22,8 +22,9 @@ const MUZZLE_TIME = 0.05;
 const HEAD = 0xd8c3a0;
 const TORSO: Record<Team, number> = { operator: 0x3f556e, guard: 0x5a6638, dummy: 0xc4652b };
 const LEGS: Record<Team, number> = { operator: 0x2e3238, guard: 0x4a4636, dummy: 0x4a4636 };
-/** Soldier tints, multiplying the model's own colours. */
-const UNIFORM: Record<Team, number> = { operator: 0xb4c0d0, guard: 0xa8b07a, dummy: 0xf09a5a };
+/** The soldier's uniform, per side; its gear, skin and visor keep the model's own colours. */
+const UNIFORM: Record<Team, number> = { operator: 0x44566a, guard: 0x5c6a3a, dummy: 0xc4652b };
+const UNIFORM_MATERIAL = 'Swat';
 /** Beyond this, soldiers animate at a lower rate and skip fine posing. */
 const NEAR = 90;
 const FAR_UPDATE = 1 / 12;
@@ -32,13 +33,10 @@ const SHADOW_REACH = 60;
 /** Where the fog hides everything. */
 const FOG_END = 750;
 /** Speeds, in m/s, that the walk and run clips were recorded at. */
-const WALK_CLIP_SPEED = 1.8;
-const RUN_CLIP_SPEED = 5.5;
+const WALK_CLIP_SPEED = 1.3;
+const RUN_CLIP_SPEED = 3.2;
 /** How far the upper body rolls with a full lean, so the head ends up over its hitbox. */
 const LEAN_ROLL = 0.55;
-/** Thigh swing and knee fold when fully crouched, on top of the clip's own bend. */
-const CROUCH_THIGH = 1;
-const CROUCH_KNEE = 1.85;
 
 const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
@@ -110,23 +108,31 @@ interface Soldier {
   idle: THREE.AnimationAction;
   walk: THREE.AnimationAction;
   run: THREE.AnimationAction;
-  bones: Record<BoneName, THREE.Bone>;
+  bones: Record<BoneName, THREE.Object3D>;
   /**
    * The pose the animation last wrote to the bones we adjust. The mixer only
    * writes a bone when its animated value changes, so our adjustments are
    * undone by hand before each update, or they would pile up.
    */
-  animated: { bone: THREE.Bone; position: THREE.Vector3; quaternion: THREE.Quaternion }[];
-  /** Upper arm and forearm lengths, per side, measured at rest. */
+  animated: { bone: THREE.Object3D; position: THREE.Vector3; quaternion: THREE.Quaternion }[];
+  /** Upper arm, forearm, thigh and shin lengths, measured at rest. */
   arm: number;
   forearm: number;
+  thigh: number;
+  shin: number;
 }
 
+/**
+ * The bones we pose by hand, as named in Quaternius's rig. Its feet hang off
+ * the root, not the shins: the clips place them, and the legs reach for them.
+ * The body carries the pelvis, the legs and the upper body.
+ */
 const BONES = {
-  hips: 'Hips', spine: 'Spine', spine2: 'Spine2', neck: 'Neck', head: 'Head',
-  lArm: 'LeftArm', lForeArm: 'LeftForeArm', lHand: 'LeftHand',
-  rArm: 'RightArm', rForeArm: 'RightForeArm', rHand: 'RightHand',
-  lUpLeg: 'LeftUpLeg', lLeg: 'LeftLeg', rUpLeg: 'RightUpLeg', rLeg: 'RightLeg',
+  root: 'Root', body: 'Body', spine: 'Abdomen', spine2: 'Chest', neck: 'Neck', head: 'Head',
+  lArm: 'UpperArm.L', lForeArm: 'LowerArm.L', lHand: 'Wrist.L',
+  rArm: 'UpperArm.R', rForeArm: 'LowerArm.R', rHand: 'Wrist.R',
+  lUpLeg: 'UpperLeg.L', lLeg: 'LowerLeg.L', lAnkle: 'LowerLeg.L_end', lFoot: 'Foot.L',
+  rUpLeg: 'UpperLeg.R', rLeg: 'LowerLeg.R', rAnkle: 'LowerLeg.R_end', rFoot: 'Foot.R',
 } as const;
 type BoneName = keyof typeof BONES;
 
@@ -252,25 +258,30 @@ export class Bodies {
     const gltf = this.model!;
     const model = SkeletonUtils.clone(gltf.scene);
     model.scale.setScalar(this.modelScale);
-    const tint = new THREE.Color(UNIFORM[team]);
     model.traverse((o) => {
       const mesh = o as THREE.SkinnedMesh;
       if (!mesh.isMesh) return;
+      // Each mesh gets its own materials, for the hit flash.
       const m = (mesh.material as THREE.MeshStandardMaterial).clone();
-      m.color.multiply(tint);
+      if (m.name === UNIFORM_MATERIAL) m.color.setHex(UNIFORM[team]);
       mesh.material = m;
       mesh.castShadow = true;
       // Culled as a whole body instead, in update.
       mesh.frustumCulled = false;
       f.materials.push(m);
     });
-    f.group.add(model);
+    // The model faces +z; bodies face -z.
+    const turned = new THREE.Group();
+    turned.rotation.y = Math.PI;
+    turned.add(model);
+    f.group.add(turned);
 
-    const bones = {} as Record<BoneName, THREE.Bone>;
+    const bones = {} as Record<BoneName, THREE.Object3D>;
     for (const [key, name] of Object.entries(BONES)) {
-      const bone = model.getObjectByName(`mixamorig${name}`) ?? model.getObjectByName(`mixamorig:${name}`);
+      // The loader drops the dots from node names.
+      const bone = model.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name));
       if (!bone) throw new Error(`Soldier has no ${name} bone`);
-      bones[key as BoneName] = bone as THREE.Bone;
+      bones[key as BoneName] = bone;
     }
     const mixer = new THREE.AnimationMixer(model);
     const clip = (name: string): THREE.AnimationAction => {
@@ -289,11 +300,13 @@ export class Bodies {
     run.time = phase * run.getClip().duration;
 
     f.group.updateMatrixWorld(true);
-    const at = (b: THREE.Bone): THREE.Vector3 => b.getWorldPosition(new THREE.Vector3());
+    const at = (b: THREE.Object3D): THREE.Vector3 => b.getWorldPosition(new THREE.Vector3());
     const arm = at(bones.rArm).distanceTo(at(bones.rForeArm));
     const forearm = at(bones.rForeArm).distanceTo(at(bones.rHand));
+    const thigh = at(bones.rUpLeg).distanceTo(at(bones.rLeg));
+    const shin = at(bones.rLeg).distanceTo(at(bones.rAnkle));
     const animated = Object.values(bones).map((bone) => ({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }));
-    return { mixer, idle, walk, run, bones, animated, arm, forearm };
+    return { mixer, idle, walk, run, bones, animated, arm, forearm, thigh, shin };
   }
 
   private pose(f: Figure, p: PlayerSnap, dt: number): void {
@@ -405,21 +418,23 @@ export class Bodies {
     const right = V_RIGHT.set(1, 0, 0).applyQuaternion(facing);
     const forward = V_FORWARD.set(0, 0, -1).applyQuaternion(facing);
 
-    // Legs turn toward where it's going, within reason; the body keeps facing its aim.
+    // Legs and feet turn toward where it's going, within reason; the body keeps facing its aim.
     const legYaw = dead ? 0 : moving * clamp(back ? angleDiff(f.heading, Math.PI) : f.heading, -1.1, 1.1);
-    rotateWorld(b.hips, up, legYaw);
+    rotateWorld(b.root, up, legYaw);
     rotateWorld(b.spine, up, -legYaw);
 
-    // Crouch: sink the hips and fold the legs to the hitbox's hip height.
+    // Crouch: sink the body to the hitbox's hip height, and the legs fold to keep the feet planted.
     const duck = p.duck;
     if (duck > 0.01) {
-      const legRight = V_TMP.copy(right).applyAxisAngle(up, legYaw);
       const drop = hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck: 0, lean: 0 }).hipY -
         hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck, lean: 0 }).hipY;
-      moveWorld(b.hips, V_TMP2.set(0, -drop, 0));
-      for (const [thigh, shin] of [[b.lUpLeg, b.lLeg], [b.rUpLeg, b.rLeg]] as const) {
-        rotateWorld(thigh, legRight, CROUCH_THIGH * duck);
-        rotateWorld(shin, legRight, -CROUCH_KNEE * duck);
+      moveWorld(b.body, V_TMP2.set(0, -drop, 0));
+      const legForward = V_TMP.copy(forward).applyAxisAngle(up, legYaw);
+      for (const [thigh, shin, ankle, foot] of [[b.lUpLeg, b.lLeg, b.lAnkle, b.lFoot], [b.rUpLeg, b.rLeg, b.rAnkle, b.rFoot]] as const) {
+        // Knees out front.
+        const target = foot.getWorldPosition(V_TMP3);
+        const pole = thigh.getWorldPosition(V_TMP2).addScaledVector(legForward, 1);
+        reach(thigh, shin, ankle, target, pole, s.thigh, s.shin);
       }
       // Bent forward a little over the knees.
       rotateWorld(b.spine, right, -0.25 * duck);
@@ -466,6 +481,7 @@ const V_RIGHT = new THREE.Vector3();
 const V_FORWARD = new THREE.Vector3();
 const V_TMP = new THREE.Vector3();
 const V_TMP2 = new THREE.Vector3();
+const V_TMP3 = new THREE.Vector3();
 const Q_A = new THREE.Quaternion();
 const Q_B = new THREE.Quaternion();
 const Q_C = new THREE.Quaternion();
@@ -495,7 +511,7 @@ function moveWorld(bone: THREE.Object3D, offset: THREE.Vector3): void {
  * toward `pole`. Lengths are the upper arm's and forearm's in world units.
  */
 function reach(
-  upper: THREE.Bone, lower: THREE.Bone, hand: THREE.Bone,
+  upper: THREE.Object3D, lower: THREE.Object3D, hand: THREE.Object3D,
   target: THREE.Vector3, pole: THREE.Vector3, a: number, b: number,
 ): void {
   const s = upper.getWorldPosition(new THREE.Vector3());
@@ -516,7 +532,7 @@ function reach(
 }
 
 /** Turn a bone so the child now at `from` swings to `to`. */
-function aimBone(bone: THREE.Bone, from: THREE.Vector3, to: THREE.Vector3): void {
+function aimBone(bone: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3): void {
   const origin = bone.getWorldPosition(new THREE.Vector3());
   const u = from.sub(origin).normalize();
   const v = to.sub(origin).normalize();

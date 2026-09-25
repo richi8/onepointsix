@@ -4,8 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>onepointsix</title>
+    <style>
+      /* The loading screen, inline so it shows before the scripts and styles arrive. */
+      html, body { margin: 0; height: 100%; background: #111; }
+      .loading {
+        position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 18px;
+        color: #fff; background: radial-gradient(circle at 50% 40%, #28303a, #111 70%);
+        font-family: system-ui, sans-serif; transition: opacity 0.5s;
+      }
+      .loading.done { opacity: 0; pointer-events: none; }
+      .loading h1 { margin: 0; font-size: 64px; font-weight: 800; letter-spacing: -0.02em; }
+      .loading .bar { width: min(320px, 70vw); height: 4px; border-radius: 2px; background: rgb(255 255 255 / 0.15); overflow: hidden; }
+      .loading .bar div { width: 0; height: 100%; background: #e8c35a; transition: width 0.2s; }
+      .loading p { margin: 0; font-size: 14px; color: rgb(255 255 255 / 0.65); }
+      .loading button {
+        font: inherit; font-size: 13px; color: rgb(255 255 255 / 0.8); background: none;
+        border: 0; text-decoration: underline; cursor: pointer;
+      }
+      .loading button[hidden] { display: none; }
+    </style>
   </head>
   <body>
+    <div class="loading" id="loading" role="status" aria-live="polite">
+      <h1>onepointsix</h1>
+      <div class="bar"><div></div></div>
+      <p>Loading the island…</p>
+      <button type="button" id="loading-skip" hidden>Play now in flat colours</button>
+    </div>
     <div class="menu" id="menu">
       <h1>onepointsix</h1>
       <div class="island">

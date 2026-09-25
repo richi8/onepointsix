@@ -11,7 +11,6 @@ import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/wea
 import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
-import { loadAssets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies, strideLength } from './bodies.ts';
@@ -46,6 +45,8 @@ const RESULTS_DELAY_DEAD = 2.2;
 /** Camera shake from a blast this close, fading out to nothing at SHAKE_RANGE. */
 const SHAKE_RANGE = 30;
 const SHAKE_DECAY = 5;
+/** Seconds before the loading screen offers to play without waiting for the textures. */
+const SKIP_LOADING_AFTER = 8;
 const MODE_NAMES: Record<Mode, string> = { mixed: 'Mixed', pve: 'PvE', range: 'Range' };
 /** Leaderboard rows shown on the menu. */
 const BOARD_SHOWN = 5;
@@ -99,12 +100,45 @@ const surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
 
-loadAssets(renderer).then((assets) => {
-  view.applyAssets(assets);
-  bodies.setModel(assets.soldier, assets.guns);
-  viewModel.setGuns(assets.guns, assets.environment);
-  if (import.meta.env.DEV) Object.assign(window, { assets });
-}, (err: unknown) => console.warn('Assets failed to load; staying with flat colours.', err));
+// ---------------------------------------------------------------- loading
+
+// The loading screen from index.html stays up until the textures and models
+// are in and their shaders compiled, so the island never shows half-dressed.
+// A slow connection can skip it and play in flat colours meanwhile.
+const loadingEl = document.getElementById('loading')!;
+const loadingBar = loadingEl.querySelector('.bar div') as HTMLElement;
+const loadingSkip = document.getElementById('loading-skip') as HTMLButtonElement;
+let loaded = false;
+
+function finishLoading(): void {
+  if (loaded) return;
+  loaded = true;
+  loadingEl.classList.add('done');
+  setTimeout(() => loadingEl.remove(), 600);
+  playButton.focus();
+}
+
+loadingSkip.onclick = finishLoading;
+setTimeout(() => (loadingSkip.hidden = false), SKIP_LOADING_AFTER * 1000);
+
+import('./assets.ts')
+  .then(({ loadAssets }) => loadAssets(renderer, (f) => (loadingBar.style.width = `${Math.round(f * 100)}%`)))
+  .then(async (assets) => {
+    loadingBar.style.width = '100%';
+    loadingEl.querySelector('p')!.textContent = 'Preparing the island…';
+    view.applyAssets(assets);
+    bodies.setModel(assets.soldier, assets.guns);
+    viewModel.setGuns(assets.guns, assets.environment);
+    if (import.meta.env.DEV) Object.assign(window, { assets });
+    orbitCamera(performance.now() / 1000);
+    camera.updateMatrixWorld();
+    await renderer.compileAsync(scene, camera);
+  })
+  .catch((err: unknown) => {
+    console.warn('Assets failed to load; staying with flat colours.', err);
+    toast('Textures failed to load. Playing in flat colours.');
+  })
+  .finally(finishLoading);
 
 // ------------------------------------------------------------------ menu
 
@@ -347,7 +381,7 @@ function join(): void {
 }
 
 function play(): void {
-  if (conn) return;
+  if (conn || !loaded) return;
   sfx.unlock();
   menu.hidden = true;
   join();

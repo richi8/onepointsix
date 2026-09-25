@@ -4,7 +4,8 @@ import type { ExtractView } from '../shared/protocol.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { fbm, mulberry32 } from '../shared/rng.ts';
 import type { PropStyle, World } from '../shared/world.ts';
-import { Layer, type Assets } from './assets.ts';
+import type { Assets } from './assets.ts';
+import { Layer } from './layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { Trees } from './trees.ts';
 

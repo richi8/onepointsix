@@ -1,18 +1,14 @@
 import * as THREE from 'three';
 import type { Assets } from './assets.ts';
+import { LAYERS } from './layers.ts';
 
 // PBR surfaces textured in world space, so nothing needs UVs: the island's
 // terrain blends five ground layers painted per vertex, and props, rocks and
 // trunks project one layer from all three axes. Built on MeshStandardMaterial,
 // so lights, shadows and fog work as usual.
 
-/** Metres one repeat of each layer covers, in Layer order. */
-const LAYER_SCALE = [3.5, 3, 3, 7, 4, 1.6, 3, 2.2, 2, 2.5];
-/** Each layer's colour correction, in Layer order: the withered grass is pale and the sand bright. */
-const LAYER_TINT = [
-  [1, 1, 1], [0.72, 0.74, 0.55], [1, 1, 1], [1, 1, 1], [0.9, 0.88, 0.82],
-  [1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1],
-].map(([r, g, b]) => new THREE.Vector3(r, g, b));
+const LAYER_SCALE = LAYERS.map((l) => l.scale);
+const LAYER_TINT = LAYERS.map(({ tint: [r, g, b] }) => new THREE.Vector3(r, g, b));
 
 /**
  * How a material picks its layers:
@@ -98,9 +94,11 @@ function patch(source: string, edits: [anchor: string, code: string, replace?: b
 }
 
 const SURFACE_GLSL = /* glsl */ `
-  // A tangent-space normal from the map, tilted more or less.
+  // A tangent-space normal from the map, tilted more or less. The map holds
+  // only X and Y (in RGB and alpha), so Z is rebuilt.
   vec3 surfTangent(vec2 uv, float layer) {
-    vec3 t = texture(surfNormal, vec3(uv, layer)).xyz * 2.0 - 1.0;
+    vec2 xy = texture(surfNormal, vec3(uv, layer)).ga * 2.0 - 1.0;
+    vec3 t = vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
     t.xy *= surfBump;
     return t;
   }

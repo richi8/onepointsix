@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
-import { Layer, type Assets } from './assets.ts';
+import type { Assets } from './assets.ts';
+import { Layer } from './layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 
 // Firs: a trunk, a dark core of cones and whorls of branch cards with needles

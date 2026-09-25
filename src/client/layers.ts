@@ -1,0 +1,25 @@
+// The surface texture layers, the one list both the game and
+// scripts/fetch-assets.mjs read: the script stacks the Poly Haven textures
+// into array textures in this order, and the game samples them by index.
+// No imports, so plain Node can load it.
+
+export const LAYERS = [
+  // `scale` is the metres one repeat covers; `tint` corrects a layer's colour.
+  { name: 'grass', polyHaven: 'grass_ground', scale: 3.5, tint: [1, 1, 1] },
+  // Pale on its own.
+  { name: 'dryGrass', polyHaven: 'withered_grass', scale: 3, tint: [0.72, 0.74, 0.55] },
+  { name: 'dirt', polyHaven: 'dirt', scale: 3, tint: [1, 1, 1] },
+  { name: 'rock', polyHaven: 'aerial_rocks_02', scale: 7, tint: [1, 1, 1] },
+  // Bright on its own.
+  { name: 'sand', polyHaven: 'coast_sand_01', scale: 4, tint: [0.9, 0.88, 0.82] },
+  { name: 'planks', polyHaven: 'weathered_planks', scale: 1.6, tint: [1, 1, 1] },
+  { name: 'concrete', polyHaven: 'concrete_wall_004', scale: 3, tint: [1, 1, 1] },
+  { name: 'metal', polyHaven: 'corrugated_iron', scale: 2.2, tint: [1, 1, 1] },
+  { name: 'boards', polyHaven: 'wood_plank_wall', scale: 2, tint: [1, 1, 1] },
+  { name: 'bark', polyHaven: 'bark_brown_02', scale: 2.5, tint: [1, 1, 1] },
+] as const;
+
+type LayerName = (typeof LAYERS)[number]['name'];
+
+/** Each layer's index by name. */
+export const Layer = Object.fromEntries(LAYERS.map((l, i) => [l.name, i])) as Record<LayerName, number>;

@@ -1,37 +1,27 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
-// Everything the game downloads, all CC0 or free to use (see
-// public/assets/CREDITS.md). Until it arrives, the island draws in flat
-// colours, so the menu shows at once.
+// Everything the game downloads, all CC0 (see public/assets/CREDITS.md), as
+// packed by scripts/fetch-assets.mjs. The main bundle imports this module
+// lazily, so the loaders it pulls in don't hold up the first frame. Textures
+// are KTX2 array textures, transcoded off the main thread; models are
+// meshopt-compressed.
 
-/** Texture layers, in the order scripts/fetch-assets.mjs lists them. */
-export const Layer = {
-  grass: 0,
-  dryGrass: 1,
-  dirt: 2,
-  rock: 3,
-  sand: 4,
-  planks: 5,
-  concrete: 6,
-  metal: 7,
-  boards: 8,
-  bark: 9,
-} as const;
-
-const TEXTURES = [
-  'grass_ground', 'withered_grass', 'dirt', 'aerial_rocks_02', 'coast_sand_01',
-  'weathered_planks', 'concrete_wall_004', 'corrugated_iron', 'wood_plank_wall', 'bark_brown_02',
-];
-const SIZE = 512;
 const BASE = `${import.meta.env.BASE_URL}assets/`;
+/**
+ * The sky's cube size for pre-filtering. PMREM would size it from the
+ * image, and the half-size sky we ship would light the island brighter.
+ */
+const SKY_CUBE = 256;
 
 export interface Assets {
-  /** Every surface's colour, one layer each, in sRGB. */
-  albedo: THREE.DataArrayTexture;
-  /** Every surface's tangent-space normal map, OpenGL convention. */
-  normal: THREE.DataArrayTexture;
+  /** Every surface's colour, one layer each (see layers.ts), in sRGB. */
+  albedo: THREE.Texture;
+  /** Every surface's tangent-space normal map, OpenGL convention, with X in RGB and Y in alpha. */
+  normal: THREE.Texture;
   /** Image-based lighting from a real sky, pre-filtered. */
   environment: THREE.Texture;
   soldier: GLTF;
@@ -39,52 +29,64 @@ export interface Assets {
   guns: GLTF[];
 }
 
-export async function loadAssets(renderer: THREE.WebGLRenderer): Promise<Assets> {
-  const gltf = new GLTFLoader();
-  const [albedo, normal, sky, soldier, ...guns] = await Promise.all([
-    layers('color', true),
-    layers('normal', false),
-    new HDRLoader().loadAsync(`${BASE}sky.hdr`),
-    gltf.loadAsync(`${BASE}soldier.glb`),
-    ...['rifle', 'pistol', 'bolt'].map((name) => gltf.loadAsync(`${BASE}guns/${name}.glb`)),
-  ]);
-  const anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
-  albedo.anisotropy = normal.anisotropy = anisotropy;
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const environment = pmrem.fromEquirectangular(sky).texture;
-  sky.dispose();
-  pmrem.dispose();
-  return { albedo, normal, environment, soldier, guns };
+/** Called as the downloads come in, with the fraction done. */
+export type Progress = (fraction: number) => void;
+
+export async function loadAssets(renderer: THREE.WebGLRenderer, progress: Progress = () => {}): Promise<Assets> {
+  const ktx2 = new KTX2Loader().detectSupport(renderer);
+  const gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const track = tracker(7, progress);
+  try {
+    const [albedo, normal, sky, soldier, ...guns] = await Promise.all([
+      ktx2.loadAsync(`${BASE}textures/color.ktx2`, track()),
+      ktx2.loadAsync(`${BASE}textures/normal.ktx2`, track()),
+      new HDRLoader().loadAsync(`${BASE}sky.hdr`, track()),
+      gltf.loadAsync(`${BASE}soldier.glb`, track()),
+      ...['rifle', 'pistol', 'bolt'].map((name) => gltf.loadAsync(`${BASE}guns/${name}.glb`, track())),
+    ]);
+    const anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+    for (const tex of [albedo, normal]) {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.anisotropy = anisotropy;
+    }
+    const cube = new THREE.WebGLCubeRenderTarget(SKY_CUBE, { type: THREE.HalfFloatType }).fromEquirectangularTexture(renderer, sky);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const environment = pmrem.fromCubemap(cube.texture).texture;
+    sky.dispose();
+    cube.dispose();
+    pmrem.dispose();
+    return { albedo, normal, environment, soldier, guns };
+  } finally {
+    ktx2.dispose();
+  }
 }
 
-/** One kind of map for every layer, stacked into a single array texture. */
-async function layers(kind: 'color' | 'normal', srgb: boolean): Promise<THREE.DataArrayTexture> {
-  const images = await Promise.all(TEXTURES.map((id) => image(`${BASE}textures/${id}_${kind}.jpg`)));
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = SIZE;
-  const g = canvas.getContext('2d', { willReadFrequently: true })!;
-  // Bottom row first, as WebGL expects, so v runs up the image.
-  g.setTransform(1, 0, 0, -1, 0, SIZE);
-  const data = new Uint8Array(SIZE * SIZE * 4 * images.length);
-  images.forEach((img, i) => {
-    g.drawImage(img, 0, 0, SIZE, SIZE);
-    data.set(g.getImageData(0, 0, SIZE, SIZE).data, i * SIZE * SIZE * 4);
-  });
-  const tex = new THREE.DataArrayTexture(data, SIZE, SIZE, images.length);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.generateMipmaps = true;
-  if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function image(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Couldn't load ${url}`));
-    img.src = url;
-  });
+/**
+ * Combined progress over `count` downloads, by bytes. A download whose size
+ * isn't known yet, because it hasn't started, is guessed to be as big as the
+ * average of the others. A gzipped download's size is its compressed one, so
+ * it counts as done early.
+ */
+function tracker(count: number, progress: Progress): () => (e: ProgressEvent) => void {
+  const loaded: number[] = [];
+  const total: number[] = [];
+  let shown = 0;
+  const report = (): void => {
+    const known = total.filter((t) => t > 0);
+    if (!known.length) return;
+    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    const guess = sum(known) / known.length;
+    // Never backward, even when a guess turns out too small.
+    shown = Math.max(shown, sum(loaded) / (sum(known) + (count - known.length) * guess));
+    progress(Math.min(shown, 1));
+  };
+  return () => {
+    const i = loaded.push(0) - 1;
+    total.push(0);
+    return (e) => {
+      loaded[i] = e.lengthComputable ? Math.min(e.loaded, e.total) : e.loaded;
+      total[i] = e.lengthComputable ? e.total : Math.max(e.loaded, total[i]);
+      report();
+    };
+  };
 }

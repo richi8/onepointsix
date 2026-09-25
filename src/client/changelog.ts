@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-25',
+    title: 'Faster loading',
+    notes: [
+      'The game downloads less than half as much as before, so it starts sooner, and it uses less graphics memory once loaded.',
+      'A loading screen with a progress bar now shows while the island loads, instead of the island in flat colours changing in front of you. On a slow connection you can skip it and play right away.',
+      'New soldier models for everyone. Operators wear blue, guards olive and range dummies orange. Crouching soldiers now kneel with their feet on the ground.',
+    ],
+  },
+  {
+    date: '2026-09-25',
     title: 'Share your island',
     notes: [
       'Death cam: when someone kills you, watch your last seconds through their eyes, down to where they aimed and every shot they fired. Click or press Space to skip, or watch it again from the results.',
