@@ -15,7 +15,7 @@ import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
 import type { Senses } from '../shared/conditions.ts';
 import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
-import type { PlayerState } from '../shared/sim.ts';
+import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
 import type { Point, World } from '../shared/world.ts';
@@ -99,6 +99,24 @@ export interface BotContext {
   bounty: number;
   /** Bags on the ground and what's in them. */
   bags(): readonly BagSnap[];
+  /** Where someone's lit flashlight lands, as beamSpot; the server works each out once a tick. */
+  beam?(a: Agent): Point | null;
+}
+
+/**
+ * Where the beam of `a`'s flashlight lands on the ground or a wall, pulled a
+ * little back toward them, or null if it reaches nothing close enough to light.
+ */
+export function beamSpot(world: World, a: Agent): Point | null {
+  const eye = eyePosition(world, a.x, a.y, a.z, a.yaw, a.duck, a.lean);
+  const cp = Math.cos(a.pitch);
+  const dx = -Math.sin(a.yaw) * cp;
+  const dy = Math.sin(a.pitch);
+  const dz = -Math.cos(a.yaw) * cp;
+  const t = world.raycast(eye.x, eye.y, eye.z, dx, dy, dz, BEAM_THROW, true);
+  if (t > BEAM_THROW) return null;
+  const k = Math.max(t - 0.15, 0);
+  return { x: eye.x + dx * k, y: eye.y + dy * k, z: eye.z + dz * k };
 }
 
 /** Whether a would shoot b. Operators are each on their own side; guards stick together. */
@@ -126,6 +144,10 @@ const LIGHT_REACH = 2.5;
 const BEAM_RANGE = 40;
 /** Half-angle of a flashlight's beam, radians. */
 export const BEAM_ANGLE = 0.3;
+/** How far a flashlight lights a surface brightly enough to be noticed, metres. */
+export const BEAM_THROW = 30;
+/** Metres off where a lit patch's holder is guessed to be, per metre from the patch to them. */
+const BEAM_GUESS = 0.25;
 /** Operator bots switch their flashlight off this close to an outpost, and whenever they aren't just going about their run. */
 const OPERATOR_DARK = 110;
 /** Footstep hearing ranges: sprinting and walking. Crouch-walking is silent. */
@@ -492,11 +514,34 @@ export class Bot {
       const loud = (!a.onGround ? 0 : speed > WALK_SPEED + 0.5 ? STEPS_SPRINT : speed > CROUCH_SPEED + 0.3 ? STEPS_WALK : 0) *
         (a.id === ctx.bounty ? BOUNTY_LOUD : 1);
       if (d < loud * senses.hearing) this.heard = { x: a.x, y: a.y, z: a.z, at: now };
+      else if (senses.dark && a.light) this.seeBeam(ctx, self, a, eye.headX, eye.headY, eye.headZ, now);
     }
     for (const id of this.contacts.keys()) {
       const a = ctx.agent(id);
       if (!a || a.dead) this.contacts.delete(id);
     }
+  }
+
+  /**
+   * In the dark, a lit patch where someone's beam lands gives them away even
+   * when they're out of sight, say behind a wall: the bot looks the way the
+   * beam came from, roughly where its holder must stand.
+   */
+  private seeBeam(ctx: BotContext, self: Agent, a: Agent, ex: number, ey: number, ez: number, now: number): void {
+    const range = this.skill.sight * Math.min(ctx.senses.sight * LIGHT_REACH, ctx.senses.haze);
+    if (Math.hypot(a.x - self.x, a.z - self.z) > range + BEAM_THROW) return;
+    const spot = ctx.beam ? ctx.beam(a) : beamSpot(ctx.world, a);
+    if (!spot || Math.hypot(spot.x - self.x, spot.z - self.z) > range) return;
+    const off = Math.abs(angleDiff(yawToward(self.x, self.z, spot.x, spot.z), this.yaw));
+    if (off > this.skill.fov / 2 || !ctx.world.hasLineOfSight(ex, ey, ez, spot.x, spot.y, spot.z)) return;
+    // Along the beam back toward its holder, the farther the vaguer.
+    const fuzz = Math.hypot(a.x - spot.x, a.z - spot.z) * BEAM_GUESS;
+    this.heard = {
+      x: a.x + (this.rand() - 0.5) * 2 * fuzz,
+      y: a.y,
+      z: a.z + (this.rand() - 0.5) * 2 * fuzz,
+      at: now,
+    };
   }
 
   private decide(ctx: BotContext, self: Agent): void {

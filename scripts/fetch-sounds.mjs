@@ -105,13 +105,13 @@ function finish(s, fade, to = 0.9) {
   return out;
 }
 
-/** From just before the first moment the range gets loud. */
-function shot(s) {
+/** From just before the first moment the range gets loud, faded out over `fade` seconds or a quarter second. */
+function shot(s, fade) {
   const top = peak(s);
   let start = s.findIndex((v) => Math.abs(v) > top * 0.1);
   start = Math.max(0, start - Math.floor(RATE * 0.008));
   const cut = s.subarray(start);
-  return [finish(cut, Math.min(0.25, cut.length / RATE / 3))];
+  return [finish(cut, Math.min(fade ?? 0.25, cut.length / RATE / 3))];
 }
 
 /** The `count` loudest footfalls at least 0.35 s apart, each `length` long. */
@@ -185,7 +185,7 @@ for (const bank of banks) {
     const range = s.subarray(Math.floor(sound.from * RATE), Math.min(s.length, Math.floor(sound.to * RATE)));
     const cuts = sound.kind === 'steps' ? steps(range, sound.count, sound.length)
       : sound.kind === 'loop' ? loop(range)
-      : shot(range);
+      : shot(range, sound.fade);
     clips[sound.name] = cuts.map((cut) => {
       parts.push({ at, cut });
       const clip = [round(at / RATE), round(cut.length / RATE)];

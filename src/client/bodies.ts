@@ -11,6 +11,7 @@ import { clip, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
 import { dimIndoors } from './indoorlight.ts';
+import { lensOf, lightTorch, makeTorch, mountTorch, torchMaterial, torchMount, type Torch } from './torch.ts';
 import { inBuilding, type Building } from '../shared/world.ts';
 import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
 import { JOINT, RAGDOLL_STEP, Ragdoll, type Solid, Tumbler, type Verlet } from './ragdoll.ts';
@@ -106,7 +107,8 @@ const ROUND_MAT = new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0
 const PACK_MAT = new THREE.MeshStandardMaterial({ color: 0x3a3d33, roughness: 0.9 });
 const RED_MAT = new THREE.MeshStandardMaterial({ color: 0xa3201b, roughness: 0.8 });
 const MAST_MAT = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
-for (const m of [GUN_MAT, CAN_MAT, MAG_MAT, ROUND_MAT, PACK_MAT, RED_MAT, MAST_MAT]) dimIndoors(m);
+const TORCH_MAT = torchMaterial();
+for (const m of [GUN_MAT, CAN_MAT, MAG_MAT, ROUND_MAT, PACK_MAT, RED_MAT, MAST_MAT, TORCH_MAT]) dimIndoors(m);
 const FLASH_MAT = new THREE.SpriteMaterial({
   map: flashTexture(), color: 0xffc070, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
 });
@@ -130,10 +132,12 @@ export interface Ground extends Solid {
 interface GunShape extends GunPoints {
   make(): THREE.Object3D;
   muzzle: THREE.Vector3;
+  /** Where its flashlight sits. */
+  torch: THREE.Vector3;
 }
 
 /** A stand-in gun of boxes until the models load. */
-function gunShape(length: number, stock: boolean): GunShape {
+function gunShape(weapon: number, length: number, stock: boolean): GunShape {
   const parts = [
     new THREE.BoxGeometry(0.05, 0.07, length * 0.55).translate(0, 0.05, -length * 0.2),
     new THREE.CylinderGeometry(0.012, 0.012, length * 0.45, 8).rotateX(Math.PI / 2).translate(0, 0.06, -length * 0.65),
@@ -141,18 +145,21 @@ function gunShape(length: number, stock: boolean): GunShape {
   ];
   if (stock) parts.push(new THREE.BoxGeometry(0.04, 0.08, 0.25).translate(0, 0.02, 0.18));
   const geometry = mergeGeometries(parts);
+  const muzzle = new THREE.Vector3(0, 0.06, -length * 0.88);
+  const support = new THREE.Vector3(0, 0.02, -length * 0.42);
   return {
     make: () => new THREE.Mesh(geometry, GUN_MAT),
-    muzzle: new THREE.Vector3(0, 0.06, -length * 0.88),
+    muzzle,
+    torch: torchMount(weapon, muzzle, support),
     grip: new THREE.Vector3(0, -0.02, 0.02),
-    support: new THREE.Vector3(0, 0.02, -length * 0.42),
+    support,
     magazine: new THREE.Vector3(0, -0.05, -length * 0.15),
     bolt: new THREE.Vector3(0.03, 0.06, -length * 0.05),
   };
 }
 
 /** In WEAPONS order. */
-let GUNS: GunShape[] = [gunShape(0.85, true), gunShape(0.2, false), gunShape(1.1, true)];
+let GUNS: GunShape[] = [gunShape(0, 0.85, true), gunShape(1, 0.2, false), gunShape(2, 1.1, true)];
 
 interface Figure {
   group: THREE.Group;
@@ -168,6 +175,7 @@ interface Figure {
   gun: THREE.Group;
   held: THREE.Object3D;
   can: THREE.Mesh;
+  torch: Torch;
   flashMesh: THREE.Sprite;
   weapon: number;
   quiet: boolean;
@@ -347,7 +355,7 @@ export class Bodies {
         mesh.material = (mesh.material as THREE.Material).clone();
         dimIndoors(mesh.material);
       });
-      return { make: () => object.clone(), ...points };
+      return { make: () => object.clone(), ...points, torch: torchMount(i, points.muzzle, points.support) };
     });
     const box = new THREE.Box3().setFromObject(gltf.scene);
     this.modelScale = PLAYER_HEIGHT / (box.max.y - box.min.y);
@@ -444,6 +452,15 @@ export class Bodies {
     return f.gun.localToWorld(out.copy(muzzleOf(f)));
   }
 
+  /** Where a body's flashlight shines from in the world, and the way the gun points, or null if it isn't drawn. */
+  torch(id: number, out: THREE.Vector3, dir: THREE.Vector3): THREE.Vector3 | null {
+    const f = this.figures.get(id);
+    if (!f || !f.group.visible) return null;
+    f.gun.updateWorldMatrix(true, false);
+    dir.set(0, 0, -1).transformDirection(f.gun.matrixWorld);
+    return f.gun.localToWorld(lensOf(GUNS[f.weapon].torch, out));
+  }
+
   private remove(id: number): void {
     const f = this.figures.get(id);
     if (!f) return;
@@ -463,6 +480,9 @@ export class Bodies {
     can.castShadow = true;
     can.visible = false;
     gun.add(can);
+    const torch = makeTorch(TORCH_MAT);
+    mountTorch(torch, GUNS[0].torch);
+    gun.add(torch.object);
     const flashMesh = new THREE.Sprite(FLASH_MAT);
     flashMesh.scale.setScalar(0.45);
     flashMesh.visible = false;
@@ -471,7 +491,7 @@ export class Bodies {
     this.scene.add(group);
     const f: Figure = {
       group, materials: [], hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
-      gun, held, can, flashMesh, weapon: 0, quiet: false,
+      gun, held, can, torch, flashMesh, weapon: 0, quiet: false,
       deadFor: -1, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, ragSteps: 0, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
       air: 0, mantle: 0, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, headFix: 0, duck: 0,
@@ -619,9 +639,11 @@ export class Bodies {
       f.held.traverse((o) => (o as THREE.Mesh).isMesh && (o.receiveShadow = f.shaded));
       f.gun.add(f.held);
       placeCan(f);
+      mountTorch(f.torch, GUNS[p.weapon].torch);
     }
     f.quiet = p.quiet;
     f.can.visible = p.quiet;
+    lightTorch(f.torch, p.light && !p.dead);
 
     // How fast and which way it's going, relative to where it faces.
     const dx = p.x - f.lastX;

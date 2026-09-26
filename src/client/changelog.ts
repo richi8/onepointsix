@@ -12,6 +12,21 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-26',
+    title: 'Storms and flashlights',
+    notes: [
+      'Every gun carries a flashlight you can see on it, and its beam comes from there. Your own light now casts shadows, so it no longer lights the far side of a wall. Up to four other people’s lights light the ground round you, where only two did.',
+      'Guards and other operators notice the patch your beam lights on the ground or a wall, even when they can’t see you, and come looking where it came from. Keep it low, or off, near an outpost.',
+      'In a death cam, you see by your killer’s flashlight if they had it on.',
+      'Rain stays outdoors: none falls under a roof, and floors under one stay dry. Outside, the rain splashes where it lands, the ground and walls turn dark and shiny, and puddles gather on flat ground. Streaks are thicker, and drops glint in your flashlight’s beam.',
+      'Storms bring lightning that lights up the sky, and thunder that rolls in after it: sooner and louder the nearer the strike.',
+      'The rain drowns out far-off sounds for you too, not only for bots: distant shots, steps and doors are quieter and duller in the rain.',
+      'Fog lies thicker on low ground and by the sea, in banks deeper in some places than others, so a hilltop can rise clear of it.',
+      'At dusk and at night, shiny things and puddles reflect the sky as it is, dark with the moon in it, instead of a faint daytime sky. Stars no longer show through rain clouds or fog.',
+      'Your best scores show the time of day and weather each was set in. Sharing your best sends it in the conditions it was set in.',
+    ],
+  },
+  {
+    date: '2026-09-26',
     title: 'The island from afar',
     notes: [
       'The sea mirrors the island: hills, trees and buildings show in the water, rippled by the waves, and most strongly when you look across it at a low angle.',

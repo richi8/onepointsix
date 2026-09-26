@@ -29,7 +29,7 @@ test.describe('results', () => {
 
     await page.click('#to-menu');
     await expect(page.locator('#menu')).toBeVisible();
-    await expect(page.locator('#board li').first()).toContainText(`1.Tester${score.toLocaleString('en-US')}`);
+    await expect(page.locator('#board li').first()).toContainText(`1.TesterDay${score.toLocaleString('en-US')}`);
   });
 
   test('Play again starts a fresh run', async ({ page }) => {

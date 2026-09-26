@@ -23,6 +23,11 @@ export interface Lighting {
   previewFogFar: number;
   /** Image-based light from the sky's picture, once textured. */
   environment: number;
+  /**
+   * Whether that picture is our own sky, the moon's or the low sun's, baked
+   * for the purpose, rather than the daytime photograph.
+   */
+  ownSky: boolean;
   /** The flat light in flat colours, and under the sky's picture once textured, from above and below. */
   hemi: number;
   hemiTextured: number;
@@ -34,6 +39,7 @@ export interface Lighting {
 }
 
 interface Time {
+  ownSky: boolean;
   sunDir: [number, number, number];
   sunColor: number;
   sunIntensity: number;
@@ -52,19 +58,19 @@ interface Time {
 
 const TIMES: Record<TimeOfDay, Time> = {
   day: {
-    sunDir: [0.45, 0.6, 0.35], sunColor: 0xfff1dc, sunIntensity: 3.3, disc: 1, horizon: 0xb9c9d6, zenith: 0x4f7fae,
+    ownSky: false, sunDir: [0.45, 0.6, 0.35], sunColor: 0xfff1dc, sunIntensity: 3.3, disc: 1, horizon: 0xb9c9d6, zenith: 0x4f7fae,
     stars: 0, environment: 1, hemi: 1, hemiSky: 0xcfdcea, hemiGround: 0x5a5440, exposure: 0.9, overcast: 0x9aa3aa,
   },
   // The sun low in the west, warm and long-shadowed.
   dusk: {
-    sunDir: [0.85, 0.13, 0.25], sunColor: 0xff9352, sunIntensity: 1.8, disc: 0.8, horizon: 0xd9a27e, zenith: 0x34496e,
-    stars: 0.15, environment: 0.3, hemi: 0.45, hemiSky: 0xb0a8c8, hemiGround: 0x4a3c34, exposure: 1, overcast: 0x6e6a70,
+    ownSky: true, sunDir: [0.85, 0.13, 0.25], sunColor: 0xff9352, sunIntensity: 1.8, disc: 0.8, horizon: 0xd9a27e, zenith: 0x34496e,
+    stars: 0.15, environment: 0.8, hemi: 0.45, hemiSky: 0xb0a8c8, hemiGround: 0x4a3c34, exposure: 1, overcast: 0x6e6a70,
   },
   // A high moon: enough to make out shapes nearby, not to see across the island.
   // Its cold light and the dark sky's leave little colour in anything.
   night: {
-    sunDir: [-0.35, 0.75, -0.45], sunColor: 0x7d98ff, sunIntensity: 0.2, disc: 0.35, horizon: 0x0d1422, zenith: 0x03060d,
-    stars: 1, environment: 0.02, hemi: 0.07, hemiSky: 0x6f84c8, hemiGround: 0x101216, exposure: 1.1, overcast: 0x12161d,
+    ownSky: true, sunDir: [-0.35, 0.75, -0.45], sunColor: 0x7d98ff, sunIntensity: 0.2, disc: 0.35, horizon: 0x0d1422, zenith: 0x03060d,
+    stars: 1, environment: 7, hemi: 0.07, hemiSky: 0x6f84c8, hemiGround: 0x101216, exposure: 1.1, overcast: 0x12161d,
   },
 };
 
@@ -100,12 +106,14 @@ export function lightingOf(c: Conditions): Lighting {
     disc: t.disc * (1 - w.grey),
     horizon,
     zenith,
-    stars: t.stars * (1 - w.grey),
+    // Clouds and fog hide the stars.
+    stars: w.grey > 0 ? 0 : t.stars,
     fogNear: w.fogNear,
     fogFar: w.fogFar,
     previewFogNear: w.previewFogNear,
     previewFogFar: w.previewFogFar,
     environment: t.environment * (0.5 + 0.5 * w.light),
+    ownSky: t.ownSky,
     hemi: 1.1 * t.hemi * (0.5 + 0.5 * w.light),
     hemiTextured: 0.3 * t.hemi * (0.5 + 0.5 * w.light),
     hemiSky: new THREE.Color(t.hemiSky),

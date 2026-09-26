@@ -804,6 +804,14 @@ canvas.fade-in {
   opacity: 0.6;
 }
 
+/* The conditions the score was set in. */
+.menu .board li em {
+  font-style: normal;
+  font-size: 0.8em;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
 .menu .board li.rival {
   color: #9fd3ff;
 }

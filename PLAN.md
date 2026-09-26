@@ -207,7 +207,7 @@ human pass comes last so people play the finished result.
 | 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Done** (a replay falls bit for bit the same in each engine; walls, slopes and pile-ups checked by unit tests and pose viewer screenshots, not watched in play) |
 | 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Done** (bots only: nobody has fought through the new buildings; the light volume and glass were checked by screenshots) |
 | 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Done** (checked by screenshots at 200, 400 and 600 m and by the benchmark, which holds 60 fps but comes out 1–2 ms slower than chunk 23 in runs side by side; the far sea still fades into the horizon's haze through the fog; nobody has watched the fade, the swaying or the waves in motion) |
-| 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Not started** |
+| 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Done** (checked by screenshots, the benchmark and unit tests; nobody has played a stormy night; fog banks stand still rather than drift; a bot test covers a beam seen with its holder behind the bot, not literally over a wall) |
 | 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Not started** |
 | 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Not started** |
 | 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Not started** |
@@ -989,28 +989,58 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 ### Day, night and weather
 - **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
   behind it. Shadows would need a shadow map per light, drawn every frame.
+  **Resolved in part** (25): your own light casts shadows from a 1024 px map, drawn only while
+  it's on. Others' lights still don't (see below).
 - **Only the two nearest other flashlights light the world** (16). Farther ones show only a faint
   beam and a glare when pointed your way. Three spotlights (yours and two others) are always in the
   scene at dusk and night so switching one on never recompiles a material.
+  **Resolved in part** (25): the four nearest now do. With 24 soldiers close up, all lit, in rain
+  at night, the benchmark frame costs about 0.5 ms more than the same crowd by day (M3 Pro, a
+  noisy run: both about 14 ms with the machine loaded). Past four, still beams and glares only.
 - **Others' flashlights shine from their gun's muzzle** (16). There's no torch model on the gun,
   and the death cam doesn't light your view from the killer's flashlight.
+  **Resolved** (25): every gun, in the world and in your hands, carries a torch (right of a long
+  gun's fore-end, under the pistol's barrel) whose lens glows while lit; beams leave its lens along
+  the gun. In a death cam the killer's light, as this client last saw it, lights their view.
 - **Bots see a light only when they can see its holder** (16). A beam sweeping over a wall from
   someone hidden behind it gives nothing away, and a light is judged by where its holder stands,
   not where it points.
+  **Resolved** (25): the server works out once a tick where each lit beam lands (up to 30 m, along
+  the holder's aim); a bot that sees that patch in its view cone and range, holder out of sight,
+  investigates round the holder, vaguer the longer the beam. A unit test covers it.
 - **Rain falls indoors** (16), through roofs. There are no splashes, wet surfaces, puddles or
   thunder, and the streaks are 1-pixel lines.
+  **Resolved** (25): a roof map (0.5 m cells, 64 m round the camera, remade as you move or a roof
+  breaks) hides drops under roofs and keeps floors under them dry. Streaks are 12 mm quads;
+  splashes land on the ground, roofs and the sea; terrain, props and rocks darken and shine when
+  wet, and near-flat terrain gathers puddles; lightning flashes the sky, fog and flat light, and a
+  recorded thunder (CC0) follows, delayed by distance.
 - **Fog is plain distance fog** (16), the same everywhere, with no banks drifting or thicker
   patches in hollows.
+  **Resolved in part** (25): three.js's fog chunks are replaced by a version adding low mist that
+  thins with height above the sea and stands deeper in noise-shaped banks, with no uniforms of its
+  own (its amount follows the fog's reach). The banks stand still: drifting would need a time
+  uniform in every fogged material. "Hollows" means low ground, not ground lower than its
+  surroundings.
 - **Rain only muffles noise for bots** (16). For the player, far-off shots and footsteps are as
   loud as ever; the rain loop just plays over them.
+  **Resolved** (25): in rain, shots, blasts, breaking cover, doors and steps from 10 m off fade
+  to 45% quieter and 55% duller by 120 m. Not checked by ear.
 - **Night reflections are the day sky, dimmed** (16). The image-based light comes from the one
   daytime HDRI turned down to 2%, so shiny things still reflect a faint blue daytime sky.
+  **Resolved** (25): at dusk and night the game's own sky (moon or low sun, colours and glow) is
+  baked into the environment when the conditions change. It's baked 70% greyer than it looks,
+  and the night's strength raised to 7, so the island's brightness and colour stay close to
+  chunk 16's (measured on screenshots); reflections are greyer than the sky in view as a result.
 - **Conditions aren't checked by the server** (16) beyond parsing the link. Every combination is a
   separate game in the directory, so in multiplayer nine conditions per island would split the
   players unless the server picks them.
 - **Night scores beat day scores** (16). Night crates hold an extra item and more valuables,
   and the leaderboards are shared across conditions, so the best scores on a board will tend to
   be night runs.
+  **Resolved in part** (25): each score on the board now shows the conditions it was set in
+  (kept with new scores; older ones show none), and sharing your best sends it in its conditions.
+  The boards stay shared, with no night adjustment, as decided.
 - **The look was tuned by screenshots only** (16), on an M3 Pro through headless Chrome. The cost
   of up to 24 beams and glares, three spotlights and the rain on a mid-range laptop wasn't
   measured. The lighting presets, rain, flashlights and menu pickers have no automated tests; the
@@ -1022,6 +1052,23 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   night, 19% on a rainy night and 24% on a foggy night. So night is the hardest and fog the
   easiest, as intended, but none of the numbers (sight multiples, one extra guard per outpost,
   loot boost, flashlight reach) have been checked by humans.
+
+- **Others' flashlights cast no shadows** (25), nor light the rain: only your own beam makes
+  drops glint and throws shadows.
+- **Only terrain, props and rocks get wet** (25). Trees, grass, bushes, bodies and debris look as
+  they do dry. Puddles are painted by noise on near-flat ground, not where water would gather,
+  and don't ripple. The roof map reaches 32 m round the camera; beyond it everything is wet, so
+  a far building's floor seen through a door would be too.
+- **Splashes are placed on the CPU** (25), 3,000 a second within 22 m, each a ground-height query.
+  Cheap on an M3 Pro; not measured on slower machines.
+- **Lightning is client-side and random** (25): each viewer sees their own strikes, replays don't
+  keep them, and bots ignore flashes and thunder.
+- **The thunder** (25) is one recording (a 9 s cut) played slower and duller for far strikes. It
+  added 37 kB to the late Opus bank and 73 kB to the AAC one.
+- **The mist is only in the picture** (25): bots' sight in fog is still the one flat multiple, so
+  low ground hides you from the player's eye more than from a bot's.
+- **Beam spotting** (25) uses the holder's aim, while the drawn beam follows the gun, which dips
+  while sprinting or reloading; a bot may notice a patch the picture puts a little elsewhere.
 
 ### Death cam
 - **Only the killer is replayed from inputs** (10). Everyone else is drawn from the snapshots the

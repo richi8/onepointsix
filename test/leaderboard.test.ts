@@ -31,6 +31,16 @@ describe('leaderboard', () => {
     expect(board.entries(1, 'offline')[1].name).toBe('later');
   });
 
+  it('keeps the conditions each score was set in, and drops unknown ones', () => {
+    const store = memory();
+    const board = new Leaderboard(store);
+    board.add(1, 'offline', { ...run(300), time: 'night', weather: 'rain' });
+    board.add(1, 'offline', run(200));
+    expect(board.entries(1, 'offline')).toEqual([{ ...run(300), time: 'night', weather: 'rain' }, run(200)]);
+    store.data.set('board:1:offline', JSON.stringify([{ ...run(100), time: 'noon', weather: 'rain' }]));
+    expect(board.entries(1, 'offline')).toEqual([run(100)]);
+  });
+
   it('survives broken or missing storage', () => {
     const store = memory();
     store.data.set('board:1:offline', '{"not":"a list"');

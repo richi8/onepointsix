@@ -132,11 +132,6 @@ export class Sun {
     }
   }
 
-  /** Whether every cascade's shadow map has been drawn once; drawing with one missing binds the wrong kind of texture. */
-  get ready(): boolean {
-    return !!(this.light.shadow.map && this.far.shadow.map && this.island.shadow.map);
-  }
-
   /** Draw the island's still shadow map again on the next frame, after what casts it has changed. */
   redraw(): void {
     this.island.shadow.needsUpdate = true;

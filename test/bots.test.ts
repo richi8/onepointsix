@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Bot, hostile, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
+import { beamSpot, Bot, hostile, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
 import { NavGrid } from '../src/server/nav.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
@@ -150,6 +150,37 @@ describe('bot perception', () => {
     };
     expect(spots(false)).toBe(0);
     expect(spots(true)).toBe(1);
+  });
+
+  it('turns toward someone out of sight whose beam lands in view', () => {
+    // The enemy stands 12 m behind the sentry and shines past it at the ground 8 m ahead.
+    const rand = mulberry32(5);
+    let g: ReturnType<typeof openGround>, away: number, sx: number, sy: number, sz: number;
+    do {
+      const a = world.randomLandPoint(rand);
+      away = rand() * Math.PI * 2;
+      g = { ax: a.x, az: a.z, bx: a.x + Math.sin(away) * 12, bz: a.z + Math.cos(away) * 12 };
+      sx = g.ax - Math.sin(away) * 8;
+      sz = g.az - Math.cos(away) * 8;
+      sy = world.groundHeight(sx, sz, world.floorHeight(sx, sz));
+    } while (![[g.ax, g.az], [g.bx, g.bz], [sx, sz]].every(([x, z]) => nav.dry(x, z)) ||
+      !world.hasLineOfSight(g.bx, world.terrainHeight(g.bx, g.bz) + 1.6, g.bz, sx, sy + 0.2, sz));
+    const night = sensesOf({ time: 'night', weather: 'clear' });
+    const think = (light: boolean): Bot => {
+      const self = agent(1, 'guard', g.ax, g.az);
+      const enemy = { ...agent(2, 'operator', g.bx, g.bz), light, yaw: away };
+      enemy.pitch = Math.atan2(sy - (enemy.y + 1.6), 20);
+      const spot = beamSpot(world, enemy);
+      expect(spot && Math.hypot(spot.x - sx, spot.z - sz)).toBeLessThan(1);
+      const post = { x: g.ax, y: self.y, z: g.az, yaw: away };
+      return watch(self, [enemy], away, 1, undefined, { kind: 'sentry', post }, night);
+    };
+    const dark = think(false);
+    expect(dark.awareness(2)).toBe(0);
+    expect(dark.state).toBe('patrol');
+    const lit = think(true);
+    expect(lit.awareness(2)).toBe(0);
+    expect(lit.state).toBe('investigate');
   });
 
   it('knows where a shooter it cannot see is once hit', () => {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CMD_DT, DOOR_REACH, MAX_PITCH, OPERATOR_CAPACITY, SERVER_DT, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
-import { conditionsLabel, sensesOf, TIMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
+import { conditionsLabel, sensesOf, TIME_NAMES, TIMES, WEATHER_NAMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, smoothstep, wrapAngle } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
@@ -131,6 +131,7 @@ const rivalHud = new RivalHud(world);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
 sfx.conditions = config;
+view.onThunder = (distance) => sfx.thunder(distance);
 const surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
@@ -279,7 +280,9 @@ function challengeFor(m: Mode): Challenge | null {
 /** Share the island in the current mode, with your best score on it to beat. */
 function shareIsland(): void {
   const best = board.best(config.seed, mode);
-  void copyLink(shareQuery(config, mode, best ?? undefined));
+  // The best score goes out in the conditions it was set in.
+  const at = best?.time && best.weather ? { ...config, time: best.time, weather: best.weather } : config;
+  void copyLink(shareQuery(at, mode, best ?? undefined));
 }
 
 document.getElementById('share-island')!.onclick = shareIsland;
@@ -301,11 +304,11 @@ function showBoard(): void {
     challengeEl.textContent = `${link.challenge.name} scored ${link.challenge.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
   }
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
-  const rows: { name: string; score: number; note: string; rival: boolean }[] = board.entries(config.seed, mode)
-    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), rival: false }));
+  const rows: { name: string; score: number; note: string; when: string; rival: boolean }[] = board.entries(config.seed, mode)
+    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), when: e.time && e.weather ? whenLabel(e.time, e.weather) : '', rival: false }));
   if (c) {
     const at = rows.findIndex((r) => r.score < c.score);
-    rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', rival: true });
+    rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', when: whenLabel(link.world.time, link.world.weather), rival: true });
   }
   // Keep the challenge in view even below the rows shown.
   const shown = rows.slice(0, BOARD_SHOWN);
@@ -331,15 +334,22 @@ function showBoard(): void {
     name.textContent = r.name;
     const score = document.createElement('b');
     score.textContent = r.score.toLocaleString('en-US');
+    const when = document.createElement('em');
+    when.textContent = r.when;
     const note = document.createElement('small');
     note.textContent = r.note;
-    li.append(rank, name, score, note);
+    li.append(rank, name, when, score, note);
     return li;
   }), ...open);
   const empty = boardEl.querySelector('.empty') as HTMLElement;
   empty.hidden = rows.length > 0;
   boardEl.classList.toggle('none', rows.length === 0);
   empty.textContent = 'No scores yet. Get off the island with loot to post one.';
+}
+
+/** The conditions a score was set in, short enough for a row of the board: "Night · Rain", "Day". */
+function whenLabel(time: TimeOfDay, weather: Weather): string {
+  return [TIME_NAMES[time], ...(weather === 'clear' ? [] : [WEATHER_NAMES[weather]])].join(' · ');
 }
 
 function shortDate(date: string): string {
@@ -584,7 +594,7 @@ function endRun(e: RunEnd): void {
   sfx.runEnd(e.outcome === 'extracted');
   runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
   const standing: string[] = [];
-  const place = board.add(config.seed, mode, { name: playerName(), score: e.score, date: today() });
+  const place = board.add(config.seed, mode, { name: playerName(), score: e.score, date: today(), time: config.time, weather: config.weather });
   if (place === 1) standing.push('New best on this island!');
   else if (place > 1) standing.push(`#${place} of your runs on this island.`);
   const c = challengeFor(mode);
@@ -597,7 +607,8 @@ function endRun(e: RunEnd): void {
   shareButton.textContent = e.score > 0 ? 'Challenge a friend' : best ? 'Share your best' : 'Share island';
   shareButton.onclick = () => {
     const score = e.score > 0 ? { name: playerName(), score: e.score } : best ?? undefined;
-    void copyLink(shareQuery(config, mode, score));
+    const at = e.score <= 0 && best?.time && best.weather ? { ...config, time: best.time, weather: best.weather } : config;
+    void copyLink(shareQuery(at, mode, score));
   };
   showLastResults = () => {
     (document.getElementById('replay') as HTMLButtonElement).hidden = !killedBy;
@@ -1202,6 +1213,8 @@ function onEvent(e: GameEvent, replayed = false): void {
 // ------------------------------------------------------------------ frame
 
 const focus = new THREE.Vector3();
+/** Which way the camera looks, reused each frame. */
+const V_LOOK = new THREE.Vector3();
 const start = performance.now() / 1000;
 let last = start;
 let lastYaw = 0;
@@ -1413,8 +1426,10 @@ renderer.setAnimationLoop(() => {
     footsteps(state);
   } else orbitCamera(now);
   camera.updateMatrixWorld();
-  const torch = rep ? !free && !rep.state.dead && rep.self().light : !cam && !!state && !state.dead && input.light;
-  flashlights.update(camera, torch, players, (id, out) => bodies.muzzle(id, out));
+  // In a death cam, the killer's own light lights their view.
+  const torch = rep ? !free && !rep.state.dead && rep.self().light : cam ? cam.lit : !!state && !state.dead && input.light;
+  flashlights.update(camera, torch, players, (id, out, dir) => bodies.torch(id, out, dir));
+  view.torch(torch && flashlights.dark, camera.position, camera.getWorldDirection(V_LOOK));
   viewModel.torchOn = torch;
   sfx.underwater = view.underwater;
   sfx.update(camera, dt);

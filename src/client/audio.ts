@@ -56,6 +56,14 @@ const SCARE_RANGE = 150;
 /** Seconds the birds stay quiet after a scare, then take to come back. */
 const SCARED_FOR = 20;
 const CALMING = 10;
+/**
+ * Rain hisses over far sounds: from RAIN_NEAR metres off they fade, until past
+ * RAIN_FAR they're this much quieter and duller, much as bots hear them.
+ */
+const RAIN_NEAR = 10;
+const RAIN_FAR = 120;
+const RAIN_QUIET = 0.45;
+const RAIN_DULL = 0.55;
 /** Voices shared by sounds out in the world. */
 const VOICES = 24;
 /** Sounds quieter than this aren't played. */
@@ -323,9 +331,9 @@ export class Sfx {
     const reach = d / (quiet ? SUPPRESSED_REACH : 1);
     if (quiet && reach > 400) return;
     const occ = this.occlusion(at);
-    const gain = v.gain * (HALF_DISTANCE / (HALF_DISTANCE + reach)) * (1 - occ * 0.5);
+    const gain = v.gain * (HALF_DISTANCE / (HALF_DISTANCE + reach)) * (1 - occ * 0.5) * this.drowned(d);
     const far = quiet ? 0 : smoothstep(60, 300, d);
-    const place = { at, rate, delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(reach, occ) };
+    const place = { at, rate, delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(reach, occ, d) };
     this.play(clip, { ...place, gain: gain * (1 - far), send: 0.2 + far * 0.4 + occ * 0.2 });
     if (far > 0) this.play('far', { ...place, gain: gain * far * 1.2, rate: rate * (weapon === PISTOL ? 1.15 : 1), send: 0.6 });
     if (!quiet && d < SCARE_RANGE) this.scare();
@@ -373,8 +381,8 @@ export class Sfx {
   boom(at: At): void {
     const d = this.distance(at);
     const occ = this.occlusion(at);
-    const gain = 1.2 * (HALF_DISTANCE * 2 / (HALF_DISTANCE * 2 + d)) * (1 - occ * 0.4);
-    this.play('boom', { at, gain, rate: jitter(0.05), delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d * 0.5, occ), send: 0.4 + smoothstep(40, 300, d) * 0.4 });
+    const gain = 1.2 * (HALF_DISTANCE * 2 / (HALF_DISTANCE * 2 + d)) * (1 - occ * 0.4) * this.drowned(d);
+    this.play('boom', { at, gain, rate: jitter(0.05), delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d * 0.5, occ, d), send: 0.4 + smoothstep(40, 300, d) * 0.4 });
     if (d < SCARE_RANGE * 2) this.scare();
   }
 
@@ -385,10 +393,10 @@ export class Sfx {
   crumble(kind: PanelKind, at: At): void {
     const d = this.distance(at);
     const occ = this.occlusion(at);
-    const gain = 0.7 * (HALF_DISTANCE / (HALF_DISTANCE + d)) * (1 - occ * 0.5);
+    const gain = 0.7 * (HALF_DISTANCE / (HALF_DISTANCE + d)) * (1 - occ * 0.5) * this.drowned(d);
     const clip = kind === 'wall' || kind === 'roof' ? 'crumble' : 'splinter';
     const rate = (kind === 'glass' ? 1.9 : 1) * jitter(0.08);
-    this.play(clip, { at, gain, rate, delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, occ), send: 0.3 });
+    this.play(clip, { at, gain, rate, delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, occ, d), send: 0.3 });
   }
 
   /**
@@ -400,8 +408,8 @@ export class Sfx {
     if (d > DOOR_RANGE) return;
     const occ = this.occlusion(at);
     const falloff = 1 - d / DOOR_RANGE;
-    const gain = (open ? 0.6 : 0.9) * falloff * falloff * (1 - occ * 0.6);
-    this.play(STEPS.wood.clip, { at, gain, rate: (open ? 0.8 : 0.6) * jitter(0.05), cutoff: this.cutoff(d * 2, occ), send: 0.2 });
+    const gain = (open ? 0.6 : 0.9) * falloff * falloff * (1 - occ * 0.6) * this.drowned(d);
+    this.play(STEPS.wood.clip, { at, gain, rate: (open ? 0.8 : 0.6) * jitter(0.05), cutoff: this.cutoff(d * 2, occ, d), send: 0.2 });
   }
 
   /**
@@ -415,8 +423,8 @@ export class Sfx {
     const pace = Math.min(0.35 + speed / 8, 1.3) * (crouched ? 0.35 : 1);
     const falloff = 1 - distance / STEP_RANGE;
     const occ = at ? this.occlusion(at) : 0;
-    const gain = v.gain * pace * falloff * falloff * (at ? 1 : 0.7) * (1 - occ * 0.6) * jitter(0.15);
-    this.play(v.clip, { at, gain, rate: v.rate * jitter(0.06), cutoff: at ? this.cutoff(distance * 4, occ) : undefined, send: 0.1 });
+    const gain = v.gain * pace * falloff * falloff * (at ? 1 : 0.7) * (1 - occ * 0.6) * this.drowned(distance) * jitter(0.15);
+    this.play(v.clip, { at, gain, rate: v.rate * jitter(0.06), cutoff: at ? this.cutoff(distance * 4, occ, distance) : undefined, send: 0.1 });
   }
 
   /** Coming down hard from a jump or a fall. */
@@ -439,6 +447,17 @@ export class Sfx {
   }
 
   /** The run ended: rising if out safely, falling otherwise. */
+  /** Lightning struck `distance` metres off: its thunder rolls in once the sound gets here, deeper and duller from far. */
+  thunder(distance: number): void {
+    const near = 1 - smoothstep(600, 4500, distance);
+    const a = Math.random() * Math.PI * 2;
+    const at = { x: this.ear.x + Math.cos(a) * 300, y: this.ear.y + 150, z: this.ear.z + Math.sin(a) * 300 };
+    this.play('thunder', {
+      at, gain: (0.3 + 0.6 * near) * (1 - this.enclosed * 0.3), rate: (0.8 + 0.2 * near) * jitter(0.04),
+      delay: distance / SPEED_OF_SOUND, cutoff: 500 + 9000 * near * near, send: 0.3,
+    });
+  }
+
   runEnd(good: boolean): void {
     const notes = good ? [523, 659, 784] : [392, 311, 262];
     notes.forEach((f, i) => this.tone(f, 0.4, 0.2, 'triangle', i * 0.14));
@@ -457,9 +476,19 @@ export class Sfx {
     return occlusion(this.world, this.ear, at);
   }
 
-  /** How bright a sound still is after `reach` metres of air and `occ` of walls. */
-  private cutoff(reach: number, occ: number): number {
-    return 18000 * (1 - smoothstep(0, 600, reach) * 0.85) * (1 - occ * 0.8);
+  /** How bright a sound still is after `reach` metres of air and `occ` of walls, from `d` metres off in the rain. */
+  private cutoff(reach: number, occ: number, d: number): number {
+    return 18000 * (1 - smoothstep(0, 600, reach) * 0.85) * (1 - occ * 0.8) * (1 - this.rained(d) * RAIN_DULL);
+  }
+
+  /** How much of the rain's hiss lies between here and `d` metres off, 0 to 1: none when dry. */
+  private rained(d: number): number {
+    return this.conditions.weather === 'rain' ? smoothstep(RAIN_NEAR, RAIN_FAR, d) : 0;
+  }
+
+  /** What's left of a sound's volume from `d` metres off under the rain. */
+  private drowned(d: number): number {
+    return 1 - this.rained(d) * RAIN_QUIET;
   }
 
   private scare(): void {

@@ -50,7 +50,7 @@ import { Tape, TAPE_TIME } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
 import { leafRect, World, type Box, type Point } from '../shared/world.ts';
-import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
+import { beamSpot, Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
 import { Cover } from './cover.ts';
@@ -187,6 +187,8 @@ export class GameServer {
   private bounty: { id: number; x: number; y: number; z: number; at: number } | null = null;
   /** This tick's bags, for bots, made when first asked for. */
   private bagList: BagSnap[] | null = null;
+  /** Where each lit flashlight lands this tick, for bots, worked out when first asked for. */
+  private readonly beams = new Map<number, Point | null>();
   /** When each operator slot emptied by a bot leaving gets filled again, soonest first. */
   private readonly refills: number[] = [];
   private readonly ctx: BotContext;
@@ -230,6 +232,11 @@ export class GameServer {
       senses: sensesOf(this.conditions),
       bounty: 0,
       bags: () => (this.bagList ??= this.containers.bags()),
+      beam: (a) => {
+        let spot = this.beams.get(a.id);
+        if (spot === undefined) this.beams.set(a.id, (spot = beamSpot(this.world, a)));
+        return spot;
+      },
     };
     if (options.guards) {
       const plans = planGuards(this.world, this.nav, this.botRng, night);
@@ -361,6 +368,7 @@ export class GameServer {
     const now = (ctx.time = this.time);
     ctx.pathBudget = PATH_BUDGET;
     this.bagList = null;
+    this.beams.clear();
     for (const p of this.players.values()) {
       if (p.bot && !p.dead) {
         if ((this.tick + p.id) % THINK_TICKS === 0) p.bot.think(ctx, p, THINK_TICKS * SERVER_DT);

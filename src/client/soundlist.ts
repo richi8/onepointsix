@@ -22,6 +22,8 @@ export interface SoundSource {
   /** For steps: how many to keep, and how long each lasts. */
   count?: number;
   length?: number;
+  /** For a shot: seconds its end fades out over, if longer than the usual quarter second. */
+  fade?: number;
 }
 
 const step = (name: string, freesound: number, author: string, title: string, from: number, to: number, length = 0.32): SoundSource =>
@@ -64,6 +66,8 @@ export const SOUNDS: SoundSource[] = [
   { name: 'birds', freesound: 385280, author: 'bajko', title: 'sfx_amb_forest_spring_afternoon-01.wav', from: 60, to: 95, kind: 'loop' },
   { name: 'rain', freesound: 525046, author: 'speakwithanimals', title: 'Rain Slowly Passing TREATED LOOP_Edgewater_06192020.wav', from: 100, to: 128, kind: 'loop' },
   { name: 'crickets', freesound: 175020, author: 'sengjinn', title: 'AMBIENCE NIGHT FIELD CRICKET 01.wav', from: 8, to: 38, kind: 'loop' },
+  // Weather: a strike and its rumble, heard nearer or farther off.
+  { name: 'thunder', freesound: 446753, author: 'BlueDelta', title: 'Heavy Thunder Strike - no Rain - QUADRO.wav', from: 0.8, to: 10, kind: 'shot', fade: 3 },
 ];
 
 /**

@@ -34,4 +34,5 @@ by `scripts/build-transcoder.mjs`, under the Apache License 2.0, as three.js shi
   footsteps on wood (Mydo1); Metal Steps (Phil25); puddlewalk.wav (j1987); wind.ogg (sleepCircle);
   Ocean Waves.wav (Noted451); sfx_amb_forest_spring_afternoon-01.wav (bajko); Rain Slowly Passing
   TREATED LOOP_Edgewater_06192020.wav (speakwithanimals); AMBIENCE NIGHT FIELD CRICKET 01.wav
-  (sengjinn). The Freesound ids are in `src/client/soundlist.ts`.
+  (sengjinn); Heavy Thunder Strike - no Rain - QUADRO.wav (BlueDelta). The Freesound ids are in
+  `src/client/soundlist.ts`.

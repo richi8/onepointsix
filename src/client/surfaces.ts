@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Assets } from './assets.ts';
 import { LAYERS } from '../shared/layers.ts';
 import { addIndoor } from './indoorlight.ts';
+import { addWet } from './rain.ts';
 
 // PBR surfaces textured in world space, so nothing needs UVs: the island's
 // terrain blends five ground layers painted per vertex, and props, rocks and
@@ -18,6 +19,8 @@ export interface SurfaceOptions {
    * texture moves with it: for debris flying about.
    */
   local?: boolean;
+  /** Get wet in the rain, outside; 'puddles' also gathers puddles on the flat. */
+  wet?: boolean | 'puddles';
 }
 
 /**
@@ -32,7 +35,7 @@ export function surfaceMaterial(
   assets: Assets, mapping: Mapping, params: THREE.MeshStandardMaterialParameters = {}, bump = 1, options: SurfaceOptions = {},
 ): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial(params);
-  const { indoor = false, local = false } = options;
+  const { indoor = false, local = false, wet = false } = options;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.surfAlbedo = { value: assets.albedo };
     shader.uniforms.surfNormal = { value: assets.normal };
@@ -97,11 +100,12 @@ export function surfaceMaterial(
         ${local ? 'surfN = vSurfFrame * surfN;' : ''}
         normal = normalize((viewMatrix * vec4(normalize(surfN), 0.0)).xyz);`],
     ]);
+    if (wet) addWet(shader, 'vSurfPos', 'wn', wet === 'puddles');
     if (indoor) addIndoor(shader);
   };
   // Every variant compiles its own program.
   material.customProgramCacheKey = () =>
-    `surface-${mapping.kind}-${mapping.kind === 'fixed' ? mapping.layer : ''}-${bump}-${indoor}-${local}`;
+    `surface-${mapping.kind}-${mapping.kind === 'fixed' ? mapping.layer : ''}-${bump}-${indoor}-${local}-${wet}`;
   return material;
 }
 

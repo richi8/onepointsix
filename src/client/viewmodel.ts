@@ -5,6 +5,7 @@ import { clamp, lerp } from '../shared/geom.ts';
 import { BOLT } from '../shared/weapons.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
+import { lightTorch, makeTorch, mountTorch, torchMaterial, torchMount, type Torch } from './torch.ts';
 import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
 import { type Bones, curl, findBones, findHand, type Hand, limitBend, orientHand, placeWorld, reach, span, untwist, wristFor } from './rig.ts';
 
@@ -42,6 +43,7 @@ const SLEEVE = 0x44566a;
 /** Length of a suppressor on the barrel. */
 const CAN_LENGTH = 0.15;
 const FLASH_TIME = 0.045;
+const TORCH_MAT = torchMaterial();
 
 interface Model {
   group: THREE.Group;
@@ -56,6 +58,8 @@ interface Model {
   flash: THREE.Mesh;
   /** The suppressor on the barrel, shown when fitted. */
   can: THREE.Mesh;
+  /** The flashlight on the gun. */
+  torch: Torch;
   /** Muzzle position in the model's space, bare and with the suppressor on. */
   muzzle: THREE.Vector3;
   canMuzzle: THREE.Vector3;
@@ -133,10 +137,11 @@ export class ViewModel {
     this.camera.add(this.root);
     // In WEAPONS order.
     this.models = [rifle(), pistol(), boltAction()];
-    for (const m of this.models) {
+    this.models.forEach((m, i) => {
+      mountTorch(m.torch, torchMount(i, m.muzzle, m.points.support));
       m.group.visible = false;
       this.root.add(m.group);
-    }
+    });
   }
 
   /**
@@ -167,6 +172,7 @@ export class ViewModel {
   /** Your flashlight is on, lighting the gun from the side. */
   set torchOn(on: boolean) {
     this.torch.intensity = on ? 1.5 : 0;
+    for (const m of this.models) lightTorch(m.torch, on);
   }
 
   /** Swap the stand-in shapes for real guns, in WEAPONS order, lit by the sky. */
@@ -183,6 +189,7 @@ export class ViewModel {
       m.canMuzzle.copy(m.muzzle).z -= CAN_LENGTH;
       m.flash.position.copy(m.muzzle);
       m.can.position.copy(m.muzzle).z -= CAN_LENGTH / 2;
+      mountTorch(m.torch, torchMount(i, gun.muzzle, gun.support).add(m.grip));
       m.hands[0].position.copy(gun.grip).add(m.grip).y -= 0.03;
       m.hands[1].position.copy(gun.support).add(m.grip).y -= 0.03;
       m.points = {
@@ -514,7 +521,8 @@ function model(
   flash.position.y = muzzleY;
   const can = tube(canRadius, CAN_LENGTH, DARK, 0, muzzleY, muzzleZ - CAN_LENGTH / 2);
   can.visible = false;
-  group.add(flash, can);
+  const torch = makeTorch(TORCH_MAT);
+  group.add(flash, can, torch.object);
   const grip = hands[0].position.clone().setY(0);
   const support = hands[1].position;
   const points = {
@@ -523,7 +531,7 @@ function model(
   };
   return {
     group, body, hands, grip, points,
-    flash, can, muzzle: new THREE.Vector3(0, muzzleY, muzzleZ), canMuzzle: new THREE.Vector3(0, muzzleY, muzzleZ - CAN_LENGTH),
+    flash, can, torch, muzzle: new THREE.Vector3(0, muzzleY, muzzleZ), canMuzzle: new THREE.Vector3(0, muzzleY, muzzleZ - CAN_LENGTH),
     hip, ads: new THREE.Vector3(0, 0, adsZ), shove, flip,
   };
 }

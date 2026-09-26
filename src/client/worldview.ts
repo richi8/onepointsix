@@ -7,6 +7,7 @@ import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import type { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
+import { patchFog } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
@@ -59,6 +60,15 @@ const PROP_LAYERS: Record<PropStyle, number> = {
   door: Layer.boards,
   glass: Layer.concrete,
 };
+/** How far our own sky is greyed as it's baked to light by. */
+const SKY_GREYING = 0.7;
+const GREY = new THREE.Color();
+function luminance(c: THREE.Color): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+/** The colour lightning lights the sky, and how much flat light it adds at its brightest. */
+const FLASH_SKY = new THREE.Color(0xc8d2ff);
+const FLASH_HEMI = 1.2;
 /** Seconds a door takes to swing open or shut. */
 const DOOR_SWING = 0.35;
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -90,7 +100,7 @@ export class WorldView {
   private readonly hemi = new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.1);
   private readonly fog = new THREE.Fog(0xffffff);
   private readonly background = new THREE.Color();
-  private readonly rain = new Rain();
+  private readonly rain: Rain;
   private lighting: Lighting;
   private raining: boolean;
   private textured = false;
@@ -101,11 +111,18 @@ export class WorldView {
   /** Whether something casting shadows has broken since the island's still shadow map was drawn, and when it was. */
   private castersChanged = false;
   private redrawnAt = -Infinity;
+  /** How bright the last lightning flash shown was. */
+  private flashed = 0;
+  /** For baking our own sky into a picture to light and reflect by, and the last one baked. */
+  private renderer: THREE.WebGLRenderer | null = null;
+  private skyPicture: { key: string; target: THREE.WebGLRenderTarget } | null = null;
 
   constructor(world: World, conditions: Conditions) {
     const scene = this.scene;
+    patchFog();
     this.lighting = lightingOf(conditions);
     this.raining = conditions.weather === 'rain';
+    this.rain = new Rain(world);
     scene.fog = this.fog;
     scene.background = this.background;
 
@@ -133,7 +150,7 @@ export class WorldView {
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
-    scene.add(this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, extracts.group, this.rain.mesh);
+    scene.add(this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, extracts.group, this.rain.group);
     for (const o of [this.sky, this.terrain.group, this.props, this.trees.group, this.rocks, extracts.group]) reflected(o);
   }
 
@@ -142,6 +159,8 @@ export class WorldView {
    * impostors, whose picture needs the renderer to bake.
    */
   async prepare(renderer: THREE.WebGLRenderer): Promise<void> {
+    this.renderer = renderer;
+    this.light();
     await Promise.all([
       this.trees.bake(renderer).then(() => {
         reflected(this.trees.group);
@@ -176,6 +195,7 @@ export class WorldView {
 
   private light(): void {
     const l = this.lighting;
+    this.flashed = 0;
     this.sun.set(l.sunColor, l.sunIntensity, l.sunDir);
     this.hemi.intensity = this.textured ? l.hemiTextured : l.hemi;
     this.hemi.color.copy(l.hemiSky);
@@ -191,6 +211,8 @@ export class WorldView {
     u.sunDir.value.copy(l.sunDir);
     u.sunColor.value.copy(l.sunColor).multiplyScalar(l.disc);
     u.stars.value = l.stars;
+    // Baked from the sky just set.
+    if (this.assets) this.scene.environment = l.ownSky ? (this.bakeSky() ?? this.assets.environment) : this.assets.environment;
     // The streaks catch the light of the sky around them.
     this.rain.set(this.raining, l.horizon.clone().multiplyScalar(1.25));
     // Built after the first lighting.
@@ -199,11 +221,11 @@ export class WorldView {
 
   /** Swap the flat colours for textures and light everything from the sky. */
   applyAssets(assets: Assets): void {
-    this.scene.environment = assets.environment;
+    this.assets = assets;
     this.textured = true;
     this.light();
 
-    this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true }));
+    this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true, wet: 'puddles' }));
 
     const props = this.props;
     const layers = new Float32Array(this.world.props.length);
@@ -215,13 +237,12 @@ export class WorldView {
     props.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers, 1));
     props.instanceColor!.needsUpdate = true;
     const old = props.material as THREE.Material;
-    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0 }, 1, { indoor: true }), this.world);
+    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0 }, 1, { indoor: true, wet: true }), this.world);
     old.dispose();
 
     this.trees.applyAssets(assets);
     this.cover?.applyAssets(assets);
-    this.assets = assets;
-    this.rocks.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 }), this.world);
+    this.rocks.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 }, 1, { wet: true }), this.world);
     const rand = mulberry32(this.world.seed + 29);
     for (let i = 0; i < this.rocks.count; i++) {
       const v = 0.75 + rand() * 0.25;
@@ -238,12 +259,14 @@ export class WorldView {
     this.props.instanceMatrix.needsUpdate = true;
     this.glass.instanceMatrix.needsUpdate = true;
     this.light3d.changed();
+    this.rain.roofChanged();
     this.sun.redraw();
   }
 
   /** Show one panel as the world has it. */
   updatePanel(id: number): void {
     if (!this.world.panels[id]) return;
+    if (this.world.panels[id].kind === 'roof') this.rain.roofChanged();
     this.showPanel(id);
     this.props.instanceMatrix.needsUpdate = true;
     this.glass.instanceMatrix.needsUpdate = true;
@@ -329,6 +352,7 @@ export class WorldView {
     this.trees.update(camera.position);
     this.cover?.update(camera.position);
     this.rain.update(camera.position, time);
+    this.lightning(this.rain.flash);
     this.swingDoors(time);
     this.light3d.focus(camera.position);
     this.light3d.update();
@@ -336,8 +360,64 @@ export class WorldView {
 
   /** Draw what the sea reflects, before drawing the scene from `camera`. */
   reflect(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void {
-    // Its pass reuses the shadow maps, so it waits for the first frame to draw them.
-    if (this.sun.ready) this.water.reflect(renderer, this.scene, camera);
+    // Its pass reuses the shadow maps, so it waits for a frame to have drawn
+    // every one, a flashlight's switched on at nightfall too.
+    if (this.scene.children.every(drawnShadow)) this.water.reflect(renderer, this.scene, camera);
+  }
+
+  /**
+   * Our own sky as it is now, baked into a picture for image-based light and
+   * reflections, so at night shiny things and puddles show the moon and a
+   * dark sky rather than a dimmed day; null until there's a renderer to bake with.
+   */
+  private bakeSky(): THREE.Texture | null {
+    const renderer = this.renderer;
+    if (!renderer) return null;
+    const l = this.lighting;
+    const key = [l.horizon, l.zenith, l.sunColor, l.sunDir].map((v) => v.toArray().map((n) => n.toFixed(4)).join()).join('|') + l.disc + l.stars;
+    if (this.skyPicture?.key === key) return this.skyPicture.target.texture;
+    this.skyPicture?.target.dispose();
+    const scene = new THREE.Scene();
+    scene.add(new THREE.Mesh(this.sky.geometry, this.sky.material));
+    // Baked a good deal greyer than it looks, or everything it lights turns the night sky's blue.
+    const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
+    const colors: THREE.Color[] = [u.horizon.value, u.zenith.value, u.sunColor.value];
+    const seen = colors.map((c) => c.clone());
+    for (const c of colors) c.lerp(GREY.setScalar(luminance(c)), SKY_GREYING);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const target = pmrem.fromScene(scene, 0, 1, 3000);
+    pmrem.dispose();
+    colors.forEach((c, i) => c.copy(seen[i]));
+    this.skyPicture = { key, target };
+    return target.texture;
+  }
+
+  /** Called with how far off lightning struck, metres, as it lights the sky. */
+  set onThunder(f: ((distance: number) => void) | null) {
+    this.rain.onStrike = f;
+  }
+
+  /** Brighten the sky, the fog and the flat light by a lightning flash, `f` from 0 to 1. */
+  private lightning(f: number): void {
+    if (f === this.flashed) return;
+    this.flashed = f;
+    const l = this.lighting;
+    const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
+    u.horizon.value.copy(l.horizon).lerp(FLASH_SKY, f * 0.5);
+    u.zenith.value.copy(l.zenith).lerp(FLASH_SKY, f * 0.4);
+    // Under the sea the fog is the water's.
+    if (!this.water.under) {
+      this.fog.color.copy(u.horizon.value);
+      this.background.copy(u.horizon.value);
+    }
+    const hemi = this.textured ? l.hemiTextured : l.hemi;
+    this.hemi.intensity = hemi + f * FLASH_HEMI * (1 - 0.8 * l.ambient);
+    this.hemi.color.copy(l.hemiSky).lerp(FLASH_SKY, f);
+  }
+
+  /** Your own flashlight, on or off, from `from` along `dir`: the rain in its beam glints. */
+  torch(on: boolean, from: THREE.Vector3, dir: THREE.Vector3): void {
+    this.rain.torch(on, from, dir);
   }
 
   /** Whether the camera is under the sea. */
@@ -361,6 +441,12 @@ export class WorldView {
     });
     if (moved) this.props.instanceMatrix.needsUpdate = true;
   }
+}
+
+/** Whether `o` isn't a light casting a shadow, or its shadow map has been drawn; drawing with one missing binds the wrong kind of texture. */
+function drawnShadow(o: THREE.Object3D): boolean {
+  const light = o as THREE.DirectionalLight | THREE.SpotLight;
+  return !light.isLight || !light.visible || !light.castShadow || !!light.shadow.map;
 }
 
 /**

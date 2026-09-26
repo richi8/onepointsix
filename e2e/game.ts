@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { ITEMS } from '../src/shared/loot.ts';
+import type { BoardEntry } from '../src/client/leaderboard.ts';
 import type { DevCmd, Mode } from '../src/shared/protocol.ts';
 
 // Driving the game in a test browser, through the page and the development
@@ -94,6 +95,6 @@ export async function copyLinks(page: Page, refuse = false): Promise<void> {
 }
 
 /** Put scores on this browser's board before the page loads. */
-export async function seedBoard(page: Page, seed: number, mode: Mode, entries: { name: string; score: number; date: string }[]): Promise<void> {
+export async function seedBoard(page: Page, seed: number, mode: Mode, entries: BoardEntry[]): Promise<void> {
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [`board:${seed >>> 0}:${mode}`, JSON.stringify(entries)]);
 }
