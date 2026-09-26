@@ -353,6 +353,71 @@ export class World {
     }
   }
 
+  /**
+   * Push a ball of radius `r` at (x, y, z) out of every collider it overlaps,
+   * in all three directions, as a ragdoll's joints are. Writes the total push
+   * to `out` and returns whether there was any. The ground is left out.
+   */
+  sphereOut(x: number, y: number, z: number, r: number, out: { x: number; y: number; z: number }): boolean {
+    out.x = out.y = out.z = 0;
+    let any = false;
+    for (const c of this.query(x, z, r)) {
+      if (topOf(c) <= y - r || bottomOf(c) >= y + r) continue;
+      // The nearest point of the collider to the centre.
+      let px: number;
+      let py: number;
+      let pz: number;
+      if (c.kind === 'box') {
+        px = clamp(x, c.minX, c.maxX);
+        py = clamp(y, c.minY, c.maxY);
+        pz = clamp(z, c.minZ, c.maxZ);
+      } else {
+        const dx = x - c.x;
+        const dz = z - c.z;
+        const d = Math.hypot(dx, dz);
+        const k = d > c.r ? c.r / d : 1;
+        px = c.x + dx * k;
+        pz = c.z + dz * k;
+        py = clamp(y, c.y0, c.y1);
+      }
+      let nx = x - px;
+      let ny = y - py;
+      let nz = z - pz;
+      const d2 = nx * nx + ny * ny + nz * nz;
+      if (d2 >= r * r) continue;
+      let pen: number;
+      if (d2 > 1e-10) {
+        const d = Math.sqrt(d2);
+        nx /= d;
+        ny /= d;
+        nz /= d;
+        pen = r - d;
+      } else if (c.kind === 'box') {
+        // The centre is inside: out through the nearest face.
+        const faces: [number, number, number, number][] = [
+          [x - c.minX, -1, 0, 0], [c.maxX - x, 1, 0, 0], [y - c.minY, 0, -1, 0],
+          [c.maxY - y, 0, 1, 0], [z - c.minZ, 0, 0, -1], [c.maxZ - z, 0, 0, 1],
+        ];
+        const [depth, fx, fy, fz] = faces.reduce((a, b) => (b[0] < a[0] ? b : a));
+        (nx = fx), (ny = fy), (nz = fz), (pen = depth + r);
+      } else {
+        const dx = x - c.x;
+        const dz = z - c.z;
+        const d = Math.hypot(dx, dz);
+        const side = c.r - d;
+        const top = c.y1 - y;
+        if (top < side) (nx = 0), (ny = 1), (nz = 0), (pen = top + r);
+        else if (d > 1e-6) (nx = dx / d), (ny = 0), (nz = dz / d), (pen = side + r);
+        else (nx = 1), (ny = 0), (nz = 0), (pen = side + r);
+      }
+      out.x += nx * pen;
+      out.y += ny * pen;
+      out.z += nz * pen;
+      any = true;
+    }
+    return any;
+  }
+
   /** Distance along a normalized ray to the first solid hit, or Infinity. */
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
     this.hit = null;

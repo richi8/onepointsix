@@ -5,12 +5,14 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { LEAN_OFFSET, PLAYER_HEIGHT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
-import type { PlayerSnap, Team } from '../shared/protocol.ts';
-import { BOLT, PISTOL } from '../shared/weapons.ts';
+import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
+import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
 import { clip, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
 import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
+import { JOINT, RAGDOLL_STEP, Ragdoll, type Solid, Tumbler, type Verlet } from './ragdoll.ts';
+import { RagRig, type Slump, slump } from './ragrig.ts';
 import {
   type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, placeWorld, reach, rotateWorld, span, turnWorld, wristFor,
 } from './rig.ts';
@@ -20,7 +22,9 @@ import {
 // planted, jumps, falls and lands, climbs, leans and aims where the player
 // looks, with its hands closed on the gun. It flinches when hit, takes each
 // shot's recoil, and reloads each gun its own way, switches weapons and
-// throws grenades where others can see. Until then, bodies are drawn from the
+// throws grenades where others can see. Killed, it plays the start of its
+// death clip and then goes limp as a ragdoll (see ragdoll.ts), and its gun
+// falls from its hands. Until then, bodies are drawn from the
 // hit volumes themselves. Either way the head is kept on its hitbox, so what
 // you see is what you hit.
 // Sides are told apart by colour and kit: operators in grey-blue with a pack,
@@ -73,8 +77,23 @@ const BLEND_RATE = 12;
 const LIE_LENGTH = 1.9;
 /** Room a body's arms need either side of it. */
 const ARM_SPAN = 0.8;
-/** How long a dropped gun takes to reach the ground, at most. */
-const GUN_DROP = 0.5;
+/** Seconds into the death clip that the ragdoll takes over: the knees have gone and it's falling back. */
+const HANDOFF = 0.35;
+/**
+ * How long a body seen dead waits for the kill event that says how it fell,
+ * which a replay's frames can show a moment late, before falling without it.
+ */
+const DEATH_WAIT = 0.25;
+/** How long a dropped gun takes to leave the hands' last place for where it really falls. */
+const GUN_BLEND = 0.3;
+/** How far a dropped gun is rolled as it leaves the hands. */
+const GUN_ROLL = -0.5;
+/** How hard the killing round shoves the joint it struck, in m/s, in WEAPONS order; the rest of the body gets a share. */
+const SHOVE = [1.2, 0.8, 2];
+const SHOVE_SHARE = 0.2;
+/** A grenade throws the whole body, and up. */
+const BLAST = 3;
+const BLAST_LIFT = 1.5;
 
 const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
@@ -98,7 +117,7 @@ const MAG_GEO = [
 const ROUND_GEO = new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6).rotateX(Math.PI / 2);
 
 /** What a body stands on and falls against. */
-export interface Ground {
+export interface Ground extends Solid {
   groundHeight(x: number, z: number, feetY: number): number;
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number;
 }
@@ -148,16 +167,23 @@ interface Figure {
   quiet: boolean;
   /** Seconds since it died, or -1 while alive. */
   deadFor: number;
-  /** Where it lies: the way it faces, how far it was pushed off walls, and the tilt of the ground. */
+  /** How it was killed, from the kill event, until it's seen dead or alive again. */
+  death: Death | null;
+  /** Where it falls from: its feet, pushed off walls, and the way the death clip faces. */
+  fallAt: THREE.Vector3;
   fallYaw: number;
-  fallX: number;
-  fallZ: number;
-  tilt: THREE.Quaternion;
-  lift: number;
-  /** Where whoever killed it stood, if known. */
-  killer: { x: number; z: number } | null;
-  /** The gun falling from its hands. */
-  drop: { t: number; from: THREE.Vector3; to: THREE.Vector3; turn: THREE.Quaternion; flat: THREE.Quaternion } | null;
+  /** Not yet posed: a body first seen dead lies still at once. */
+  fresh: boolean;
+  /** Seconds it has been seen dead without word of how it was killed. */
+  unexplained: number;
+  /** Its ragdoll once it takes over from the death clip, the bones on it, and the steps it has had. */
+  rag: Ragdoll | null;
+  rig: RagRig | null;
+  ragSteps: number;
+  /** The ragdoll's step the bones were last laid on, so a body at rest isn't laid again. */
+  rigSteps: number;
+  /** The gun falling from its hands, and the steps it has had. */
+  drop: Drop | null;
   flash: number;
   muzzle: number;
   /** Last position, for how fast it's going and footsteps. */
@@ -250,6 +276,23 @@ interface Reactions {
   hitHead: Reaction;
 }
 
+/** What a kill event says about how a body falls. */
+type Death = Pick<Extract<GameEvent, { k: 'kill' }>, 'pose' | 'at' | 'dir' | 'weapon' | 'head'>;
+
+/**
+ * A dropped gun: three balls held rigid (grip, muzzle and magazine), the
+ * gun's turn when they started and their frame's then, and how far the gun
+ * was drawn from where it starts, which fades in the first moments.
+ */
+interface Drop {
+  tumbler: Tumbler;
+  steps: number;
+  turn: THREE.Quaternion;
+  frame: THREE.Quaternion;
+  offset: THREE.Vector3;
+  offsetTurn: THREE.Quaternion;
+}
+
 /** Called for each footfall of a body, with how fast it was moving. */
 export type StepListener = (x: number, y: number, z: number, speed: number, crouched: boolean) => void;
 
@@ -266,6 +309,16 @@ export class Bodies {
   /** How fast the walk, run and crouch-walk clips carry the body, in m/s, measured from their feet. */
   private gait = { walk: 1.3, run: 3.2, crouch: 0.5 };
   private reactions: Reactions | null = null;
+  /** The death clip's pose where the ragdoll takes over. */
+  private slump: Slump | null = null;
+  /** The bodies lying, or falling, that others land on. */
+  private rags: Verlet[] = [];
+  /**
+   * How each body was last killed, kept until it's seen alive again, so one
+   * first drawn dead (after seeking a replay, or leaving a death cam) lies
+   * where it fell.
+   */
+  private readonly deaths = new Map<number, Death>();
   private readonly camera = new THREE.Vector3();
   private readonly frustum = new THREE.Frustum();
   private readonly bounds = new THREE.Sphere(new THREE.Vector3(), 1.4);
@@ -286,6 +339,7 @@ export class Bodies {
     const box = new THREE.Box3().setFromObject(gltf.scene);
     this.modelScale = PLAYER_HEIGHT / (box.max.y - box.min.y);
     this.deathYaw = deathDirection(gltf);
+    this.slump = slump(gltf, this.modelScale, HANDOFF);
     const speed = (name: string): number => gaitSpeed(gltf.scene, clip(gltf.animations, name)) * this.modelScale;
     this.gait = { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk') };
     this.reactions = {
@@ -304,6 +358,8 @@ export class Bodies {
       this.frustum.setFromProjectionMatrix(this.viewProjection);
     }
     const seen = new Set<number>();
+    this.rags = [];
+    for (const f of this.figures.values()) if (f.rag) this.rags.push(f.rag);
     for (const p of players) {
       seen.add(p.id);
       let f = this.figures.get(p.id);
@@ -313,9 +369,11 @@ export class Bodies {
         f.lastX = p.x;
         f.lastY = p.y;
         f.lastZ = p.z;
+        if (p.dead) f.death = this.deaths.get(p.id) ?? null;
       }
       this.pose(f, p, dt);
     }
+
     for (const id of [...this.figures.keys()]) if (!seen.has(id)) this.remove(id);
   }
 
@@ -341,11 +399,28 @@ export class Bodies {
     }
   }
 
-  /** Someone was killed by `killer`: they fall away from them. */
-  killed(victim: number, killer: number): void {
-    const f = this.figures.get(victim);
-    const k = this.figures.get(killer);
-    if (f && k && f !== k) f.killer = { x: k.lastX, z: k.lastZ };
+  /** Someone was killed: they fall from where the event says, pushed the way the round went. */
+  killed(e: Death & { victim: number }): void {
+    // Replays saved before bodies fell as ragdolls have none of it: they fall as if unseen.
+    if (!e.pose) return;
+    const death = { pose: e.pose, at: e.at, dir: e.dir, weapon: e.weapon, head: e.head };
+    this.deaths.set(e.victim, death);
+    const f = this.figures.get(e.victim);
+    if (f) f.death = death;
+  }
+
+  /** A new game: nobody's deaths carry over. */
+  forget(): void {
+    this.deaths.clear();
+  }
+
+  /** Something broke near (x, y, z): the dead lying against it may fall further. */
+  shake(x: number, y: number, z: number, reach: number): void {
+    for (const f of this.figures.values()) {
+      for (const v of [f.rag, f.drop?.tumbler]) {
+        if (v && Math.hypot(v.bounds.x - x, v.bounds.y - y, v.bounds.z - z) < reach + v.bounds.r) v.wake();
+      }
+    }
   }
 
   /** Where a body's muzzle is in the world, or null if it isn't drawn. */
@@ -384,7 +459,7 @@ export class Bodies {
     const f: Figure = {
       group, materials: [], hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
       gun, held, can, flashMesh, weapon: 0, quiet: false,
-      deadFor: -1, fallYaw: 0, fallX: 0, fallZ: 0, tilt: new THREE.Quaternion(), lift: 0, killer: null, drop: null,
+      deadFor: -1, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, ragSteps: 0, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
       air: 0, mantle: 0, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, headFix: 0, duck: 0,
       firedFor: 1e3, hitFor: 1e3, hitHead: false, soldier: null, casters: null,
@@ -515,6 +590,11 @@ export class Bodies {
   }
 
   private pose(f: Figure, p: PlayerSnap, dt: number): void {
+    // Seen dead before the kill event came: a moment on its feet, waiting for it.
+    if (p.dead && f.deadFor < 0 && !f.death && !f.fresh && f.soldier && f.unexplained < DEATH_WAIT) {
+      f.unexplained += dt;
+      p = { ...p, dead: false };
+    } else f.unexplained = 0;
     if (f.weapon !== p.weapon) {
       f.weapon = p.weapon;
       f.gun.remove(f.held);
@@ -575,10 +655,13 @@ export class Bodies {
     }
 
     const died = p.dead && f.deadFor < 0;
+    const revived = !p.dead && f.deadFor >= 0;
     f.deadFor = p.dead ? Math.max(f.deadFor, 0) + dt : -1;
-    if (died) this.fall(f, p);
-    if (!p.dead) {
-      f.killer = null;
+    if (died && f.soldier) this.fall(f, p);
+    if (revived) {
+      f.death = null;
+      this.deaths.delete(p.id);
+      f.rag = f.rig = null;
       if (f.drop) {
         f.drop = null;
         f.group.add(f.gun);
@@ -588,14 +671,17 @@ export class Bodies {
     f.group.position.set(p.x, p.y, p.z);
     f.group.rotation.set(0, p.yaw, 0);
     if (p.dead && f.soldier) {
-      f.group.position.x += f.fallX;
-      f.group.position.z += f.fallZ;
-      f.group.position.y += f.lift;
-      f.group.quaternion.setFromAxisAngle(V_UP, f.fallYaw).premultiply(f.tilt);
+      f.group.position.copy(f.fallAt);
+      f.group.quaternion.setFromAxisAngle(V_UP, f.fallYaw);
+      if (f.deadFor >= HANDOFF && !f.rag) this.goLimp(f);
+      if (died && f.fresh) this.settle(f);
+      this.fallOn(f);
     }
+    f.fresh = false;
 
     // Out of sight and too far to throw a shadow into view, or lost in the fog: not drawn.
-    this.bounds.center.set(p.x, p.y + 0.9, p.z);
+    if (f.rag) this.bounds.center.set(f.rag.bounds.x, f.rag.bounds.y, f.rag.bounds.z);
+    else this.bounds.center.set(p.x, p.y + 0.9, p.z);
     const distance = this.camera.distanceTo(this.bounds.center);
     f.group.visible = distance < SHADOW_REACH || (distance < FOG_END && this.frustum.intersectsSphere(this.bounds));
     // Beyond that, a body's shadow is too small to see but costs a draw in each shadow map.
@@ -608,9 +694,7 @@ export class Bodies {
       for (const o of f.casters) o.castShadow = true;
       f.casters = null;
     }
-    // A dead soldier's gun is on the ground, or not drawn at all if it died out of sight.
-    f.gun.visible = !p.dead || !f.soldier || !!f.drop;
-    if (f.drop) this.dropGun(f, dt);
+    if (f.drop) this.placeGun(f);
     if (!f.group.visible) return;
 
     if (f.soldier) this.poseSoldier(f, f.soldier, p, dt);
@@ -626,45 +710,68 @@ export class Bodies {
   }
 
   /**
-   * It just died: pick which way it falls. Away from its killer if it can,
-   * and otherwise the way with the most room, pushed back off a wall if even
-   * that is too short. The gun drops from its hands.
+   * It just died: pick which way it falls. Away from the killing round if it
+   * can, and otherwise the way with the most room, pushed back off a wall if
+   * even that is too short. All from the kill event (or, without one, the
+   * snapshot rounded as a replay keeps it), so a replay picks the same. The
+   * gun drops from its hands.
    */
   private fall(f: Figure, p: PlayerSnap): void {
-    const away = f.killer ? Math.atan2(-(p.x - f.killer.x), -(p.z - f.killer.z)) : p.yaw + this.deathYaw;
+    const d = f.death ?? {
+      pose: [cm(p.x), cm(p.y), cm(p.z), cm(p.yaw), cm(p.duck)], at: [0, 0, 0], dir: [0, 0, 0], weapon: -1, head: false,
+    } satisfies Death;
+    f.death = d;
+    const [x, y, z, yaw, duck] = d.pose;
+    const away = d.weapon >= 0 && Math.hypot(d.dir[0], d.dir[2]) > 0.1 ? Math.atan2(-d.dir[0], -d.dir[2]) : yaw + this.deathYaw;
     let best = away;
     let room = 0;
     let score = -1;
     for (const turn of [0, 1, -1, 2, -2, 3, -3, 4]) {
-      const yaw = away + (turn * Math.PI) / 4;
-      const free = this.room(p.x, p.y, p.z, yaw, LIE_LENGTH);
+      const toward = away + (turn * Math.PI) / 4;
+      const free = this.room(x, y, z, toward, LIE_LENGTH);
       // Room for the arms, which fling out either side of the chest.
-      const cx = p.x - Math.sin(yaw) * Math.min(free, 1.3);
-      const cz = p.z - Math.cos(yaw) * Math.min(free, 1.3);
-      const arms = Math.min(this.room(cx, p.y, cz, yaw + Math.PI / 2, ARM_SPAN), this.room(cx, p.y, cz, yaw - Math.PI / 2, ARM_SPAN));
+      const cx = x - Math.sin(toward) * Math.min(free, 1.3);
+      const cz = z - Math.cos(toward) * Math.min(free, 1.3);
+      const arms = Math.min(this.room(cx, y, cz, toward + Math.PI / 2, ARM_SPAN), this.room(cx, y, cz, toward - Math.PI / 2, ARM_SPAN));
       const k = free + arms * 0.5;
-      if (k > score + 0.05) (best = yaw), (room = free), (score = k);
+      if (k > score + 0.05) (best = toward), (room = free), (score = k);
       if (free >= LIE_LENGTH && arms >= ARM_SPAN) break;
     }
     const short = Math.max(LIE_LENGTH - room, 0);
-    const back = short > 0 ? Math.min(short, this.room(p.x, p.y, p.z, best + Math.PI, short)) : 0;
+    const back = short > 0 ? Math.min(short, this.room(x, y, z, best + Math.PI, short)) : 0;
     f.fallYaw = best - this.deathYaw;
-    f.fallX = Math.sin(best) * back;
-    f.fallZ = Math.cos(best) * back;
-    f.tilt.identity();
-    f.lift = 0;
+    f.fallAt.set(x + Math.sin(best) * back, y, z + Math.cos(best) * back);
+    f.rag = f.rig = null;
+    f.ragSteps = 0;
 
-    if (!f.soldier || !f.group.visible) return;
-    f.gun.updateMatrixWorld(true);
-    const from = f.gun.getWorldPosition(new THREE.Vector3());
-    const turn = f.gun.getWorldQuaternion(new THREE.Quaternion());
-    this.scene.attach(f.gun);
-    // It lands to the side, lying flat on its side, pointing roughly where it did.
-    const yaw = new THREE.Euler().setFromQuaternion(turn, 'YXZ').y;
-    const to = new THREE.Vector3(from.x + Math.cos(yaw) * 0.3, 0, from.z - Math.sin(yaw) * 0.3);
-    to.y = this.ground.groundHeight(to.x, to.z, p.y + 0.5) + 0.04;
-    const flat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, Math.PI / 2, 'YXZ'));
-    f.drop = { t: 0, from, to, turn, flat };
+    // The gun falls from about where the hands held it, facing ahead and rolling out of them (upright, it
+    // could land balanced on its edge); it's drawn from where it really was, easing onto its fall.
+    const gun = GUNS[f.weapon];
+    const neck = hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck, lean: 0 }).neckY;
+    const start = new THREE.Matrix4().compose(
+      V_TMP.set(0.15, neck - 0.15, -0.3).applyAxisAngle(V_UP, yaw).add(V_TMP2.set(x, y, z)),
+      Q_A.setFromEuler(E_A.set(0, yaw, GUN_ROLL, 'YXZ')), V_TMP2.set(1, 1, 1),
+    );
+    const points = [new THREE.Vector3(), gun.muzzle.clone(), new THREE.Vector3(0, -0.12, gun.muzzle.z * 0.4)].map((v) => v.applyMatrix4(start));
+    const forward = V_TMP3.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const [sx, sy, sz] = d.weapon === GRENADE ? d.dir.map((v) => v * BLAST) : d.dir;
+    const vx = forward.x * 0.6 + sx;
+    const vy = 1 + sy * 0.3;
+    const vz = forward.z * 0.6 + sz;
+    const now = points.flatMap((v) => v.toArray());
+    const before = points.flatMap((v) => [v.x - vx * RAGDOLL_STEP, v.y - vy * RAGDOLL_STEP, v.z - vz * RAGDOLL_STEP]);
+    const tumbler = new Tumbler(now, before);
+    const turn = Q_A.clone();
+    const frame = gunFrame(tumbler, new THREE.Quaternion()).invert();
+    const offset = new THREE.Vector3();
+    const offsetTurn = new THREE.Quaternion();
+    if (f.gun.parent === f.group && f.group.visible) {
+      f.gun.updateMatrixWorld(true);
+      offset.copy(f.gun.getWorldPosition(V_TMP)).sub(points[0]);
+      offsetTurn.copy(f.gun.getWorldQuaternion(Q_B)).multiply(Q_A.copy(turn).invert());
+    }
+    this.scene.add(f.gun);
+    f.drop = { tumbler, steps: 0, turn, frame, offset, offsetTurn };
   }
 
   /** Metres free along `yaw` from (x, z), up to `length`, at knee and waist height. */
@@ -676,12 +783,81 @@ export class Bodies {
     return free;
   }
 
-  private dropGun(f: Figure, dt: number): void {
+  /**
+   * Partway through the death clip: the ragdoll takes over from the clip's
+   * pose there, carrying on at the clip's speed, shoved by the killing round
+   * where it struck, or thrown by a blast.
+   */
+  private goLimp(f: Figure): void {
+    const s = this.slump!;
+    const d = f.death!;
+    f.group.updateMatrixWorld(true);
+    const m = f.group.matrixWorld;
+    const place = (from: Float64Array): number[] => {
+      const out: number[] = [];
+      for (let i = 0; i < from.length; i += 3) out.push(...V_TMP.fromArray(from, i).applyMatrix4(m).toArray());
+      return out;
+    };
+    const rag = new Ragdoll(place(s.now), place(s.before), !!f.soldier?.pack);
+    const [dx, dy, dz] = d.dir;
+    if (d.weapon === GRENADE) {
+      for (let i = 0; i < rag.n; i++) rag.push(i, dx * BLAST, Math.max(dy, 0) * BLAST + BLAST_LIFT, dz * BLAST);
+    } else if (d.weapon >= 0) {
+      // The head, or by the height it struck: the legs, the hips or the chest.
+      const high = d.at[1] - d.pose[1];
+      const side = (d.at[0] - d.pose[0]) * Math.cos(d.pose[3]) - (d.at[2] - d.pose[2]) * Math.sin(d.pose[3]);
+      const struck = d.head ? JOINT.head : high < 0.55 ? (side < 0 ? JOINT.lKnee : JOINT.rKnee) : high < 1.05 ? JOINT.pelvis : JOINT.chest;
+      const shove = SHOVE[d.weapon] ?? SHOVE[0];
+      for (let i = 0; i < rag.n; i++) {
+        const k = shove * (i === struck ? 1 : SHOVE_SHARE);
+        rag.push(i, dx * k, dy * k, dz * k);
+      }
+    }
+    f.rag = rag;
+    f.ragSteps = 0;
+    f.rig = new RagRig(f.soldier!.bones, rag, s, f.group);
+    f.rigSteps = -1;
+  }
+
+  /** First seen dead, as after seeking a replay: already lying where it came to rest. */
+  private settle(f: Figure): void {
+    f.deadFor = HANDOFF;
+    this.goLimp(f);
+    const rag = f.rag!;
+    const tumbler = f.drop?.tumbler;
+    while (!rag.asleep) rag.step(this.ground, this.rags);
+    while (tumbler && !tumbler.asleep) tumbler.step(this.ground, this.rags);
+    f.ragSteps = rag.steps;
+    f.deadFor = HANDOFF + rag.steps * RAGDOLL_STEP;
+    if (f.drop) f.drop.steps = Math.floor(f.deadFor / RAGDOLL_STEP);
+    this.rags.push(rag);
+  }
+
+  /** Step its ragdoll and gun up to now, on their fixed clock, onto the ground and the dead. */
+  private fallOn(f: Figure): void {
+    const drop = f.drop;
+    if (drop) {
+      const due = Math.floor(f.deadFor / RAGDOLL_STEP);
+      // Its own body is left out: it falls away from it, and would only knock it about.
+      if (drop.steps < due) {
+        const on = this.rags.filter((r) => r !== f.rag);
+        for (; drop.steps < due; drop.steps++) drop.tumbler.step(this.ground, on);
+      }
+    }
+    if (f.rag) {
+      const due = Math.floor((f.deadFor - HANDOFF) / RAGDOLL_STEP);
+      for (; f.ragSteps < due; f.ragSteps++) f.rag.step(this.ground, this.rags);
+    }
+  }
+
+  /** The dropped gun where its three balls are, drawn from where the hands last had it at first. */
+  private placeGun(f: Figure): void {
     const d = f.drop!;
-    d.t = Math.min(d.t + dt, GUN_DROP);
-    const k = (d.t / GUN_DROP) ** 2;
-    f.gun.position.lerpVectors(d.from, d.to, k);
-    f.gun.quaternion.slerpQuaternions(d.turn, d.flat, Math.min(d.t / GUN_DROP * 1.5, 1));
+    const k = smoothstep(0, GUN_BLEND, f.deadFor);
+    const t = d.tumbler.pos;
+    f.gun.position.set(t[0], t[1], t[2]).addScaledVector(d.offset, 1 - k);
+    const turn = gunFrame(d.tumbler, Q_A).multiply(d.frame).multiply(d.turn);
+    f.gun.quaternion.slerpQuaternions(d.offsetTurn, Q_B.identity(), k).multiply(turn);
     f.flashMesh.visible = false;
   }
 
@@ -707,6 +883,14 @@ export class Bodies {
     const step = near ? dt : dt + Math.max(-f.wait, 0) + FAR_UPDATE;
     // Near, a random wait: once it moves off, it takes its turn out of step with the others.
     f.wait = near ? Math.random() * FAR_UPDATE : FAR_UPDATE;
+    if (f.rig) {
+      if (f.rigSteps !== f.rag!.steps) {
+        f.rigSteps = f.rag!.steps;
+        f.group.updateMatrixWorld(true);
+        f.rig.apply();
+      }
+      return;
+    }
 
     // Walk into a run with speed, crouched or not; play the clips as fast as the body moves.
     const dead = f.deadFor >= 0;
@@ -752,10 +936,7 @@ export class Bodies {
     s.nade.visible = false;
     s.mag.visible = false;
     f.group.updateMatrixWorld(true);
-    if (dead) {
-      this.lie(f, s, p, step);
-      return;
-    }
+    if (dead) return;
 
     const b = s.bones;
     const up = V_UP;
@@ -1025,53 +1206,6 @@ export class Bodies {
       f.group.worldToLocal(carried.position);
     }
   }
-
-  /**
-   * Dead: the death clip plays out, and the body settles onto the ground
-   * under it, tilted to the slope and lifted out of anything it would sink into.
-   */
-  private lie(f: Figure, s: Soldier, p: PlayerSnap, step: number): void {
-    const b = s.bones;
-    const g = this.ground;
-    const feetY = p.y + 0.5;
-    // Tilt to the slope along the body and across it, easing in as it falls.
-    const at = V_TMP.set(0, 0, 0);
-    const head = b.head.getWorldPosition(V_TMP2);
-    const base = f.group.position;
-    const along = V_TMP3.copy(head).sub(base).setY(0);
-    const length = along.length();
-    if (length > 0.3) {
-      along.divideScalar(length);
-      const across = V_TMP4.crossVectors(V_UP, along);
-      const h0 = g.groundHeight(base.x, base.z, feetY);
-      const h1 = g.groundHeight(base.x + along.x * length, base.z + along.z * length, feetY);
-      const hl = g.groundHeight(base.x + across.x * 0.35, base.z + across.z * 0.35, feetY);
-      const hr = g.groundHeight(base.x - across.x * 0.35, base.z - across.z * 0.35, feetY);
-      const pitch = clamp(Math.atan2(h1 - h0, length), -0.6, 0.6);
-      const roll = clamp(Math.atan2(hl - hr, 0.7), -0.5, 0.5);
-      const settled = smoothstep(0.2, s.death.getClip().duration, f.deadFor);
-      Q_A.setFromAxisAngle(across, -pitch * settled);
-      Q_B.setFromAxisAngle(along, roll * settled);
-      f.tilt.copy(Q_A).multiply(Q_B);
-      f.group.quaternion.setFromAxisAngle(V_UP, f.fallYaw).premultiply(f.tilt);
-      f.group.updateMatrixWorld(true);
-    }
-    // Nothing below the ground: lift the body until its lowest part clears.
-    let under = 0;
-    const points: [THREE.Object3D, number][] = [
-      [b.head, 0.12], [b.spine2, 0.12], [b.body, 0.1], [b.lHand, 0.04], [b.rHand, 0.04],
-      [b.lFoot, 0.04], [b.rFoot, 0.04], [b.lLeg, 0.07], [b.rLeg, 0.07],
-    ];
-    if (s.pack) points.push([s.pack, 0.08]);
-    for (const [bone, clear] of points) {
-      bone.getWorldPosition(at);
-      under = Math.max(under, g.groundHeight(at.x, at.z, feetY) + clear - at.y);
-    }
-    // Only ever up, and eased, so it settles rather than pops.
-    const want = Math.max(f.lift + under, 0);
-    f.lift += (want - f.lift) * Math.min(step * 20, 1);
-    f.group.position.y = p.y + f.lift;
-  }
 }
 
 /** Metres between footfalls at a speed. */
@@ -1102,6 +1236,21 @@ function deathDirection(gltf: GLTF): number {
 function hump(t: number, a: number, b: number): number {
   const w = (b - a) * 0.2;
   return smoothstep(a, a + w, t) * (1 - smoothstep(b - w, b, t));
+}
+
+/** Rounded to the centimetre, as replays keep positions. */
+function cm(v: number): number {
+  return Math.round(v * 100) / 100 + 0;
+}
+
+/** A dropped gun's frame: along the barrel, and up from the magazine. */
+function gunFrame(t: Tumbler, out: THREE.Quaternion): THREE.Quaternion {
+  const p = t.pos;
+  const x = V_TMP4.set(p[3] - p[0], p[4] - p[1], p[5] - p[2]).normalize();
+  const up = V_TMP5.set(p[0] - p[6], p[1] - p[7], p[2] - p[8]);
+  const z = V_TMP6.crossVectors(x, up).normalize();
+  const y = up.crossVectors(z, x);
+  return out.setFromRotationMatrix(M_A.makeBasis(x, y, z));
 }
 
 /** Where rounds leave the gun: the barrel's end, or the suppressor's. */
@@ -1153,6 +1302,8 @@ const V_TMP10 = new THREE.Vector3();
 const V_TMP11 = new THREE.Vector3();
 const Q_A = new THREE.Quaternion();
 const Q_B = new THREE.Quaternion();
+const M_A = new THREE.Matrix4();
+const E_A = new THREE.Euler();
 
 /** A star of light with a hot middle, for muzzle flashes seen from any side. */
 function flashTexture(): THREE.Texture {

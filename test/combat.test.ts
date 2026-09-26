@@ -132,6 +132,16 @@ describe('hits', () => {
       expect.objectContaining({ k: 'kill', killer: c.id, victim: target.id, head: true, weapon: BOLT }),
     );
     expect(c.other(target.id).dead).toBe(true);
+    // Where the body fell from and which way the round went, to the centimetre, for the ragdoll.
+    const kill = c.events().find((e) => e.k === 'kill')!;
+    const dead = c.other(target.id);
+    if (kill.k !== 'kill') throw new Error('no kill');
+    expect(kill.pose.slice(0, 3)).toEqual([dead.x, dead.y, dead.z].map((v) => Math.round(v * 100) / 100));
+    expect(kill.at[1]).toBeGreaterThan(dead.y + 1.4);
+    expect(Math.hypot(...kill.dir)).toBeCloseTo(1, 1);
+    const me = c.me();
+    expect(kill.dir[0] * (dead.x - me.x) + kill.dir[2] * (dead.z - me.z)).toBeGreaterThan(0);
+    for (const v of [...kill.pose, ...kill.at, ...kill.dir]) expect(Math.round(v * 100) / 100).toBe(v);
     expect(target.events()).toContainEqual(expect.objectContaining({ k: 'runEnd', outcome: 'killed' }));
     tick(server, [c], BODY_TIME * SERVER_TICK_RATE + 1);
     expect(c.other(target.id)).toBeUndefined();

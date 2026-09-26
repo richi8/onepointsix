@@ -204,7 +204,7 @@ human pass comes last so people play the finished result.
 | 19 | **Browser tests and benchmarks** | A browser test runner in the repo (Playwright: Chromium, Firefox and WebKit) with a dev-only hook to end a run on demand; tests for the menu, leaderboard UI, share button, loading screen, death cam and its HUD, replay viewer, file picker and dropped files, handover between islands, rivals HUD (bounty, "you carry the bounty", feed rows) and the results buttons; screenshot comparisons for the water, ground cover, impostors, cascades, indoor light and the pose viewer's poses; AAC offsets checked in Firefox and WebKit; a frame-time benchmark with many near bodies (posing, IK, fingers) and the ground cover's rebuild; the pose viewer run by the tests | `npm run test:browser` covers every UI named in Code and testing, runs in all three engines, and prints a frame-cost report | **Done** (93 tests in about 3 minutes on an M3 Pro; the screenshots are Chromium's only, and the tests don't run in CI) |
 | 20 | **Lean loading and portable tooling** | Sounds on the loading bar (the ambience and your own gun before Play, the rest after); the loading bar counts the script download and uncompressed sizes; skipping the loading screen fades the assets in instead of swapping; the entry chunk split so ground cover, impostors, replays and the death cam load lazily; a smaller Basis transcoder (an ETC1S-only build) or a measured case against it; KTX2 and the prefiltered sky compared to the originals by number, not only by eye; smaller sounds (Opus where supported, AAC fallback); the sound and asset scripts run on Linux and Intel Macs (ffmpeg instead of `afconvert`, any-platform KTX tools); a click soon after Esc resumes at once or says why it can't | Total JavaScript at start is down by a measured amount, the first sound plays with the first shot, and both scripts run in CI on Linux | **Done** (JavaScript and wasm before the menu down from 1,550 kB to 1,227 kB, 544 kB to 396 kB gzipped, almost all of it the transcoder; the scripts' CI job was only run in a Linux container, since it isn't pushed yet) |
 | 21 | **Animation clips and hands** | Real clips from a CC0 animation library (e.g. Quaternius's Universal Animation Library) retargeted to the soldier: crouch-walk, jump, fall, climb, shooting and hit reactions; walk and run speeds measured from the clips' foot contacts, with foot locking; a reload per gun (the bolt-action works its bolt and loads rounds, the pistol swaps a small magazine); a grenade model; hand grips placed from marked points on each gun model instead of hand-measured fractions, and the pistol sized for the fist; first-person arms that reach without stretching (longer bones or a dedicated arms model); the leaning and crouched head matched to its hitbox; distant bodies at a higher rate if the chunk 19 benchmark allows it (a new, more realistic soldier model is left for a later phase) | Watching someone jump, climb, reload a bolt-action or take a hit shows a real motion, and the benchmark shows no frame cost over chunk 19's | **Done** (crouch, jump, fall, landing, shooting and hit clips; climb still a pose, as the free library has no climb clip; checked by still pictures in the pose viewer, nobody has watched it in play) |
-| 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Not started** |
+| 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Done** (a replay falls bit for bit the same in each engine; walls, slopes and pile-ups checked by unit tests and pose viewer screenshots, not watched in play) |
 | 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Not started** |
 | 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Not started** |
 | 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Not started** |
@@ -350,6 +350,27 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   slides down a slope or reacts to a round beyond which way it falls. It only falls away from
   its killer if the kill event arrives before the snapshot that shows it dead, which it normally
   does.
+  **Resolved** (22): 0.35 s into the death clip a verlet ragdoll takes over from the clip's pose
+  there (`src/client/ragdoll.ts`, with the bones laid over it by `src/client/ragrig.ts`): 17 balls
+  (18 with an operator's pack) held by rods, a spine that bends a little, knees that only bend
+  forward and limbs kept from folding through the body. It collides with the ground, every collider
+  (walls, fences, crates, props, trees) and other dead bodies, grips with friction 1 (it stops on
+  slopes up to about 30° and slides down steeper ones), and is shoved by the killing round at the
+  joint it struck (a grenade throws the whole body). The kill event now carries the victim's pose,
+  where the round struck and which way it went, rounded to the centimetre on the server, and the
+  fall is worked out from that alone on a fixed 60 Hz step, so replays and the death cam fall the
+  same (checked bit for bit by `e2e/ragdoll.e2e.ts` in all three engines). A body seen dead before
+  its kill event waits up to 0.25 s for it. The old tilt-and-lift settling is gone.
+- **Ragdolls have gaps** (22). Bodies don't collide with living soldiers, only with the dead and
+  the world. Elbows bend either way, fingers keep the grip of a body that died out of sight, and
+  the feet only follow the shins. A grenade doesn't move bodies already down, though a panel
+  breaking next to one wakes it to fall further. Two bodies landing on each other at the same
+  moment can come out a little differently in a replay, as their steps needn't line up. Falls
+  match only within one browser engine: the engines' `Math` functions can differ in the last
+  digit, and a fall magnifies it (as the rest of a replay would). Replays saved before chunk 22
+  have no fall data in their kill events and fall as if unseen. Operators' bodies still go after
+  5 s, so most never come to rest in view. It was checked with pose viewer screenshots, unit tests
+  and the replay test; nobody has watched it in play.
 - **The new stances are poses, not animations** (13). A slide, jump, fall and climb each hold a
   single pose of the legs, and a crouch-walk is the walk clip squashed. A hop shorter than about
   0.1 s barely shows. The source model has no clips for any of them.
@@ -401,6 +422,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   cylinder.
 - **Only bodies that die on screen drop their gun** (13). A body that dies out of sight is drawn
   without one. The gun falls straight to the ground height where it lands, with no collision.
+  **Resolved** (22): every dead soldier drops their gun, seen or not, as three linked balls (grip,
+  muzzle, magazine) that tumble, collide like a ragdoll and come to rest on their side. It starts
+  from where the event says the hands were, drawn easing from where it really was over 0.3 s. It
+  doesn't collide with its own body.
 - **A leaning head sits a little low** (13). Side to side it's exactly over its hitbox, but at
   full lean it's a few centimetres below it, and a crouched head is a few centimetres off too.
   **Resolved** (21): within 90 m every body's head is put on its hitbox whatever the clips do. The
@@ -898,6 +923,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Seeking starts the scene afresh** (17): the kill feed, hit numbers and the death notice are
   cleared, tracers and debris already flying stay, and the dead fall again from standing. What
   happened before the new moment isn't rebuilt, only the panels.
+  **Resolved in part** (22): the dead no longer fall again. The kill events before the new moment
+  are handed to the bodies, and a body first seen dead falls to rest at once, exactly where it
+  fell in play. Bodies also move on the replay's time: faster at 2× and 4×, still while paused, and
+  slowed round the kill in the death cam.
 - **The kill feed says "You" for the replay's player** (17), even when a friend watches it, since
   it's shown as the player saw it. Feed rows fade by real time, not replay time.
 - **Sounds in replays aren't rebuilt when seeking** (17), and the player's own footsteps only

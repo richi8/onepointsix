@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-26',
+    title: 'Bodies that fall',
+    notes: [
+      'Soldiers who die now go limp partway through falling and drop like real bodies: against walls, down slopes, over crates and on top of each other, without passing through them. A steep slope sends a body sliding.',
+      'The round that kills someone shoves them the way it was going, and a grenade throws them.',
+      'Every dead soldier drops their gun, even if they died out of sight, and it tumbles and comes to rest on the ground.',
+      'Replays and the death cam show every body falling exactly as it fell in the game, and skipping about a replay leaves the dead lying where they fell instead of falling again. Replays saved before this update show bodies falling a little differently.',
+    ],
+  },
+  {
+    date: '2026-09-26',
     title: 'Soldiers that move like soldiers',
     notes: [
       'Other soldiers crouch-walk, jump, fall and land with real animations instead of stiff poses, and their feet stay planted instead of sliding as they walk and run.',

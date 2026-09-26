@@ -74,6 +74,11 @@ export class Replay {
     this.nextEvent = after(this.data.events, this.time);
   }
 
+  /** The kill events up to now, oldest first, so bodies already dead after a seek lie as they fell. */
+  killsBefore(): Extract<GameEvent, { k: 'kill' }>[] {
+    return this.data.events.slice(0, this.nextEvent).flatMap(([, e]) => (e.k === 'kill' ? [e] : []));
+  }
+
   /** The player, where to draw their view now. */
   view(): Played {
     return this.player.render(this.time);

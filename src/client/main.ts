@@ -516,6 +516,7 @@ function join(): void {
   transport ??= new LagTransport(new WorkerTransport(), isReliable);
   stopDeathcam(false);
   killedBy = null;
+  bodies.forget();
   conn = new Connection(config, world, mode, playerName(), transport);
   conn.recorder = new RunRecorder(config, mode, playerName(), BUILD);
   ownReplay = null;
@@ -788,6 +789,8 @@ function afterSeek(): void {
   if (!replay) return;
   showCover(replay.brokenAt());
   bodies.update([], 0);
+  bodies.forget();
+  for (const e of replay.killsBefore()) bodies.killed(e);
   hud.reset();
   deadFor = 0;
 }
@@ -1107,7 +1110,7 @@ function onEvent(e: GameEvent, replayed = false): void {
       sfx.hurt();
       break;
     case 'kill':
-      bodies.killed(e.victim, e.killer);
+      bodies.killed(e);
       hud.kill(e, meId);
       break;
     case 'extract':
@@ -1142,6 +1145,7 @@ function onEvent(e: GameEvent, replayed = false): void {
         view.updatePanel(id);
         effects.shatter(world.panels[id].box, view.panelColor(id, color), view.panelLayer(id), e.x, e.y, e.z);
       }
+      bodies.shake(e.x, e.y, e.z, 4);
       const first = world.panels[e.panels[0]];
       if (first) {
         const b = first.box;
@@ -1363,11 +1367,14 @@ renderer.setAnimationLoop(() => {
   }
   const cam = deathcam;
   const rep = replay;
+  // Bodies move on the time shown: slowed round the kill in a death cam, at the replay's speed, still while paused.
+  const before = cam?.time ?? rep?.time ?? 0;
   cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true), (kill) => hud.mark(false, kill));
   rep?.update(dt, (fx) => weaponFx(fx, () => rep.others()), (e) => onEvent(e, true));
+  const bodyDt = cam || rep ? Math.max((cam?.time ?? rep?.time ?? 0) - before, 0) : dt;
   const free = !!rep && replayCam === 'free';
   const players = cam ? cam.others() : rep ? (free ? [...rep.others(), rep.self()] : rep.others()) : (conn?.interpolated() ?? []);
-  bodies.update(players, dt, camera);
+  bodies.update(players, bodyDt, camera);
   bags.update(rep ? rep.bags() : (conn?.bags ?? []));
   grenades.update(cam ? cam.grenades() : rep ? rep.grenades() : (conn?.grenades() ?? []));
   if (rep) view.setExtracts(rep.extracts(), now);

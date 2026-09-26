@@ -4,6 +4,7 @@ import { Bodies } from '../src/client/bodies.ts';
 import { ViewModel } from '../src/client/viewmodel.ts';
 import { hitboxes, HEAD_RADIUS } from '../src/shared/hitbox.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
+import { GRENADE } from '../src/shared/weapons.ts';
 
 // A dev page for looking at the soldier's poses without playing: a row of
 // bodies, each frozen in one state, or the first-person arms. Run `npm run dev`
@@ -21,7 +22,9 @@ import type { PlayerSnap } from '../src/shared/protocol.ts';
 // (hitbox heads), `wall=x` (a wall to fall against), `slope=k` (ground
 // rising k per metre along x), `d` (camera distance), `eye=x,y,z` and
 // `at=x,y,z` (camera by hand) and `nogun` (fp arms alone) and `hit` (a round
-// just landed in the first body's chest). The page sets
+// just landed in the first body's chest). The dead are killed by a round from
+// in front, or from yaw `from`, in the head with `headshot`, or by a grenade
+// with `grenade`; `dead:t` has been dead for 2t seconds. The page sets
 // document.title to "ready" once the frame is drawn, for screenshots.
 
 const q = new URLSearchParams(location.search);
@@ -42,8 +45,8 @@ scene.add(new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.2));
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
 sun.position.set(5, 10, 8);
 scene.add(sun);
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x6f7a5a }));
-scene.add(floor);
+const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x6f7a5a }));
+scene.add(floorMesh);
 const wallX = q.has('wall') ? Number(q.get('wall')) : null;
 if (wallX !== null) {
   const wall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2, 4), new THREE.MeshStandardMaterial({ color: 0x9a8f80 }));
@@ -52,15 +55,35 @@ if (wallX !== null) {
 }
 const slope = Number(q.get('slope') ?? 0);
 
+const floor = (x: number): number => Math.max(0, x * slope);
 const ground = {
-  groundHeight: (x: number) => Math.max(0, x * slope),
+  groundHeight: floor,
+  floorHeight: floor,
+  // The wall is a box 0.2 thick, 2 high and 4 long.
+  sphereOut(x: number, y: number, z: number, r: number, out: { x: number; y: number; z: number }): boolean {
+    out.x = out.y = out.z = 0;
+    if (wallX === null) return false;
+    const cx = Math.max(wallX - 0.1, Math.min(x, wallX + 0.1));
+    const cy = Math.max(0, Math.min(y, 2));
+    const cz = Math.max(-2, Math.min(z, 2));
+    const d = Math.hypot(x - cx, y - cy, z - cz);
+    if (d >= r) return false;
+    if (d < 1e-9) {
+      out.x = (x < wallX ? -1 : 1) * (r + 0.1 - Math.abs(x - wallX));
+      return true;
+    }
+    out.x = ((x - cx) / d) * (r - d);
+    out.y = ((y - cy) / d) * (r - d);
+    out.z = ((z - cz) / d) * (r - d);
+    return true;
+  },
   raycast(ox: number, _oy: number, _oz: number, dx: number, _dy: number, _dz: number, maxT: number): number {
     if (wallX === null || Math.abs(dx) < 1e-6) return maxT + 1;
     const t = (wallX - Math.sign(dx) * 0.1 - ox) / dx;
     return t >= 0 && t < maxT ? t : maxT + 1;
   },
 };
-if (slope) floor.rotation.z = Math.atan(slope);
+if (slope) floorMesh.rotation.z = Math.atan(slope);
 
 const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 200);
 const spacing = 1.6;
@@ -109,10 +132,13 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
     case 'pistol': base.weapon = 1; break;
     case 'bolt': base.weapon = 2; break;
   }
+  // On a slope, standing on it.
+  base.y += floor(base.x);
   return base;
 }
 
 const bodies = new Bodies(scene, ground);
+Object.assign(window, { bodies });
 const viewModel = new ViewModel();
 const assets = await loadAssets(renderer);
 scene.environment = assets.environment;
@@ -138,8 +164,10 @@ if (view === 'fp') {
   });
   renderer.render(viewModel.scene, viewModel.camera);
 } else {
-  const end = 3;
+  // Long enough for the longest death asked for.
+  const end = Math.max(3, ...show.map((e) => (e.startsWith('dead') ? Number(e.split(':')[1] ?? T) * 2 + 0.1 : 0)));
   const dt = 1 / 60;
+  let prev: boolean[] = [];
   for (let s = 0; s <= end + 1e-6; s += dt) {
     const snaps = show.map((name, i) => snap(name, i, s, end));
     // Shots and hits land t seconds before the end.
@@ -151,6 +179,19 @@ if (view === 'fp') {
       if (name === 'shoot' || name === 'cycle') bodies.fire(p.id, false);
       if (name === 'hit' || name === 'hithead') bodies.flash(p.id, p.x, p.y + (name === 'hit' ? 1.2 : 1.6), p.z);
     });
+    // The dead are shot from in front (or `from`, a yaw the round comes from) just before they're seen dead.
+    snaps.forEach((p, i) => {
+      if (!p.dead || prev[i]) return;
+      const from = q.has('from') ? Number(q.get('from')) : p.yaw;
+      const dir: [number, number, number] = [Math.sin(from), 0, Math.cos(from)];
+      const head = q.has('headshot');
+      const y = p.y + (head ? 1.6 : 1.25);
+      bodies.killed({
+        victim: p.id, weapon: q.has('grenade') ? GRENADE : p.weapon, head,
+        pose: [p.x, p.y, p.z, p.yaw, p.duck], at: [p.x, y, p.z], dir,
+      });
+    });
+    prev = snaps.map((p) => p.dead);
     bodies.update(snaps, dt, camera);
   }
   if (q.has('hit')) {

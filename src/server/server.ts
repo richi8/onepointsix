@@ -8,6 +8,7 @@ import {
   CMD_DT,
   DEATHCAM_AFTER,
   DEATHCAM_BEFORE,
+  EYE_HEIGHT,
   EXTRACT_TIME,
   GRENADE_DAMAGE,
   GRENADE_FUSE,
@@ -913,7 +914,7 @@ export class GameServer {
       )) {
         const f = 1 - d / GRENADE_RADIUS;
         const amount = Math.round(GRENADE_DAMAGE * f * f);
-        if (amount > 0) this.damage(p, owner ?? p, amount, 'torso', GRENADE, h.torsoX, chest, h.torsoZ, { x, z });
+        if (amount > 0) this.damage(p, owner ?? p, amount, 'torso', GRENADE, h.torsoX, chest, h.torsoZ, { x, y, z });
       }
     }
     this.noise(x, y, z, GRENADE_NOISE, g.owner, undefined, true);
@@ -923,7 +924,7 @@ export class GameServer {
   /** `from` is where the damage came from, if not the attacker, such as a grenade. */
   private damage(
     victim: Player, attacker: Player, amount: number, zone: Zone, weapon: number, x: number, y: number, z: number,
-    from: { x: number; z: number } = attacker,
+    from: { x: number; y: number; z: number } = { x: attacker.x, y: attacker.y + EYE_HEIGHT, z: attacker.z },
   ): void {
     if (victim.protection > 0) amount = 0;
     amount = Math.min(amount, victim.hp);
@@ -943,6 +944,7 @@ export class GameServer {
     this.broadcast({
       k: 'kill', killer: attacker.id, victim: victim.id, killerName: attacker.name, victimName: victim.name,
       weapon, head: zone === 'head', bounty: victim.id === this.bounty?.id,
+      ...deathPose(victim, x, y, z, from),
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
     if (!victim.plan && attacker !== victim) victim.deathcam = { killer: attacker, time: this.time };
@@ -1016,5 +1018,28 @@ function snapOf(p: Player): PlayerSnap {
     id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon,
     quiet: p.suppressed[weapon], motion: motionOf(p), act, actT: clamp(actT, 0, 1), commander: !!p.plan?.commander,
     light: p.light && !dead,
+  };
+}
+
+/**
+ * What a kill event says about the fall: where the victim stood, where the
+ * killing round or blast struck and the way it went, rounded to the
+ * centimetre as replays keep them, so everyone's bodies fall alike.
+ */
+function deathPose(
+  victim: Player, x: number, y: number, z: number, from: { x: number; y: number; z: number },
+): Pick<Extract<GameEvent, { k: 'kill' }>, 'pose' | 'at' | 'dir'> {
+  // Plus zero, as a replay file has no -0 (and atan2 tells them apart).
+  const cm = (v: number) => Math.round(v * 100) / 100 + 0;
+  let dx = x - from.x;
+  let dy = y - from.y;
+  let dz = z - from.z;
+  const d = Math.hypot(dx, dy, dz);
+  if (d > 1e-6) (dx /= d), (dy /= d), (dz /= d);
+  else (dx = -Math.sin(victim.yaw)), (dy = 0), (dz = -Math.cos(victim.yaw));
+  return {
+    pose: [cm(victim.x), cm(victim.y), cm(victim.z), cm(wrapAngle(victim.yaw)), cm(victim.duck)],
+    at: [cm(x), cm(y), cm(z)],
+    dir: [cm(dx), cm(dy), cm(dz)],
   };
 }

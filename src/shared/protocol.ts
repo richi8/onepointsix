@@ -105,6 +105,14 @@ export type GameEvent =
       k: 'kill'; killer: number; victim: number; killerName: string; victimName: string; weapon: number; head: boolean;
       /** The victim carried the bounty. */
       bounty?: boolean;
+      /**
+       * Where the victim stood (feet), faced and how crouched, where the killing
+       * round or blast struck, and the way it travelled, all to the centimetre.
+       * Bodies fall from these alone, so a replay falls the same.
+       */
+      pose: [x: number, y: number, z: number, yaw: number, duck: number];
+      at: [x: number, y: number, z: number];
+      dir: [x: number, y: number, z: number];
     }
   // To everyone: `id` now carries the bounty, loot worth `value`, or with id 0, nobody does.
   | { k: 'bounty'; id: number; name: string; value: number }
