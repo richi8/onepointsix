@@ -4,15 +4,19 @@ import { clamp } from '../shared/geom.ts';
 // Posing the soldier's skeleton by hand, on top of (or instead of) its clips:
 // turning bones in world space, two-bone IK for arms and legs, and closing
 // the hands around a grip. Shared by the bodies in the world and the arms in
-// first person.
+// first person. Every change here brings the bone's children's world
+// matrices up to date, so bones' world matrices are read as they stand rather
+// than recomputed up the whole chain: the caller brings the skeleton up to
+// date once after the clips have posed it.
 
 /**
  * Bones posed by hand, as named in Quaternius's rig. Its feet hang off the
  * root, not the shins: the clips place them, and the legs reach for them.
- * The body carries the pelvis, the legs and the upper body.
+ * The body carries the pelvis, the legs and the upper body. Every bone the
+ * game turns by hand is here, so it can be put back before the clips play.
  */
 export const BONES = {
-  root: 'Root', body: 'Body', spine: 'Abdomen', spine2: 'Chest', neck: 'Neck', head: 'Head', headEnd: 'Head_end',
+  root: 'Root', body: 'Body', spine: 'Abdomen', torso: 'Torso', spine2: 'Chest', neck: 'Neck', head: 'Head', headEnd: 'Head_end',
   lShoulder: 'Shoulder.L', lArm: 'UpperArm.L', lForeArm: 'LowerArm.L', lHand: 'Wrist.L',
   rShoulder: 'Shoulder.R', rArm: 'UpperArm.R', rForeArm: 'LowerArm.R', rHand: 'Wrist.R',
   lUpLeg: 'UpperLeg.L', lLeg: 'LowerLeg.L', lAnkle: 'LowerLeg.L_end', lFoot: 'Foot.L',
@@ -88,7 +92,7 @@ export function curl(hand: Hand, amount: number): void {
  */
 export function orientHand(hand: Hand, along: THREE.Vector3, thumb: THREE.Vector3): void {
   const w = hand.wrist;
-  w.parent!.getWorldQuaternion(Q_A);
+  w.parent!.matrixWorld.decompose(V_G, Q_A, V_H);
   // Local frame of the hand at rest: fingers along +a, thumb side along +b.
   const a = V_A.copy(hand.knuckles).normalize();
   const b = V_B.copy(hand.thumb).addScaledVector(a, -hand.thumb.dot(a)).normalize();
@@ -125,19 +129,21 @@ export function wristFor(side: 'L' | 'R', point: THREE.Vector3, along: THREE.Vec
 /** Turn a bone by `angle` about a world-space axis, then bring its children along. */
 export function rotateWorld(bone: THREE.Object3D, axis: THREE.Vector3, angle: number): void {
   if (Math.abs(angle) < 1e-5) return;
-  const parent = bone.parent!;
-  parent.getWorldQuaternion(Q_A);
+  turnWorld(bone, Q_D.setFromAxisAngle(axis, angle));
+}
+
+/** Turn a bone by a world-space rotation, then bring its children along. */
+export function turnWorld(bone: THREE.Object3D, turn: THREE.Quaternion): void {
+  bone.parent!.matrixWorld.decompose(V_G, Q_A, V_H);
   // local' = parent^-1 * R * parent * local
-  Q_B.setFromAxisAngle(axis, angle);
-  Q_C.copy(Q_A).invert().multiply(Q_B).multiply(Q_A);
+  Q_C.copy(Q_A).invert().multiply(turn).multiply(Q_A);
   bone.quaternion.premultiply(Q_C);
   bone.updateMatrixWorld(true);
 }
 
 /** Shift a bone by a world-space offset. */
 export function moveWorld(bone: THREE.Object3D, offset: THREE.Vector3): void {
-  const world = bone.getWorldPosition(V_A).add(offset);
-  placeWorld(bone, world);
+  placeWorld(bone, V_A.setFromMatrixPosition(bone.matrixWorld).add(offset));
 }
 
 /** Put a bone at a world position. */
@@ -154,38 +160,38 @@ export function reach(
   upper: THREE.Object3D, lower: THREE.Object3D, end: THREE.Object3D,
   target: THREE.Vector3, pole: THREE.Vector3, a: number, b: number,
 ): void {
-  const s = upper.getWorldPosition(new THREE.Vector3());
-  const toTarget = target.clone().sub(s);
+  const s = V_R1.setFromMatrixPosition(upper.matrixWorld);
+  const toTarget = V_R2.copy(target).sub(s);
   const c = clamp(toTarget.length(), Math.abs(a - b) + 1e-3, a + b - 1e-3);
   const dir = toTarget.normalize();
   // Where the middle joint must be: along the reach by x, out toward the pole by h.
   const x = (a * a - b * b + c * c) / (2 * c);
   const h = Math.sqrt(Math.max(a * a - x * x, 0));
-  const bend = pole.clone().sub(s);
+  const bend = V_R3.copy(pole).sub(s);
   bend.addScaledVector(dir, -bend.dot(dir));
   if (bend.lengthSq() < 1e-8) bend.set(0, -1, 0);
   bend.normalize();
-  const joint = s.clone().addScaledVector(dir, x).addScaledVector(bend, h);
+  const joint = V_R4.copy(s).addScaledVector(dir, x).addScaledVector(bend, h);
 
-  aimBone(upper, lower.getWorldPosition(new THREE.Vector3()), joint);
-  aimBone(lower, end.getWorldPosition(new THREE.Vector3()), s.addScaledVector(dir, c));
+  aimBone(upper, V_R5.setFromMatrixPosition(lower.matrixWorld), joint);
+  aimBone(lower, V_R5.setFromMatrixPosition(end.matrixWorld), s.addScaledVector(dir, c));
 }
 
-/** Turn a bone so the child now at `from` swings to `to`. */
+/** Turn a bone so the child now at `from` swings to `to`. Both vectors are used up. */
 export function aimBone(bone: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3): void {
-  const origin = bone.getWorldPosition(new THREE.Vector3());
+  const origin = V_R6.setFromMatrixPosition(bone.matrixWorld);
   const u = from.sub(origin).normalize();
   const v = to.sub(origin).normalize();
-  const turn = new THREE.Quaternion().setFromUnitVectors(u, v);
-  const axis = new THREE.Vector3(turn.x, turn.y, turn.z);
-  const sin = axis.length();
-  if (sin < 1e-6) return;
-  rotateWorld(bone, axis.divideScalar(sin), 2 * Math.atan2(sin, turn.w));
+  const turn = Q_E.setFromUnitVectors(u, v);
+  if (1 - Math.abs(turn.w) < 1e-12) return;
+  turnWorld(bone, turn);
 }
 
 /** Distance between two bones, in world units. */
 export function span(a: THREE.Object3D, b: THREE.Object3D): number {
-  return a.getWorldPosition(V_A).distanceTo(b.getWorldPosition(V_B));
+  a.updateWorldMatrix(true, false);
+  b.updateWorldMatrix(true, false);
+  return V_A.setFromMatrixPosition(a.matrixWorld).distanceTo(V_B.setFromMatrixPosition(b.matrixWorld));
 }
 
 const X_AXIS = new THREE.Vector3(1, 0, 0);
@@ -198,5 +204,15 @@ const V_F = new THREE.Vector3();
 const Q_A = new THREE.Quaternion();
 const Q_B = new THREE.Quaternion();
 const Q_C = new THREE.Quaternion();
+const Q_D = new THREE.Quaternion();
+const Q_E = new THREE.Quaternion();
+const V_G = new THREE.Vector3();
+const V_H = new THREE.Vector3();
+const V_R1 = new THREE.Vector3();
+const V_R2 = new THREE.Vector3();
+const V_R3 = new THREE.Vector3();
+const V_R4 = new THREE.Vector3();
+const V_R5 = new THREE.Vector3();
+const V_R6 = new THREE.Vector3();
 const M_A = new THREE.Matrix4();
 const M_B = new THREE.Matrix4();

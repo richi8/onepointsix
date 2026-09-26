@@ -20,6 +20,8 @@ interface Bench {
   bodies: number;
   empty: { frame: Stats; calls: number; triangles: number };
   crowd: { bodies: Stats; frame: Stats; calls: number; triangles: number };
+  /** Missing from baselines older than chunk 21. */
+  distant?: { bodies: Stats };
   groundCover: { first: Stats; again: Stats };
 }
 
@@ -55,6 +57,7 @@ test.afterAll(() => {
       `    ${b.bodies} bodies, frame     ${was(b.crowd.frame.median, o?.crowd.frame.median)} / ${was(b.crowd.frame.p95, o?.crowd.frame.p95)}` +
         `   ${b.crowd.calls} draw calls, ${Math.round(b.crowd.triangles / 1000)}k triangles`,
       `    posing them          ${was(b.crowd.bodies.median, o?.crowd.bodies.median)} / ${was(b.crowd.bodies.p95, o?.crowd.bodies.p95)}`,
+      `    posing them far off  ${was(b.distant!.bodies.median, o?.distant?.bodies.median)} / ${was(b.distant!.bodies.p95, o?.distant?.bodies.p95)}`,
       `    ground cover, new    ${was(b.groundCover.first.median, o?.groundCover.first.median)} / ${was(b.groundCover.first.p95, o?.groundCover.first.p95)}` +
         `   (max ${b.groundCover.first.max})`,
       `    ground cover, again  ${was(b.groundCover.again.median, o?.groundCover.again.median)} / ${was(b.groundCover.again.p95, o?.groundCover.again.p95)}`,

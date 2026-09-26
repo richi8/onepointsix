@@ -6,18 +6,23 @@ import { LEAN_OFFSET, PLAYER_HEIGHT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
 import type { PlayerSnap, Team } from '../shared/protocol.ts';
-import { PISTOL } from '../shared/weapons.ts';
+import { BOLT, PISTOL } from '../shared/weapons.ts';
+import { clip, gaitSpeed, Reaction } from './clips.ts';
+import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
+import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
 import {
-  type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, placeWorld, reach, rotateWorld, span, wristFor,
+  type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, placeWorld, reach, rotateWorld, span, turnWorld, wristFor,
 } from './rig.ts';
 
 // Everyone else. Once the soldier model has loaded, each body is an animated
-// soldier: it walks and runs at the pace it moves, crouches, jumps,
-// climbs, leans and aims where the player looks, with its hands closed on the
-// gun, and it reloads, switches weapons and throws grenades where others can
-// see. Until then, bodies are drawn from the hit volumes themselves. Either
-// way they are posed to match the hitboxes, so what you see is what you hit.
+// soldier: it walks, runs and crouch-walks at the pace it moves with its feet
+// planted, jumps, falls and lands, climbs, leans and aims where the player
+// looks, with its hands closed on the gun. It flinches when hit, takes each
+// shot's recoil, and reloads each gun its own way, switches weapons and
+// throws grenades where others can see. Until then, bodies are drawn from the
+// hit volumes themselves. Either way the head is kept on its hitbox, so what
+// you see is what you hit.
 // Sides are told apart by colour and kit: operators in grey-blue with a pack,
 // guards in olive with brown webbing, commanders with a red band on the helmet
 // and a radio mast.
@@ -39,14 +44,25 @@ const UNIFORM_MATERIAL = 'Swat';
 const GEAR_MATERIAL = 'Swat_Black';
 /** Beyond this, soldiers animate at a lower rate and skip fine posing. */
 const NEAR = 90;
-const FAR_UPDATE = 1 / 12;
+const FAR_UPDATE = 1 / 20;
 /** Bodies this close are drawn even off screen, for their shadows. */
 const SHADOW_REACH = 60;
 /** Where the fog hides everything. */
 const FOG_END = 750;
-/** Speeds, in m/s, that the walk and run clips were recorded at. */
-const WALK_CLIP_SPEED = 1.3;
-const RUN_CLIP_SPEED = 3.2;
+/** How far into the jump clip the feet leave the ground, in seconds. */
+const TAKEOFF = 0.12;
+/** How long a landing plays over the rest, and the shortest time in the air that ends in one. */
+const LAND_TIME = 0.8;
+const LAND_AFTER = 0.2;
+/** How much longer than the clip's a crouched stride can get at speed, so the legs don't scurry. */
+const CROUCH_STRIDE = 1.8;
+/** How long a shot's kick lasts. */
+const KICK_TIME = 0.25;
+/** How far the head may be moved to meet its hitbox, up or down. */
+const HEAD_FIX = 0.3;
+/** How far the hips move to bring the head over the feet, and how far off the hitbox's middle the head may be left. */
+const HIPS_SHIFT = 0.12;
+const HEAD_SLACK = 0.04;
 /** How far the hips move out with a full lean; the upper body rolls the rest of the way. */
 const LEAN_HIPS = 0.14;
 /** Length of a suppressor on the barrel, as in first person. */
@@ -64,7 +80,8 @@ const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
 const GUN_MAT = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, roughness: 0.5, metalness: 0.4 });
 const CAN_MAT = new THREE.MeshStandardMaterial({ color: 0x1e2022, roughness: 0.6, metalness: 0.3 });
-const NADE_MAT = new THREE.MeshStandardMaterial({ color: 0x3b4a2a, roughness: 0.7 });
+const MAG_MAT = new THREE.MeshStandardMaterial({ color: 0x2c2d2f, roughness: 0.6, metalness: 0.3 });
+const ROUND_MAT = new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 });
 const PACK_MAT = new THREE.MeshStandardMaterial({ color: 0x3a3d33, roughness: 0.9 });
 const RED_MAT = new THREE.MeshStandardMaterial({ color: 0xa3201b, roughness: 0.8 });
 const MAST_MAT = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
@@ -72,7 +89,13 @@ const FLASH_MAT = new THREE.SpriteMaterial({
   map: flashTexture(), color: 0xffc070, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
 });
 const CAN_GEO = new THREE.CylinderGeometry(0.02, 0.02, CAN_LENGTH, 10).rotateX(Math.PI / 2);
-const NADE_GEO = new THREE.SphereGeometry(0.045, 10, 8).scale(1, 1.25, 1);
+/** What the left hand brings from the belt: a magazine for each gun (none for the bolt-action), or a round. */
+const MAG_GEO = [
+  new THREE.BoxGeometry(0.025, 0.14, 0.06).translate(0, -0.05, 0),
+  new THREE.BoxGeometry(0.02, 0.09, 0.028).translate(0, -0.03, 0),
+  null,
+];
+const ROUND_GEO = new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6).rotateX(Math.PI / 2);
 
 /** What a body stands on and falls against. */
 export interface Ground {
@@ -80,13 +103,10 @@ export interface Ground {
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number;
 }
 
-/** A carried gun, barrel along -z with the grip at z = 0, as fitGun makes them. */
-interface GunShape {
+/** A carried gun, barrel along -z with the grip at z = 0, as fitGun makes them, and its marked points. */
+interface GunShape extends GunPoints {
   make(): THREE.Object3D;
   muzzle: THREE.Vector3;
-  /** Where the right hand holds it, and the left. */
-  grip: THREE.Vector3;
-  support: THREE.Vector3;
 }
 
 /** A stand-in gun of boxes until the models load. */
@@ -103,6 +123,8 @@ function gunShape(length: number, stock: boolean): GunShape {
     muzzle: new THREE.Vector3(0, 0.06, -length * 0.88),
     grip: new THREE.Vector3(0, -0.02, 0.02),
     support: new THREE.Vector3(0, 0.02, -length * 0.42),
+    magazine: new THREE.Vector3(0, -0.05, -length * 0.15),
+    bolt: new THREE.Vector3(0.03, 0.06, -length * 0.05),
   };
 }
 
@@ -151,6 +173,19 @@ interface Figure {
   /** Poses blended in and out: in the air and climbing. */
   air: number;
   mantle: number;
+  /** How far crouched it was last seen, 0 to 1. */
+  duck: number;
+  /** Seconds in the air, and since it last landed. */
+  airFor: number;
+  landedFor: number;
+  /** How much longer its crouched strides are than the clip's. */
+  crouchStride: number;
+  /** How far its body is moved up or down to put the head on its hitbox, smoothed. */
+  headFix: number;
+  /** Seconds since it last fired, and since it was last hit, and whether that was in the head. */
+  firedFor: number;
+  hitFor: number;
+  hitHead: boolean;
   /** Seconds to the next animation update, when far away. */
   wait: number;
   soldier: Soldier | null;
@@ -165,11 +200,22 @@ interface Soldier {
   idle: THREE.AnimationAction;
   walk: THREE.AnimationAction;
   run: THREE.AnimationAction;
+  crouchIdle: THREE.AnimationAction;
+  crouchWalk: THREE.AnimationAction;
+  /** Leaving the ground, in the air and landing. */
+  jump: THREE.AnimationAction;
+  airborne: THREE.AnimationAction;
+  land: THREE.AnimationAction;
   death: THREE.AnimationAction;
   bones: Bones;
   hands: [left: Hand, right: Hand];
-  /** A grenade, shown in the throwing hand. */
-  nade: THREE.Mesh;
+  /** The bones each reaction turns, in Reactions order. */
+  reacting: THREE.Object3D[][];
+  /** Each foot's hold on the ground, left then right. */
+  feet: [Foothold, Foothold];
+  /** A grenade, shown in the throwing hand, and what the left hand brings to a reload. */
+  nade: THREE.Object3D;
+  mag: THREE.Mesh;
   /** An operator's pack, kept out of the ground when it lies on it. */
   pack: THREE.Object3D | null;
   /**
@@ -185,6 +231,25 @@ interface Soldier {
   shin: number;
 }
 
+/**
+ * A foot planted where it landed, so it doesn't slide while the body moves
+ * over it: the clip's foot is shifted by `offset` to stay on `at`. Lifted,
+ * the offset eases away.
+ */
+interface Foothold {
+  at: THREE.Vector3 | null;
+  offset: THREE.Vector3;
+  /** Where the clip had the foot last time, to tell a planted foot from a swinging one. */
+  last: THREE.Vector3;
+}
+
+/** The short movements played over the upper body, and the clips they come from. */
+interface Reactions {
+  shot: Reaction;
+  hit: Reaction;
+  hitHead: Reaction;
+}
+
 /** Called for each footfall of a body, with how fast it was moving. */
 export type StepListener = (x: number, y: number, z: number, speed: number, crouched: boolean) => void;
 
@@ -198,6 +263,9 @@ export class Bodies {
   private modelScale = 1;
   /** Which way the death clip falls, as a yaw from facing, and how far the head ends up. */
   private deathYaw = Math.PI;
+  /** How fast the walk, run and crouch-walk clips carry the body, in m/s, measured from their feet. */
+  private gait = { walk: 1.3, run: 3.2, crouch: 0.5 };
+  private reactions: Reactions | null = null;
   private readonly camera = new THREE.Vector3();
   private readonly frustum = new THREE.Frustum();
   private readonly bounds = new THREE.Sphere(new THREE.Vector3(), 1.4);
@@ -212,12 +280,19 @@ export class Bodies {
   setModel(gltf: GLTF, guns: GLTF[]): void {
     this.model = gltf;
     GUNS = guns.map((g, i) => {
-      const fitted = fitGun(g, i);
-      return { make: () => fitted.object.clone(), muzzle: fitted.muzzle, grip: fitted.grip, support: fitted.support };
+      const { object, ...points } = fitGun(g, i);
+      return { make: () => object.clone(), ...points };
     });
     const box = new THREE.Box3().setFromObject(gltf.scene);
     this.modelScale = PLAYER_HEIGHT / (box.max.y - box.min.y);
     this.deathYaw = deathDirection(gltf);
+    const speed = (name: string): number => gaitSpeed(gltf.scene, clip(gltf.animations, name)) * this.modelScale;
+    this.gait = { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk') };
+    this.reactions = {
+      shot: new Reaction(clip(gltf.animations, 'Gun_Shoot')),
+      hit: new Reaction(clip(gltf.animations, 'HitRecieve')),
+      hitHead: new Reaction(clip(gltf.animations, 'HitRecieve_2')),
+    };
     for (const id of [...this.figures.keys()]) this.remove(id);
   }
 
@@ -244,19 +319,23 @@ export class Bodies {
     for (const id of [...this.figures.keys()]) if (!seen.has(id)) this.remove(id);
   }
 
-  /** Flash a body where a round landed, at (x, y, z) in the world. */
+  /** Flash a body where a round landed, at (x, y, z) in the world, and make it flinch. */
   flash(id: number, x: number, y: number, z: number): void {
     const f = this.figures.get(id);
     if (!f) return;
     f.flash = FLASH_TIME;
     f.group.updateMatrixWorld(true);
     f.group.worldToLocal(f.hitAt.set(x, y, z));
+    f.hitFor = 0;
+    f.hitHead = y > f.lastY + PLAYER_HEIGHT * 0.5 && y > hitboxes({ x: 0, y: f.lastY, z: 0, yaw: 0, duck: f.duck, lean: 0 }).neckY;
   }
 
-  /** A body fired: flash at its muzzle unless suppressed. */
+  /** A body fired: flash at its muzzle unless suppressed, and take the recoil. */
   fire(id: number, quiet: boolean): void {
     const f = this.figures.get(id);
-    if (f && !quiet) {
+    if (!f) return;
+    f.firedFor = 0;
+    if (!quiet) {
       f.muzzle = MUZZLE_TIME;
       f.flashMesh.material.rotation = Math.random() * Math.PI;
     }
@@ -307,7 +386,10 @@ export class Bodies {
       gun, held, can, flashMesh, weapon: 0, quiet: false,
       deadFor: -1, fallYaw: 0, fallX: 0, fallZ: 0, tilt: new THREE.Quaternion(), lift: 0, killer: null, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
-      air: 0, mantle: 0, wait: 0, soldier: null, casters: null,
+      air: 0, mantle: 0, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, headFix: 0, duck: 0,
+      firedFor: 1e3, hitFor: 1e3, hitHead: false, soldier: null, casters: null,
+      // Far off, bodies take turns to be posed rather than all in one frame.
+      wait: Math.random() * FAR_UPDATE,
     };
     placeCan(f);
     if (this.model) f.soldier = this.soldier(f, team, commander);
@@ -352,34 +434,46 @@ export class Bodies {
 
     const bones = findBones(model);
     const mixer = new THREE.AnimationMixer(model);
-    const clip = (name: string): THREE.AnimationAction => {
-      const c = THREE.AnimationClip.findByName(gltf.animations, name);
-      if (!c) throw new Error(`Soldier has no ${name} animation`);
-      const action = mixer.clipAction(c);
-      action.play();
-      return action;
+    const action = (name: string, once = false): THREE.AnimationAction => {
+      const a = mixer.clipAction(clip(gltf.animations, name));
+      if (once) {
+        a.setLoop(THREE.LoopOnce, 1);
+        a.clampWhenFinished = true;
+      }
+      a.weight = 0;
+      a.play();
+      return a;
     };
-    const idle = clip('Idle');
-    const walk = clip('Walk');
-    const run = clip('Run');
-    const death = clip('Death');
-    death.setLoop(THREE.LoopOnce, 1);
-    death.clampWhenFinished = true;
-    death.weight = 0;
+    const idle = action('Idle');
+    const walk = action('Walk');
+    const run = action('Run');
+    const crouchIdle = action('CrouchIdle');
+    const crouchWalk = action('CrouchWalk');
+    const jump = action('JumpStart', true);
+    const airborne = action('JumpLoop');
+    const land = action('JumpLand', true);
+    const death = action('Death', true);
+    idle.weight = 1;
     // Start everyone at a different point in their stride.
     const phase = Math.random();
-    walk.time = phase * walk.getClip().duration;
-    run.time = phase * run.getClip().duration;
+    for (const a of [walk, run, crouchWalk, idle, crouchIdle]) a.time = phase * a.getClip().duration;
 
     f.group.updateMatrixWorld(true);
     const hands: [Hand, Hand] = [findHand(model, 'L'), findHand(model, 'R')];
-    const nade = new THREE.Mesh(NADE_GEO, NADE_MAT);
+    const nade = grenadeModel();
     nade.visible = false;
     f.group.add(nade);
+    const mag = new THREE.Mesh(ROUND_GEO, MAG_MAT);
+    mag.visible = false;
+    f.group.add(mag);
     const pack = this.kit(f, bones, team, commander);
     const animated = Object.values(bones).map((bone) => ({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }));
+    const r = this.reactions!;
+    const foothold = (): Foothold => ({ at: null, offset: new THREE.Vector3(), last: new THREE.Vector3() });
     return {
-      mixer, idle, walk, run, death, bones, hands, nade, pack, animated,
+      mixer, idle, walk, run, crouchIdle, crouchWalk, jump, airborne, land, death, bones, hands, nade, mag, pack, animated,
+      reacting: [r.shot, r.hit, r.hitHead].map((reaction) => reaction.bones(model)),
+      feet: [foothold(), foothold()],
       arm: span(bones.rArm, bones.rForeArm), forearm: span(bones.rForeArm, bones.rHand),
       thigh: span(bones.rUpLeg, bones.rLeg), shin: span(bones.rLeg, bones.rAnkle),
     };
@@ -449,7 +543,22 @@ export class Bodies {
       const k = 1 - Math.exp(-BLEND_RATE * dt);
       f.air += ((p.motion === 'air' ? 1 : 0) - f.air) * k;
       f.mantle += ((p.motion === 'mantle' ? 1 : 0) - f.mantle) * k;
+      f.firedFor += dt;
+      f.hitFor += dt;
+      f.landedFor += dt;
     }
+    // Leaving the ground plays the jump from where the feet leave it; coming down after a while, the landing.
+    const inAir = p.motion === 'air' && !p.dead;
+    if (inAir && f.airFor === 0 && f.soldier) {
+      f.soldier.jump.reset();
+      f.soldier.jump.time = f.vy > 0 ? TAKEOFF : f.soldier.jump.getClip().duration;
+    }
+    if (!inAir && f.airFor > LAND_AFTER && f.soldier) {
+      f.landedFor = 0;
+      f.soldier.land.reset();
+    }
+    f.airFor = inAir ? f.airFor + dt : 0;
+    f.duck = p.duck;
     f.lastX = p.x;
     f.lastY = p.y;
     f.lastZ = p.z;
@@ -596,25 +705,40 @@ export class Bodies {
     f.wait -= dt;
     if (!near && f.wait > 0) return;
     const step = near ? dt : dt + Math.max(-f.wait, 0) + FAR_UPDATE;
-    f.wait = near ? 0 : FAR_UPDATE;
+    // Near, a random wait: once it moves off, it takes its turn out of step with the others.
+    f.wait = near ? Math.random() * FAR_UPDATE : FAR_UPDATE;
 
-    // Walk into a run with speed; play the clips as fast as the body moves.
+    // Walk into a run with speed, crouched or not; play the clips as fast as the body moves.
     const dead = f.deadFor >= 0;
     const speed = dead ? 0 : f.speed;
     const moving = smoothstep(0.3, 1.2, speed);
     const running = smoothstep(2.6, 4.6, speed);
-    const dying = dead ? Math.min(f.deadFor / 0.15, 1) : 0;
-    s.idle.weight = (1 - moving) * (1 - dying);
-    s.walk.weight = moving * (1 - running) * (1 - dying);
-    s.run.weight = moving * running * (1 - dying);
+    const alive = dead ? 1 - Math.min(f.deadFor / 0.15, 1) : 1;
+    const air = f.air;
+    const rising = smoothstep(-1, 1, f.vy);
+    // A landing shows most when standing still, and fades as it finishes.
+    const landing = (1 - smoothstep(0.35, LAND_TIME, f.landedFor)) * (1 - 0.6 * moving) * (1 - air);
+    const ground = (1 - air) * (1 - landing);
+    const duck = p.duck;
+    s.idle.weight = alive * ground * (1 - duck) * (1 - moving);
+    s.walk.weight = alive * ground * (1 - duck) * moving * (1 - running);
+    s.run.weight = alive * ground * (1 - duck) * moving * running;
+    s.crouchIdle.weight = alive * ground * duck * (1 - moving);
+    s.crouchWalk.weight = alive * ground * duck * moving;
+    s.jump.weight = alive * air * rising;
+    s.airborne.weight = alive * air * (1 - rising);
+    s.land.weight = alive * landing;
     if (dead && s.death.weight === 0) s.death.reset().play();
-    s.death.weight = dying;
+    s.death.weight = 1 - alive;
     if (!dead) s.death.stop();
     // Backpedalling plays the stride backward, with the legs facing the way back.
     const back = Math.abs(f.heading) > Math.PI * 0.6;
     const sign = back ? -1 : 1;
-    s.walk.timeScale = sign * clamp(speed / WALK_CLIP_SPEED, 0.6, 2);
-    s.run.timeScale = sign * clamp(speed / RUN_CLIP_SPEED, 0.6, 1.8);
+    s.walk.timeScale = sign * clamp(speed / this.gait.walk, 0.6, 2);
+    s.run.timeScale = sign * clamp(speed / this.gait.run, 0.6, 1.8);
+    // The crouch-walk clip is a slow sneak: faster, its strides lengthen before its pace quickens.
+    f.crouchStride = clamp(speed / (this.gait.crouch * 2.5), 1, CROUCH_STRIDE);
+    s.crouchWalk.timeScale = sign * clamp(speed / (this.gait.crouch * f.crouchStride), 0.6, 3);
     for (const a of s.animated) {
       a.bone.position.copy(a.position);
       a.bone.quaternion.copy(a.quaternion);
@@ -626,6 +750,7 @@ export class Bodies {
     }
     for (const hand of s.hands) curl(hand, dead ? 0.3 : 0.9);
     s.nade.visible = false;
+    s.mag.visible = false;
     f.group.updateMatrixWorld(true);
     if (dead) {
       this.lie(f, s, p, step);
@@ -643,39 +768,90 @@ export class Bodies {
     rotateWorld(b.root, up, legYaw);
     rotateWorld(b.spine, up, -legYaw);
 
-    // Crouch: sink the body to the hitbox's hip height.
-    const duck = p.duck;
-    const drop = hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck: 0, lean: 0 }).hipY -
-      hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck, lean: 0 }).hipY + duck * 0.06;
-    // Leaning, the hips move out over the feet too.
-    const hips = V_TMP2.set(0, -drop, 0).addScaledVector(right, p.lean * LEAN_HIPS);
-    if (hips.lengthSq() > 1e-5) moveWorld(b.body, hips);
-    this.legs(f, s, duck, p.lean, legYaw);
-
-    // Bent forward over the knees in a crouch, forward climbing.
-    rotateWorld(b.spine, right, -0.25 * duck - 0.45 * f.mantle - 0.12 * f.air);
-    // Lean rolls the upper body sideways from the waist until the head is where its hitbox is.
-    this.trueLean(f, s, p, right, forward);
-    // Aim: the chest and head follow the pitch.
+    // Leaning, the hips move out over the feet.
+    if (Math.abs(p.lean) > 1e-3) moveWorld(b.body, V_TMP2.copy(right).multiplyScalar(p.lean * LEAN_HIPS));
+    // Bent forward climbing; aiming, the chest and head follow the pitch.
+    rotateWorld(b.spine, right, -0.45 * f.mantle);
     rotateWorld(b.spine2, right, p.pitch * 0.5);
     rotateWorld(b.neck, right, p.pitch * 0.35);
-
+    this.headOnHitbox(f, s, p, step, right, forward, near);
+    this.react(f, s);
+    if (near) this.legs(f, s, legYaw, step);
     this.arms(f, s, p, near, running, right, forward);
   }
 
+  /** The middle of the head, a little way up from where it sits on the neck, in the world. */
+  private headAt(s: Soldier, out: THREE.Vector3): THREE.Vector3 {
+    out.setFromMatrixPosition(s.bones.head.matrixWorld);
+    return out.lerp(V_TMP4.setFromMatrixPosition(s.bones.headEnd.matrixWorld), 0.3);
+  }
+
   /**
-   * Where the feet go. The clips place them for walking upright; a crouch
-   * pulls them in under the lowered hips, and a jump, a fall and a climb
-   * each have their own stance. The legs then bend to reach them.
+   * Put the head where its hitbox is, whatever the clips did: move the hips
+   * and bend at the waist until it's over the feet front to back (within a
+   * few centimetres), roll the upper body until it's as far out as a lean
+   * puts the hitbox, and raise or lower the body (easing, so a stride's bob
+   * stays) until it's at eye height. The bend and roll are one Newton step
+   * each, from how far the head moves per radian turned at the waist, made
+   * as a single turn.
    */
-  private legs(f: Figure, s: Soldier, duck: number, lean: number, legYaw: number): void {
-    const custom = Math.max(f.air, f.mantle);
-    if (duck < 0.01 && custom < 0.01 && Math.abs(lean) < 0.01) return;
+  private headOnHitbox(
+    f: Figure, s: Soldier, p: PlayerSnap, step: number, right: THREE.Vector3, forward: THREE.Vector3, near: boolean,
+  ): void {
+    const spine = s.bones.spine;
+    const origin = f.group.position;
+    const head = this.headAt(s, V_TMP3);
+    const arm = V_TMP5.copy(head).sub(V_TMP2.setFromMatrixPosition(spine.matrixWorld));
+    // How far the head moves along `dir` for each radian turned about `axis` at the waist.
+    const rate = (axis: THREE.Vector3, dir: THREE.Vector3): number => V_TMP2.crossVectors(axis, arm).dot(dir);
+    const side = V_TMP2.copy(head).sub(origin).dot(right);
+    const ahead = V_TMP2.copy(head).sub(origin).dot(forward);
+    let roll = 0;
+    let bend = 0;
+    let shift = 0;
+    const sideways = rate(forward, right);
+    if (Math.abs(sideways) > 1e-3) roll = clamp((p.lean * LEAN_OFFSET - side) / sideways, -0.8, 0.8);
+    // Far off, only a lean shows: a few centimetres either way can't be seen.
+    if (near) {
+      // Front to back, the hips carry it partway over the feet and the waist bends for the rest; climbing keeps its bend.
+      shift = clamp(-ahead, -HIPS_SHIFT, HIPS_SHIFT) * (1 - f.mantle);
+      const left = ahead + shift;
+      const onward = rate(right, forward);
+      if (Math.abs(left) > HEAD_SLACK && Math.abs(onward) > 1e-3) {
+        bend = clamp((Math.sign(left) * HEAD_SLACK - left) / onward, -0.8, 0.8) * (1 - f.mantle);
+      }
+    }
+    Q_A.setFromAxisAngle(forward, roll).multiply(Q_B.setFromAxisAngle(right, bend));
+    if (roll !== 0 || bend !== 0) turnWorld(spine, Q_A);
+    if (!near) return;
+    // Where the turn left the head's height, then the body raised or lowered toward eye height, with the hips' shift.
+    const eye = hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck: p.duck, lean: 0 }).headY;
+    const headY = head.y + V_TMP2.copy(arm).applyQuaternion(Q_A).sub(arm).y - origin.y;
+    f.headFix += (clamp(eye - headY, -HEAD_FIX, HEAD_FIX) - f.headFix) * (1 - Math.exp(-10 * step));
+    moveWorld(s.bones.body, V_TMP2.copy(forward).multiplyScalar(shift).addScaledVector(V_UP, f.headFix));
+  }
+
+  /** A shot's recoil and a hit's flinch, over the upper body. */
+  private react(f: Figure, s: Soldier): void {
+    const r = this.reactions!;
+    r.shot.apply(s.reacting[0], f.firedFor, 0.8);
+    r[f.hitHead ? 'hitHead' : 'hit'].apply(s.reacting[f.hitHead ? 2 : 1], f.hitFor, 1);
+    if (f.firedFor < r.shot.duration || f.hitFor < r.hit.duration) f.group.updateMatrixWorld(true);
+  }
+
+  /**
+   * Where the feet go. The clips place them; crouched at speed, strides
+   * lengthen, and a climb has its own stance. A foot on the ground stays
+   * where it landed until the clip lifts it, so it doesn't slide. The legs
+   * then bend to reach them.
+   */
+  private legs(f: Figure, s: Soldier, legYaw: number, step: number): void {
     const b = s.bones;
     const origin = f.group.position;
     const forward = V_TMP4.set(0, 0, -1).applyQuaternion(f.group.quaternion).applyAxisAngle(V_UP, legYaw);
     const right = V_TMP5.crossVectors(forward, V_UP);
-    const rising = smoothstep(-1, 2, f.vy);
+    const stride = lerp(1, f.crouchStride, f.duck);
+    const grounded = f.air < 0.1 && f.mantle < 0.1;
     const legs = [[b.lUpLeg, b.lLeg, b.lAnkle, b.lFoot], [b.rUpLeg, b.rLeg, b.rAnkle, b.rFoot]] as const;
     legs.forEach(([thigh, shin, ankle, foot], i) => {
       const left = i === 0;
@@ -683,22 +859,32 @@ export class Bodies {
       // In the legs' frame: x right, y up, z forward.
       let x = at.dot(right);
       let y = at.dot(V_UP);
-      let z = at.dot(forward);
-      // Crouched strides are shorter and flatter, and the feet a little wider.
-      x *= 1 + 0.2 * duck;
-      y *= 1 - 0.5 * duck;
-      z *= 1 - 0.45 * duck;
-      // Rising, one knee drives up; falling, both feet reach down.
-      const jump = left ? [-0.12, 0.45, 0.25] : [0.12, 0.2, -0.2];
-      const drop = left ? [-0.15, 0.22, 0.12] : [0.15, 0.15, -0.08];
+      let z = at.dot(forward) * stride;
       // Climbing, the right knee comes up onto the ledge.
       const climb = left ? [-0.12, 0.1, -0.12] : [0.12, 0.6, 0.3];
-      for (const [pose, w] of [[jump, f.air * rising], [drop, f.air * (1 - rising)], [climb, f.mantle]] as const) {
-        x = lerp(x, pose[0], w);
-        y = lerp(y, pose[1], w);
-        z = lerp(z, pose[2], w);
-      }
+      x = lerp(x, climb[0], f.mantle);
+      y = lerp(y, climb[1], f.mantle);
+      z = lerp(z, climb[2], f.mantle);
       const target = V_TMP3.copy(origin).addScaledVector(right, x).addScaledVector(V_UP, y).addScaledVector(forward, z);
+
+      // Planted: the clip's foot hardly moves over the ground, and it's low.
+      const hold = s.feet[i];
+      const drift = Math.hypot(target.x - hold.last.x, target.z - hold.last.z) / Math.max(step, 1e-3);
+      const planted = grounded && y < 0.15 && drift < 0.5 * f.speed + 0.3;
+      hold.last.copy(target);
+      if (planted) {
+        if (!hold.at) hold.at = target.clone();
+        hold.offset.set(hold.at.x - target.x, 0, hold.at.z - target.z);
+        // Stretched too far, as when turning on the spot: step again.
+        if (hold.offset.lengthSq() > 0.3 * 0.3) {
+          hold.at.copy(target);
+          hold.offset.set(0, 0, 0);
+        }
+      } else {
+        hold.at = null;
+        hold.offset.multiplyScalar(Math.exp(-15 * step));
+      }
+      target.add(hold.offset);
       placeWorld(foot, target);
       // Knees out front.
       const pole = thigh.getWorldPosition(V_TMP2).addScaledVector(forward, 1);
@@ -706,27 +892,13 @@ export class Bodies {
     });
   }
 
-  /** Roll the upper body until the head is right over its hitbox, side to side. */
-  private trueLean(f: Figure, s: Soldier, p: PlayerSnap, right: THREE.Vector3, forward: THREE.Vector3): void {
-    const want = p.lean * LEAN_OFFSET;
-    // The middle of the head, a little way up from where it sits on the neck.
-    const side = (): number => {
-      const head = s.bones.head.getWorldPosition(V_TMP3);
-      head.lerp(s.bones.headEnd.getWorldPosition(V_TMP4), 0.3);
-      return head.sub(f.group.position).dot(right);
-    };
-    const a = side();
-    rotateWorld(s.bones.spine, forward, 0.05);
-    const b = side();
-    const rate = (b - a) / 0.05;
-    if (Math.abs(rate) > 1e-3) rotateWorld(s.bones.spine, forward, clamp((want - b) / rate, -0.8, 0.8));
-  }
-
   /**
    * The gun hangs off the right shoulder, pointing where the body aims, and
-   * the hands close on it. Reloading tips it over while the left hand fetches
-   * a magazine; switching brings it up from low; a throw lowers it while the
-   * left hand throws. Running carries it low across the chest.
+   * the hands close on it. It kicks with each shot, and the bolt-action's
+   * bolt is worked after one. Reloading tips it over while the hands do what
+   * that gun needs (see handwork.ts); switching brings it up from low; a
+   * throw lowers it while the left hand throws. Running carries it low
+   * across the chest.
    */
   private arms(
     f: Figure, s: Soldier, p: PlayerSnap, near: boolean, running: number,
@@ -743,11 +915,14 @@ export class Bodies {
     const tossing = p.act === 'throw' ? hump(t, 0.05, 0.8) : 0;
     const climbing = f.mantle;
     const low = Math.max(running * 0.7, draw, tossing, climbing * 0.8);
+    const kick = f.firedFor < KICK_TIME ? (1 - f.firedFor / KICK_TIME) ** 2 * [0.6, 1, 1.6][p.weapon] : 0;
+    // The bolt-action and pistol tip toward the left hand to reload; the rifle rolls its magazine out.
+    const tip = reload * (p.weapon === BOLT ? 0.4 : pistol ? 0.5 : 0.7);
 
     // The sight line runs just under the eye, the pistol held out at arm's length.
     f.gun.position.set(shoulder.x - 0.1, shoulder.y + 0.06 - low * 0.12, shoulder.z);
-    f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3, low * 0.5 * (1 - draw), reload * 0.7, 'YXZ');
-    f.gun.translateZ(pistol ? -0.5 : -0.12);
+    f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip, 'YXZ');
+    f.gun.translateZ((pistol ? -0.5 : -0.12) + kick * 0.04);
     f.gun.translateX(pistol ? -0.08 : 0);
     if (!near) return;
 
@@ -756,38 +931,60 @@ export class Bodies {
     const gunRight = V_TMP6.set(1, 0, 0).transformDirection(f.gun.matrixWorld);
     const gunForward = V_TMP7.set(0, 0, -1).transformDirection(f.gun.matrixWorld);
     const gunUp = V_TMP8.crossVectors(gunRight, gunForward);
+    const gunBack = V_TMP10.copy(gunForward).negate();
+    const toWorld = (v: THREE.Vector3): THREE.Vector3 => f.gun.localToWorld(v);
+    const body = (x: number, y: number, z: number): THREE.Vector3 =>
+      new THREE.Vector3().copy(f.group.position).addScaledVector(right, x).addScaledVector(up, y).addScaledVector(forward, z);
 
-    // The right hand round the grip, fingers forward round its front, thumb up over it.
-    const grip = f.gun.localToWorld(V_TMP.copy(gun.grip));
+    // Where the hands hold the gun: the right round the grip, the left under the fore-end or round the right.
+    const grip = toWorld(V_TMP.copy(gun.grip)).clone();
+    let support = toWorld(V_TMP.copy(gun.support)).addScaledVector(gunUp, -0.025).clone();
+    if (pistol) support = toWorld(V_TMP.copy(gun.grip)).addScaledVector(gunRight, -0.03).clone();
+    let rightAt = grip;
+    let leftAt = support;
+    let rightAway = 0;
+    let holding: 'magazine' | 'round' | null = null;
+    if (p.act === 'reload') {
+      const pouch = body(-0.14, 0.95 - p.duck * 0.45, 0.1);
+      const work = reloadHands(f.weapon, t, gun, toWorld, { left: support, right: grip }, pouch, gunUp, gunBack);
+      leftAt = work.left;
+      rightAt = work.right;
+      rightAway = work.rightAway;
+      holding = work.holding;
+    } else if (f.weapon === BOLT && p.act === 'none') {
+      const c = (f.firedFor - BOLT_START) / BOLT_TIME;
+      if (c > 0 && c < 1) {
+        const work = boltHand(c, gun, toWorld, grip, gunUp, gunBack);
+        rightAt = work.at;
+        rightAway = work.away;
+      }
+    }
+
+    // The right hand round the grip, fingers forward round its front, thumb up over it; on the bolt, fingers down over it.
     let along = V_TMP3.copy(gunForward).addScaledVector(gunUp, -0.3);
     let thumb = V_TMP4.copy(gunUp);
-    const wrist = wristFor('R', grip, along, thumb, V_TMP9);
+    if (rightAway > 0) {
+      along.lerp(V_TMP11.copy(gunForward).multiplyScalar(0.4).sub(gunUp), rightAway);
+      thumb.lerp(gunForward, rightAway);
+    }
+    const wrist = wristFor('R', rightAt, along, thumb, V_TMP9);
     const pole = V_TMP2.copy(right).multiplyScalar(0.6).addScaledVector(up, -0.8).add(wrist);
     reach(b.rArm, b.rForeArm, b.rHand, wrist, pole, s.arm, s.forearm);
     orientHand(s.hands[1], along, thumb);
+    if (rightAway > 0) curl(s.hands[1], lerp(0.9, 0.6, rightAway));
 
-    // The left hand: under the fore-end, or off doing something else.
-    const body = (x: number, y: number, z: number): THREE.Vector3 =>
-      new THREE.Vector3().copy(f.group.position).addScaledVector(right, x).addScaledVector(up, y).addScaledVector(forward, z);
-    // Palm up under it, a little below its middle, fingers loosely round its far side.
-    let target: THREE.Vector3 = f.gun.localToWorld(V_TMP.copy(gun.support)).addScaledVector(gunUp, -0.025);
-    // Fingers angled forward round its far side, the thumb along the near side.
+    // The left hand: palm up under the fore-end, a little below its middle, fingers angled forward round its
+    // far side and the thumb along the near side; or wrapped round the right hand on a pistol.
+    let target = leftAt;
     let closed = 0.8;
     along = V_TMP3.copy(gunRight).addScaledVector(gunForward, 0.9);
     thumb = V_TMP4.copy(gunForward).addScaledVector(gunRight, -0.5).addScaledVector(gunUp, 0.4);
     if (pistol) {
-      // Wrapped round the right hand, from the other side.
-      target = f.gun.localToWorld(V_TMP.copy(gun.grip)).addScaledVector(gunRight, -0.03);
       closed = 0.9;
       along = V_TMP3.copy(gunForward).addScaledVector(gunUp, -0.3);
       thumb = V_TMP4.copy(gunUp).addScaledVector(gunForward, 0.5);
     }
-    if (p.act === 'reload') {
-      // Under the magazine well, down to a pouch on the belt, and back.
-      const well = f.gun.localToWorld(gun.grip.clone().lerp(gun.support, 0.45)).addScaledVector(gunUp, -0.1);
-      const pouch = body(-0.15, 0.95 - p.duck * 0.45, -0.12);
-      target = path(t, [[0, target], [0.15, well], [0.35, pouch], [0.5, pouch], [0.7, well], [0.8, well], [0.95, target]]);
-    } else if (p.act === 'throw') {
+    if (p.act === 'throw') {
       // Back over the shoulder, over the top and down in front, then back to the gun.
       const y = 1.55 - p.duck * 0.55;
       const cocked = body(-0.25, y + 0.15, 0.25);
@@ -810,10 +1007,21 @@ export class Bodies {
     reach(b.lArm, b.lForeArm, b.lHand, wrist, pole, s.arm, s.forearm);
     orientHand(s.hands[0], along, thumb);
     curl(s.hands[0], p.act === 'none' || p.act === 'draw' ? closed : 0.8);
-    if (s.nade.visible) {
-      s.hands[0].wrist.updateMatrixWorld(true);
-      s.nade.position.copy(s.hands[0].wrist.localToWorld(V_TMP.copy(s.hands[0].knuckles).multiplyScalar(0.8)));
-      f.group.worldToLocal(s.nade.position);
+
+    // Whatever the left hand carries sits in its fingers.
+    const carried = s.nade.visible ? s.nade : holding ? s.mag : null;
+    if (carried) {
+      if (carried === s.mag) {
+        const geometry = holding === 'round' ? ROUND_GEO : MAG_GEO[f.weapon];
+        if (geometry) s.mag.geometry = geometry;
+        s.mag.material = holding === 'round' ? ROUND_MAT : MAG_MAT;
+        s.mag.visible = !!geometry;
+        s.mag.quaternion.copy(f.gun.quaternion).premultiply(Q_A.copy(f.group.quaternion).invert());
+      }
+      const hand = s.hands[0];
+      hand.wrist.updateMatrixWorld(true);
+      carried.position.copy(hand.wrist.localToWorld(V_TMP.copy(hand.knuckles).multiplyScalar(0.8)));
+      f.group.worldToLocal(carried.position);
     }
   }
 
@@ -895,18 +1103,6 @@ function hump(t: number, a: number, b: number): number {
   return smoothstep(a, a + w, t) * (1 - smoothstep(b - w, b, t));
 }
 
-/** A point moving through keyframes [time, where], eased between them. */
-function path(t: number, keys: [number, THREE.Vector3][]): THREE.Vector3 {
-  if (t <= keys[0][0]) return keys[0][1];
-  for (let i = 1; i < keys.length; i++) {
-    const [t1, p1] = keys[i];
-    if (t > t1) continue;
-    const [t0, p0] = keys[i - 1];
-    return p0.clone().lerp(p1, smoothstep(t0, t1, t));
-  }
-  return keys[keys.length - 1][1];
-}
-
 /** Where rounds leave the gun: the barrel's end, or the suppressor's. */
 function muzzleOf(f: Figure): THREE.Vector3 {
   const m = V_MUZZLE.copy(GUNS[f.weapon].muzzle);
@@ -952,6 +1148,8 @@ const V_TMP6 = new THREE.Vector3();
 const V_TMP7 = new THREE.Vector3();
 const V_TMP8 = new THREE.Vector3();
 const V_TMP9 = new THREE.Vector3();
+const V_TMP10 = new THREE.Vector3();
+const V_TMP11 = new THREE.Vector3();
 const Q_A = new THREE.Quaternion();
 const Q_B = new THREE.Quaternion();
 

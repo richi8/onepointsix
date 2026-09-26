@@ -203,7 +203,7 @@ human pass comes last so people play the finished result.
 |---|---|---|---|---|
 | 19 | **Browser tests and benchmarks** | A browser test runner in the repo (Playwright: Chromium, Firefox and WebKit) with a dev-only hook to end a run on demand; tests for the menu, leaderboard UI, share button, loading screen, death cam and its HUD, replay viewer, file picker and dropped files, handover between islands, rivals HUD (bounty, "you carry the bounty", feed rows) and the results buttons; screenshot comparisons for the water, ground cover, impostors, cascades, indoor light and the pose viewer's poses; AAC offsets checked in Firefox and WebKit; a frame-time benchmark with many near bodies (posing, IK, fingers) and the ground cover's rebuild; the pose viewer run by the tests | `npm run test:browser` covers every UI named in Code and testing, runs in all three engines, and prints a frame-cost report | **Done** (93 tests in about 3 minutes on an M3 Pro; the screenshots are Chromium's only, and the tests don't run in CI) |
 | 20 | **Lean loading and portable tooling** | Sounds on the loading bar (the ambience and your own gun before Play, the rest after); the loading bar counts the script download and uncompressed sizes; skipping the loading screen fades the assets in instead of swapping; the entry chunk split so ground cover, impostors, replays and the death cam load lazily; a smaller Basis transcoder (an ETC1S-only build) or a measured case against it; KTX2 and the prefiltered sky compared to the originals by number, not only by eye; smaller sounds (Opus where supported, AAC fallback); the sound and asset scripts run on Linux and Intel Macs (ffmpeg instead of `afconvert`, any-platform KTX tools); a click soon after Esc resumes at once or says why it can't | Total JavaScript at start is down by a measured amount, the first sound plays with the first shot, and both scripts run in CI on Linux | **Done** (JavaScript and wasm before the menu down from 1,550 kB to 1,227 kB, 544 kB to 396 kB gzipped, almost all of it the transcoder; the scripts' CI job was only run in a Linux container, since it isn't pushed yet) |
-| 21 | **Animation clips and hands** | Real clips from a CC0 animation library (e.g. Quaternius's Universal Animation Library) retargeted to the soldier: crouch-walk, jump, fall, climb, shooting and hit reactions; walk and run speeds measured from the clips' foot contacts, with foot locking; a reload per gun (the bolt-action works its bolt and loads rounds, the pistol swaps a small magazine); a grenade model; hand grips placed from marked points on each gun model instead of hand-measured fractions, and the pistol sized for the fist; first-person arms that reach without stretching (longer bones or a dedicated arms model); the leaning and crouched head matched to its hitbox; distant bodies at a higher rate if the chunk 19 benchmark allows it (a new, more realistic soldier model is left for a later phase) | Watching someone jump, climb, reload a bolt-action or take a hit shows a real motion, and the benchmark shows no frame cost over chunk 19's | **Not started** |
+| 21 | **Animation clips and hands** | Real clips from a CC0 animation library (e.g. Quaternius's Universal Animation Library) retargeted to the soldier: crouch-walk, jump, fall, climb, shooting and hit reactions; walk and run speeds measured from the clips' foot contacts, with foot locking; a reload per gun (the bolt-action works its bolt and loads rounds, the pistol swaps a small magazine); a grenade model; hand grips placed from marked points on each gun model instead of hand-measured fractions, and the pistol sized for the fist; first-person arms that reach without stretching (longer bones or a dedicated arms model); the leaning and crouched head matched to its hitbox; distant bodies at a higher rate if the chunk 19 benchmark allows it (a new, more realistic soldier model is left for a later phase) | Watching someone jump, climb, reload a bolt-action or take a hit shows a real motion, and the benchmark shows no frame cost over chunk 19's | **Done** (crouch, jump, fall, landing, shooting and hit clips; climb still a pose, as the free library has no climb clip; checked by still pictures in the pose viewer, nobody has watched it in play) |
 | 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Not started** |
 | 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Not started** |
 | 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Not started** |
@@ -261,6 +261,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   and muzzle flashes and tracers start from its end.
 - **Distant bodies animate at 12 Hz and skip hand IK** (9), beyond 90 m. It's cheaper, but
   scoped players may notice the stutter.
+  **Resolved in part** (21): they animate at 20 Hz, each on its own turn rather than all in the
+  same frame, which cost 3 ms every few frames for 24 bodies. The benchmark's new far case poses
+  24 bodies 100–400 m off in 0.7 ms a frame (median). They still skip hand and leg IK.
 - **One soldier model for every side, told apart only by tint** (9). Commanders look like any
   other guard. Since chunk 11 only the uniform is recoloured, not the whole body.
   **Resolved in part** (13): it's still one model, but the sides now differ in kit as well as
@@ -325,6 +328,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Walk and run speeds are estimated** (11). The clips' natural speeds (1.3 and 3.2 m/s) were
   worked out from how far the feet travel, not watched in motion, so feet may slide a little.
   Sprinting plays the run clip up to 1.8× faster.
+  **Resolved** (21): the speeds are measured when the model loads, from how fast each foot slides
+  back while it's down (`gaitSpeed` in `src/client/clips.ts`): walk 1.32 m/s, run 2.95 m/s and
+  crouch-walk 0.57 m/s. Within 90 m a foot that's down is also held where it landed (the clip's
+  foot is moved back onto that spot and the leg reaches for it) until the clip lifts it, or until
+  it's 30 cm out, as when turning on the spot. Sprinting still plays the run up to 1.8× faster.
 - **Crouch-walking looks like lunging** (11). The crouch drops the body and bends each leg with IK
   to where the walk clip puts the feet, and those feet are placed for standing height.
   **Resolved** (13): crouched, the feet the walk clip places are pulled in under the hips (strides
@@ -334,6 +342,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   reactions and rolls. Chunk 13 can bring back the death clip from the source file.
   **Resolved in part** (13): the death clip is back (4.5 kB). Shooting, hit reactions and rolls
   are still left out.
+  **Resolved** (21): the shooting clip and both hit reactions are back and played over the upper
+  body (see "The new stances are poses"). Rolls stay out: nothing in the game rolls.
 
 - **Deaths aren't a physics ragdoll** (13). Every body plays the same death clip, laid on the
   ground as above. Limbs can still pass through props, fences and other bodies, and a body never
@@ -344,8 +354,24 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   single pose of the legs, and a crouch-walk is the walk clip squashed. A hop shorter than about
   0.1 s barely shows. The source model has no clips for any of them.
   The slide pose went with the slide (after 14).
+  **Resolved in part** (21): crouching, crouch-walking, jumping, falling and landing are clips from
+  Quaternius's CC0 Universal Animation Library, moved onto the soldier by
+  `scripts/retarget.mjs` when the assets are fetched: each bone takes the turn its counterpart
+  makes from its bind pose (both rigs are bound in a T-pose), the hips' movement is scaled by hip
+  height, and the feet follow the library's feet. A jump plays from the moment its feet leave the
+  ground, the in-air loop takes over as the body falls, and after more than 0.2 s in the air a
+  landing plays over the rest for 0.8 s. The soldier's own shooting clip is laid over the spine
+  and head at each shot, and its two hit reactions at each hit: a doubling-up for the body and a
+  snap back for the head. The climb is still a pose: the free set of the library has no climb.
 - **Every gun reloads the same way** (13), with a magazine change, even the bolt-action. The hand
   paths are keyframes and don't depend on the gun's model.
+  **Resolved** (21): each gun has its own reload, the same in first and third person
+  (`src/client/handwork.ts`), with the hands going to points marked on the gun's model. The rifle
+  swaps its magazine; the pistol tips, its magazine is taken out from under the grip, a small one
+  comes from the belt and the slide is racked; the bolt-action's right hand opens the bolt and
+  holds it back while the left thumbs three rounds into the port, then closes it. The left hand
+  carries a magazine or a round between the belt and the gun. The bolt-action's bolt is also
+  worked after every shot. Every shot kicks the gun (the pistol and bolt-action harder).
 - **Hand grips were fitted by eye** (13), in a pose viewer, for the rifle and the pistol. The
   bolt-action uses the rifle's. The directions for the fingers and thumb are guesses tuned by
   screenshot.
@@ -355,20 +381,41 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   in, and the hands are drawn at 80%, since the model's gloves are oversized next to real guns.
   Checked from both sides and in first person for all three guns. The pistol still looks a
   little small in the fist.
+  **Resolved** (21): the grips come from points marked on each gun's model (`GUNS` in
+  `scripts/fetch-assets.mjs`, written into the files as empty nodes and read by `fitGun`): where
+  each palm closes, the muzzle, the sight line, the magazine's base and the bolt. They were marked
+  by eye on side views of the models. The pistol is fitted at 0.27 m instead of 0.22 m, larger than
+  a real one, so its grip fills the fist.
 - **First-person arms are stretched to reach** (13). The soldier's arms are too short for where the
   viewmodel holds the guns, so they're drawn 1.15× larger from shoulders placed where no real
   shoulder is (the left one far forward). Aiming the pistol, the forearms fill the bottom of the
   screen. The reload's hand movement mostly happens below the screen, so you mainly see the gun dip.
+  **Resolved** (21): the arms are drawn at their own size, from shoulders below and either side
+  of the eye, and their bones are lengthened instead: the forearm by 1.3 and the upper arm as far
+  as the left hand needs to reach the farthest fore-end with the elbow a little bent (about 2×).
+  The skin is moved with the bones as if they had been that long when it was bound, so the arms
+  stretch smoothly at the elbow and don't thicken.
 - **The grenade in hand is a plain sphere** (13), not a grenade model.
+  **Resolved** (21): a fragmentation grenade built from shapes (`src/client/grenade.ts`): an
+  olive body, the fuse, the spoon and the pin's ring. Thrown grenades use it too, instead of a
+  cylinder.
 - **Only bodies that die on screen drop their gun** (13). A body that dies out of sight is drawn
   without one. The gun falls straight to the ground height where it lands, with no collision.
 - **A leaning head sits a little low** (13). Side to side it's exactly over its hitbox, but at
   full lean it's a few centimetres below it, and a crouched head is a few centimetres off too.
+  **Resolved** (21): within 90 m every body's head is put on its hitbox whatever the clips do. The
+  hips move up to 12 cm and the waist bends to bring the head over the feet (within 4 cm, which the
+  15 cm hitbox easily covers), the upper body rolls it out as far as a lean puts the hitbox, and the
+  body is raised or lowered, eased so a stride's bob stays, to put it at eye height. The crouch
+  clip had the head 25 cm in front of its hitbox. Beyond 90 m only the lean is matched.
 - **The animation was checked by still screenshots** (13) of chosen moments in the new pose viewer
   (`dev/pose.html`), plus one screenshot of a real game in first person. Nobody has watched it
   moving at full speed in play, and its cost per frame with many bodies near wasn't measured.
   Each near body now also runs leg IK when crouched, sliding, airborne or leaning, and hand
   orientation and finger curl every update.
+  **Resolved in part** (19, 21): the benchmark measures it (see "Chunk 21's cost"). The new clips
+  were again checked by still screenshots in the pose viewer (now also showing landings, hits,
+  shots, the bolt being worked and each gun's reload); nobody has watched them in play.
 
 - **Doors are open doorways** (15). There are no door leaves to open or shut. Doorways are 2.2 m
   wide so a bot's path always fits through the 1 m nav grid. Windows are open holes with no glass.
@@ -431,6 +478,49 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   the tests. The mid-range laptop and watching it move are left for chunk 30.
 - **Building ceilings show shadow acne** (19): the indoor screenshots show streaks across the
   underside of the roof, dark by day and orange at dusk. Seen only now that a test looks inside.
+
+- **The climb is still a pose** (21). The free set of Quaternius's animation library has no
+  climbing clip, so a mantle holds the same leg pose, forward bend and hand on the ledge as in
+  chunk 13.
+- **The crouch-walk is a slow sneak played fast** (21). The library's clip moves at 0.57 m/s and
+  crouched bodies move at up to 2.4 m/s, so its strides are lengthened up to 1.8× and it plays up to
+  3× faster. At full crouch speed the legs may look hurried.
+- **Retargeted legs rely on the leg IK** (21). The library's legs are shorter for their hips than
+  the soldier's, so its shins, turned the same way, leave the ankle about 10 cm from where the feet
+  are placed. Within 90 m the legs reach the feet every frame. Beyond 90 m there's no leg IK, so a
+  crouching or landing body's shins and feet don't quite meet.
+- **Feet don't follow the ground** (21, from 9). A planted foot is held where it landed, but at
+  the height the clip gives it above the body's own height. On a slope or a step the feet float
+  or sink a little.
+- **Reactions don't depend on where the round came from** (21). A hit doubles the body up or snaps
+  the head back, the same from any side. Every gun uses the same shooting clip, only kicking
+  harder for the pistol and bolt-action.
+- **Only the hands reload** (21). Each gun is one mesh, so the bolt handle, slide and magazine
+  don't move with the hands; a fresh magazine is a box in the hand and the old one never drops.
+  The bolt-action always thumbs in three rounds, however many it needs. The points on the guns
+  were marked by eye on side views, not snapped to the geometry.
+- **The head leaves its hitbox for a moment on landing** (21). Moving the body up or down to
+  put the head at eye height is eased and limited to 30 cm, so the landing's deep dip shows.
+  Deep in a crouch the upper body leans back a little to bring the head over the feet.
+- **The first-person arms are about twice as long in the upper arm** (21). Only the forearms and
+  hands show, so it can't be seen, but the elbows sit where no real elbow would. Watched only in
+  still pictures.
+- **The soldier download grew by 78 kB** (21), 33 kB gzipped, to 599 kB: the new clips' keys
+  aren't compressed (meshopt only quantizes the meshes), though they're sampled at 20 per second
+  and resampling drops the keys a straight line would give.
+- **Chunk 21's cost** (21): on an M3 Pro in Chromium, posing 24 near bodies takes 2.4 ms a frame
+  (median) against 2.5 ms for chunk 20's code on the same machine under the same load, measured
+  back to back. The new clips, foot holds and head matching cost more, and the rig's helpers were
+  made cheaper to pay for them: they read bones' world matrices as they stand instead of
+  rebuilding them up the whole chain on each call, and the head is matched with one turn at the
+  waist, worked out from how the head moves per radian, instead of two probing turns each way.
+  In the browser tests' benchmark, posing them took 2.2 ms in Chromium (2.4 in the kept
+  baseline), 2 ms in Firefox (was 3) and 2 ms in WebKit (was 2). Whole frames came out slower than
+  the baseline in Chromium (13.7 against 10.6 ms) and WebKit, but so did the empty frame with no
+  bodies at all (4.5 against 3.1 ms), so the machine was busier than when the baseline was kept;
+  it wasn't replaced.
+- **Working the bolt fills a corner of the screen** (21). In first person the right hand comes
+  back to the bolt near the eye, and the forearm covers the bottom right while it does.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.

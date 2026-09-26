@@ -1,12 +1,13 @@
 // Downloads the game's CC0 assets and packs them for the web into
 // public/assets. The results are committed, so this only needs running again
-// to change them. Runs on macOS (Apple Silicon or Intel) and Linux (x86-64 or
+// to change them. Pass section names (textures, sky, models) to redo only
+// those; with none, it does them all. Runs on macOS (Apple Silicon or Intel) and Linux (x86-64 or
 // Arm): ffmpeg resizes the textures (see tools.mjs), and the KTX tools come
 // from Khronos's release for the platform if `ktx` isn't on the PATH. The
 // downloaded originals stay in node_modules/.cache/fetch-assets/originals,
 // for e2e/assets.e2e.ts to measure the packed ones against.
 //
-//   node scripts/fetch-assets.mjs
+//   node scripts/fetch-assets.mjs [textures] [sky] [models]
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +18,7 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { meshopt, prune, resample } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 import { LAYERS } from '../src/shared/layers.ts';
+import { retarget } from './retarget.mjs';
 import { ffmpeg, get } from './tools.mjs';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
@@ -24,15 +26,44 @@ const CACHE = new URL('../node_modules/.cache/fetch-assets/', import.meta.url).p
 const ORIGINALS = join(CACHE, 'originals');
 const SIZE = 512;
 const HDRI = 'kloofendal_48d_partly_cloudy_puresky';
-/** Quaternius's public-domain SWAT operator, from poly.pizza, and the clips the game plays. */
+/** Quaternius's public-domain SWAT operator, from poly.pizza, and the clips of its own the game plays. */
 const SOLDIER = 'https://static.poly.pizza/713f6535-f4f3-4367-a4c6-ced126ae0936.glb';
-const SOLDIER_CLIPS = ['Idle', 'Walk', 'Run', 'Death'];
-/** Quaternius's public-domain guns, from poly.pizza, in WEAPONS order. */
-const GUNS = {
-  rifle: 'https://static.poly.pizza/9a0e478c-de82-4773-9b70-a0219bb0057c.glb',
-  pistol: 'https://static.poly.pizza/7a31b522-5632-41d9-8274-031795af5d8d.glb',
-  bolt: 'https://static.poly.pizza/f03e21b7-e3b7-49fd-b47d-d1908649fcee.glb',
+const SOLDIER_CLIPS = ['Idle', 'Walk', 'Run', 'Death', 'Gun_Shoot', 'HitRecieve', 'HitRecieve_2'];
+/**
+ * Quaternius's public-domain Universal Animation Library (the free set, as
+ * mirrored in glTF on GitHub), and the clips moved from it onto the soldier,
+ * renamed.
+ */
+const LIBRARY = 'https://raw.githubusercontent.com/J-Ponzo/gltf-universal-animation-library/e24c23cf2a1323488a3faa226ea7ea21f644b73e/glTF/';
+const LIBRARY_FILE = 'AnimationLibrary_Godot_Standard';
+const LIBRARY_CLIPS = {
+  Crouch_Idle_Loop: 'CrouchIdle', Crouch_Fwd_Loop: 'CrouchWalk',
+  Jump_Start: 'JumpStart', Jump_Loop: 'JumpLoop', Jump_Land: 'JumpLand',
 };
+/**
+ * Quaternius's public-domain guns, from poly.pizza, in WEAPONS order, with
+ * points marked on each by eye from a side view, in the model's own units
+ * (x along the gun from butt to muzzle, z up): where the palm of each hand
+ * closes, the muzzle, the sight line, the magazine's base, and the part the
+ * right hand works to reload (the bolt's handle, the rifle's charging handle,
+ * the pistol's slide). The game fits the guns by these.
+ */
+const GUNS = {
+  rifle: {
+    url: 'https://static.poly.pizza/9a0e478c-de82-4773-9b70-a0219bb0057c.glb',
+    marks: { Grip: [0.1, 1.0], Support: [17.0, 5.0], Muzzle: [36.1, 6.3], Sight: [4.0, 8.9], Magazine: [9.6, -5.5], Bolt: [-1.5, 7.6] },
+  },
+  pistol: {
+    url: 'https://static.poly.pizza/7a31b522-5632-41d9-8274-031795af5d8d.glb',
+    marks: { Grip: [-0.6, 0.3], Support: [-0.9, -0.2], Muzzle: [21.1, 5.5], Sight: [4.0, 7.2], Magazine: [-1.3, -3.6], Bolt: [-1.0, 5.2] },
+  },
+  bolt: {
+    url: 'https://static.poly.pizza/f03e21b7-e3b7-49fd-b47d-d1908649fcee.glb',
+    marks: { Grip: [0.0, -1.0], Support: [20.0, 0.5], Muzzle: [52.5, 2.3], Sight: [4.0, 5.3], Magazine: [6.0, 2.6], Bolt: [2.0, 1.2] },
+  },
+};
+const SECTIONS = process.argv.slice(2);
+const doing = (section) => SECTIONS.length === 0 || SECTIONS.includes(section);
 const KTX_VERSION = '4.4.2';
 /** Khronos's package of the KTX tools for each platform they're fetched on. */
 const KTX_BUILDS = {
@@ -92,19 +123,20 @@ async function ktxTool() {
 // Every layer's colour and normal map, each stacked into one KTX2 array
 // texture in LAYERS order: Basis ETC1S, which the game transcodes to whatever
 // compressed format the GPU has. Images are flipped so v runs up them.
-const ktx = await ktxTool();
-const work = mkdtempSync(join(tmpdir(), 'fetch-assets-'));
 mkdirSync(ORIGINALS, { recursive: true });
-const pngs = { color: [], normal: [] };
-for (const { polyHaven } of LAYERS) {
-  const files = await (await fetch(`https://api.polyhaven.com/files/${polyHaven}`)).json();
-  for (const [map, kind] of [['Diffuse', 'color'], ['nor_gl', 'normal']]) {
-    const jpg = await cached(files[map]['1k'].jpg.url, join(ORIGINALS, `${polyHaven}_${kind}.jpg`));
-    const png = join(work, `${polyHaven}_${kind}.png`);
-    ffmpeg(['-i', jpg, '-vf', `scale=${SIZE}:${SIZE}:force_original_aspect_ratio=decrease:flags=lanczos,vflip`, png]);
-    pngs[kind].push(png);
-  }
-  console.log(polyHaven);
+if (doing('textures')) {
+  const ktx = await ktxTool();
+  const work = mkdtempSync(join(tmpdir(), 'fetch-assets-'));
+  const pngs = { color: [], normal: [] };
+  for (const { polyHaven } of LAYERS) {
+    const files = await (await fetch(`https://api.polyhaven.com/files/${polyHaven}`)).json();
+    for (const [map, kind] of [['Diffuse', 'color'], ['nor_gl', 'normal']]) {
+      const jpg = await cached(files[map]['1k'].jpg.url, join(ORIGINALS, `${polyHaven}_${kind}.jpg`));
+      const png = join(work, `${polyHaven}_${kind}.png`);
+      ffmpeg(['-i', jpg, '-vf', `scale=${SIZE}:${SIZE}:force_original_aspect_ratio=decrease:flags=lanczos,vflip`, png]);
+      pngs[kind].push(png);
+    }
+    console.log(polyHaven);
 }
 mkdirSync(join(OUT, 'textures'), { recursive: true });
 // The colour space is stated, since ffmpeg's PNGs carry it only when their JPEG did.
@@ -115,14 +147,17 @@ execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_SRGB', '--assign-tf', 'srg
 execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_UNORM', '--assign-tf', 'linear', '--normal-mode', '--qlevel', '192',
   ...pngs.normal, join(OUT, 'textures/normal.ktx2')], { env: ktx.env, stdio: 'inherit' });
 rmSync(work, { recursive: true });
+}
 
 // ----------------------------------------------------------------- sky
 
 // Only used for image-based lighting, so half the smallest size Poly Haven has is plenty.
-const hdri = await (await fetch(`https://api.polyhaven.com/files/${HDRI}`)).json();
-const sky1k = await cached(hdri.hdri['1k'].hdr.url, join(ORIGINALS, 'sky.hdr'));
-writeFileSync(join(OUT, 'sky.hdr'), halveHdr(readFileSync(sky1k)));
-console.log('sky.hdr');
+if (doing('sky')) {
+  const hdri = await (await fetch(`https://api.polyhaven.com/files/${HDRI}`)).json();
+  const sky1k = await cached(hdri.hdri['1k'].hdr.url, join(ORIGINALS, 'sky.hdr'));
+  writeFileSync(join(OUT, 'sky.hdr'), halveHdr(readFileSync(sky1k)));
+  console.log('sky.hdr');
+}
 
 /** A Radiance .hdr at half the width and height, averaging each 2×2 block. */
 function halveHdr(file) {
@@ -224,14 +259,29 @@ async function model(url, path, edit = () => {}) {
   console.log(path);
 }
 
-await model(SOLDIER, join(OUT, 'soldier.glb'), (doc) => {
-  // Only the clips the game plays, named without the armature.
-  for (const anim of doc.getRoot().listAnimations()) {
-    const name = anim.getName().replace(/^.*\|/, '');
-    if (SOLDIER_CLIPS.includes(name)) anim.setName(name);
-    else anim.dispose();
+if (doing('models')) {
+  const library = join(CACHE, 'animation-library');
+  mkdirSync(library, { recursive: true });
+  for (const ext of ['gltf', 'bin']) await cached(`${LIBRARY}${LIBRARY_FILE}.${ext}`, join(library, `${LIBRARY_FILE}.${ext}`));
+  const clips = await io.read(join(library, `${LIBRARY_FILE}.gltf`));
+  await model(SOLDIER, join(OUT, 'soldier.glb'), (doc) => {
+    // Only the clips the game plays, named without the armature.
+    for (const anim of doc.getRoot().listAnimations()) {
+      const name = anim.getName().replace(/^.*\|/, '');
+      if (SOLDIER_CLIPS.includes(name)) anim.setName(name);
+      else anim.dispose();
+    }
+    retarget(clips, doc, LIBRARY_CLIPS);
+  });
+  mkdirSync(join(OUT, 'guns'), { recursive: true });
+  for (const [name, { url, marks }] of Object.entries(GUNS)) {
+    await model(url, join(OUT, 'guns', `${name}.glb`), (doc) => {
+      // Each mark an empty node in the mesh's own space, where the gun is side-on in x and z.
+      const mesh = doc.getRoot().listNodes().find((n) => n.getMesh());
+      for (const [mark, [x, z]] of Object.entries(marks)) {
+        mesh.addChild(doc.createNode(mark).setTranslation([x / 1000, 0, z / 1000]));
+      }
+    });
   }
-});
-mkdirSync(join(OUT, 'guns'), { recursive: true });
-for (const [name, url] of Object.entries(GUNS)) await model(url, join(OUT, 'guns', `${name}.glb`));
+}
 console.log('done');

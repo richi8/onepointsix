@@ -14,7 +14,9 @@ import type { PlayerSnap } from '../src/shared/protocol.ts';
 //   /dev/pose.html?view=fp&weapon=0&act=reload&t=0.3
 //
 // `show` lists the states (see snap below); `name:t` sets how far through an
-// action or a death that body is, and `t` sets it for all. `view` is side,
+// action or a death that body is, and `t` sets it for all; `name:t:w` also
+// gives that body weapon w. For land, hit, hithead, shoot and cycle (a
+// bolt-action shot and the bolt worked after it), t is the seconds since. `view` is side,
 // front, back or fp. Also: `weapon`, `quiet` (suppressor), `aim` (fp), `hb`
 // (hitbox heads), `wall=x` (a wall to fall against), `slope=k` (ground
 // rising k per metre along x), `d` (camera distance), `eye=x,y,z` and
@@ -72,8 +74,8 @@ if (q.has('at')) camera.lookAt(new THREE.Vector3().fromArray(q.get('at')!.split(
 
 /** Each state as a snapshot at time `s` seconds in; movers move along their facing. */
 function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
-  // `name:t` overrides t for one body.
-  const [name, own] = entry.split(':');
+  // `name:t` overrides t for one body, and `name:t:w` its weapon.
+  const [name, own, gun] = entry.split(':');
   const t = own ? Number(own) : T;
   // Side view: facing -x (yaw pi/2), so the camera sees their left side. Front: facing the camera.
   const yaw = view === 'side' ? Math.PI / 2 : view === 'back' ? 0 : Math.PI;
@@ -81,7 +83,7 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
   const fz = -Math.cos(yaw);
   const base: PlayerSnap = {
     id: i + 1, team: name === 'commander' || name === 'guard' ? 'guard' : 'operator', x: i * spacing, y: 0, z: 0, yaw, pitch: 0, duck: 0, lean: 0,
-    dead: false, weapon, quiet: q.has('quiet'), motion: 'ground', act: 'none', actT: 0, commander: name === 'commander',
+    dead: false, weapon: gun ? Number(gun) : weapon, quiet: q.has('quiet'), motion: 'ground', act: 'none', actT: 0, commander: name === 'commander',
     light: q.has('light'),
   };
   const move = (speed: number): void => {
@@ -96,6 +98,9 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
     case 'jump': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * -3; break;
     case 'fall': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * 5; break;
     case 'mantle': base.motion = 'mantle'; base.y = 0.3 + (s - end) * 2; break;
+    // Coming down for half a second, landing t seconds ago.
+    case 'land': if (s < end - t) (base.motion = 'air'), (base.y = (end - t - s) * 4); break;
+    case 'cycle': base.weapon = 2; break;
     case 'reload': case 'draw': case 'throw': base.act = name; base.actT = t; break;
     case 'lean': base.lean = 1; break;
     case 'leanl': base.lean = -1; break;
@@ -136,7 +141,17 @@ if (view === 'fp') {
   const end = 3;
   const dt = 1 / 60;
   for (let s = 0; s <= end + 1e-6; s += dt) {
-    bodies.update(show.map((name, i) => snap(name, i, s, end)), dt, camera);
+    const snaps = show.map((name, i) => snap(name, i, s, end));
+    // Shots and hits land t seconds before the end.
+    show.forEach((entry, i) => {
+      const [name, own] = entry.split(':');
+      const at = end - (own ? Number(own) : T);
+      if (s < at || s - dt >= at) return;
+      const p = snaps[i];
+      if (name === 'shoot' || name === 'cycle') bodies.fire(p.id, false);
+      if (name === 'hit' || name === 'hithead') bodies.flash(p.id, p.x, p.y + (name === 'hit' ? 1.2 : 1.6), p.z);
+    });
+    bodies.update(snaps, dt, camera);
   }
   if (q.has('hit')) {
     // A round lands in the first body's chest, just now.

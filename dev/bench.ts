@@ -15,6 +15,8 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 //   up, each walking, running, reloading, leaning or throwing, so every one
 //   is posed with its arm IK and fingers. Each frame is timed from posing the
 //   bodies to the GPU having drawn it (a one-pixel read waits for it).
+// - The same soldiers 100 to 400 m away, where they're posed less often and
+//   without the fine work, timing only the posing.
 // - The ground cover's rebuild as the eye crosses its cells: first visits,
 //   which scatter the cells, and a second pass over cells already scattered.
 //
@@ -59,10 +61,10 @@ bodies.setModel(assets.soldier, assets.guns);
 
 const STATES = ['walk', 'run', 'crouchwalk', 'reload', 'lean', 'aimup', 'throw', 'stand'] as const;
 
-/** Soldier i at `t` seconds: in a fan 4 to 25 m in front, the movers circling their spot. */
-function snap(i: number, t: number): PlayerSnap {
+/** Soldier i at `t` seconds: in a fan 4 to 25 m in front (or 100 to 400 m), the movers circling their spot. */
+function snap(i: number, t: number, far = false): PlayerSnap {
   const state = STATES[i % STATES.length];
-  const d = 4 + (21 * i) / Math.max(N - 1, 1);
+  const d = far ? 100 + (300 * i) / Math.max(N - 1, 1) : 4 + (21 * i) / Math.max(N - 1, 1);
   const side = ((i % 5) - 2) * 0.35 * d * 0.4;
   let x = eyeX + forward.x * d - forward.z * side;
   let z = eyeZ + forward.z * d + forward.x * side;
@@ -96,14 +98,14 @@ interface Phase {
   triangles: number;
 }
 
-async function measure(n: number): Promise<Phase> {
+async function measure(n: number, far = false): Promise<Phase> {
   const out: Phase = { bodies: [], frame: [], calls: 0, triangles: 0 };
   let t = 0;
   const dt = 1 / 60;
   for (let f = 0; f < WARMUP + FRAMES; f++) {
     await frame();
     t += dt;
-    const players = Array.from({ length: n }, (_, i) => snap(i, t));
+    const players = Array.from({ length: n }, (_, i) => snap(i, t, far));
     const t0 = performance.now();
     bodies.update(players, dt, camera);
     const t1 = performance.now();
@@ -143,6 +145,7 @@ function groundCover(x: number, z: number, steps: number): { first: number[]; ag
 await renderer.compileAsync(scene, camera);
 const empty = await measure(0);
 const crowd = await measure(N);
+const distant = await measure(N, true);
 const cover = groundCover(-200, 40, 40);
 
 const stats = (v: number[]) => {
@@ -161,6 +164,7 @@ const bench = {
   bodies: N,
   empty: { frame: stats(empty.frame), calls: empty.calls, triangles: empty.triangles },
   crowd: { bodies: stats(crowd.bodies), frame: stats(crowd.frame), calls: crowd.calls, triangles: crowd.triangles },
+  distant: { bodies: stats(distant.bodies) },
   groundCover: { first: stats(cover.first), again: stats(cover.again) },
 };
 Object.assign(window, { bench });

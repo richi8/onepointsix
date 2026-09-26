@@ -10,10 +10,16 @@ by `scripts/build-transcoder.mjs`, under the Apache License 2.0, as three.js shi
   HDRI. The textures are resized to 512 px and stacked into the KTX2 array textures in
   `textures/`. The sky is halved to 512 × 256.
 - **Soldier** (`soldier.glb`): the "SWAT" character by [Quaternius](https://quaternius.com),
-  public domain (CC0), via [Poly Pizza](https://poly.pizza/m/Btfn3G5Xv4). Only its idle, walk
-  and run clips are kept.
+  public domain (CC0), via [Poly Pizza](https://poly.pizza/m/Btfn3G5Xv4). Only its idle, walk,
+  run, death, shooting and two hit-reaction clips are kept. Its crouch (still and walking), jump,
+  in-air and landing clips come from Quaternius's
+  [Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html), CC0,
+  the free set as mirrored in glTF on
+  [GitHub](https://github.com/J-Ponzo/gltf-universal-animation-library), moved onto the soldier's
+  rig by `scripts/retarget.mjs`.
 - **Guns** (`guns/`) by [Quaternius](https://quaternius.com), public domain (CC0), via
-  [Poly Pizza](https://poly.pizza): Assault Rifle, Pistol and Sniper Rifle.
+  [Poly Pizza](https://poly.pizza): Assault Rifle, Pistol and Sniper Rifle. Each has points marked
+  on it (where the hands close, the muzzle, the sight, the magazine and the bolt) as empty nodes.
 - **Sounds** (`sounds-early.*`, `sounds-late.*`) from [Freesound](https://freesound.org), each
   one CC0, checked on its page by `scripts/fetch-sounds.mjs`. Cut from Freesound's previews and
   packed into two files, each as Opus (`.ogg`) and AAC (`.m4a`); `sounds.json` says where each

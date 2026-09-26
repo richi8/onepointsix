@@ -1,14 +1,12 @@
 import * as THREE from 'three';
 import type { GrenadeSnap } from '../shared/protocol.ts';
+import { grenadeModel } from './grenade.ts';
 
-// Live grenades, drawn where the server last had them: a placeholder shape until chunk 9.
-
-const geometry = new THREE.CylinderGeometry(0.045, 0.045, 0.1, 10);
-const material = new THREE.MeshStandardMaterial({ color: 0x3f4a33, roughness: 0.6, metalness: 0.3 });
+// Live grenades, drawn where the server last had them, tumbling as they fly.
 
 export class Grenades {
   private readonly scene: THREE.Scene;
-  private readonly meshes = new Map<number, THREE.Mesh>();
+  private readonly meshes = new Map<number, THREE.Object3D>();
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -20,8 +18,7 @@ export class Grenades {
       seen.add(g.id);
       let mesh = this.meshes.get(g.id);
       if (!mesh) {
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
+        mesh = grenadeModel();
         this.meshes.set(g.id, mesh);
         this.scene.add(mesh);
       }
