@@ -29,6 +29,8 @@ import { Input } from './input.ts';
 import { Leaderboard, localStore } from './leaderboard.ts';
 import type { Rendered } from './prediction.ts';
 import { Resolution } from './resolution.ts';
+import { treeFade } from './trees.ts';
+import { wobble } from './water.ts';
 import { RunLog } from './runlog.ts';
 import type { Replay } from './replay.ts';
 import type { ReplayBar, ReplayCamera } from './replaybar.ts';
@@ -1369,7 +1371,7 @@ if (import.meta.env.DEV) {
   // For poking at the game from the console or a test browser. `dev` sends
   // the local host a shortcut, such as ending the run (see DevCmd).
   const dev = (cmd: DevCmd) => conn?.transport.send({ t: 'dev', cmd });
-  Object.assign(window, { THREE, game: { camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, resolution, dev, get conn() { return conn; }, get deathcam() { return deathcam; }, get replay() { return replay; } } });
+  Object.assign(window, { THREE, game: { treeFade, camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, resolution, dev, get conn() { return conn; }, get deathcam() { return deathcam; }, get replay() { return replay; } } });
 }
 
 renderer.setAnimationLoop(() => {
@@ -1414,6 +1416,7 @@ renderer.setAnimationLoop(() => {
   const torch = rep ? !free && !rep.state.dead && rep.self().light : !cam && !!state && !state.dead && input.light;
   flashlights.update(camera, torch, players, (id, out) => bodies.muzzle(id, out));
   viewModel.torchOn = torch;
+  sfx.underwater = view.underwater;
   sfx.update(camera, dt);
   effects.update(dt);
 
@@ -1441,8 +1444,12 @@ renderer.setAnimationLoop(() => {
 
   if (cam?.done) stopDeathcam();
   if (holdFrame) return;
+  view.reflect(renderer, camera);
+  const wobbling = view.underwater;
+  if (wobbling) wobble(camera, now);
   renderer.clear();
   renderer.render(scene, camera);
+  if (wobbling) camera.updateProjectionMatrix();
   if (state && !free) {
     renderer.clearDepth();
     renderer.render(viewModel.scene, viewModel.camera);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { loadAssets } from '../src/client/assets.ts';
 import { Bodies } from '../src/client/bodies.ts';
 import { GroundCover } from '../src/client/groundcover.ts';
+import { Resolution } from '../src/client/resolution.ts';
 import { WorldView } from '../src/client/worldview.ts';
 import { DEFAULT_CONDITIONS } from '../src/shared/conditions.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
@@ -21,6 +22,11 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 //   which scatter the cells, and a second pass over cells already scattered.
 //
 // It sets window.bench to the results and document.title to "done".
+//
+// With `?adaptive=<seconds>` it instead checks the adaptive resolution on a
+// slow GPU: an extra pass over every pixel, weighed so that the full
+// resolution runs at about 38 fps, slows the frames, and the game's own
+// Resolution runs for that long. It sets window.adaptive.
 
 const q = new URLSearchParams(location.search);
 const N = Number(q.get('n') ?? 24);
@@ -110,6 +116,7 @@ async function measure(n: number, far = false): Promise<Phase> {
     bodies.update(players, dt, camera);
     const t1 = performance.now();
     view.update(camera, focus, 32, 230, t);
+    view.reflect(renderer, camera);
     renderer.clear();
     renderer.render(scene, camera);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
@@ -142,30 +149,141 @@ function groundCover(x: number, z: number, steps: number): { first: number[]; ag
   return { first, again: pass() };
 }
 
+/** A pass over every pixel that costs about `iterations` steps of work each. */
+function load(): { scene: THREE.Scene; camera: THREE.Camera; iterations: { value: number }; material: THREE.ShaderMaterial } {
+  const iterations = { value: 0 };
+  const material = new THREE.ShaderMaterial({
+    uniforms: { iterations },
+    vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: /* glsl */ `
+      uniform int iterations;
+      void main() {
+        float a = gl_FragCoord.x * 0.001 + gl_FragCoord.y * 0.0007;
+        for (int i = 0; i < 20000; i++) {
+          if (i >= iterations) break;
+          a = fract(sin(a * 1.37 + float(i)) * 43758.5);
+        }
+        // Too faint to see, but added as it is, so the work can't be skipped.
+        gl_FragColor = vec4(a * 1e-6);
+      }`,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneFactor,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const tri = new THREE.BufferGeometry();
+  tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+  const loadScene = new THREE.Scene();
+  const mesh = new THREE.Mesh(tri, material);
+  mesh.frustumCulled = false;
+  loadScene.add(mesh);
+  return { scene: loadScene, camera: new THREE.Camera(), iterations, material };
+}
+
+/** One frame of the island, and the load pass, until the GPU is done. */
+function draw(t: number, extra: ReturnType<typeof load>): void {
+  view.update(camera, focus, 32, 230, t);
+  view.reflect(renderer, camera);
+  renderer.clear();
+  renderer.render(scene, camera);
+  // three.js uploads a changed uniform only when told to.
+  extra.material.uniformsNeedUpdate = true;
+  renderer.render(extra.scene, extra.camera);
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+}
+
+/**
+ * Weigh the load pass so a frame at full resolution takes about `target` ms,
+ * then let the game's Resolution run for `seconds` and see where it settles.
+ */
+async function adaptive(seconds: number, target = 26) {
+  const extra = load();
+  const timed = async (n: number) => {
+    const times: number[] = [];
+    for (let f = 0; f < n; f++) {
+      await frame();
+      const t0 = performance.now();
+      draw(f / 60, extra);
+      times.push(performance.now() - t0);
+    }
+    return times.sort((a, b) => a - b)[n >> 1];
+  };
+  await timed(30);
+  // Double, then halve the step, until a frame costs about the target.
+  let lo = 0;
+  let hi = 64;
+  extra.iterations.value = hi;
+  while ((await timed(20)) < target && hi < 20000) {
+    lo = hi;
+    hi *= 2;
+    extra.iterations.value = hi;
+  }
+  for (let k = 0; k < 8; k++) {
+    extra.iterations.value = Math.round((lo + hi) / 2);
+    if ((await timed(20)) < target) lo = extra.iterations.value;
+    else hi = extra.iterations.value;
+  }
+  const full = await timed(40);
+
+  const resolution = new Resolution(renderer);
+  const log: { t: number; share: number }[] = [];
+  const frames: { t: number; ms: number }[] = [];
+  const start = performance.now();
+  let last = start;
+  let share = resolution.share;
+  while (performance.now() - start < seconds * 1000) {
+    await frame();
+    const now = performance.now();
+    resolution.update((now - last) / 1000);
+    last = now;
+    draw((now - start) / 1000, extra);
+    frames.push({ t: (now - start) / 1000, ms: performance.now() - now });
+    if (resolution.share !== share) log.push({ t: Math.round((now - start) / 100) / 10, share: (share = resolution.share) });
+  }
+  const tail = frames.filter((f) => f.t > seconds - 10).map((f) => f.ms).sort((a, b) => a - b);
+  renderer.setPixelRatio(1);
+  return {
+    iterations: extra.iterations.value,
+    full: Math.round(full * 10) / 10,
+    changes: resolution.changes,
+    log,
+    share: Math.round(resolution.share * 100) / 100,
+    /** The median frame over the last 10 s, ms. */
+    settled: Math.round(tail[tail.length >> 1] * 10) / 10,
+  };
+}
+
 await renderer.compileAsync(scene, camera);
-const empty = await measure(0);
-const crowd = await measure(N);
-const distant = await measure(N, true);
-const cover = groundCover(-200, 40, 40);
-
-const stats = (v: number[]) => {
-  const s = [...v].sort((a, b) => a - b);
-  const at = (p: number) => s[Math.min(Math.floor(p * s.length), s.length - 1)];
-  const r = (x: number) => Math.round(x * 100) / 100;
-  return { median: r(at(0.5)), p95: r(at(0.95)), max: r(s[s.length - 1]) };
-};
-
-const bench = {
-  gpu: (() => {
-    const info = gl.getExtension('WEBGL_debug_renderer_info');
-    return String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
-  })(),
-  size: `${innerWidth}x${innerHeight}`,
-  bodies: N,
-  empty: { frame: stats(empty.frame), calls: empty.calls, triangles: empty.triangles },
-  crowd: { bodies: stats(crowd.bodies), frame: stats(crowd.frame), calls: crowd.calls, triangles: crowd.triangles },
-  distant: { bodies: stats(distant.bodies) },
-  groundCover: { first: stats(cover.first), again: stats(cover.again) },
-};
-Object.assign(window, { bench });
+if (q.has('adaptive')) Object.assign(window, { adaptive: await adaptive(Number(q.get('adaptive')) || 60) });
+else Object.assign(window, { bench: await frameCost() });
 document.title = 'done';
+
+/** The frame-cost phases described at the top. */
+async function frameCost() {
+  const empty = await measure(0);
+  const crowd = await measure(N);
+  const distant = await measure(N, true);
+  const cover = groundCover(-200, 40, 40);
+
+  const stats = (v: number[]) => {
+    const s = [...v].sort((a, b) => a - b);
+    const at = (p: number) => s[Math.min(Math.floor(p * s.length), s.length - 1)];
+    const r = (x: number) => Math.round(x * 100) / 100;
+    return { median: r(at(0.5)), p95: r(at(0.95)), max: r(s[s.length - 1]) };
+  };
+
+  const bench = {
+    gpu: (() => {
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    })(),
+    size: `${innerWidth}x${innerHeight}`,
+    bodies: N,
+    empty: { frame: stats(empty.frame), calls: empty.calls, triangles: empty.triangles },
+    crowd: { bodies: stats(crowd.bodies), frame: stats(crowd.frame), calls: crowd.calls, triangles: crowd.triangles },
+    distant: { bodies: stats(distant.bodies) },
+    groundCover: { first: stats(cover.first), again: stats(cover.again) },
+  };
+  return bench;
+}

@@ -8,6 +8,7 @@ import type { Assets } from './assets.ts';
 import { groundWeights } from '../shared/ground.ts';
 import { Layer } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
+import { onTiles } from './terrain.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 
 // Grass, low bushes and pebbles on the ground round the camera. Each 8 m cell
@@ -88,9 +89,9 @@ export class GroundCover {
       grass: make('grass', grassGeometry(), fading(new THREE.MeshStandardMaterial({
         map: bladeTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1, envMapIntensity: 0.55,
       }), KINDS.grass.range, this.eye, 1)),
-      bush: make('bush', bushGeometry(), fading(new THREE.MeshStandardMaterial({
+      bush: make('bush', bushGeometry(), onTiles(fading(new THREE.MeshStandardMaterial({
         map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1, envMapIntensity: 0.55,
-      }), KINDS.bush.range, this.eye, 0.4)),
+      }), KINDS.bush.range, this.eye, 0.4), world)),
       pebble: make('pebble', pebbleGeometry(), fading(new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), KINDS.pebble.range, this.eye, 0)),
     };
   }
@@ -368,7 +369,41 @@ function leafTexture(): THREE.Texture {
     g.ellipse(x, y, 3 + rand() * 4, 1.5 + rand() * 2, rand() * Math.PI, 0, Math.PI * 2);
     g.fill();
   }
-  const tex = new THREE.CanvasTexture(canvas);
+  return filled(canvas);
+}
+
+/**
+ * The canvas as a texture whose see-through pixels carry the leaves' average
+ * colour instead of black. A canvas can't keep a colour where it's fully
+ * transparent, and smaller mips averaged that black into the leaves, which
+ * turned distant bushes a dark, sky-lit blue-grey.
+ */
+function filled(canvas: HTMLCanvasElement): THREE.Texture {
+  const { width: w, height: h } = canvas;
+  const src = canvas.getContext('2d')!.getImageData(0, 0, w, h).data;
+  const sum = [0, 0, 0];
+  let n = 0;
+  for (let i = 0; i < src.length; i += 4) {
+    if (src[i + 3] < 128) continue;
+    for (let k = 0; k < 3; k++) sum[k] += src[i + k];
+    n++;
+  }
+  const data = new Uint8Array(w * h * 4);
+  // Rows bottom to top, as a canvas texture would be flipped.
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = ((h - 1 - y) * w + x) * 4;
+      const o = (y * w + x) * 4;
+      const clear = src[i + 3] === 0;
+      for (let k = 0; k < 3; k++) data[o + k] = clear ? Math.round(sum[k] / Math.max(n, 1)) : src[i + k];
+      data[o + 3] = src[i + 3];
+    }
+  }
+  const tex = new THREE.DataTexture(data, w, h);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
   return tex;
 }

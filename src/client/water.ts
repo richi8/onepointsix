@@ -3,42 +3,56 @@ import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import type { World } from '../shared/world.ts';
 
-// The sea: a fine grid round the camera that rolls with waves, inside a flat
-// ring out to the horizon. Both share one material that takes the sea's depth
-// from a height map of the island: shallow water is clear and pale, deep
-// water dark, waves die down toward the shore and foam laps along it. The
-// sky reflects off it through the scene's environment map.
+// The sea: a fine grid round the camera that rolls with waves, inside a ring
+// whose vertices spread out with distance, still rolling with the longer
+// waves, then flat out to the horizon. They share one material that takes the
+// sea's depth from a height map of the island: shallow water is clear and
+// pale, deep water dark, waves die down toward the shore and foam laps along
+// it. It mirrors the island and sky from a small picture drawn each frame
+// from below the surface, and each wave fades out where it's too fine for the
+// vertices or pixels to show, so the far sea doesn't shimmer in rings.
 
 /** Metres across the rolling grid and between its vertices. */
 const GRID = 240;
 const SPACING = 2;
+/** Metres out the rolling ring reaches, and how much farther apart its rings of vertices are each time. */
+const RING = 1000;
+const RING_GROWTH = 1.06;
 /** Metres across the whole sea. */
 const SEA = 6000;
 /** Waves reach full height in water this deep. */
 const FULL_DEPTH = 4;
+/** The reflection is drawn at this share of the screen's width and height. */
+const REFLECTION_SCALE = 1 / 3;
+/** Objects drawn in the reflection are in this layer as well as the default one. */
+export const REFLECTED = 1;
 
-/** Wave trains: direction (x, z), wavelength in metres, height in metres, speed in m/s. */
+/** Wave trains: direction (x, z), wavelength in metres, height in metres, speed in m/s. The first is a long swell. */
 const WAVES: [number, number, number, number, number][] = [
+  [0.7, 0.72, 48, 0.1, 8.6],
   [0.8, 0.6, 14, 0.09, 4.2],
   [-0.3, 0.95, 9, 0.06, 3.4],
   [0.95, -0.3, 6, 0.035, 2.8],
   [0.2, 0.98, 3.7, 0.02, 2.1],
 ];
 
-/** WAVES as GLSL: `waves(p, t, amp, out slope)` returns the height and fills in the slope. */
+/**
+ * WAVES as GLSL: `waves(p, t, amp, size, out slope)` returns the height and
+ * fills in the slope. Each train fades out as `size`, the metres between
+ * vertices or across a pixel, grows toward its wavelength, where it would
+ * only alias.
+ */
 const WAVES_GLSL = /* glsl */ `
-  float waves(vec2 p, float t, float amp, float detail, out vec2 slope) {
+  float waves(vec2 p, float t, float amp, float size, out vec2 slope) {
     float h = 0.0;
     slope = vec2(0.0);
-    ${WAVES.map(([dx, dz, len, height, speed], i) => {
+    ${WAVES.map(([dx, dz, len, height, speed]) => {
       const n = Math.hypot(dx, dz);
       const k = (2 * Math.PI) / len;
-      // The shortest waves fade out with distance, where they'd only shimmer.
-      const fade = i >= 2 ? ' * detail' : '';
       return `{
       vec2 d = vec2(${(dx / n).toFixed(4)}, ${(dz / n).toFixed(4)});
       float ph = dot(d, p) * ${k.toFixed(4)} - t * ${(k * speed).toFixed(4)};
-      float a = ${height.toFixed(4)} * amp${fade};
+      float a = ${height.toFixed(4)} * amp * (1.0 - smoothstep(${(len / 8).toFixed(3)}, ${(len / 3).toFixed(3)}, size));
       h += a * sin(ph);
       slope += d * (a * ${k.toFixed(4)} * cos(ph));
     }`;
@@ -63,28 +77,89 @@ const UNDER_FOG = new THREE.Color(0x1d4450);
 const UNDER_NEAR = 0;
 const UNDER_FAR = 22;
 
+/** The small mirror picture of the island the sea reflects, and what's needed to look it up. */
+interface Reflection {
+  target: THREE.WebGLRenderTarget;
+  camera: THREE.PerspectiveCamera;
+  /** From the world to the picture's texture coordinates. */
+  matrix: { value: THREE.Matrix4 };
+  /** 1 while the picture is up to date, 0 while the sea should fall back to the sky's. */
+  on: { value: number };
+}
+
 export class Water {
   readonly group = new THREE.Group();
   private readonly world: World;
   private readonly grid: THREE.Mesh;
   private readonly ring: THREE.Mesh;
+  private readonly flat: THREE.Mesh;
   private readonly time = { value: 0 };
   private readonly gridCentre = { value: new THREE.Vector2() };
+  private readonly reflection: Reflection;
   /** Fog and background as they are above water, to restore on surfacing. */
-  private saved: { color: THREE.Color; near: number; far: number } | null = null;
+  private saved: { color: THREE.Color; near: number; far: number; background: THREE.Scene['background'] } | null = null;
 
   constructor(world: World) {
     this.world = world;
-    const material = seaMaterial(world, this.time, this.gridCentre);
+    this.reflection = {
+      target: new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }),
+      camera: new THREE.PerspectiveCamera(),
+      matrix: { value: new THREE.Matrix4() },
+      on: { value: 0 },
+    };
+    this.reflection.camera.layers.set(REFLECTED);
+    const material = seaMaterial(world, this.time, this.gridCentre, this.reflection);
     const cells = GRID / SPACING;
     this.grid = new THREE.Mesh(new THREE.PlaneGeometry(GRID, GRID, cells, cells).rotateX(-Math.PI / 2), material);
-    this.ring = new THREE.Mesh(ring(GRID / 2, SEA / 2), material);
-    for (const mesh of [this.grid, this.ring]) {
+    this.ring = new THREE.Mesh(spreadRing(GRID / 2, RING, cells), material);
+    this.flat = new THREE.Mesh(ring(RING, SEA / 2), material);
+    for (const mesh of [this.grid, this.ring, this.flat]) {
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
       mesh.position.y = WATER_LEVEL;
       this.group.add(mesh);
     }
+  }
+
+  /** Whether the camera is under the surface. */
+  get under(): boolean {
+    return this.saved !== null;
+  }
+
+  /**
+   * Draw the picture the sea reflects: what's in the REFLECTED layer, seen
+   * from `camera` mirrored in the surface, at a fraction of the screen's
+   * resolution. Shadows and matrices are reused from the last frame.
+   */
+  reflect(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    const r = this.reflection;
+    if (this.under || camera.position.y < WATER_LEVEL) {
+      r.on.value = 0;
+      return;
+    }
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2()).multiplyScalar(REFLECTION_SCALE).floor();
+    if (r.target.width !== size.x || r.target.height !== size.y) r.target.setSize(Math.max(size.x, 1), Math.max(size.y, 1));
+    // The lights light the reflection too.
+    for (const o of scene.children) if ((o as THREE.Light).isLight) o.layers.enable(REFLECTED);
+
+    const cam = r.camera;
+    mirror(camera, cam);
+    r.matrix.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+      .multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
+    clipBelow(cam, WATER_LEVEL - 0.3);
+
+    const was = renderer.getRenderTarget();
+    const shadows = renderer.shadowMap.autoUpdate;
+    const autoMatrix = scene.matrixWorldAutoUpdate;
+    renderer.shadowMap.autoUpdate = false;
+    scene.matrixWorldAutoUpdate = false;
+    renderer.setRenderTarget(r.target);
+    renderer.clear();
+    renderer.render(scene, cam);
+    renderer.setRenderTarget(was);
+    renderer.shadowMap.autoUpdate = shadows;
+    scene.matrixWorldAutoUpdate = autoMatrix;
+    r.on.value = 1;
   }
 
   /** Where the sea stands over (x, z) right now. */
@@ -104,25 +179,130 @@ export class Water {
     this.gridCentre.value.set(cx, cz);
     this.grid.position.set(cx, WATER_LEVEL, cz);
     this.ring.position.set(cx, WATER_LEVEL, cz);
+    this.flat.position.set(cx, WATER_LEVEL, cz);
 
     const under = p.y < this.surface(p.x, p.z) - 0.02;
     const fog = scene.fog as THREE.Fog;
     if (under && !this.saved) {
-      this.saved = { color: fog.color.clone(), near: fog.near, far: fog.far };
-      fog.color.copy(UNDER_FOG);
-      fog.near = UNDER_NEAR;
-      fog.far = UNDER_FAR;
-      scene.background = UNDER_FOG;
+      this.saved = { color: fog.color.clone(), near: fog.near, far: fog.far, background: scene.background };
+      this.submerge(scene);
       sky.visible = false;
     } else if (!under && this.saved) {
       fog.color.copy(this.saved.color);
       fog.near = this.saved.near;
       fog.far = this.saved.far;
-      scene.background = this.saved.color;
+      scene.background = this.saved.background;
       sky.visible = true;
       this.saved = null;
     }
   }
+
+  /**
+   * The island was lit anew (its textures arrived, or the time or weather
+   * changed): if the camera is under water, keep the new fog for surfacing and
+   * the underwater fog for now.
+   */
+  relit(scene: THREE.Scene): void {
+    if (!this.saved) return;
+    const fog = scene.fog as THREE.Fog;
+    this.saved = { color: fog.color.clone(), near: fog.near, far: fog.far, background: scene.background };
+    this.submerge(scene);
+  }
+
+  private submerge(scene: THREE.Scene): void {
+    const fog = scene.fog as THREE.Fog;
+    fog.color.copy(UNDER_FOG);
+    fog.near = UNDER_NEAR;
+    fog.far = UNDER_FAR;
+    scene.background = UNDER_FOG;
+  }
+}
+
+/**
+ * Sway and stretch `camera`'s view a little, as seen through moving water, at
+ * `time` seconds. Undone by the camera's next updateProjectionMatrix.
+ */
+export function wobble(camera: THREE.PerspectiveCamera, time: number): void {
+  const m = camera.projectionMatrix.elements;
+  m[0] *= 1 + 0.025 * Math.sin(time * 1.7);
+  m[5] *= 1 + 0.025 * Math.sin(time * 1.3 + 1.1);
+  // A slow shear, as if the view leaned in the current.
+  m[4] += 0.02 * Math.sin(time * 0.9 + 0.4);
+  m[1] += 0.015 * Math.sin(time * 1.1 + 2.3);
+  camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+}
+
+/** Set `out` to `camera` mirrored in the sea's surface, looking up at what it sees reflected. */
+function mirror(camera: THREE.PerspectiveCamera, out: THREE.PerspectiveCamera): void {
+  const e = camera.matrixWorld.elements;
+  const pos = new THREE.Vector3(e[12], 2 * WATER_LEVEL - e[13], e[14]);
+  // Forward is -z, up is +y; both mirrored in the surface.
+  const forward = new THREE.Vector3(-e[8], e[9], -e[10]);
+  out.position.copy(pos);
+  out.up.set(e[4], -e[5], e[6]);
+  out.lookAt(pos.add(forward));
+  out.updateMatrixWorld();
+  out.projectionMatrix.copy(camera.projectionMatrix);
+  out.far = camera.far;
+}
+
+/**
+ * Bend `camera`'s near plane onto the horizontal plane at `height`, so
+ * nothing below it is drawn; Lengyel's oblique frustum, as three.js's
+ * Reflector does it.
+ */
+function clipBelow(camera: THREE.PerspectiveCamera, height: number): void {
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -height).applyMatrix4(camera.matrixWorldInverse);
+  const clip = new THREE.Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
+  const m = camera.projectionMatrix.elements;
+  const q = new THREE.Vector4(
+    (Math.sign(clip.x) + m[8]) / m[0],
+    (Math.sign(clip.y) + m[9]) / m[5],
+    -1,
+    (1 + m[10]) / m[14],
+  );
+  clip.multiplyScalar(2 / clip.dot(q));
+  m[2] = clip.x;
+  m[6] = clip.y;
+  m[10] = clip.z + 1;
+  m[14] = clip.w;
+}
+
+/**
+ * Square rings of vertices from `inner` to `outer` metres out, facing up,
+ * `cells` to a side at every ring. Each ring is RING_GROWTH times farther out
+ * than the last, so the vertices spread with distance and the inner edge
+ * matches the rolling grid's.
+ */
+function spreadRing(inner: number, outer: number, cells: number): THREE.BufferGeometry {
+  const radii = [inner];
+  while (radii[radii.length - 1] < outer) radii.push(Math.min(radii[radii.length - 1] * RING_GROWTH, outer));
+  const around = cells * 4;
+  const pos: number[] = [];
+  for (const r of radii) {
+    // Round the square counter-clockwise seen from above, from its -x, -z corner.
+    for (let k = 0; k < around; k++) {
+      const side = Math.floor(k / cells);
+      const f = ((k % cells) / cells) * 2 - 1;
+      const [x, z] = [[f, -1], [1, f], [-f, 1], [-1, -f]][side];
+      pos.push(x * r, 0, z * r);
+    }
+  }
+  const index: number[] = [];
+  for (let i = 0; i + 1 < radii.length; i++) {
+    for (let k = 0; k < around; k++) {
+      const a = i * around + k;
+      const b = i * around + ((k + 1) % around);
+      const c = a + around;
+      const d = b + around;
+      index.push(a, c, b, b, c, d);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  geo.setIndex(index);
+  return geo;
 }
 
 /** A flat square ring from `inner` to `outer` metres out, facing up. */
@@ -155,9 +335,10 @@ function heightMap(world: World): THREE.DataTexture {
   return tex;
 }
 
-function seaMaterial(world: World, time: { value: number }, centre: { value: THREE.Vector2 }): THREE.MeshStandardMaterial {
+function seaMaterial(world: World, time: { value: number }, centre: { value: THREE.Vector2 }, reflection: Reflection): THREE.MeshStandardMaterial {
+  // The sky's picture only lights the water a little; the reflection does the rest.
   const material = new THREE.MeshStandardMaterial({
-    color: 0xffffff, roughness: 0.1, metalness: 0, envMapIntensity: 0.5, transparent: true, side: THREE.DoubleSide,
+    color: 0xffffff, roughness: 0.1, metalness: 0, envMapIntensity: 0.15, transparent: true, side: THREE.DoubleSide,
   });
   const n = world.res + 1;
   const uniforms = {
@@ -166,12 +347,18 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
     seaHeights: { value: heightMap(world) },
     // Maps world x, z to the height map's texel centres.
     seaMap: { value: new THREE.Vector4(1 / world.size * ((n - 1) / n), world.half, 0.5 / n, 0) },
+    seaReflection: { value: reflection.target.texture },
+    seaReflectionMatrix: reflection.matrix,
+    seaReflecting: reflection.on,
   };
   const common = /* glsl */ `
     uniform float seaTime;
     uniform vec2 seaCentre;
     uniform sampler2D seaHeights;
     uniform vec4 seaMap;
+    uniform sampler2D seaReflection;
+    uniform mat4 seaReflectionMatrix;
+    uniform float seaReflecting;
     varying vec3 vSeaPos;
     float seaDepth(vec2 p) {
       vec2 uv = (p + seaMap.y) * seaMap.x + seaMap.z;
@@ -187,11 +374,15 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
         #include <begin_vertex>
         {
           vec2 p = (modelMatrix * vec4(transformed, 1.0)).xz;
-          // Only the rolling grid moves; it settles flat at its edge to meet the ring.
+          // Metres between vertices here: the grid's spacing, then the ring's rows, which spread with distance;
+          // the flat sea past the ring settles as the ring's last waves fade.
           float edge = max(abs(p.x - seaCentre.x), abs(p.y - seaCentre.y));
-          float roll = 1.0 - smoothstep(${(GRID * 0.3).toFixed(1)}, ${(GRID * 0.5 - SPACING).toFixed(1)}, edge);
+          float size = edge < ${(GRID / 2).toFixed(1)} ? ${SPACING.toFixed(1)} : edge * ${(RING_GROWTH - 1).toFixed(3)};
+          float roll = 1.0 - smoothstep(${(RING * 0.7).toFixed(1)}, ${(RING - 1).toFixed(1)}, edge);
           vec2 slope;
-          transformed.y += waves(p, seaTime, smoothstep(0.0, ${FULL_DEPTH.toFixed(1)}, seaDepth(p)) * roll, 1.0, slope);
+          // Waves a little finer than the vertices still show; a vertex every
+          // quarter wavelength or so is enough to roll.
+          transformed.y += waves(p, seaTime, smoothstep(0.0, ${FULL_DEPTH.toFixed(1)}, seaDepth(p)) * roll, size * 0.5, slope);
         }`)
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvSeaPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
 
@@ -201,7 +392,9 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
         float depth = seaDepth(vSeaPos.xz);
         float far = length(vSeaPos - cameraPosition);
         vec2 slope;
-        waves(vSeaPos.xz, seaTime, smoothstep(0.0, ${FULL_DEPTH.toFixed(1)}, depth), 1.0 - smoothstep(60.0, 220.0, far), slope);
+        // Each wave only while a pixel is small beside it.
+        vec2 pixel = fwidth(vSeaPos.xz);
+        waves(vSeaPos.xz, seaTime, smoothstep(0.0, ${FULL_DEPTH.toFixed(1)}, depth), max(pixel.x, pixel.y), slope);
         // Ripples too fine for the grid, fading out with distance.
         float fine = 1.0 - smoothstep(20.0, 90.0, far);
         vec2 rp = vSeaPos.xz;
@@ -225,7 +418,26 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
       .replace('#include <normal_fragment_maps>', /* glsl */ `
         normal = normalize((viewMatrix * vec4(seaNormal, 0.0)).xyz);
         // Seen from below, the surface faces down.
-        normal *= gl_FrontFacing ? 1.0 : -1.0;`);
+        normal *= gl_FrontFacing ? 1.0 : -1.0;`)
+      // The island and sky mirrored in it, more at a glancing angle, rippled
+      // by the waves; foam and the underside reflect nothing.
+      .replace('#include <opaque_fragment>', /* glsl */ `
+        if (seaReflecting > 0.5 && gl_FrontFacing) {
+          vec3 toEye = normalize(cameraPosition - vSeaPos);
+          float facing = max(dot(toEye, seaNormal), 0.0);
+          // Schlick's Fresnel, held back at grazing angles, where real waves
+          // turn some of their faces up to the sky well above the horizon;
+          // there the mirror is read further up the sky, which is bluer.
+          float grazing = pow(1.0 - facing, 4.0);
+          float fresnel = min(0.02 + 0.98 * pow(1.0 - facing, 5.0), 0.6);
+          vec4 at = seaReflectionMatrix * vec4(vSeaPos.x, ${WATER_LEVEL.toFixed(2)}, vSeaPos.z, 1.0);
+          vec2 uv = at.xy / at.w + seaNormal.xz * vec2(0.06, 0.1) - vec2(0.0, 0.012 * grazing);
+          vec3 mirrored = texture2D(seaReflection, uv).rgb;
+          float k = fresnel * (1.0 - foam);
+          outgoingLight = mix(outgoingLight, mirrored, k);
+          diffuseColor.a = mix(diffuseColor.a, 1.0, k);
+        }
+        #include <opaque_fragment>`);
   };
   material.customProgramCacheKey = () => 'sea';
   return material;

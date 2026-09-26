@@ -30,6 +30,13 @@ const SPOTS: Record<string, string> = {
   indoor: '-65.28,18.16,36.55,-60.34,17.56,42.72',
   // Its upper floor, with the sun through the windows.
   upstairs: '-65.28,21.16,36.55,-60.34,20.56,42.72',
+  // At eye height, trees 150 to 180 m off dissolving into their impostors.
+  treeline: '60,30,-60,230,22,-160',
+  // The island from the sea, 200, 400 and 600 m off its shore: its reflection,
+  // the far waves, far terrain tiles carrying their trees and the far shadows.
+  'sea-200': '-150,6,420,0,20,100',
+  'sea-400': '250,12,650,0,15,0',
+  'sea-600': '0,25,1000,0,20,0',
 };
 
 for (const [name, cam] of Object.entries(SPOTS)) {

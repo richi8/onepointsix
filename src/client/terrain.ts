@@ -15,7 +15,7 @@ import { paint } from '../shared/ground.ts';
 /** Grid cells along a tile's side; every level's step must divide it. */
 const TILE = 40;
 /** Vertex step of each level, and the distance from the camera to a tile's middle from which it's used. */
-const LEVELS: [step: number, from: number][] = [[1, 0], [2, 230], [4, 460]];
+export const LEVELS: [step: number, from: number][] = [[1, 0], [2, 230], [4, 460]];
 /** How far skirts hang below a tile's edge, metres. */
 const SKIRT = 4;
 
@@ -202,4 +202,117 @@ function tile(world: World, v: Vertices, ix0: number, iz0: number, step: number,
   geo.setIndex(index);
   geo.computeBoundingSphere();
   return geo;
+}
+
+/**
+ * The height of the ground at (x, z) as a level with vertices every `step`
+ * cells draws it, split into triangles as World.terrainHeight splits them.
+ * With a step of 1 it's World.terrainHeight.
+ */
+export function levelHeight(world: World, x: number, z: number, step: number): number {
+  const n = world.res + 1;
+  const gx = Math.min(Math.max((x + world.half) / world.cell, 0), world.res - 1e-4);
+  const gz = Math.min(Math.max((z + world.half) / world.cell, 0), world.res - 1e-4);
+  const ix = Math.min(Math.floor(gx / step) * step, world.res - step);
+  const iz = Math.min(Math.floor(gz / step) * step, world.res - step);
+  const fx = (gx - ix) / step;
+  const fz = (gz - iz) / step;
+  const H = world.heights;
+  const i = iz * n + ix;
+  const a = H[i];
+  const b = H[i + step];
+  const c = H[i + step * n];
+  const d = H[i + step * n + step];
+  if (fx + fz <= 1) return a + (b - a) * fx + (c - a) * fz;
+  return d + (c - d) * (1 - fx) + (b - d) * (1 - fz);
+}
+
+/** Which level the tile under (x, z) is drawn at, seen from `eye`, as THREE.LOD picks it. */
+export function levelAt(world: World, x: number, z: number, eye: THREE.Vector3): number {
+  const size = TILE * world.cell;
+  const last = world.res / TILE - 1;
+  const tx = Math.min(Math.max(Math.floor((x + world.half) / size), 0), last);
+  const tz = Math.min(Math.max(Math.floor((z + world.half) / size), 0), last);
+  const d = eye.distanceTo(new THREE.Vector3(-world.half + (tx + 0.5) * size, 0, -world.half + (tz + 0.5) * size));
+  let level = 0;
+  LEVELS.forEach(([, from], i) => d >= from && (level = i));
+  return level;
+}
+
+/** Where the camera is, for the shaders that stand things on the level their tile is drawn at. */
+export const groundEye = { value: new THREE.Vector3() };
+const heightTextures = new WeakMap<World, THREE.DataTexture>();
+
+/** The island's heights, exact, for shaders to read texel by texel. */
+function heightTexture(world: World): THREE.DataTexture {
+  let tex = heightTextures.get(world);
+  if (tex) return tex;
+  const n = world.res + 1;
+  tex = new THREE.DataTexture(Float32Array.from(world.heights), n, n, THREE.RedFormat, THREE.FloatType);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  heightTextures.set(world, tex);
+  return tex;
+}
+
+/** GLSL for levelHeight and levelAt: `groundDrop(p)` is how far the drawn ground at p stands above the exact ground. */
+function groundGlsl(world: World): string {
+  const f = (v: number) => v.toFixed(4);
+  return /* glsl */ `
+    uniform sampler2D groundHeights;
+    uniform vec3 groundEye;
+    float groundLevel(vec2 p, int step) {
+      float s = float(step);
+      vec2 g = clamp((p + ${f(world.half)}) / ${f(world.cell)}, 0.0, ${f(world.res - 1e-4)});
+      vec2 c = min(floor(g / s) * s, vec2(${f(world.res)} - s));
+      vec2 k = (g - c) / s;
+      ivec2 i = ivec2(c);
+      float a = texelFetch(groundHeights, i, 0).r;
+      float b = texelFetch(groundHeights, i + ivec2(step, 0), 0).r;
+      float cc = texelFetch(groundHeights, i + ivec2(0, step), 0).r;
+      float d = texelFetch(groundHeights, i + ivec2(step), 0).r;
+      return k.x + k.y <= 1.0 ? a + (b - a) * k.x + (cc - a) * k.y : d + (cc - d) * (1.0 - k.x) + (b - d) * (1.0 - k.y);
+    }
+    float groundDrop(vec2 p) {
+      float size = ${f(TILE * world.cell)};
+      vec2 t = clamp(floor((p + ${f(world.half)}) / size), 0.0, ${f(world.res / TILE - 1)});
+      vec2 mid = -${f(world.half)} + (t + 0.5) * size;
+      float d = distance(groundEye, vec3(mid.x, 0.0, mid.y));
+      ${LEVELS.slice(1).reverse().map(([step, from]) => `if (d >= ${f(from)}) return groundLevel(p, ${step}) - groundLevel(p, 1);`).join('\n      ')}
+      return 0.0;
+    }
+  `;
+}
+
+/**
+ * Add the GLSL above to a shader: `groundDrop(p)` in its vertex shader. For
+ * shaders that place things themselves, such as the impostors' cards.
+ */
+export function addGroundDrop(shader: THREE.WebGLProgramParametersWithUniforms, world: World): void {
+  shader.uniforms.groundHeights = { value: heightTexture(world) };
+  shader.uniforms.groundEye = groundEye;
+  if (!shader.vertexShader.includes('#include <common>')) throw new Error('Shader anchor #include <common> is missing');
+  shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${groundGlsl(world)}`);
+}
+
+/**
+ * Stand each instance of an instanced mesh on the ground as its tile is drawn,
+ * rather than on the exact ground, so nothing floats over or sinks into a
+ * coarse far tile. Instances may only turn about the vertical.
+ */
+export function onTiles<M extends THREE.Material>(material: M, world: World): M {
+  const before = material.onBeforeCompile;
+  const key = material.customProgramCacheKey();
+  material.onBeforeCompile = (shader, renderer) => {
+    before.call(material, shader, renderer);
+    addGroundDrop(shader, world);
+    if (!shader.vertexShader.includes('#include <begin_vertex>')) throw new Error('Shader anchor #include <begin_vertex> is missing');
+    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', /* glsl */ `
+      #include <begin_vertex>
+      #ifdef USE_INSTANCING
+        transformed.y += groundDrop(instanceMatrix[3].xz) / max(length(instanceMatrix[1].xyz), 1e-4);
+      #endif`);
+  };
+  material.customProgramCacheKey = () => `${key}-on-tiles`;
+  return material;
 }

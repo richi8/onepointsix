@@ -12,6 +12,19 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-26',
+    title: 'The island from afar',
+    notes: [
+      'The sea mirrors the island: hills, trees and buildings show in the water, rippled by the waves, and most strongly when you look across it at a low angle.',
+      'Long swells roll in from far out to sea, and the distant water no longer shimmers in rings.',
+      'Distant trees look like the trees near you, from whichever side you see them, lit by the sun the same way, and swaying in the wind. They dissolve into the full trees as you walk closer instead of popping in a patch at a time, and the shadows of nearby trees sway too.',
+      'Hills, trees and buildings far across the island cast shadows again, where before shadows stopped a couple of hundred metres out.',
+      'Trees, rocks and buildings far away no longer float a little above the ground or sink into it.',
+      'Bushes in the distance are green instead of a blue-grey smudge.',
+      'Under water, everything sounds muffled and the view sways, and the water stays murky even if the light changes while you’re under.',
+    ],
+  },
+  {
+    date: '2026-09-26',
     title: 'Doors, glass and new buildings',
     notes: [
       'Doorways have doors. Press F facing one to open or shut it, and anyone nearby hears it. Guards and other operators open doors on their way through. A door can be shot or blown off its hinges, and it won’t shut on someone standing in the doorway.',

@@ -122,6 +122,11 @@ interface Ambience {
 const BIRDS: Record<TimeOfDay, number> = { day: 1, dusk: 0.45, night: 0 };
 const CRICKETS: Record<TimeOfDay, number> = { day: 0, dusk: 0.35, night: 1 };
 
+/** The master volume, and the cut-off of everything heard in air and under water, Hz. */
+const MASTER = 0.7;
+const OPEN_AIR = 20000;
+const UNDERWATER = 450;
+
 export class Sfx {
   private readonly world: World;
   private ctx: BaseAudioContext | null = null;
@@ -150,6 +155,9 @@ export class Sfx {
   private readonly ear = { x: 0, y: 0, z: 0 };
   /** The time of day and weather, for the ambience. */
   conditions: Conditions = DEFAULT_CONDITIONS;
+  /** Everything heard passes through this, which muffles it while the listener is under water. */
+  private muffle: BiquadFilterNode | null = null;
+  private submerged = false;
 
   constructor(world: World) {
     this.world = world;
@@ -216,9 +224,13 @@ export class Sfx {
     const ctx = context ?? new AudioContext();
     this.ctx = ctx;
     this.master = ctx.createGain();
-    this.master.gain.value = 0.7;
+    this.master.gain.value = MASTER;
     const comp = ctx.createDynamicsCompressor();
-    this.master.connect(comp).connect(ctx.destination);
+    this.muffle = ctx.createBiquadFilter();
+    this.muffle.type = 'lowpass';
+    this.muffle.frequency.value = OPEN_AIR;
+    this.master.connect(this.muffle).connect(comp).connect(ctx.destination);
+    this.submerged = false;
 
     const convolver = ctx.createConvolver();
     convolver.buffer = impulse(ctx);
@@ -248,6 +260,17 @@ export class Sfx {
     if (this.clips.wind) this.startAmbience();
     else void this.loadEarly();
     void this.loadLate();
+  }
+
+  /** Under water everything sounds dull and a little quieter; it clears on surfacing. */
+  set underwater(on: boolean) {
+    if (on === this.submerged || !this.ctx || !this.muffle || !this.master) return;
+    this.submerged = on;
+    const t = this.ctx.currentTime;
+    this.muffle.frequency.cancelScheduledValues(t);
+    this.muffle.frequency.setTargetAtTime(on ? UNDERWATER : OPEN_AIR, t, 0.05);
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setTargetAtTime(on ? MASTER * 0.6 : MASTER, t, 0.05);
   }
 
   /** Hear from the camera from now on, and let the surroundings change what's heard. */

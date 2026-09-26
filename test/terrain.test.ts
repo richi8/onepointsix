@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { Terrain } from '../src/client/terrain.ts';
+import { levelAt, levelHeight, Terrain } from '../src/client/terrain.ts';
 import { waveHeight } from '../src/client/water.ts';
 import { WATER_LEVEL } from '../src/shared/constants.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
@@ -68,11 +68,41 @@ describe('terrain tiles', () => {
   });
 });
 
+describe('what stands on the ground', () => {
+  it('finds the height each level draws, so far tiles carry it', () => {
+    const rand = mulberry32(8);
+    for (let k = 0; k < 60; k++) {
+      const x = (rand() - 0.5) * world.size * 0.98;
+      const z = (rand() - 0.5) * world.size * 0.98;
+      const lod = tiles.find((t) => Math.abs(t.position.x - x) < 80 && Math.abs(t.position.z - z) < 80)!;
+      [1, 2, 4].forEach((step, level) => expect(levelHeight(world, x, z, step)).toBeCloseTo(drawnHeight(lod, level, x, z)!, 3));
+    }
+    // A step of 1 is the exact ground.
+    expect(levelHeight(world, 12.3, -45.6, 1)).toBeCloseTo(world.terrainHeight(12.3, -45.6), 6);
+  });
+
+  it('picks the level three.js picks for the tile underneath', () => {
+    const camera = new THREE.PerspectiveCamera();
+    const rand = mulberry32(9);
+    for (let k = 0; k < 40; k++) {
+      camera.position.set((rand() - 0.5) * 1200, rand() * 80, (rand() - 0.5) * 1200);
+      camera.updateMatrixWorld();
+      const x = (rand() - 0.5) * world.size * 0.98;
+      const z = (rand() - 0.5) * world.size * 0.98;
+      const lod = tiles.find((t) => Math.abs(t.position.x - x) <= 80 && Math.abs(t.position.z - z) <= 80)!;
+      lod.updateMatrixWorld();
+      lod.update(camera);
+      expect(levelAt(world, x, z, camera.position)).toBe(lod.getCurrentLevel());
+    }
+  });
+});
+
 describe('waves', () => {
   it('die down on the shore and stay small out at sea', () => {
     for (let t = 0; t < 20; t += 0.7) {
       expect(waveHeight(10, 20, t, 0)).toBe(WATER_LEVEL);
-      expect(Math.abs(waveHeight(10 * t, -5 * t, t, 30) - WATER_LEVEL)).toBeLessThan(0.21);
+      // Every train at its crest together, the swell included.
+      expect(Math.abs(waveHeight(10 * t, -5 * t, t, 30) - WATER_LEVEL)).toBeLessThan(0.31);
     }
     // At wading depth the sea never climbs a crouched player's eye, 1 m over a bed 0.9 m down.
     for (let t = 0; t < 20; t += 0.13) expect(waveHeight(3 * t, t, t, 0.9)).toBeLessThan(0.1);

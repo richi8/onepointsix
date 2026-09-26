@@ -1,10 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { chromium, firefox, test, webkit, type BrowserType } from '@playwright/test';
+import { chromium, expect, firefox, test, webkit, type BrowserType } from '@playwright/test';
 
 // The frame-cost report (see dev/bench.ts), in each engine in turn, after all
 // the other tests. It prints the numbers next to those in bench-baseline.json,
 // the last ones kept on purpose, and fails only if the page does. To keep a
 // run's numbers as the new baseline: BENCH_BASELINE=1 npm run test:browser.
+// Then the adaptive resolution on a GPU slowed on purpose, which does fail if
+// it doesn't settle.
 
 const BASELINE = new URL('./bench-baseline.json', import.meta.url);
 const ENGINES: [string, BrowserType, string[]][] = [
@@ -27,6 +29,17 @@ interface Bench {
 
 const results: Record<string, Bench> = {};
 
+/** What dev/bench.ts?adaptive reports: see adaptive() there. */
+interface Adaptive {
+  iterations: number;
+  full: number;
+  changes: number;
+  log: { t: number; share: number }[];
+  share: number;
+  settled: number;
+}
+let adaptive: Adaptive | null = null;
+
 test.describe.configure({ mode: 'serial' });
 
 for (const [name, type, args] of ENGINES) {
@@ -43,6 +56,27 @@ for (const [name, type, args] of ENGINES) {
     }
   });
 }
+
+// Adaptive resolution on a GPU made slow on purpose, in Chromium only: the
+// point is the controller, and one engine's timing is enough to see it settle.
+test('adaptive resolution settles on a slow GPU', async ({ baseURL }) => {
+  test.setTimeout(240_000);
+  const browser = await chromium.launch({ args: ENGINES[0][2] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await page.goto(new URL('dev/bench.html?adaptive=60', baseURL).href);
+    await page.waitForFunction(() => document.title === 'done', null, { timeout: 200_000 });
+    const a = await page.evaluate(() => (window as unknown as { adaptive: Adaptive }).adaptive);
+    adaptive = a;
+    // Full resolution was too slow, so it came down, and holds 50 fps without switching back and forth.
+    expect(a.full).toBeGreaterThan(20);
+    expect(a.share).toBeLessThan(1);
+    expect(a.settled).toBeLessThan(20);
+    expect(a.changes).toBeLessThanOrEqual(4);
+  } finally {
+    await browser.close();
+  }
+});
 
 test.afterAll(() => {
   const baseline: Record<string, Bench> = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
@@ -61,6 +95,14 @@ test.afterAll(() => {
       `    ground cover, new    ${was(b.groundCover.first.median, o?.groundCover.first.median)} / ${was(b.groundCover.first.p95, o?.groundCover.first.p95)}` +
         `   (max ${b.groundCover.first.max})`,
       `    ground cover, again  ${was(b.groundCover.again.median, o?.groundCover.again.median)} / ${was(b.groundCover.again.p95, o?.groundCover.again.p95)}`,
+    );
+  }
+  if (adaptive) {
+    const steps = adaptive.log.map((l) => `${l.share} at ${l.t} s`).join(', ') || 'none';
+    lines.push(
+      '',
+      `Adaptive resolution, chromium: full resolution ${adaptive.full} ms a frame; ${adaptive.changes} changes (${steps});`,
+      `  settled at ${adaptive.share} of full resolution, ${adaptive.settled} ms a frame`,
     );
   }
   console.log(lines.join('\n'));

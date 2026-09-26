@@ -11,9 +11,9 @@ import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
 import { surfaceMaterial } from './surfaces.ts';
-import { Terrain } from './terrain.ts';
+import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
-import { Water } from './water.ts';
+import { REFLECTED, Water } from './water.ts';
 import { wind } from './wind.ts';
 
 // The island starts out in flat colours and takes on its textures once the
@@ -98,6 +98,9 @@ export class WorldView {
   /** How much of the sky reaches inside each building. */
   readonly light3d: IndoorLight;
   private previewing = true;
+  /** Whether something casting shadows has broken since the island's still shadow map was drawn, and when it was. */
+  private castersChanged = false;
+  private redrawnAt = -Infinity;
 
   constructor(world: World, conditions: Conditions) {
     const scene = this.scene;
@@ -110,7 +113,7 @@ export class WorldView {
     scene.add(this.sky);
 
     scene.add(this.hemi);
-    this.sun = new Sun(0xffffff, 1, this.lighting.sunDir);
+    this.sun = new Sun(0xffffff, 1, this.lighting.sunDir, world.half);
     this.sun.addTo(scene);
     this.light();
 
@@ -131,6 +134,7 @@ export class WorldView {
     this.rocks = makeRocks(world);
     this.water = new Water(world);
     scene.add(this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, extracts.group, this.rain.mesh);
+    for (const o of [this.sky, this.terrain.group, this.props, this.trees.group, this.rocks, extracts.group]) reflected(o);
   }
 
   /**
@@ -139,7 +143,10 @@ export class WorldView {
    */
   async prepare(renderer: THREE.WebGLRenderer): Promise<void> {
     await Promise.all([
-      this.trees.bake(renderer),
+      this.trees.bake(renderer).then(() => {
+        reflected(this.trees.group);
+        this.sun.redraw();
+      }),
       import('./groundcover.ts').then(({ GroundCover }) => {
         this.cover = new GroundCover(this.world);
         if (this.assets) this.cover.applyAssets(this.assets);
@@ -186,6 +193,8 @@ export class WorldView {
     u.stars.value = l.stars;
     // The streaks catch the light of the sky around them.
     this.rain.set(this.raining, l.horizon.clone().multiplyScalar(1.25));
+    // Built after the first lighting.
+    this.water?.relit(this.scene);
   }
 
   /** Swap the flat colours for textures and light everything from the sky. */
@@ -206,19 +215,20 @@ export class WorldView {
     props.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers, 1));
     props.instanceColor!.needsUpdate = true;
     const old = props.material as THREE.Material;
-    props.material = surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0 }, 1, { indoor: true });
+    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0 }, 1, { indoor: true }), this.world);
     old.dispose();
 
     this.trees.applyAssets(assets);
     this.cover?.applyAssets(assets);
     this.assets = assets;
-    this.rocks.material = surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 });
+    this.rocks.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 }), this.world);
     const rand = mulberry32(this.world.seed + 29);
     for (let i = 0; i < this.rocks.count; i++) {
       const v = 0.75 + rand() * 0.25;
       this.rocks.setColorAt(i, c.setRGB(v, v, v * 0.96));
     }
     this.rocks.instanceColor!.needsUpdate = true;
+    this.sun.redraw();
   }
 
   /** Show panels standing or broken and doors open or shut as the world has them, at once. */
@@ -228,6 +238,7 @@ export class WorldView {
     this.props.instanceMatrix.needsUpdate = true;
     this.glass.instanceMatrix.needsUpdate = true;
     this.light3d.changed();
+    this.sun.redraw();
   }
 
   /** Show one panel as the world has it. */
@@ -237,6 +248,7 @@ export class WorldView {
     this.props.instanceMatrix.needsUpdate = true;
     this.glass.instanceMatrix.needsUpdate = true;
     this.light3d.changed();
+    this.castersChanged = true;
   }
 
   /** A door leaf was opened or shut: it swings there, and the light through its doorway changes. */
@@ -304,7 +316,14 @@ export class WorldView {
    */
   update(camera: THREE.Camera, focus: THREE.Vector3, near: number, far: number, time: number): void {
     this.sky.position.copy(camera.position);
+    groundEye.value.copy(camera.position);
     this.sun.update(focus, near, far);
+    // Broken walls leave the island's shadow map now and then, not every time a panel goes.
+    if (this.castersChanged && (time - this.redrawnAt > 2 || time < this.redrawnAt)) {
+      this.castersChanged = false;
+      this.redrawnAt = time;
+      this.sun.redraw();
+    }
     wind.value = time;
     this.water.update(camera, time, this.scene, this.sky);
     this.trees.update(camera.position);
@@ -313,6 +332,17 @@ export class WorldView {
     this.swingDoors(time);
     this.light3d.focus(camera.position);
     this.light3d.update();
+  }
+
+  /** Draw what the sea reflects, before drawing the scene from `camera`. */
+  reflect(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void {
+    // Its pass reuses the shadow maps, so it waits for the first frame to draw them.
+    if (this.sun.ready) this.water.reflect(renderer, this.scene, camera);
+  }
+
+  /** Whether the camera is under the sea. */
+  get underwater(): boolean {
+    return this.water.under;
   }
 
   /** Move each swinging door leaf on toward where the world has it. */
@@ -331,6 +361,17 @@ export class WorldView {
     });
     if (moved) this.props.instanceMatrix.needsUpdate = true;
   }
+}
+
+/**
+ * Show `object` and everything in it in the sea's reflection. LODs are left
+ * out: they'd pick their level for the mirrored camera, and what stands on the
+ * ground expects the level picked for the real one.
+ */
+function reflected(object: THREE.Object3D): void {
+  object.traverse((o) => {
+    if (!(o as THREE.LOD).isLOD) o.layers.enable(REFLECTED);
+  });
 }
 
 function makeSky(): THREE.Mesh {
@@ -397,9 +438,9 @@ function makeGlass(world: World, props: THREE.InstancedMesh): { mesh: THREE.Inst
   world.props.forEach((p, i) => p.style === 'glass' && (of[i] = n++));
   const mesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial({
+    onTiles(new THREE.MeshStandardMaterial({
       color: PROP_COLORS.glass[0], roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
-    }),
+    }), world),
     n,
   );
   const m = new THREE.Matrix4();
@@ -419,7 +460,7 @@ function makeProps(world: World): { mesh: THREE.InstancedMesh; matrices: THREE.M
   const props = world.props;
   const mesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial({ roughness: 0.85 }),
+    onTiles(new THREE.MeshStandardMaterial({ roughness: 0.85 }), world),
     props.length,
   );
   const c = new THREE.Color();
@@ -473,7 +514,7 @@ function makeRocks(world: World): THREE.InstancedMesh {
 
   const mesh = new THREE.InstancedMesh(
     geo,
-    new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }),
+    onTiles(new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), world),
     world.rocks.length,
   );
   const m = new THREE.Matrix4();

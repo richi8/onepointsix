@@ -206,7 +206,7 @@ human pass comes last so people play the finished result.
 | 21 | **Animation clips and hands** | Real clips from a CC0 animation library (e.g. Quaternius's Universal Animation Library) retargeted to the soldier: crouch-walk, jump, fall, climb, shooting and hit reactions; walk and run speeds measured from the clips' foot contacts, with foot locking; a reload per gun (the bolt-action works its bolt and loads rounds, the pistol swaps a small magazine); a grenade model; hand grips placed from marked points on each gun model instead of hand-measured fractions, and the pistol sized for the fist; first-person arms that reach without stretching (longer bones or a dedicated arms model); the leaning and crouched head matched to its hitbox; distant bodies at a higher rate if the chunk 19 benchmark allows it (a new, more realistic soldier model is left for a later phase) | Watching someone jump, climb, reload a bolt-action or take a hit shows a real motion, and the benchmark shows no frame cost over chunk 19's | **Done** (crouch, jump, fall, landing, shooting and hit clips; climb still a pose, as the free library has no climb clip; checked by still pictures in the pose viewer, nobody has watched it in play) |
 | 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Done** (a replay falls bit for bit the same in each engine; walls, slopes and pile-ups checked by unit tests and pose viewer screenshots, not watched in play) |
 | 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Done** (bots only: nobody has fought through the new buildings; the light volume and glass were checked by screenshots) |
-| 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Not started** |
+| 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Done** (checked by screenshots at 200, 400 and 600 m and by the benchmark, which holds 60 fps but comes out 1–2 ms slower than chunk 23 in runs side by side; the far sea still fades into the horizon's haze through the fog; nobody has watched the fade, the swaying or the waves in motion) |
 | 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Not started** |
 | 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Not started** |
 | 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Not started** |
@@ -509,16 +509,46 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   darkened by a hand-set 0.4 to match the full trees. Trees switch between full and impostor at
   170–190 m with no cross-fade. A sun-facing card only approximates a crown's shadow, and
   swaying crowns cast still shadows.
+  **Resolved** (24): the tree is baked from eight sides, its colours in one picture and its
+  normals in another, and each card shows the two sides nearest the one it's seen from, blended.
+  The scene's lights shade it through the baked normals, so no hand-set darkening is left. Each
+  tree dissolves into its impostor pixel by pixel between 110 and 140 m (a screen-space dither the
+  two share), not a whole tile at once. The impostors' crowns sway as the full trees' do, and the
+  full trees' shadows sway with them. Still open: see "Impostors are baked from the side" below.
 - **The sea reflects only the sky** (15), through the environment map. There are no reflections
   of the island. Out past the rolling grid the waves are only in the normals. Far off, the sea
   looks pale, reflecting the bright horizon. The underwater effect is only fog: no muffling and no
   distortion. It can only be seen when the death camera sinks into the sea.
+  **Resolved** (24): each frame the island, its trees, props and rocks and the sky are drawn from
+  below the surface into a picture a third of the screen's size, which the sea mirrors by
+  Fresnel, rippled by the waves. A ring of vertices spreading out with distance carries the
+  waves on to 1 km, with a new long swell (48 m) that still rolls there, and every wave fades out
+  where it's too fine for the vertices or the pixels, which also ends the rings the far sea
+  shimmered in. At a glancing angle the reflection is held to 60% and read a little higher up
+  the sky, so the far sea is no longer the horizon's white; what paleness is left is the fog.
+  Under water, sound is muffled (a 450 Hz low-pass and a little quieter) and the view sways. It
+  can still only be seen from the death cam or a replay's free camera. Still open: see "The
+  reflection is partial" below.
 - **Shadows end at 230 m** (15), and bodies cast them only within 60 m. The cascade patch changes
   three.js's lighting chunk for every scene: any scene with exactly two shadow-casting directional
   lights is taken as cascades. It matches the chunk's text, and fails loudly if a three.js update
   changes it.
+  **Resolved in part** (24): a third cascade covers the whole island (2048 px over 1,130 m, so
+  about half a metre a texel). It stands still, so it's drawn only when the sun moves, once the
+  textures and impostors are in, and at most every 2 s after walls break, and costs nothing on
+  other frames. Each lit pixel now reads only the maps it needs. A unit test pins the text of
+  three.js's loop the patch replaces, the getShadow call and the uniforms it reads, so a three.js
+  update that changes them fails there. Still open: bodies cast shadows only within 60 m, the
+  island's map doesn't sway or follow doors, and a scene with exactly three shadow-casting
+  directional lights is taken as cascades.
 - **Far terrain doesn't carry what stands on it** (15). Trees, rocks and props sit on the exact
   ground, so on a coarse far tile they can float or sink a little.
+  **Resolved** (24): trees, impostors, rocks, props, window glass and bushes are moved in their
+  vertex shaders to the ground as their tile is drawn: the shader works out which level
+  three.js's LOD picked for the tile underneath and reads the heights from a texture. Unit tests
+  check the heights against the drawn levels and the level against three.js's own pick. Bodies,
+  bags, extraction flags, contract props and debris still stand on the exact ground, which
+  matters little: they're small, and most are near.
 - **The textured island looks washed out** (noticed in 15, from 11). The strong sky light
   (environment intensity 1.7) flattens the ground's colours and makes the sun's shadows faint.
   Checked against the build before chunk 15: it looked the same.
@@ -528,6 +558,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   fog starts at 120 m instead of 60 m. Alpha-tested grass and bush cards had their alpha boosted
   by mip level, since distant ones were thinning into pale hollow outlines. Distant bushes still
   look a little blue-grey from the sky light on their up-facing normals.
+  **Resolved** (24), the bushes: it wasn't the normals. The leaf picture's see-through pixels
+  were black (a canvas can't keep a colour where it's fully transparent), and the smaller mips,
+  which the alpha boost keeps past the alpha test, averaged that black in; dark leaves under the
+  sky light read blue-grey. The see-through pixels now carry the leaves' average colour. Distant
+  bushes are green, a little cool.
 - **World detail was checked by screenshots on one machine** (15). Headless Chrome on an M3 Pro
   holds 60 fps (median 16.7 ms, 95th percentile 18.2 ms) at 1280 × 720 in a Mixed game.
   Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A
@@ -635,6 +670,30 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Fewer huts than planned** (23): nine were planned, but most islands have room for two to six
   on ground flat enough (0.4 m of fall under the whole hut and a metre round it).
 
+- **Impostors are baked from the side** (24): the eight pictures are taken level with the tree,
+  so from high up (the menu, a hilltop) an impostor still shows its side, and it's lit as that
+  side, not as the crown seen from above. The branch cards are baked with their normals pointing
+  out of the crown on both faces, where the full tree flips them toward the camera, so up close
+  an impostor is a little smoother and brighter than the tree it replaces. The dither is fixed
+  to the screen, so a tree mid-fade may look grainy in motion; nobody has watched it move.
+- **The reflection is partial** (24): it holds the terrain, trees, props, rocks, flags and the sky,
+  not bodies, bags, grass, bushes, debris, rain, effects or the sea itself, so a soldier wading
+  has no reflection. It's a third of the screen's resolution and redrawn every frame the camera
+  is above water, whether or not any sea is in view, reusing the last frame's shadow maps. The
+  ripples bend it by a fixed share of the screen, whatever the distance. The glass in windows
+  still reflects nothing.
+- **The waves near the camera changed** (24): with the new swell the sea rises and falls up to
+  0.3 m instead of 0.21 m, and the shortest wave (3.7 m) now shows only in the lighting, not the
+  surface, where it aliased at the grid's 2 m spacing. `waveHeight`, which decides when the camera
+  is under water, still adds every wave in full, so near the surface it can be a few centimetres
+  off what's drawn.
+- **Underwater fog was lost after relighting** (noticed in 24): if the island was lit anew while
+  the camera was under water (the textures arriving, or the time or weather changing), the fog
+  went back to the air's while the sea still thought it was holding the underwater one, and
+  surfacing left the background on a stale copy of the sky's colour.
+  **Resolved** (24): the sea keeps the new air fog for surfacing and keeps the underwater fog on,
+  and restores the scene's own background.
+
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
@@ -740,6 +799,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Doors and glass borrow sounds** (23): a door is the wooden footstep played slow, and breaking
   glass is the wood splinter played high. Real recordings of both are left for chunk 26's better
   recordings.
+- **Under water is only muffled** (24): everything heard goes through one low-pass filter (450 Hz)
+  and drops to 60% while the camera is under the surface. There's no underwater ambience, and
+  nothing was listened to: the cut-off was picked, not tuned by ear.
 
 ### Performance and loading
 - **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat
@@ -773,6 +835,12 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   resolution and comfortably fast one step down saw 121 switches in 10 minutes. Now a step up
   that turns slow within 10 s isn't tried again for 30 s, then 60 s, and so on up to 10 minutes;
   the same test sees fewer than 12. It still hasn't run on real slow hardware.
+  **Resolved in part** (24): the benchmark page now slows the GPU on purpose (an extra pass over
+  every pixel, weighed so full resolution takes about 25 ms a frame) and runs the game's own
+  Resolution on the real renderer for a minute. In Chromium it stepped to 0.85 at 1.8 s and 0.7
+  at 3.3 s, then held there at 15.5 ms a frame; a browser test fails if it doesn't settle under
+  20 ms within four changes. Only Chromium runs it, and the slowness is simulated, not real
+  hardware (chunk 30).
 - **Every positional sound creates its own panner node** (9), released on a timer. Heavy
   fights create a lot of them.
   **Resolved** (14): sounds out in the world take turns on a pool of 24 voices (gain, low-pass,
@@ -874,6 +942,16 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   still hasn't been seen by a test; the messages were checked in WebKit, which refuses every
   lock, with the time since Esc faked.
 
+- **Chunk 24's cost** (24): the machine was noisy during this chunk: chunk 23's own code measured
+  a Chromium empty frame of 5.6 to 8.8 ms in the same session, against its kept 3.1. Run side
+  by side, this chunk's empty frame came out 1 to 2 ms slower (7.1 to 10.2 ms), most of it the
+  reflection pass, a second drawing of the island at a ninth of the pixels with about 30 draw
+  calls; the browser tests' report gave 6.8 ms empty and 11.7 ms with 24 bodies (Firefox 8 and
+  16, WebKit 5 and 12), under the 16.7 ms budget. The full trees dissolve between 110 and 140 m
+  because a first try at 150 to 180 m drew full trees in twice the tiles, in the main pass, both
+  moving cascades and the reflection (137 draw calls against 87); now it's 89, the two more being
+  the sea's new ring. Triangles rose from 428k to 499k, mostly that ring, drawn twice (its two
+  sides). The kept baseline wasn't replaced.
 - **Chunk 23's cost** (23): with the light volume in the shader of every lit surface, the
   browser tests' benchmark came out as before in all three engines once materials looked only at
   the four nearest buildings (Chromium 3.3–3.7 ms empty, 10.9–11.4 ms with 24 bodies; the kept
@@ -1215,6 +1293,13 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   new buildings sit behind walls that used to have room. The light volume, the door swing, the
   glass and the door prompt were checked by screenshots only: the indoor spot moved into the
   two-storey building and an upstairs spot was added.
+- **Chunk 24's tests** (24): unit tests pin the cascade patch to three.js's lighting chunk and
+  check the far tiles' heights and level picks against the terrain's own meshes and three.js's
+  LOD. The browser tests add screenshots from the sea at 200, 400 and 600 m and of a tree line
+  fading into impostors, and the adaptive-resolution check on a slowed GPU. The impostors' baked
+  pictures, the reflection, the swaying, the underwater wobble and muffling and the bushes'
+  colour were checked by screenshots (and one dump of the baked pictures) only, and the shader
+  that stands things on far tiles only by how its pictures look.
 
 ### Playtest and tuning
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
