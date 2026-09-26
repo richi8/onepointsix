@@ -110,6 +110,22 @@ export function orientHand(hand: Hand, along: THREE.Vector3, thumb: THREE.Vector
   w.updateMatrixWorld(true);
 }
 
+/**
+ * Keep a wrist from bending more than `maxBend` radians: turn the wanted
+ * finger and thumb directions (changed in place) back toward `arm`, the way
+ * the forearm runs, since the skin at a wrist bent further folds in on itself.
+ */
+export function limitBend(along: THREE.Vector3, thumb: THREE.Vector3, arm: THREE.Vector3, maxBend: number): void {
+  const want = V_A.copy(along).normalize();
+  const line = V_B.copy(arm).normalize();
+  const bend = Math.acos(clamp(want.dot(line), -1, 1));
+  if (bend <= maxBend) return;
+  Q_D.setFromUnitVectors(want, line);
+  Q_E.identity().slerp(Q_D, 1 - maxBend / bend);
+  along.copy(want).applyQuaternion(Q_E);
+  thumb.applyQuaternion(Q_E);
+}
+
 /** How far the middle of the palm is from the wrist, along the fingers and out of the palm. */
 const PALM_LENGTH = 0.07 * HAND_SCALE;
 const PALM_DEPTH = 0.035 * HAND_SCALE;

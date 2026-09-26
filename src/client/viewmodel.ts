@@ -6,7 +6,7 @@ import { BOLT } from '../shared/weapons.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
 import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
-import { type Bones, curl, findBones, findHand, type Hand, orientHand, placeWorld, reach, span, wristFor } from './rig.ts';
+import { type Bones, curl, findBones, findHand, type Hand, limitBend, orientHand, placeWorld, reach, span, wristFor } from './rig.ts';
 
 // The weapon in your hands. It is drawn in its own scene after the world, over
 // a cleared depth buffer, so it never clips into walls. Simple shapes stand in
@@ -27,6 +27,8 @@ const RIGHT_SHOULDER = new THREE.Vector3(0.19, -0.3, -0.02);
 const LEFT_SHOULDER = new THREE.Vector3(-0.12, -0.32, -0.22);
 /** How much the forearm is lengthened; the upper arm takes the rest of the reach. */
 const FOREARM_LENGTH = 1.3;
+/** How far a wrist bends from its forearm's line at most, in radians, before its skin folds up. */
+const WRIST_BEND = 0.7;
 /** How straight an arm is at least, as its reach over its length: a near hand sends the shoulder back. */
 const ARM_STRAIGHT = 0.9;
 /** Where the left hand goes for a magazine or a round, out of sight below. */
@@ -328,6 +330,9 @@ export class ViewModel {
       along.lerp(new THREE.Vector3().copy(forward).multiplyScalar(0.4).sub(up), rightAway);
       thumb.lerp(forward, rightAway);
     }
+    // Aiming the pistol the arms reach out and the grip would bend the wrists back on themselves.
+    const bend = pistol ? lerp(Math.PI, WRIST_BEND, s.aim) : Math.PI;
+    limitBend(along, thumb, this.reachFrom(RIGHT_SHOULDER, rightAt), bend);
     wristFor('R', rightAt, along, thumb, wrist);
     this.shoulder(a.bones.rArm, RIGHT_SHOULDER, wrist, a);
     pole.set(0.5, -0.8, 0.3).add(wrist);
@@ -359,6 +364,7 @@ export class ViewModel {
       closed = 0.7;
       a.nade.visible = t < 0.3;
     }
+    limitBend(along, thumb, this.reachFrom(LEFT_SHOULDER, target), bend);
     wristFor('L', target, along, thumb, wrist);
     this.shoulder(a.bones.lArm, LEFT_SHOULDER, wrist, a);
     pole.set(-0.6, -0.8, 0.3).add(wrist);
@@ -382,6 +388,11 @@ export class ViewModel {
       if (carried === a.nade) at.addScaledVector(V_FORWARD.crossVectors(along, thumb).normalize(), 0.05);
       carried.position.copy(this.root.worldToLocal(at));
     }
+  }
+
+  /** Roughly the way a forearm runs to a hand at `to` (world) from a shoulder at `from` (view space). */
+  private reachFrom(from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3 {
+    return new THREE.Vector3().copy(to).sub(this.root.localToWorld(this.tmp.copy(from)));
   }
 
   /**
@@ -532,7 +543,7 @@ function pistol(): Model {
     [],
     // Both hands wrap the grip.
     [box(0.05, 0.08, 0.07, GLOVE, 0, -0.12, 0.05), box(0.045, 0.07, 0.06, GLOVE, -0.02, -0.12, 0.04)],
-    -0.02, -0.145, 0.04, 0.014, new THREE.Vector3(0.17, -0.15, -0.5), -0.42, 0.05, 0.14,
+    -0.02, -0.145, 0.04, 0.014, new THREE.Vector3(0.17, -0.15, -0.5), -0.6, 0.05, 0.14,
   );
 }
 

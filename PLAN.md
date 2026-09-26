@@ -511,6 +511,15 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   the eye whenever its hand is near, until the arm is nearly straight (90% of its length), and on
   the pistol the left hand wraps round the right hand's fingers with its thumb forward along the
   frame, in first and third person. A test picture of the aimed pistol was added.
+  Still wrong in play: the aimed pistol sat 0.42 m from the eye, so the straightened arms passed
+  just under the camera and filled the screen, and the wrists bent up to 70° from their forearms,
+  folding the skin between sleeve and glove into a strip on the left and a block on the right. The
+  aimed pistol is now held 0.6 m out, at arm's length (so it looks smaller on screen, as a real one
+  would), and while aiming it no wrist bends more than 40° from the line from its shoulder to its
+  hand: the hand is turned back toward that line before the wrist is placed, so the palm stays on
+  the grip. The limit eases in with the aim. From the hip, and for the other guns, nothing changed:
+  moving the hip stance out and limiting every wrist too looked worse (the user preferred the
+  previous hip view). Third person has no such limit.
 - **The soldier download grew by 78 kB** (21), 33 kB gzipped, to 599 kB: the new clips' keys
   aren't compressed (meshopt only quantizes the meshes), though they're sampled at 20 per second
   and resampling drops the keys a straight line would give.
