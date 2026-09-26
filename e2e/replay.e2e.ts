@@ -50,8 +50,10 @@ test('watch your run: pause, speed, scrubbing, cameras, and back to the results'
   await page.keyboard.press('BracketLeft');
   await expect(bar(page).locator('.speeds button.on')).toHaveText('1×');
 
-  // Back to the start on the timeline.
-  await page.keyboard.press('Space');
+  // Back to the start on the timeline, paused. A slow run may have played it
+  // to the end already, where Space would start it again.
+  if (await page.evaluate(() => window.game.replay!.playing)) await page.keyboard.press('Space');
+  await expect(bar(page).locator('.play')).toHaveAttribute('aria-label', 'Play');
   const start = Number(await bar(page).locator('.scrub').getAttribute('min'));
   await bar(page).locator('.scrub').fill(String(start));
   expect(await page.evaluate(() => window.game.replay!.time)).toBeCloseTo(start, 1);

@@ -1,7 +1,8 @@
 # Asset credits
 
 Everything here is CC0 (public domain). `scripts/fetch-assets.mjs` downloads it and packs it for
-the web.
+the web. The one exception is `basis/`, the Basis Universal transcoder built from Binomial's source
+by `scripts/build-transcoder.mjs`, under the Apache License 2.0, as three.js ships it.
 
 - **Textures and sky** from [Poly Haven](https://polyhaven.com), CC0: grass_ground,
   withered_grass, dirt, aerial_rocks_02, coast_sand_01, weathered_planks, concrete_wall_004,
@@ -13,9 +14,10 @@ the web.
   and run clips are kept.
 - **Guns** (`guns/`) by [Quaternius](https://quaternius.com), public domain (CC0), via
   [Poly Pizza](https://poly.pizza): Assault Rifle, Pistol and Sniper Rifle.
-- **Sounds** (`sounds.m4a`) from [Freesound](https://freesound.org), each one CC0, checked on its
-  page by `scripts/fetch-sounds.mjs`. Cut from Freesound's previews and packed into one file;
-  `sounds.json` says where each sits. By sound: AR15 rifle shot, 9mm pistol shot (michorvath);
+- **Sounds** (`sounds-early.*`, `sounds-late.*`) from [Freesound](https://freesound.org), each
+  one CC0, checked on its page by `scripts/fetch-sounds.mjs`. Cut from Freesound's previews and
+  packed into two files, each as Opus (`.ogg`) and AAC (`.m4a`); `sounds.json` says where each
+  sits. By sound: AR15 rifle shot, 9mm pistol shot (michorvath);
   405Win.wav (Jon285); gun shot.aif (trip2000); Silenced Gunshot 3.wav (morganpurkis); 22 Bolt.wav
   (Danwardvs); A rifle being dry fired once (serøutōnin--deprivəd); Rifle-or-shotgun-reload.wav,
   PistolReloadSound.wav (MaximBomba); 1911 Reload (nioczkus); Whoosh (qubodup); Explosion_01.wav

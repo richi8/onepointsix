@@ -13,17 +13,29 @@ test.describe('loading screen', () => {
     await expect(page.locator('#play')).toBeFocused();
   });
 
-  test('offers to play in flat colours while the textures hang', async ({ page }) => {
-    // The soldier never arrives.
-    await page.route('**/assets/soldier.glb', () => {});
+  test('offers to play in flat colours while the textures hang, and fades them in when they come', async ({ page }) => {
+    // The soldier holds back until let through.
+    let release = (): void => {};
+    await page.route('**/assets/soldier.glb', (route) => {
+      release = () => void route.continue();
+    });
     await page.goto('./');
     const skip = page.locator('#loading-skip');
     await expect(skip).toBeHidden();
     await expect(skip).toBeVisible({ timeout: 15_000 });
+    // Everything but the soldier is counted in (the dev server's scripts aren't listed).
+    const width = await page.evaluate(() => parseFloat((document.querySelector('#loading .bar div') as HTMLElement).style.width));
+    expect(width).toBeGreaterThan(70);
+    expect(width).toBeLessThan(100);
     await skip.click();
     await expect(page.locator('#loading')).toHaveCount(0);
     await page.click('#play');
     await expect(page.locator('#hud')).toBeVisible();
+    // A picture of the flat-coloured view covers the swap, then fades away.
+    release();
+    await expect(page.locator('canvas.fade-in')).toHaveCount(1, { timeout: 30_000 });
+    await expect(page.locator('canvas.fade-in')).toHaveCount(0, { timeout: 30_000 });
+    expect(await page.evaluate(() => 'assets' in window)).toBe(true);
   });
 
   test('says so when the textures fail, and plays on', async ({ page }) => {

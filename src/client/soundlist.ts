@@ -66,21 +66,46 @@ export const SOUNDS: SoundSource[] = [
   { name: 'crickets', freesound: 175020, author: 'sengjinn', title: 'AMBIENCE NIGHT FIELD CRICKET 01.wav', from: 8, to: 38, kind: 'loop' },
 ];
 
-/** Where each sound's variations sit in the packed file, in seconds: written by the script. */
-export interface SoundBank {
+/**
+ * Sounds wanted from the first moment of a run, packed in a file of their
+ * own that loads behind the loading bar: your own guns, steps and landing,
+ * and the ambience. The rest, other people's doings heard later, load behind
+ * the menu.
+ */
+export const EARLY: ReadonlySet<string> = new Set([
+  'rifle', 'pistol', 'bolt', 'quiet', 'cycle', 'dry', 'magRifle', 'chargeRifle', 'magPistol', 'chargePistol', 'draw',
+  'land', 'grass', 'dirt', 'sand', 'rock', 'wood', 'metal', 'water',
+  'wind', 'sea', 'birds', 'rain', 'crickets',
+]);
+
+/** One packed file: where each sound's variations sit in it, in seconds, and how long it is. */
+export interface PackedBank {
+  name: string;
+  length: number;
   clips: Record<string, [start: number, duration: number][]>;
-  /** Seconds of sound packed, and of silence the encoder put in front of it (AAC's 2112 samples). */
-  length?: number;
-  priming?: number;
+}
+
+/** An encoding each bank comes in, and the silence its encoder put in front, in seconds. */
+export interface SoundFormat {
+  ext: string;
+  /** For canPlayType. */
+  type: string;
+  priming: number;
+}
+
+/** What the script writes to sounds.json. */
+export interface SoundBanks {
+  banks: PackedBank[];
+  /** Best first. */
+  formats: SoundFormat[];
 }
 
 /**
- * Seconds to add to every clip's start in a decoded bank `decoded` seconds
- * long. Chrome and Safari trim the encoder's priming and padding as the file
- * says; Firefox decodes every frame, so there the whole file is late by the
- * priming and a little longer.
+ * Seconds to add to every clip's start in a bank that decoded `decoded`
+ * seconds long. Chrome and Safari trim the encoder's priming and padding as
+ * the file says; Firefox didn't for AAC, so there the whole file is late by
+ * the priming and a little longer.
  */
-export function bankLead(bank: SoundBank, decoded: number): number {
-  const { length, priming } = bank;
-  return length && priming && decoded - length > priming - 1e-3 ? priming : 0;
+export function bankLead(length: number, priming: number, decoded: number): number {
+  return priming && decoded - length > priming - 1e-3 ? priming : 0;
 }

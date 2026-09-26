@@ -11,6 +11,15 @@ canvas {
   display: block;
 }
 
+/* A picture of the flat-coloured island, fading away as the textures come in. */
+canvas.fade-in {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .menu {
   position: fixed;
   inset: 0;

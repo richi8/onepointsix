@@ -5,12 +5,14 @@ import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
 import { enclosure, nearestWater, occlusion, woodland } from './hearing.ts';
-import { bankLead, type SoundBank } from './soundlist.ts';
+import { download, swap } from './loading.ts';
+import { bankLead, type SoundBanks, type SoundFormat } from './soundlist.ts';
 import type { Surface } from './surface.ts';
 import { VoicePool } from './voices.ts';
 
-// Recorded CC0 sounds (see soundlist.ts), all packed in one file that loads
-// behind the menu. Sounds out in the world are placed in 3D around the
+// Recorded CC0 sounds (see soundlist.ts), packed in two files: the ones
+// wanted from a run's first moment load behind the loading bar, the rest
+// behind the menu, each as Opus or, where that won't decode, AAC. Sounds out in the world are placed in 3D around the
 // listener, who hears with the camera: they pan, dull and fade with distance,
 // arrive late from far off, and are muffled by walls and hills in between.
 // Walls round the listener make everything ring. Wind, the sea and birds play
@@ -86,6 +88,13 @@ interface Voice {
   source: AudioBufferSourceNode | null;
 }
 
+/** A recording, or one variation of it, in the decoded bank it's packed in. */
+export interface Clip {
+  buffer: AudioBuffer;
+  start: number;
+  duration: number;
+}
+
 interface PlayOptions {
   at?: At;
   gain?: number;
@@ -120,10 +129,15 @@ export class Sfx {
   private reverbReturn: GainNode | null = null;
   private pool: VoicePool<Voice> | null = null;
   private noise: AudioBuffer | null = null;
-  /** The packed recordings once decoded, and where each one is in them. */
-  private bank: AudioBuffer | null = null;
-  private clips: SoundBank['clips'] | null = null;
-  private download: Promise<[SoundBank, ArrayBuffer]> | null = null;
+  /** Each recording's variations, once their bank is decoded. */
+  readonly clips: Record<string, Clip[]> = {};
+  /** The list of banks, the format they're being loaded in, and each bank's loading. */
+  private list: Promise<SoundBanks> | null = null;
+  format: SoundFormat | null = null;
+  private early: Promise<void> | null = null;
+  private late: Promise<void> | null = null;
+  /** Decodes the banks before audio is unlocked, which needs a click. */
+  private decoder: BaseAudioContext | null = null;
   private ambience: Ambience | null = null;
   private ambienceIn = 0;
   /** How closed in the listener is, 0 to 1. */
@@ -139,14 +153,53 @@ export class Sfx {
     this.world = world;
   }
 
-  /** Start downloading the recordings; they're decoded once audio is unlocked. */
-  load(): void {
-    this.download ??= Promise.all([
-      fetch(`${BASE}sounds.json`).then((r) => r.json() as Promise<SoundBank>),
-      fetch(`${BASE}sounds.m4a`).then((r) => r.arrayBuffer()),
-    ]);
-    // A failed download leaves the game silent but playable.
-    this.download.catch((e) => console.warn('Sounds failed to load', e));
+  /**
+   * Download and decode the sounds wanted from a run's first moment, for the
+   * loading bar to wait on. A failure leaves the game silent but playable.
+   */
+  loadEarly(): Promise<void> {
+    this.early ??= this.loadBank('early').catch((e) => console.warn('Sounds failed to load', e));
+    return this.early;
+  }
+
+  /** Then the rest, behind the menu. */
+  loadLate(): Promise<void> {
+    this.late ??= this.loadEarly().then(() => this.loadBank('late')).catch((e) => console.warn('Sounds failed to load', e));
+    return this.late;
+  }
+
+  /** Resolves once every sound that will load has. */
+  async loaded(): Promise<void> {
+    await this.loadLate();
+  }
+
+  private async loadBank(name: string): Promise<void> {
+    this.list ??= fetch(`${BASE}sounds.json`).then((r) => r.json() as Promise<SoundBanks>);
+    const list = await this.list;
+    const bank = list.banks.find((b) => b.name === name);
+    if (!bank) return;
+    // Whatever the browser says it can play, then the rest, in case it's wrong.
+    const audio = document.createElement('audio');
+    const formats = this.format ? [this.format] : [
+      ...list.formats.filter((f) => audio.canPlayType(f.type)),
+      ...list.formats.filter((f) => !audio.canPlayType(f.type)),
+    ];
+    const url = (f: SoundFormat) => `${BASE}sounds-${name}.${f.ext}`;
+    for (const [i, f] of formats.entries()) {
+      try {
+        // The loading bar counts the first format listed until told otherwise.
+        if (f !== list.formats[0]) swap(url(list.formats[0]), url(f));
+        const decoder = this.ctx ?? (this.decoder ??= new OfflineAudioContext(1, 1, 48000));
+        const buffer = await decoder.decodeAudioData(await download(url(f)));
+        this.format = f;
+        const lead = bankLead(bank.length, f.priming, buffer.duration);
+        for (const [k, v] of Object.entries(bank.clips)) this.clips[k] = v.map(([start, duration]) => ({ buffer, start: start + lead, duration }));
+        if (this.ctx && !this.ambience) this.startAmbience();
+        return;
+      } catch (e) {
+        if (i === formats.length - 1) throw e;
+      }
+    }
   }
 
   /**
@@ -189,19 +242,10 @@ export class Sfx {
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
 
-    this.load();
-    void this.decode();
-  }
-
-  /** Resolves once the recordings can play. */
-  async decode(): Promise<void> {
-    if (this.bank || !this.ctx || !this.download) return;
-    const [bank, data] = await this.download;
-    // decodeAudioData detaches the buffer, so decode a copy in case it's asked again.
-    this.bank ??= await this.ctx.decodeAudioData(data.slice(0));
-    const lead = bankLead(bank, this.bank.duration);
-    this.clips = Object.fromEntries(Object.entries(bank.clips).map(([k, v]) => [k, v.map(([a, d]) => [a + lead, d])]));
-    this.startAmbience();
+    // Usually in by now: the loading screen waits for them.
+    if (this.clips.wind) this.startAmbience();
+    else void this.loadEarly();
+    void this.loadLate();
   }
 
   /** Hear from the camera from now on, and let the surroundings change what's heard. */
@@ -384,16 +428,16 @@ export class Sfx {
    * in the world at `at` on a pooled voice, or in your head.
    */
   private play(name: string, o: PlayOptions = {}): void {
-    const variants = this.clips?.[name];
-    if (!this.ready || !this.bank || !variants?.length || (o.gain ?? 1) < MIN_GAIN) return;
+    const variants = this.clips[name];
+    if (!this.ready || !variants?.length || (o.gain ?? 1) < MIN_GAIN) return;
     const ctx = this.ctx!;
-    const [start, duration] = variants[Math.floor(Math.random() * variants.length)];
+    const { buffer, start, duration } = variants[Math.floor(Math.random() * variants.length)];
     const rate = o.rate ?? 1;
     const now = ctx.currentTime;
     const t = now + (o.delay ?? 0);
     const length = duration / rate;
     const src = ctx.createBufferSource();
-    src.buffer = this.bank;
+    src.buffer = buffer;
     src.playbackRate.value = rate;
 
     const level = o.gain ?? 1;
@@ -428,9 +472,9 @@ export class Sfx {
   private startAmbience(): void {
     const ctx = this.ctx!;
     const loop = (name: string, out: AudioNode): GainNode => {
-      const [start, duration] = this.clips![name][0];
+      const { buffer, start, duration } = this.clips[name][0];
       const src = ctx.createBufferSource();
-      src.buffer = this.bank;
+      src.buffer = buffer;
       src.loop = true;
       src.loopStart = start;
       src.loopEnd = start + duration;

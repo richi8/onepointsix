@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-09-26',
+    title: 'Quicker to load, sound from the first shot',
+    notes: [
+      'The game downloads about a fifth less before the menu shows, and its sounds are little more than half the size in browsers that play Opus (Chrome, Firefox, and Safari where it can).',
+      'Your own gun, your footsteps and the sounds of the island load before the menu shows, so the first shot of a run is heard. Everyone else’s sounds follow behind the menu.',
+      'The loading bar now counts everything it waits for, by size, from the first moment, instead of sitting empty while the game’s code downloads.',
+      'If you play before the textures are in, they fade in when they arrive instead of the island swapping at once.',
+      'Clicking to resume just after Esc: your browser holds on to the mouse for a moment after Esc, and the pause card now says so and resumes as soon as it lets go, or asks you to click again.',
+    ],
+  },
+  {
     date: '2026-09-25',
     title: 'Sounds on time in Firefox',
     notes: [

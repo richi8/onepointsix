@@ -35,6 +35,8 @@ export class Input {
   yaw = 0;
   pitch = 0;
   locked = false;
+  /** When the pointer was last freed, on the performance clock. */
+  freedAt = -Infinity;
   /** Weapon the player has selected, as an index into WEAPONS. */
   weapon = 0;
   /** The flashlight is switched on; sent as Btn.Light held for as long as it is. */
@@ -94,6 +96,7 @@ export class Input {
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.element;
+      if (!this.locked) this.freedAt = performance.now();
       this.held = this.tapped = 0;
       this.onLockChange?.(this.locked);
     });
@@ -132,14 +135,19 @@ export class Input {
   }
 }
 
+/** Seconds to wait for a browser to answer a lock request by event before taking it as refused. */
+const LOCK_ANSWER = 1;
+
 /** Whether `el` got the lock, from the events, for browsers whose request returns no promise (Safari). */
 function lockAnswer(el: HTMLElement): Promise<boolean> {
   return new Promise((resolve) => {
     const done = (): void => {
       document.removeEventListener('pointerlockchange', done);
       document.removeEventListener('pointerlockerror', done);
+      clearTimeout(timer);
       resolve(document.pointerLockElement === el);
     };
+    const timer = setTimeout(done, LOCK_ANSWER * 1000);
     document.addEventListener('pointerlockchange', done);
     document.addEventListener('pointerlockerror', done);
   });

@@ -10,7 +10,6 @@ export const GOLD = ITEMS.findIndex((i) => i.name === 'Gold bar');
 /** What the tests read of window.game; the rest is there for the console. */
 interface Game {
   dev(cmd: DevCmd): void;
-  input: { yaw: number; pitch: number };
   conn: {
     id: number;
     run: { items: number[] } | null;
@@ -21,7 +20,13 @@ interface Game {
   } | null;
   replay: { playing: boolean; time: number; speed: number } | null;
   deathcam: object | null;
-  sfx: { unlock(): void; decode(): Promise<void>; bank: AudioBuffer | null; clips: Record<string, [number, number][]> | null };
+  sfx: {
+    unlock(): void;
+    loaded(): Promise<void>;
+    format: { ext: string } | null;
+    clips: Record<string, { buffer: AudioBuffer; start: number; duration: number }[]>;
+  };
+  input: { yaw: number; pitch: number; freedAt: number };
 }
 
 declare global {

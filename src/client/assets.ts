@@ -3,12 +3,15 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { reporter } from './loading.ts';
 
 // Everything the game downloads, all CC0 (see public/assets/CREDITS.md), as
 // packed by scripts/fetch-assets.mjs. The main bundle imports this module
 // lazily, so the loaders it pulls in don't hold up the first frame. Textures
 // are KTX2 array textures, transcoded off the main thread; models are
-// meshopt-compressed.
+// meshopt-compressed. The Basis transcoder is a build of our own with only
+// what ETC1S needs (see scripts/build-transcoder.mjs), half the size of
+// three.js's.
 
 const BASE = `${import.meta.env.BASE_URL}assets/`;
 /**
@@ -29,20 +32,21 @@ export interface Assets {
   guns: GLTF[];
 }
 
-/** Called as the downloads come in, with the fraction done. */
-export type Progress = (fraction: number) => void;
-
-export async function loadAssets(renderer: THREE.WebGLRenderer, progress: Progress = () => {}): Promise<Assets> {
-  const ktx2 = new KTX2Loader().detectSupport(renderer);
+/** Everything downloaded, each reported to the loading bar as it comes in. */
+export async function loadAssets(renderer: THREE.WebGLRenderer): Promise<Assets> {
+  const ktx2 = transcoder(renderer);
   const gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-  const track = tracker(7, progress);
+  const load = <T>(loader: { loadAsync(url: string, onProgress: (e: ProgressEvent) => void): Promise<T> }, file: string) => {
+    const url = `${BASE}${file}`;
+    return loader.loadAsync(url, reporter(url));
+  };
   try {
     const [albedo, normal, sky, soldier, ...guns] = await Promise.all([
-      ktx2.loadAsync(`${BASE}textures/color.ktx2`, track()),
-      ktx2.loadAsync(`${BASE}textures/normal.ktx2`, track()),
-      new HDRLoader().loadAsync(`${BASE}sky.hdr`, track()),
-      gltf.loadAsync(`${BASE}soldier.glb`, track()),
-      ...['rifle', 'pistol', 'bolt'].map((name) => gltf.loadAsync(`${BASE}guns/${name}.glb`, track())),
+      load<THREE.Texture>(ktx2, 'textures/color.ktx2'),
+      load<THREE.Texture>(ktx2, 'textures/normal.ktx2'),
+      load<THREE.Texture>(new HDRLoader(), 'sky.hdr'),
+      load<GLTF>(gltf, 'soldier.glb'),
+      ...['rifle', 'pistol', 'bolt'].map((name) => load<GLTF>(gltf, `guns/${name}.glb`)),
     ]);
     const anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
     for (const tex of [albedo, normal]) {
@@ -62,31 +66,11 @@ export async function loadAssets(renderer: THREE.WebGLRenderer, progress: Progre
 }
 
 /**
- * Combined progress over `count` downloads, by bytes. A download whose size
- * isn't known yet, because it hasn't started, is guessed to be as big as the
- * average of the others. A gzipped download's size is its compressed one, so
- * it counts as done early.
+ * A KTX2 loader using our transcoder, which can't make BC7 or PVRTC: told
+ * the GPU lacks them, it picks the next best, BC1/BC3 or plain RGBA.
  */
-function tracker(count: number, progress: Progress): () => (e: ProgressEvent) => void {
-  const loaded: number[] = [];
-  const total: number[] = [];
-  let shown = 0;
-  const report = (): void => {
-    const known = total.filter((t) => t > 0);
-    if (!known.length) return;
-    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-    const guess = sum(known) / known.length;
-    // Never backward, even when a guess turns out too small.
-    shown = Math.max(shown, sum(loaded) / (sum(known) + (count - known.length) * guess));
-    progress(Math.min(shown, 1));
-  };
-  return () => {
-    const i = loaded.push(0) - 1;
-    total.push(0);
-    return (e) => {
-      loaded[i] = e.lengthComputable ? Math.min(e.loaded, e.total) : e.loaded;
-      total[i] = e.lengthComputable ? e.total : Math.max(e.loaded, total[i]);
-      report();
-    };
-  };
+export function transcoder(renderer: THREE.WebGLRenderer): KTX2Loader {
+  const loader = new KTX2Loader().setTranscoderPath(`${BASE}basis/`).detectSupport(renderer);
+  Object.assign(loader.workerConfig, { bptcSupported: false, pvrtcSupported: false });
+  return loader;
 }

@@ -5,7 +5,7 @@ import { mulberry32 } from '../shared/rng.ts';
 import { HOUSE_WALL, type PropStyle, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
-import { GroundCover } from './groundcover.ts';
+import type { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain } from './rain.ts';
@@ -69,7 +69,9 @@ export class WorldView {
   private readonly trees: Trees;
   private readonly rocks: THREE.InstancedMesh;
   private readonly water: Water;
-  private readonly cover: GroundCover;
+  /** Grass, bushes and pebbles near the camera, once their code has loaded. */
+  private cover: GroundCover | null = null;
+  private assets: Assets | null = null;
   private readonly hemi = new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.1);
   private readonly fog = new THREE.Fog(0xffffff);
   private readonly background = new THREE.Color();
@@ -105,13 +107,22 @@ export class WorldView {
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
-    this.cover = new GroundCover(world);
-    scene.add(this.terrain.group, this.water.group, this.props, this.trees.group, this.rocks, extracts.group, this.cover.group, this.rain.mesh);
+    scene.add(this.terrain.group, this.water.group, this.props, this.trees.group, this.rocks, extracts.group, this.rain.mesh);
   }
 
-  /** Work that needs the renderer: baking the far trees' picture. */
-  prepare(renderer: THREE.WebGLRenderer): void {
-    this.trees.bake(renderer);
+  /**
+   * The parts that load lazily, the ground cover and the far trees'
+   * impostors, whose picture needs the renderer to bake.
+   */
+  async prepare(renderer: THREE.WebGLRenderer): Promise<void> {
+    await Promise.all([
+      this.trees.bake(renderer),
+      import('./groundcover.ts').then(({ GroundCover }) => {
+        this.cover = new GroundCover(this.world);
+        if (this.assets) this.cover.applyAssets(this.assets);
+        this.scene.add(this.cover.group);
+      }),
+    ]);
   }
 
   /** How the island is lit now. */
@@ -176,7 +187,8 @@ export class WorldView {
     old.dispose();
 
     this.trees.applyAssets(assets);
-    this.cover.applyAssets(assets);
+    this.cover?.applyAssets(assets);
+    this.assets = assets;
     this.rocks.material = surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 });
     const rand = mulberry32(this.world.seed + 29);
     for (let i = 0; i < this.rocks.count; i++) {
@@ -236,7 +248,7 @@ export class WorldView {
     wind.value = time;
     this.water.update(camera, time, this.scene, this.sky);
     this.trees.update(camera.position);
-    this.cover.update(camera.position);
+    this.cover?.update(camera.position);
     this.rain.update(camera.position, time);
   }
 }

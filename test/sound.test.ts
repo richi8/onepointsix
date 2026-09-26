@@ -5,7 +5,7 @@ import { World } from '../src/shared/world.ts';
 import { GROUND_LAYERS, groundLayerAt, groundWeights, terrainNormalsY } from '../src/shared/ground.ts';
 import { enclosure, nearestWater, occlusion, woodland } from '../src/client/hearing.ts';
 import { Layer } from '../src/shared/layers.ts';
-import { bankLead, SOUNDS, type SoundBank } from '../src/client/soundlist.ts';
+import { bankLead, EARLY, SOUNDS, type SoundBanks } from '../src/client/soundlist.ts';
 import packed from '../public/assets/sounds.json';
 import { Surfaces } from '../src/client/surface.ts';
 import { VoicePool } from '../src/client/voices.ts';
@@ -136,31 +136,49 @@ describe('voice pool', () => {
   });
 });
 
-describe('sound bank', () => {
-  const bank = packed as unknown as SoundBank;
+describe('sound banks', () => {
+  const list = packed as unknown as SoundBanks;
+  const clips = Object.assign({}, ...list.banks.map((b) => b.clips)) as SoundBanks['banks'][number]['clips'];
 
-  it('holds every listed sound, with its variations', () => {
+  it('hold every listed sound once, with its variations', () => {
     for (const s of SOUNDS) {
-      const clips = bank.clips[s.name];
-      expect(clips, s.name).toBeDefined();
-      expect(clips.length).toBe(s.kind === 'steps' ? s.count : 1);
+      expect(clips[s.name], s.name).toBeDefined();
+      expect(clips[s.name].length).toBe(s.kind === 'steps' ? s.count : 1);
     }
-    expect(Object.keys(bank.clips).length).toBe(SOUNDS.length);
+    expect(list.banks.reduce((n, b) => n + Object.keys(b.clips).length, 0)).toBe(SOUNDS.length);
   });
 
-  it('keeps the clips apart in the packed file', () => {
-    const all = Object.values(bank.clips).flat().sort((a, b) => a[0] - b[0]);
-    for (let i = 1; i < all.length; i++) expect(all[i][0]).toBeGreaterThan(all[i - 1][0] + all[i - 1][1]);
+  it('put the early sounds in the early bank', () => {
+    const [early, late] = list.banks;
+    expect(early.name).toBe('early');
+    expect(Object.keys(early.clips).sort()).toEqual([...EARLY].sort());
+    expect(Object.keys(late.clips).some((k) => EARLY.has(k))).toBe(false);
+    // Your own gun and the ambience are there from the start.
+    for (const k of ['rifle', 'pistol', 'bolt', 'wind', 'sea']) expect(early.clips[k], k).toBeDefined();
   });
 
-  it('moves the clips past the priming only where the browser left it in', () => {
-    const all = Object.values(bank.clips).flat();
-    expect(bank.length).toBeGreaterThanOrEqual(Math.max(...all.map(([a, d]) => a + d)));
-    expect(bank.priming).toBeCloseTo(2112 / 44100, 4);
-    // Chrome and Safari: trimmed to the length. Firefox: every 1024-sample frame, priming and all.
-    expect(bankLead(bank, bank.length!)).toBe(0);
-    const frames = Math.ceil((bank.length! * 44100 + 2112) / 1024);
-    expect(bankLead(bank, (frames * 1024) / 44100)).toBe(bank.priming);
-    expect(bankLead({ clips: {} }, 200)).toBe(0);
+  it('keep the clips apart in each packed file', () => {
+    for (const bank of list.banks) {
+      const all = Object.values(bank.clips).flat().sort((a, b) => a[0] - b[0]);
+      for (let i = 1; i < all.length; i++) expect(all[i][0]).toBeGreaterThan(all[i - 1][0] + all[i - 1][1]);
+      expect(bank.length).toBeGreaterThanOrEqual(Math.max(...all.map(([a, d]) => a + d)));
+    }
+  });
+
+  it('come as Opus first, then AAC', () => {
+    expect(list.formats.map((f) => f.ext)).toEqual(['ogg', 'm4a']);
+    // Opus's pre-skip of 312 samples at 48 kHz, and ffmpeg's AAC priming of 1024 at 44.1 kHz.
+    expect(list.formats[0].priming).toBeCloseTo(312 / 48000, 4);
+    expect(list.formats[1].priming).toBeCloseTo(1024 / 44100, 4);
+  });
+
+  it('move the clips past the priming only where the browser left it in', () => {
+    const { length } = list.banks[0];
+    const priming = 1024 / 44100;
+    // Trimmed to the length, as the file says; or every 1024-sample frame, priming and all.
+    expect(bankLead(length, priming, length)).toBe(0);
+    const frames = Math.ceil((length * 44100 + 1024) / 1024);
+    expect(bankLead(length, priming, (frames * 1024) / 44100)).toBe(priming);
+    expect(bankLead(length, 0, length + 1)).toBe(0);
   });
 });

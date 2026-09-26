@@ -1,15 +1,17 @@
 // Downloads the game's CC0 sounds from Freesound (see src/client/soundlist.ts),
-// cuts them, and packs them into public/assets/sounds.m4a, with where each one
-// sits in public/assets/sounds.json. The results are committed, so this only
-// needs running again to change them. Needs macOS: afconvert decodes the
-// previews and encodes the AAC.
+// cuts them, and packs them into two files, the early sounds and the late
+// ones (see EARLY), each as Opus and as AAC for browsers without Opus:
+// public/assets/sounds-early.ogg and so on, with where each sound sits in
+// public/assets/sounds.json. The results are committed, so this only needs
+// running again to change them. Needs ffmpeg with libopus (see tools.mjs), on
+// macOS or Linux.
 //
 //   node scripts/fetch-sounds.mjs
 
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SOUNDS } from '../src/client/soundlist.ts';
+import { EARLY, SOUNDS } from '../src/client/soundlist.ts';
+import { ffmpeg } from './tools.mjs';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
 const CACHE = new URL('../node_modules/.cache/fetch-sounds/', import.meta.url).pathname;
@@ -18,6 +20,16 @@ const RATE = 44100;
 const GAP = 0.05;
 /** Seconds a loop's end fades over its start. */
 const CROSSFADE = 2;
+/**
+ * How each bank is encoded. Opus at 40 kbps is about half the AAC; AAC is
+ * for browsers that can't decode Opus. Each file says how much silence the
+ * encoder put in front (Opus's pre-skip, AAC's priming in the edit list),
+ * which not every browser trims; the game checks (see bankLead).
+ */
+const FORMATS = [
+  { ext: 'ogg', type: 'audio/ogg; codecs=opus', args: ['-c:a', 'libopus', '-b:a', '40k', '-application', 'audio'], priming: opusPreSkip },
+  { ext: 'm4a', type: 'audio/mp4; codecs="mp4a.40.2"', args: ['-c:a', 'aac', '-b:a', '64k'], priming: aacPriming },
+];
 
 /** A recording's preview as mono samples, checked to be CC0 on its page first. */
 async function recording(id) {
@@ -31,7 +43,7 @@ async function recording(id) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${res.status} ${url}`);
     writeFileSync(mp3, Buffer.from(await res.arrayBuffer()));
-    execFileSync('afconvert', ['-f', 'WAVE', '-d', `LEI16@${RATE}`, '-c', '1', mp3, wav]);
+    ffmpeg(['-i', mp3, '-ac', '1', '-ar', String(RATE), '-c:a', 'pcm_s16le', wav]);
   }
   return readWav(readFileSync(wav));
 }
@@ -137,35 +149,62 @@ function loop(s) {
   return [body.map((v) => v * k)];
 }
 
-mkdirSync(CACHE, { recursive: true });
-const parts = [];
-const clips = {};
-let at = 0;
-for (const sound of SOUNDS) {
-  const s = await recording(sound.freesound);
-  const range = s.subarray(Math.floor(sound.from * RATE), Math.min(s.length, Math.floor(sound.to * RATE)));
-  const cuts = sound.kind === 'steps' ? steps(range, sound.count, sound.length)
-    : sound.kind === 'loop' ? loop(range)
-    : shot(range);
-  clips[sound.name] = cuts.map((cut) => {
-    parts.push({ at, cut });
-    const clip = [at / RATE, cut.length / RATE];
-    at += cut.length + Math.floor(RATE * GAP);
-    return clip;
-  });
-  console.log(sound.name, cuts.map((c) => (c.length / RATE).toFixed(2)).join(' '));
+/** Seconds of silence an Ogg Opus file's decoder should drop: the pre-skip in its OpusHead, always at 48 kHz. */
+function opusPreSkip(file) {
+  const at = file.indexOf('OpusHead');
+  if (at < 0) throw new Error('No OpusHead');
+  return file.readUInt16LE(at + 10) / 48000;
 }
-const all = new Float32Array(at);
-for (const { at, cut } of parts) all.set(cut, at);
-const wav = join(CACHE, 'sounds.wav');
-writeFileSync(wav, writeWav(all));
-execFileSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '64000', wav, join(OUT, 'sounds.m4a')]);
+
+/** Seconds an MP4's AAC track starts late: the first edit's media time, over the track's time scale. */
+function aacPriming(file) {
+  const mdhd = file.indexOf('mdhd');
+  const elst = file.indexOf('elst');
+  if (mdhd < 0 || elst < 0) throw new Error('No edit list');
+  const v1 = file[mdhd + 4] === 1;
+  const scale = file.readUInt32BE(mdhd + (v1 ? 24 : 16));
+  const e1 = file[elst + 4] === 1;
+  const time = e1 ? Number(file.readBigInt64BE(elst + 20)) : file.readInt32BE(elst + 16);
+  return time / scale;
+}
+
+mkdirSync(CACHE, { recursive: true });
+const banks = [
+  { name: 'early', sounds: SOUNDS.filter((s) => EARLY.has(s.name)) },
+  { name: 'late', sounds: SOUNDS.filter((s) => !EARLY.has(s.name)) },
+];
 const round = (v) => Math.round(v * 1e5) / 1e5;
-// afconvert's AAC starts with 2112 samples of priming. The file says so, but
-// not every browser trims them; the game checks (see bankLead in soundlist.ts).
-writeFileSync(join(OUT, 'sounds.json'), `${JSON.stringify({
-  clips: Object.fromEntries(Object.entries(clips).map(([k, v]) => [k, v.map(([a, d]) => [round(a), round(d)])])),
-  length: round(at / RATE),
-  priming: round(2112 / RATE),
-})}\n`);
-console.log(`${(at / RATE).toFixed(1)} s packed`);
+const formats = FORMATS.map(({ ext, type }) => ({ ext, type, priming: 0 }));
+const packed = [];
+for (const bank of banks) {
+  const parts = [];
+  const clips = {};
+  let at = 0;
+  for (const sound of bank.sounds) {
+    const s = await recording(sound.freesound);
+    const range = s.subarray(Math.floor(sound.from * RATE), Math.min(s.length, Math.floor(sound.to * RATE)));
+    const cuts = sound.kind === 'steps' ? steps(range, sound.count, sound.length)
+      : sound.kind === 'loop' ? loop(range)
+      : shot(range);
+    clips[sound.name] = cuts.map((cut) => {
+      parts.push({ at, cut });
+      const clip = [round(at / RATE), round(cut.length / RATE)];
+      at += cut.length + Math.floor(RATE * GAP);
+      return clip;
+    });
+    console.log(sound.name, cuts.map((c) => (c.length / RATE).toFixed(2)).join(' '));
+  }
+  const all = new Float32Array(at);
+  for (const { at, cut } of parts) all.set(cut, at);
+  const wav = join(CACHE, `sounds-${bank.name}.wav`);
+  writeFileSync(wav, writeWav(all));
+  FORMATS.forEach(({ ext, args, priming }, i) => {
+    const out = join(OUT, `sounds-${bank.name}.${ext}`);
+    // Bit-exact, so running it again makes the same files.
+    ffmpeg(['-i', wav, ...args, '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:a', '+bitexact', out]);
+    formats[i].priming = round(priming(readFileSync(out)));
+  });
+  packed.push({ name: bank.name, length: round(at / RATE), clips });
+  console.log(`${bank.name}: ${(at / RATE).toFixed(1)} s packed`);
+}
+writeFileSync(join(OUT, 'sounds.json'), `${JSON.stringify({ banks: packed, formats })}\n`);

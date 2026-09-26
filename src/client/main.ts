@@ -13,13 +13,14 @@ import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/wea
 import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
+import type { Assets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies, strideLength } from './bodies.ts';
 import { CHANGELOG } from './changelog.ts';
 import { ContractProps } from './contractprops.ts';
 import { Connection, WorkerTransport, type Recording, type ReplayEvent } from './connection.ts';
-import { Deathcam, type DeathcamEvent } from './deathcam.ts';
+import type { Deathcam, DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
 import { Flashlights } from './flashlights.ts';
 import { Grenades } from './grenades.ts';
@@ -29,8 +30,8 @@ import { Leaderboard, localStore } from './leaderboard.ts';
 import type { Rendered } from './prediction.ts';
 import { Resolution } from './resolution.ts';
 import { RunLog } from './runlog.ts';
-import { Replay, SPEEDS } from './replay.ts';
-import { ReplayBar, type ReplayCamera } from './replaybar.ts';
+import type { Replay } from './replay.ts';
+import type { ReplayBar, ReplayCamera } from './replaybar.ts';
 import { decodeReplay, encodeReplay, RunRecorder, type ReplayData } from './replayfile.ts';
 import { RivalHud } from './rivalhud.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
@@ -62,6 +63,8 @@ const SKIP_LOADING_AFTER = 8;
 const MODE_NAMES: Record<Mode, string> = { online: 'Online', offline: 'Offline' };
 /** Milliseconds a click on the run dashboard keeps trying to take the mouse back. */
 const RELOCK_RETRY = 2000;
+/** Seconds after Esc that Chrome won't give the mouse back, with some to spare. */
+const RELOCK_COOLDOWN = 1.5;
 /** Leaderboard rows shown on the menu. */
 const BOARD_SHOWN = 5;
 /** Islands from "New island" get seeds up to this, so their numbers stay short. */
@@ -90,7 +93,8 @@ const view = new WorldView(world, config);
 const scene = view.scene;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-view.prepare(renderer);
+/** The lazily loaded parts of the island. */
+const prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
 const resolution = new Resolution(renderer);
 // Neutral keeps the colours ACES would bleach; the sun outweighs the sky light so shadows read.
 renderer.toneMapping = THREE.NeutralToneMapping;
@@ -131,13 +135,20 @@ const extractNames = world.extracts.map((_, i) => extractName(world, i));
 
 // ---------------------------------------------------------------- loading
 
-// The loading screen from index.html stays up until the textures and models
-// are in and their shaders compiled, so the island never shows half-dressed.
-// A slow connection can skip it and play in flat colours meanwhile.
+// The loading screen from index.html stays up until the textures, models and
+// the early sounds are in and the shaders compiled, so the island never shows
+// half-dressed. A slow connection can skip it and play in flat colours
+// meanwhile; the textures then fade in when they arrive.
 const loadingEl = document.getElementById('loading')!;
-const loadingBar = loadingEl.querySelector('.bar div') as HTMLElement;
 const loadingSkip = document.getElementById('loading-skip') as HTMLButtonElement;
 let loaded = false;
+let skipped = false;
+/** While set, the frame isn't drawn: a picture of the last one covers the view as the textures go on. */
+let holdFrame = false;
+/** Set to take a picture of the next frame drawn. */
+let pictureNext: ((shot: HTMLCanvasElement) => void) | null = null;
+/** Seconds the picture of the flat-coloured island takes to fade away. */
+const FADE_IN = 0.8;
 
 function finishLoading(): void {
   if (loaded) return;
@@ -145,25 +156,56 @@ function finishLoading(): void {
   loadingEl.classList.add('done');
   setTimeout(() => loadingEl.remove(), 600);
   playButton.focus();
+  void sfx.loadLate();
+  void loadPlayback().catch((err: unknown) => console.warn('The death cam and replays failed to load.', err));
   void openHandedReplay();
 }
 
-loadingSkip.onclick = finishLoading;
+loadingSkip.onclick = () => {
+  skipped = true;
+  finishLoading();
+};
 setTimeout(() => (loadingSkip.hidden = false), SKIP_LOADING_AFTER * 1000);
 
+function dress(assets: Assets): void {
+  view.applyAssets(assets);
+  effects.setDebrisMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true }));
+  bodies.setModel(assets.soldier, assets.guns);
+  viewModel.setGuns(assets.guns, assets.environment);
+  viewModel.setArms(assets.soldier);
+  if (import.meta.env.DEV) Object.assign(window, { assets });
+}
+
+/**
+ * Textures that arrive after the loading screen was skipped: a picture of the
+ * flat-coloured frame covers the view while they go on and their shaders
+ * compile, then fades away, rather than the island swapping at once. The game
+ * goes on underneath.
+ */
+async function fadeIn(assets: Assets): Promise<void> {
+  const shot = await new Promise<HTMLCanvasElement>((resolve) => (pictureNext = resolve));
+  shot.className = 'fade-in';
+  renderer.domElement.after(shot);
+  holdFrame = true;
+  try {
+    dress(assets);
+    await renderer.compileAsync(scene, camera);
+  } finally {
+    holdFrame = false;
+  }
+  shot.style.transition = `opacity ${FADE_IN}s`;
+  requestAnimationFrame(() => requestAnimationFrame(() => (shot.style.opacity = '0')));
+  setTimeout(() => shot.remove(), FADE_IN * 1000 + 100);
+}
+
+const earlySounds = sfx.loadEarly();
 import('./assets.ts')
-  .then(({ loadAssets }) => loadAssets(renderer, (f) => (loadingBar.style.width = `${Math.round(f * 100)}%`)))
+  .then(({ loadAssets }) => loadAssets(renderer))
   .then(async (assets) => {
-    // The sounds download behind the menu, after what the loading screen waits for.
-    sfx.load();
-    loadingBar.style.width = '100%';
+    if (skipped) return fadeIn(assets);
+    await Promise.all([earlySounds, prepared]);
     loadingEl.querySelector('p')!.textContent = 'Preparing the island…';
-    view.applyAssets(assets);
-    effects.setDebrisMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true }));
-    bodies.setModel(assets.soldier, assets.guns);
-    viewModel.setGuns(assets.guns, assets.environment);
-    viewModel.setArms(assets.soldier);
-    if (import.meta.env.DEV) Object.assign(window, { assets });
+    dress(assets);
     orbitCamera(performance.now() / 1000);
     camera.updateMatrixWorld();
     await renderer.compileAsync(scene, camera);
@@ -582,10 +624,14 @@ const hudEl = document.getElementById('hud')!;
 let killedBy: { e: DeathcamEvent; recording: Recording } | null = null;
 let deathcam: Deathcam | null = null;
 
-/** Replay how we died, then show the results. */
+/** Replay how we died, then show the results; straight to them if the death cam can't load. */
 function playDeathcam(): void {
   if (!killedBy) return;
-  deathcam = new Deathcam(world, killedBy.e, killedBy.recording, conn?.broken ?? []);
+  if (!playback) {
+    void loadPlayback().then(playDeathcam, () => showLastResults?.());
+    return;
+  }
+  deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.broken ?? []);
   showCover(deathcam.broken);
   // Start the bodies afresh, as they were then.
   bodies.update([], 0);
@@ -639,7 +685,10 @@ const FLY_FAST = 40;
 const FLY_LOOK = 0.004;
 const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 
-const replayBar = new ReplayBar();
+/** The death cam and replay viewer, once loaded. */
+let playback: typeof import('./playback.ts') | null = null;
+let playbackLoading: Promise<typeof import('./playback.ts')> | null = null;
+let replayBar: ReplayBar | null = null;
 let replay: Replay | null = null;
 let replayCam: ReplayCamera = 'eyes';
 /** Our last run's replay, once made. */
@@ -667,7 +716,7 @@ function replayTitle(r: ReplayData): string {
  * another island loads that island first, so it's handed over through the
  * session and the page reloads.
  */
-function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array): void {
+async function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array): Promise<void> {
   if (r.world.seed >>> 0 !== config.seed >>> 0) {
     if (!bytes) return;
     try {
@@ -682,9 +731,20 @@ function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array): void 
     return;
   }
   if (!loaded) return;
+  // Unlocked while this is still the click's doing.
+  sfx.unlock();
+  let Replay: typeof import('./replay.ts').Replay;
+  try {
+    ({ Replay } = await loadPlayback());
+  } catch {
+    toast('The replay viewer failed to load. Check your connection and try again.');
+    return;
+  }
+  const bar = replayBar!;
+  // Something else started meanwhile.
+  if (replay || conn?.over === false) return;
   if (r.build !== BUILD) toast('This replay is from another version of the game, so it may not play back exactly.');
   stopDeathcam(false);
-  sfx.unlock();
   if (r.world.time !== config.time || r.world.weather !== config.weather) setConditions({ time: r.world.time, weather: r.world.weather });
   document.exitPointerLock();
   menu.hidden = true;
@@ -697,7 +757,7 @@ function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array): void 
   hud.show();
   hudEl.classList.add('watching', 'replaying');
   hudEl.classList.remove('free');
-  replayBar.show(replayTitle(r), replay.start, replay.end, replay.marks(), unsaved);
+  bar.show(replayTitle(r), replay.start, replay.end, replay.marks(), unsaved);
   afterSeek();
 }
 
@@ -705,7 +765,7 @@ function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array): void 
 function closeReplay(back = true): void {
   if (!replay) return;
   replay = null;
-  replayBar.hide();
+  replayBar?.hide();
   fly.keys.clear();
   hudEl.hidden = true;
   hudEl.classList.remove('watching', 'replaying', 'free');
@@ -775,7 +835,7 @@ async function saveReplay(r: ReplayData): Promise<void> {
 async function openReplayFile(file: File): Promise<void> {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    watchReplay(await decodeReplay(bytes), false, bytes);
+    await watchReplay(await decodeReplay(bytes), false, bytes);
   } catch (err) {
     toast(err instanceof Error ? err.message : 'That replay couldn’t be opened.');
   }
@@ -793,25 +853,37 @@ async function openHandedReplay(): Promise<void> {
   if (!saved) return;
   try {
     const bytes = Uint8Array.from(atob(saved), (c) => c.charCodeAt(0));
-    watchReplay(await decodeReplay(bytes), false);
+    await watchReplay(await decodeReplay(bytes), false);
     if (replay) replay.playing = false;
   } catch (err) {
     toast(err instanceof Error ? err.message : 'That replay couldn’t be opened.');
   }
 }
 
-replayBar.onPlay = toggleReplay;
-replayBar.onSeek = seekReplay;
-replayBar.onSpeed = (speed) => replay && (replay.speed = speed);
-replayBar.onCamera = setReplayCam;
-replayBar.onClose = () => closeReplay();
-replayBar.onSave = () => {
-  if (replay) void saveReplay(replay.data);
-};
+/** The death cam and replay viewer's code, loaded once and kept. */
+function loadPlayback(): Promise<typeof import('./playback.ts')> {
+  playbackLoading ??= import('./playback.ts').then((m) => {
+    const bar = new m.ReplayBar();
+    bar.onPlay = toggleReplay;
+    bar.onSeek = seekReplay;
+    bar.onSpeed = (speed) => replay && (replay.speed = speed);
+    bar.onCamera = setReplayCam;
+    bar.onClose = () => closeReplay();
+    bar.onSave = () => {
+      if (replay) void saveReplay(replay.data);
+    };
+    replayBar = bar;
+    playback = m;
+    return m;
+  });
+  // A failed load can be tried again.
+  playbackLoading.catch(() => (playbackLoading = null));
+  return playbackLoading;
+}
 
 document.getElementById('watch-run')!.onclick = () => {
   const r = lastRun();
-  if (r) watchReplay(r, true);
+  if (r) void watchReplay(r, true);
 };
 document.getElementById('save-run')!.onclick = () => {
   const r = lastRun();
@@ -853,6 +925,7 @@ window.addEventListener('keydown', (e) => {
     fly.keys.add(e.code);
     return;
   }
+  const { SPEEDS } = playback!;
   const speed = SPEEDS.indexOf(replay.speed);
   switch (e.code) {
     case 'Space':
@@ -922,8 +995,11 @@ document.getElementById('again')!.onclick = () => {
 };
 document.getElementById('to-menu')!.onclick = toMenu;
 
+const resumeNote = paused.querySelector('.resume') as HTMLElement;
+const RESUME = 'Click anywhere to resume';
 input.onLockChange = (locked) => {
   if (conn && !conn.over) paused.hidden = locked;
+  if (!resuming) resumeNote.textContent = RESUME;
 };
 // Clicking anywhere but the Leave button resumes.
 paused.onclick = (e) => {
@@ -933,15 +1009,22 @@ let resuming = false;
 /**
  * Chrome refuses to re-lock the mouse for about a second after Esc freed it.
  * A click in that time keeps trying until it's let through, while the click
- * still counts as a gesture, rather than being lost.
+ * still counts as a gesture, and says why it's waiting; if the browser still
+ * won't, it says so and asks for another click.
  */
 async function resume(): Promise<void> {
   if (resuming) return;
   resuming = true;
-  const until = performance.now() + RELOCK_RETRY;
+  const now = performance.now();
+  const until = now + RELOCK_RETRY;
+  const soon = now - input.freedAt < RELOCK_COOLDOWN * 1000;
+  let refused = false;
   while (!paused.hidden && !(await input.lock()) && performance.now() < until) {
+    if (!refused) resumeNote.textContent = soon ? 'Your browser holds the mouse for a moment after Esc. Resuming as soon as it lets go…' : 'Taking the mouse back…';
+    refused = true;
     await new Promise((r) => setTimeout(r, 100));
   }
+  resumeNote.textContent = paused.hidden ? RESUME : 'Your browser didn’t give the mouse back. Click again to resume.';
   resuming = false;
 }
 const leaveButton = document.getElementById('leave')!;
@@ -1319,7 +1402,7 @@ renderer.setAnimationLoop(() => {
   }
   if (rep && eye) {
     runHud.update(rep.time <= rep.runOver ? rep.run() : null, rep.extracts(), eye.x, eye.z, eye.yaw, camera);
-    replayBar.update(rep, replayCam);
+    replayBar?.update(rep, replayCam);
   } else if (cam) runHud.update(null, [], 0, 0, 0, camera);
   else if (conn) {
     if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera);
@@ -1333,10 +1416,20 @@ renderer.setAnimationLoop(() => {
   contractProps.update(contracts);
 
   if (cam?.done) stopDeathcam();
+  if (holdFrame) return;
   renderer.clear();
   renderer.render(scene, camera);
   if (state && !free) {
     renderer.clearDepth();
     renderer.render(viewModel.scene, viewModel.camera);
+  }
+  if (pictureNext) {
+    // Straight after drawing, while the frame is still there to copy.
+    const shot = document.createElement('canvas');
+    shot.width = renderer.domElement.width;
+    shot.height = renderer.domElement.height;
+    shot.getContext('2d')!.drawImage(renderer.domElement, 0, 0);
+    pictureNext(shot);
+    pictureNext = null;
   }
 });

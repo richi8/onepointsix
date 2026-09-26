@@ -202,7 +202,7 @@ human pass comes last so people play the finished result.
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 19 | **Browser tests and benchmarks** | A browser test runner in the repo (Playwright: Chromium, Firefox and WebKit) with a dev-only hook to end a run on demand; tests for the menu, leaderboard UI, share button, loading screen, death cam and its HUD, replay viewer, file picker and dropped files, handover between islands, rivals HUD (bounty, "you carry the bounty", feed rows) and the results buttons; screenshot comparisons for the water, ground cover, impostors, cascades, indoor light and the pose viewer's poses; AAC offsets checked in Firefox and WebKit; a frame-time benchmark with many near bodies (posing, IK, fingers) and the ground cover's rebuild; the pose viewer run by the tests | `npm run test:browser` covers every UI named in Code and testing, runs in all three engines, and prints a frame-cost report | **Done** (93 tests in about 3 minutes on an M3 Pro; the screenshots are Chromium's only, and the tests don't run in CI) |
-| 20 | **Lean loading and portable tooling** | Sounds on the loading bar (the ambience and your own gun before Play, the rest after); the loading bar counts the script download and uncompressed sizes; skipping the loading screen fades the assets in instead of swapping; the entry chunk split so ground cover, impostors, replays and the death cam load lazily; a smaller Basis transcoder (an ETC1S-only build) or a measured case against it; KTX2 and the prefiltered sky compared to the originals by number, not only by eye; smaller sounds (Opus where supported, AAC fallback); the sound and asset scripts run on Linux and Intel Macs (ffmpeg instead of `afconvert`, any-platform KTX tools); a click soon after Esc resumes at once or says why it can't | Total JavaScript at start is down by a measured amount, the first sound plays with the first shot, and both scripts run in CI on Linux | **Not started** |
+| 20 | **Lean loading and portable tooling** | Sounds on the loading bar (the ambience and your own gun before Play, the rest after); the loading bar counts the script download and uncompressed sizes; skipping the loading screen fades the assets in instead of swapping; the entry chunk split so ground cover, impostors, replays and the death cam load lazily; a smaller Basis transcoder (an ETC1S-only build) or a measured case against it; KTX2 and the prefiltered sky compared to the originals by number, not only by eye; smaller sounds (Opus where supported, AAC fallback); the sound and asset scripts run on Linux and Intel Macs (ffmpeg instead of `afconvert`, any-platform KTX tools); a click soon after Esc resumes at once or says why it can't | Total JavaScript at start is down by a measured amount, the first sound plays with the first shot, and both scripts run in CI on Linux | **Done** (JavaScript and wasm before the menu down from 1,550 kB to 1,227 kB, 544 kB to 396 kB gzipped, almost all of it the transcoder; the scripts' CI job was only run in a Linux container, since it isn't pushed yet) |
 | 21 | **Animation clips and hands** | Real clips from a CC0 animation library (e.g. Quaternius's Universal Animation Library) retargeted to the soldier: crouch-walk, jump, fall, climb, shooting and hit reactions; walk and run speeds measured from the clips' foot contacts, with foot locking; a reload per gun (the bolt-action works its bolt and loads rounds, the pistol swaps a small magazine); a grenade model; hand grips placed from marked points on each gun model instead of hand-measured fractions, and the pistol sized for the fist; first-person arms that reach without stretching (longer bones or a dedicated arms model); the leaning and crouched head matched to its hitbox; distant bodies at a higher rate if the chunk 19 benchmark allows it (a new, more realistic soldier model is left for a later phase) | Watching someone jump, climb, reload a bolt-action or take a hit shows a real motion, and the benchmark shows no frame cost over chunk 19's | **Not started** |
 | 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Not started** |
 | 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Not started** |
@@ -469,6 +469,7 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   and measuring its peak and RMS. Mix, reverb amount and ambience levels need a listening pass.
 - **The recordings are Freesound's previews** (14), 128 kbps MP3, not the original files, which
   need a Freesound account or API key to download. They're re-encoded once more to 64 kbps AAC.
+  Since chunk 20 that's Opus at 40 kbps (AAC where Opus won't decode), still unheard.
 - **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,
   the rifle and pistol reloads are mixes of other recordings, the bolt-action's shot is a .405
   Winchester lever-action, and concrete footsteps reuse the stone ones played 10% faster. Every
@@ -496,6 +497,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Sounds arrive after the game starts** (14). The 854 kB file downloads in the background and
   isn't on the loading bar, and nothing plays until it's decoded (the game is playable
   meanwhile). If it fails, the game is silent apart from the beeps.
+  **Resolved** (20): the sounds are packed in two files. The early one (your own guns, steps and
+  landing, and the ambience: 150 s, 700 kB as Opus) is on the loading bar and decoded before
+  the menu shows, so the first shot is heard. The late one (other people's doings: far shots,
+  blasts, breaking cover, being hit; 10 s, 47 kB) loads behind the menu. A browser test checks
+  your own sounds are in when the loading screen goes.
 - **AAC playback was only checked in Chrome** (14): the packed offsets depend on the browser
   trimming the encoder's priming samples, which Chrome does exactly. Safari should (it's Apple's
   format) and Firefox should, but neither was tried.
@@ -507,6 +513,21 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   every clip by the priming when the decoded file is longer by at least that much
   (`bankLead` in `soundlist.ts`). The sound script writes both numbers.
 - **The sound script needs a Mac** (14): it uses `afconvert` to decode and encode.
+  **Resolved** (20): it uses ffmpeg (with libopus) on any platform, and its output is bit-exact,
+  so running it again makes the same files. It ran in a Linux x86-64 container from a clean
+  checkout.
+
+- **The loading screen waits for most of the sound** (20). The early bank is 150 of the 160
+  seconds, because the ambience beds are long: 700 kB of the 4.3 MB the loading screen waits
+  for. Loading locally took no longer (1.22 s against 1.26 s), but on a slow connection it adds
+  to the wait. Moving the ambience to the late bank would halve it, at the cost of the ambience
+  fading in a moment after Play.
+- **The AAC fallback is ffmpeg's own encoder** (20), not Apple's: 1.43 MB for the two banks
+  against the old file's 1.30 MB at the same 64 kbps, and likely a little worse. It's only for
+  browsers that can't decode Opus. Playwright's WebKit decodes Ogg Opus, so the fallback was
+  tested by blocking the Opus files; which real Safari versions need it wasn't checked.
+- **The sounds are decoded at 48 kHz before audio is unlocked** (20), in an
+  OfflineAudioContext, so a device running at 44.1 kHz resamples them as they play.
 
 ### Performance and loading
 - **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat
@@ -548,25 +569,74 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The total JavaScript loaded at start barely changed** (11): about 740 kB minified (200 kB
   gzipped), now in four chunks that load in parallel. Splitting keeps three.js cached across
   game updates, but it doesn't shrink the download.
+  **Resolved in part** (20): measured on the production build, the JavaScript and wasm fetched
+  before the menu shows fell from 1,550 kB to 1,227 kB (544 kB to 396 kB gzipped), almost all of
+  it the smaller transcoder. The JavaScript alone barely moved (1,023 kB to 1,015 kB): the entry
+  chunk is 197 kB instead of 212 kB, but the ground cover and impostors, split off, still load
+  while the loading screen is up. Only the death cam and replay viewer wait until after it.
 - **The Basis transcoder costs 527 kB** (11), or 249 kB gzipped. That eats much of what KTX2
   saves on the download. The real gains are GPU memory and no main-thread stall.
+  **Resolved** (20): `scripts/build-transcoder.mjs` builds the same Basis version three.js ships
+  (1.50) with only what ETC1S needs: no UASTC, UASTC HDR, Zstandard, ASTC, PVRTC or BC7. It's
+  212 kB (102 kB gzipped). The game tells KTX2Loader the GPU has no BC7 or PVRTC, so it picks
+  ETC, BC1/BC3 or plain RGBA. three.js's own transcoder is left out of the build.
 - **KTX2 textures are lossier than the JPEGs** (11): ETC1S, with two-channel normal maps. They
   were only compared by screenshot.
+  **Resolved** (20): measured by `dev/assets.html` (run by `e2e/assets.e2e.ts`) against the 1k
+  originals scaled to 512 px, as the GPU sees each layer. Colours come out at 29 to 39.5 dB PSNR
+  (withered grass, rocks and bark lowest, near 29 dB), normals 2.2° to 10.5° off on average
+  (withered grass the worst, 22° at the 95th percentile). Transcoded to ETC, as Chromium on
+  this Mac does, they're exactly the ETC1S. BC7 and BC1 lose up to 0.4 and 0.5 dB more, and BC7
+  beats BC1 by 0.4 dB at most (on concrete it's worse), which is why the transcoder leaves it
+  out. The test fails below 28 dB or
+  above 12° on average.
 - **The sky is prefiltered through a 256 px cube** (11). Prefiltered straight from the halved
   image, it lit the island noticeably brighter, so it's first drawn into a cube the size the
   full image gave. The match was checked by screenshot only.
+  **Measured** (20), and it isn't a match: spheres lit only by the sky come out 24% brighter
+  with the game's sky than with the full-size original prefiltered directly (8% for a mirror).
+  Prefiltered straight from the halved image it was 46%. Against the light the original's pixels
+  really cast (worked out on the CPU, six ways), the full original's prefilter is right on
+  average (0.99) and the game's 13% over. The halved file keeps exactly the original's energy;
+  three.js's prefilter just gives more light from a blurrier sun, and scaling the half-size sky
+  back up doesn't help. Left as it is: the sky light's strength per time of day was tuned by eye
+  on this sky, and matching the original would mean scaling it by about 0.8. The test keeps it
+  within 30% of the original.
 - **The loading bar is approximate** (11). It leaves out the script download (it sits at 0 until
   the scripts run), it guesses sizes that aren't known yet, and gzipped files count as done
   early, because their size is the compressed one.
+  **Resolved** (20): the build puts every file the loading screen waits for in the page with its
+  uncompressed size (the scripts, the transcoder, textures, models, sky and early sounds). A
+  small script in `index.html`, running before the modules, counts each file as it lands and
+  takes the game's reports of those still coming in. The dev server's scripts aren't listed, so
+  there the bar counts only the files.
 - **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
   production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred). The new build isn't on
   the live site until it's pushed.
 - **Skipping the loading screen brings back the flat-colour swap** (11), which then shows
   mid-game when the assets land.
+  **Resolved** (20): a picture of the last flat-coloured frame covers the view while the
+  textures go on and their shaders compile, then fades away over 0.8 s. The game goes on
+  underneath, so the view stands still for as long as the compile takes.
 - **The game's entry chunk grew to 141 kB** (13), from 120 kB, with the body posing and the
   first-person arms. The soldier model grew by 4.5 kB for the death clip.
 - **The entry chunk grew again, to 172 kB** (15), with the terrain tiles, water, ground cover,
   impostors and cascades. It all ships in the entry chunk rather than loading lazily.
+  **Resolved in part** (20): it had reached 212 kB by chunk 19. The ground cover (9 kB), the
+  impostors (3 kB) and the death cam with the replay viewer (6 kB) are chunks of their own now,
+  and the entry is 197 kB. The terrain, water and cascades stay in it.
+- **The lazy chunks mostly still load at start** (20). The ground cover and impostors are
+  wanted as soon as the island shows, so they load alongside the assets while the loading screen
+  is up; splitting them off shrinks the entry chunk but not the start. Only the death cam and
+  replay viewer (6 kB) wait, until the menu is up. If one fails to load, a replay or death cam
+  says so (or goes straight to the results) and can be tried again.
+- **The committed transcoder is a binary** (20), built with Emscripten 4.0.10 in Docker. When
+  three.js updates KTX2Loader, its calls must still match the wrapper of Basis 1.50; only the
+  browser test that loads the textures would notice. A phone GPU with PVRTC but not ETC (old
+  iPhones) now gets plain RGBA, four times the memory; the game is desktop only.
+- **The fade-in stands the view still** (20). While the textures go on and their shaders
+  compile, the picture of the last flat-coloured frame covers a game that keeps going, so a
+  player moving then sees a still frame for that long (a few hundred milliseconds here).
 - **The Buy Me a Coffee button blocks the page while it loads** (pause menu commit). Its
   script writes the button in place with `document.writeln`, so it has to be a plain blocking
   script in `index.html`. A slow buymeacoffee.com CDN holds up the rest of the page, and ad
@@ -583,6 +653,14 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   2 s and the game resumes once it's let through. Untested: headless Chrome never grants pointer
   lock, and whether a retry still counts as the click's gesture depends on the browser.
   Still untested after chunk 19: none of the three test browsers grants the lock headless.
+  **Resolved in part** (20): while it retries, the card says why ("Your browser holds the mouse
+  for a moment after Esc…", or "Taking the mouse back…" long after Esc), and if the browser
+  still refuses, "Your browser didn't give the mouse back. Click again to resume." A lock request
+  a browser never answers now counts as refused after 1 s instead of hanging. Chromium and
+  Firefox do grant the lock on a test's real click (see Code and testing), so resuming is tested
+  there, but a key pressed by a test doesn't free it the way Esc does, so Chrome's hold itself
+  still hasn't been seen by a test; the messages were checked in WebKit, which refuses every
+  lock, with the time since Esc faked.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
@@ -814,11 +892,19 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   measuring again.
 - **The asset script needs an Apple Silicon Mac** (11). It uses `sips` and `pkgutil`, and it
   downloads the arm64 build of the KTX tools unless `ktx` is on the PATH.
+  **Resolved** (20): ffmpeg resizes the textures, and the script fetches Khronos's KTX tools for
+  macOS (Apple Silicon or Intel) or Linux (x86-64 or Arm). It ran in a Linux x86-64 container
+  from a clean checkout; the models and sky came out byte for byte the same. It keeps the
+  downloaded originals in `node_modules/.cache/fetch-assets/originals` for the comparison test.
 - **The loading screen and asset pipeline have no automated tests** (11). They were checked in
   a headless browser with software and Metal rendering, by screenshot and by timing.
   **Resolved in part** (19): the browser tests check the loading screen gives way to the menu,
   offers to play in flat colours when a download hangs, and says so when one fails. The asset
   pipeline's output (KTX2 against the originals) still isn't compared by number; that's chunk 20.
+  **Resolved** (20): `e2e/assets.e2e.ts` measures the textures and the sky against the originals
+  (see Performance and loading) and checks the textures load through the new transcoder in all
+  three engines. The loading test checks the bar counts everything but a held-back file, and
+  that the textures fade in when they arrive after skipping.
 
 - **Snapshots are bigger** (13): each player carries five more fields (motion, action and its
   progress, suppressor, commander). That's fine through the Worker, but multiplayer should pack
@@ -852,6 +938,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Pointer lock is never granted in the test browsers** (19), so every test plays with the
   "Click anywhere to resume" card up, and the lock itself and resuming stay untested. Nothing in
   the tests moves or shoots with the mouse and keys; runs are ended with the dev shortcut.
+  **Corrected** (20): that was wrong for Chromium and Firefox, which grant the lock on a test's
+  real click (Play); only WebKit refuses it. A key pressed by a test doesn't free the lock, so
+  Esc can't be tested; freeing it from script and clicking the card resumes (tested).
 - **The dev shortcut is a new client message** (19): `{ t: 'dev', cmd }` ends your run, gives
   you or the nearest operator bot loot, brings that bot 8 m in front of you or has you kill it.
   Only the Worker host of a development build passes it on; a multiplayer server must drop it.
@@ -861,6 +950,25 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   next to the one kept in `e2e/bench-baseline.json` (an M3 Pro, chunk 19), but nothing fails on a
   slower frame. It runs last, alone, as the teardown of the setup project, so running a single
   engine's tests runs it too, unless `--no-deps` is given.
+- **The committed textures weren't remade by the new script** (20). The KTX2 files are still the
+  ones `sips` scaled; the script now scales with ffmpeg's Lanczos, and its textures differ a
+  little: 0.1 to 0.5 dB lower on colour, slightly better normals. The next run of the script
+  replaces them.
+- **The texture comparison mixes in the resize** (20). The originals are scaled by the
+  browser's own resize, not the one the textures were made with, so part of the measured error
+  is that difference. The comparison needs the originals in `node_modules/.cache`, so it's
+  skipped on a fresh checkout until `scripts/fetch-assets.mjs` has run.
+- **The scripts' CI job hasn't run on GitHub yet** (20). `.github/workflows/scripts.yml` runs
+  both scripts on Ubuntu when they or their lists change, and the unit tests on what they make.
+  It was run as-is in a Linux x86-64 container (about 8 minutes under emulation), not on GitHub,
+  since it isn't pushed. It downloads from Poly Haven, Freesound and poly.pizza every time, so
+  a change or a rate limit there fails it. The transcoder's build script isn't in it (it needs
+  Docker or Emscripten).
+- **A replay test failed in WebKit in full runs** (20): after scrubbing to the start, the
+  replay's time had moved on. The test's run is only a few seconds long, and with four workers
+  busy the replay could reach its end before the test pressed Space to pause it, which starts
+  an ended replay again instead. **Resolved** (20): the test pauses only if it's still playing,
+  and waits for the paused state.
 - **Soldiers are expensive to draw** (19). In the benchmark, 24 soldiers 4 to 25 m off take a
   Chromium frame from 3.1 to 10.6 ms (Firefox 7 to 16, WebKit 4 to 11). Posing them is only 2.4 ms
   of it: the rest is drawing, about 43 draw calls each with their shadows (1,113 against 86) and
@@ -978,6 +1086,12 @@ extraction stays as hard as it is.
   that links can be shared. It serves files only; there is still no game server.
 - **Existing scaffold:** the uncommitted setup and `src/shared` world generator get reused and
   reviewed in chunks 0 and 1.
+- **Loading** (20): the loading screen waits for the early sounds (your own guns and steps, and
+  the ambience) as well as the textures and models, so a run is never silent at the start. The
+  rest of the sound, the death cam and the replay viewer load behind the menu. Sounds are Opus,
+  with AAC for browsers that can't decode it; textures go through our own ETC1S-only transcoder.
+- **The sky light stays as tuned** (20): measured, it's 24% brighter than the original sky
+  would give, but the lighting was tuned by eye on it, so it wasn't scaled down to match.
 - **Testing:** Vitest for the shared simulation (determinism, movement, collision), and from
   chunk 19 Playwright for the game in the browser (`npm run test:browser`: Chromium, Firefox and
   WebKit on the Vite dev server, whose development build has the hooks the tests use).

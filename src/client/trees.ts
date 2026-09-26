@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
+import type { Impostors } from './impostors.ts';
 import { Layer } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { WIND_GLSL, wind } from './wind.ts';
@@ -10,28 +11,18 @@ import { WIND_GLSL, wind } from './wind.ts';
 // Firs: a trunk, a dark core of cones and whorls of branch cards with needles
 // drawn on them, which give the ragged outline. Trees are split into tiles;
 // near tiles draw every tree in full, swaying in the wind, and far ones hand
-// over to impostors: one card per tree facing the camera, with a picture of
-// the full tree baked at startup. Impostors turn to face the sun in the
-// shadow pass, so far trees still cast shadows.
+// over to impostors (see impostors.ts), which load lazily; until they're in,
+// every tree is drawn in full.
 
 /** Metres across a tile of trees. */
 const TILE = 100;
 /** A unit tree is this tall, matching the collider height in World.placeTrees. */
-const HEIGHT = 7;
+export const TREE_HEIGHT = 7;
+const HEIGHT = TREE_HEIGHT;
 const WHORLS = 13;
 /** A tile's middle within this of the camera draws its trees in full; beyond FAR, as impostors. The gap stops flicker. */
 const NEAR = 170;
 const FAR = 190;
-/** Half the width of the impostor card, in unit-tree metres: the widest whorl's reach. */
-const CARD_HALF = 3.2;
-/** The baked picture of a tree, in pixels. */
-const BAKE_W = 256;
-const BAKE_H = 512;
-/**
- * The card faces the sun more squarely than a real crown, which shades
- * itself, so it's darkened to match the full trees beside it.
- */
-const IMPOSTOR_SHADE = new THREE.Color(0.4, 0.4, 0.4);
 
 interface Tile {
   x: number;
@@ -46,13 +37,14 @@ export class Trees {
   readonly group = new THREE.Group();
   private readonly tiles: Tile[] = [];
   private readonly trunkMat: THREE.MeshStandardMaterial;
-  private readonly impostors: THREE.InstancedMesh;
-  /** Per tree, 1 while its tile is drawn in full and the impostor must hide. */
-  private readonly hidden: THREE.InstancedBufferAttribute;
+  private readonly world: World;
+  /** Each tree's needles' colour, for its impostor. */
+  private readonly colors: THREE.Color[];
   private readonly unit: THREE.Group;
-  private baked = false;
+  private impostors: Impostors | null = null;
 
   constructor(world: World) {
+    this.world = world;
     const trunkGeo = new THREE.CylinderGeometry(0.14, 0.3, HEIGHT - 0.8, 7).translate(0, (HEIGHT - 0.8) / 2, 0);
     const coreGeo = core(mulberry32(world.seed + 19));
     const cardGeo = branches(mulberry32(world.seed + 21));
@@ -119,20 +111,7 @@ export class Trees {
     unitCards.setColorAt(0, white);
     this.unit.add(new THREE.Mesh(trunkGeo, this.trunkMat), unitCore, unitCards);
 
-    // Impostors: a card per tree, standing on its base, tinted like the tree's needles.
-    this.hidden = new THREE.InstancedBufferAttribute(new Float32Array(world.trees.length).fill(1), 1);
-    const card = new THREE.PlaneGeometry(CARD_HALF * 2, HEIGHT).translate(0, HEIGHT / 2, 0);
-    card.setAttribute('hidden', this.hidden);
-    this.impostors = new THREE.InstancedMesh(card, new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 1, color: IMPOSTOR_SHADE }), world.trees.length);
-    world.trees.forEach((t, i) => {
-      this.impostors.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.y - 0.2, t.z), q.identity(), new THREE.Vector3(t.s, t.s, t.s)));
-      this.impostors.setColorAt(i, cardColor(looks[i]));
-    });
-    this.impostors.frustumCulled = false;
-    this.impostors.castShadow = true;
-    this.impostors.receiveShadow = true;
-    this.impostors.visible = false;
-    this.group.add(this.impostors);
+    this.colors = looks.map((look) => cardColor(look).clone());
   }
 
   applyAssets(assets: Assets): void {
@@ -140,48 +119,19 @@ export class Trees {
     for (const t of this.tiles) t.meshes[0].material = bark;
   }
 
-  /**
-   * Bake the impostors' picture of a tree from the side, lit evenly so the
-   * scene's own lights can shade the card. Until this runs every tree is
-   * drawn in full.
-   */
-  bake(renderer: THREE.WebGLRenderer): void {
-    const target = new THREE.WebGLRenderTarget(BAKE_W, BAKE_H, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
-    const scene = new THREE.Scene();
-    // An ambient light of π gives back each surface's own colour.
-    scene.add(this.unit, new THREE.AmbientLight(0xffffff, Math.PI));
-    const camera = new THREE.OrthographicCamera(-CARD_HALF, CARD_HALF, HEIGHT, 0, -20, 20);
-    camera.position.set(0, 0, 10);
-    camera.lookAt(0, 0, 0);
-    const clear = renderer.getClearColor(new THREE.Color());
-    const alpha = renderer.getClearAlpha();
-    const was = renderer.getRenderTarget();
-    const autoClear = renderer.autoClear;
-    renderer.setRenderTarget(target);
-    renderer.setClearColor(0x2c3a22, 0);
-    renderer.autoClear = true;
-    renderer.render(scene, camera);
-    renderer.setRenderTarget(was);
-    renderer.setClearColor(clear, alpha);
-    renderer.autoClear = autoClear;
-    scene.remove(this.unit);
-
-    const material = this.impostors.material as THREE.MeshStandardMaterial;
-    material.map = target.texture;
-    material.onBeforeCompile = (shader) => billboard(shader, true);
-    material.customProgramCacheKey = () => 'tree-impostor';
-    material.needsUpdate = true;
-    const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: target.texture, alphaTest: 0.5 });
-    depth.onBeforeCompile = (shader) => billboard(shader, false);
-    depth.customProgramCacheKey = () => 'tree-impostor-depth';
-    this.impostors.customDepthMaterial = depth;
-    this.impostors.visible = true;
-    this.baked = true;
+  /** Load the impostors and bake their picture of a tree. */
+  async bake(renderer: THREE.WebGLRenderer): Promise<void> {
+    const { Impostors } = await import('./impostors.ts');
+    const impostors = new Impostors(this.world, this.colors);
+    impostors.bake(renderer, this.unit);
+    this.group.add(impostors.mesh);
+    this.impostors = impostors;
   }
 
   /** Draw near tiles in full and far ones as impostors, as seen from `eye`. */
   update(eye: THREE.Vector3): void {
-    if (!this.baked) return;
+    const impostors = this.impostors;
+    if (!impostors) return;
     let changed = false;
     for (const t of this.tiles) {
       const d = Math.hypot(t.x - eye.x, t.z - eye.z);
@@ -190,9 +140,9 @@ export class Trees {
       t.near = near;
       changed = true;
       for (const mesh of t.meshes) mesh.visible = near;
-      for (const id of t.ids) this.hidden.setX(id, near ? 1 : 0);
+      for (const id of t.ids) impostors.hidden.setX(id, near ? 1 : 0);
     }
-    if (changed) this.hidden.needsUpdate = true;
+    if (changed) impostors.hidden.needsUpdate = true;
   }
 }
 
@@ -217,46 +167,6 @@ function swaying(material: THREE.MeshStandardMaterial): THREE.MeshStandardMateri
   };
   material.customProgramCacheKey = () => `tree-sway-${material.map ? 'cards' : 'core'}`;
   return material;
-}
-
-/**
- * Turns an instanced card on its base to face the camera round the vertical
- * (the sun's shadow camera, in the shadow pass), hiding it while its tile is
- * drawn in full. With `lit`, its normal leans toward the camera and up, so the
- * sun lights the crown as one mass.
- */
-function billboard(shader: THREE.WebGLProgramParametersWithUniforms, lit: boolean): void {
-  const edits: [string, string][] = [
-    ['#include <common>', /* glsl */ `
-      #include <common>
-      attribute float hidden;
-      // Level from the card's base toward the eye.
-      vec3 cardFacing(vec3 base) {
-        vec3 e = cameraPosition - base;
-        e.y = 0.0;
-        return length(e) > 1e-4 ? normalize(e) : vec3(0.0, 0.0, 1.0);
-      }`],
-    ['#include <begin_vertex>', /* glsl */ `
-      float cardScale = length(instanceMatrix[0].xyz) * (1.0 - hidden);
-      vec3 cardBase = instanceMatrix[3].xyz;
-      vec3 toEye = cardFacing(cardBase);
-      vec3 cardRight = vec3(toEye.z, 0.0, -toEye.x);
-      vec3 transformed = cardBase + (cardRight * position.x + vec3(0.0, position.y, 0.0)) * cardScale;`],
-    ['#include <project_vertex>', /* glsl */ `
-      vec4 mvPosition = viewMatrix * vec4(transformed, 1.0);
-      gl_Position = projectionMatrix * mvPosition;`],
-  ];
-  if (lit) {
-    edits.push(
-      ['#include <defaultnormal_vertex>', /* glsl */ `
-        vec3 transformedNormal = normalize((viewMatrix * vec4(normalize(cardFacing(instanceMatrix[3].xyz) * 0.6 + vec3(0.0, 1.0, 0.0)), 0.0)).xyz);`],
-      ['#include <worldpos_vertex>', 'vec4 worldPosition = vec4(transformed, 1.0);'],
-    );
-  }
-  for (const [anchor, code] of edits) {
-    if (!shader.vertexShader.includes(anchor)) throw new Error(`Shader anchor ${anchor} is missing`);
-    shader.vertexShader = shader.vertexShader.replace(anchor, code);
-  }
 }
 
 /** Dark cones filling the middle of the crown, so it doesn't look hollow between the cards. */

@@ -38,7 +38,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.autoClear = false;
 document.body.append(renderer.domElement);
-view.prepare(renderer);
+await view.prepare(renderer);
 
 // On the ground by the quarry, looking into it.
 const post = world.outposts[2];

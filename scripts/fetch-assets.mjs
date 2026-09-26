@@ -1,12 +1,15 @@
 // Downloads the game's CC0 assets and packs them for the web into
 // public/assets. The results are committed, so this only needs running again
-// to change them. Needs macOS: sips resizes the textures, and the KTX tools
-// come from Khronos's macOS package if `ktx` isn't on the PATH.
+// to change them. Runs on macOS (Apple Silicon or Intel) and Linux (x86-64 or
+// Arm): ffmpeg resizes the textures (see tools.mjs), and the KTX tools come
+// from Khronos's release for the platform if `ktx` isn't on the PATH. The
+// downloaded originals stay in node_modules/.cache/fetch-assets/originals,
+// for e2e/assets.e2e.ts to measure the packed ones against.
 //
 //   node scripts/fetch-assets.mjs
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
@@ -14,9 +17,11 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { meshopt, prune, resample } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 import { LAYERS } from '../src/shared/layers.ts';
+import { ffmpeg, get } from './tools.mjs';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
 const CACHE = new URL('../node_modules/.cache/fetch-assets/', import.meta.url).pathname;
+const ORIGINALS = join(CACHE, 'originals');
 const SIZE = 512;
 const HDRI = 'kloofendal_48d_partly_cloudy_puresky';
 /** Quaternius's public-domain SWAT operator, from poly.pizza, and the clips the game plays. */
@@ -28,12 +33,19 @@ const GUNS = {
   pistol: 'https://static.poly.pizza/7a31b522-5632-41d9-8274-031795af5d8d.glb',
   bolt: 'https://static.poly.pizza/f03e21b7-e3b7-49fd-b47d-d1908649fcee.glb',
 };
-const KTX_PKG = 'https://github.com/KhronosGroup/KTX-Software/releases/download/v4.4.2/KTX-Software-4.4.2-Darwin-arm64.pkg';
+const KTX_VERSION = '4.4.2';
+/** Khronos's package of the KTX tools for each platform they're fetched on. */
+const KTX_BUILDS = {
+  'darwin-arm64': 'Darwin-arm64.pkg',
+  'darwin-x64': 'Darwin-x86_64.pkg',
+  'linux-arm64': 'Linux-arm64.tar.bz2',
+  'linux-x64': 'Linux-x86_64.tar.bz2',
+};
 
-async function get(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
-  return Buffer.from(await res.arrayBuffer());
+/** A download kept in the cache, fetched only the first time. */
+async function cached(url, path) {
+  if (!existsSync(path)) writeFileSync(path, await get(url));
+  return path;
 }
 
 /** The `ktx` tool and the environment to run it in. */
@@ -42,25 +54,37 @@ async function ktxTool() {
     execFileSync('ktx', ['--version'], { stdio: 'ignore' });
     return { bin: 'ktx', env: process.env };
   } catch {
-    // Not installed: unpack Khronos's package into the cache, no install needed.
+    // Not installed: unpack Khronos's release into the cache, no install needed.
   }
-  const dir = join(CACHE, 'ktx');
+  const build = KTX_BUILDS[`${process.platform}-${process.arch}`];
+  if (!build) throw new Error(`No KTX tools for ${process.platform}-${process.arch}; put \`ktx\` on the PATH`);
+  const dir = join(CACHE, `ktx-${KTX_VERSION}-${build}`);
   if (!existsSync(join(dir, 'ktx'))) {
     mkdirSync(CACHE, { recursive: true });
-    const pkg = join(CACHE, 'ktx.pkg');
-    writeFileSync(pkg, await get(KTX_PKG));
-    const expanded = join(CACHE, 'ktx-pkg');
+    const url = `https://github.com/KhronosGroup/KTX-Software/releases/download/v${KTX_VERSION}/KTX-Software-${KTX_VERSION}-${build}`;
+    const file = join(CACHE, build);
+    writeFileSync(file, await get(url));
+    const expanded = join(CACHE, 'ktx-unpacked');
     rmSync(expanded, { recursive: true, force: true });
-    execFileSync('pkgutil', ['--expand-full', pkg, expanded]);
+    mkdirSync(expanded, { recursive: true });
+    const roots = [];
+    if (build.endsWith('.pkg')) {
+      execFileSync('pkgutil', ['--expand-full', file, join(expanded, 'pkg')]);
+      for (const part of readdirSync(join(expanded, 'pkg'))) roots.push(join(expanded, 'pkg', part, 'Payload/usr/local'));
+    } else {
+      execFileSync('tar', ['-xjf', file, '-C', expanded]);
+      for (const part of readdirSync(expanded)) roots.push(join(expanded, part));
+    }
     mkdirSync(dir, { recursive: true });
-    for (const part of readdirSync(expanded)) {
+    for (const root of roots) {
       for (const sub of ['bin', 'lib']) {
-        const from = join(expanded, part, 'Payload/usr/local', sub);
+        const from = join(root, sub);
         if (existsSync(from)) execFileSync('cp', ['-R', `${from}/.`, dir]);
       }
     }
+    rmSync(expanded, { recursive: true, force: true });
   }
-  return { bin: join(dir, 'ktx'), env: { ...process.env, DYLD_LIBRARY_PATH: dir } };
+  return { bin: join(dir, 'ktx'), env: { ...process.env, DYLD_LIBRARY_PATH: dir, LD_LIBRARY_PATH: dir } };
 }
 
 // ------------------------------------------------------------ textures
@@ -70,21 +94,22 @@ async function ktxTool() {
 // compressed format the GPU has. Images are flipped so v runs up them.
 const ktx = await ktxTool();
 const work = mkdtempSync(join(tmpdir(), 'fetch-assets-'));
+mkdirSync(ORIGINALS, { recursive: true });
 const pngs = { color: [], normal: [] };
 for (const { polyHaven } of LAYERS) {
   const files = await (await fetch(`https://api.polyhaven.com/files/${polyHaven}`)).json();
   for (const [map, kind] of [['Diffuse', 'color'], ['nor_gl', 'normal']]) {
-    const jpg = join(work, `${polyHaven}_${kind}.jpg`);
+    const jpg = await cached(files[map]['1k'].jpg.url, join(ORIGINALS, `${polyHaven}_${kind}.jpg`));
     const png = join(work, `${polyHaven}_${kind}.png`);
-    writeFileSync(jpg, await get(files[map]['1k'].jpg.url));
-    execFileSync('sips', ['-Z', String(SIZE), '-f', 'vertical', '-s', 'format', 'png', jpg, '--out', png], { stdio: 'ignore' });
+    ffmpeg(['-i', jpg, '-vf', `scale=${SIZE}:${SIZE}:force_original_aspect_ratio=decrease:flags=lanczos,vflip`, png]);
     pngs[kind].push(png);
   }
   console.log(polyHaven);
 }
 mkdirSync(join(OUT, 'textures'), { recursive: true });
-const common = ['create', '--layers', String(LAYERS.length), '--generate-mipmap', '--encode', 'basis-lz', '--clevel', '2'];
-execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_SRGB', '--qlevel', '200',
+// The colour space is stated, since ffmpeg's PNGs carry it only when their JPEG did.
+const common = ['create', '--layers', String(LAYERS.length), '--generate-mipmap', '--encode', 'basis-lz', '--clevel', '2', '--assign-primaries', 'bt709'];
+execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_SRGB', '--assign-tf', 'srgb', '--qlevel', '200',
   ...pngs.color, join(OUT, 'textures/color.ktx2')], { env: ktx.env, stdio: 'inherit' });
 // Two-channel normals (X in RGB, Y in alpha); the shader rebuilds Z.
 execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_UNORM', '--assign-tf', 'linear', '--normal-mode', '--qlevel', '192',
@@ -95,7 +120,8 @@ rmSync(work, { recursive: true });
 
 // Only used for image-based lighting, so half the smallest size Poly Haven has is plenty.
 const hdri = await (await fetch(`https://api.polyhaven.com/files/${HDRI}`)).json();
-writeFileSync(join(OUT, 'sky.hdr'), halveHdr(await get(hdri.hdri['1k'].hdr.url)));
+const sky1k = await cached(hdri.hdri['1k'].hdr.url, join(ORIGINALS, 'sky.hdr'));
+writeFileSync(join(OUT, 'sky.hdr'), halveHdr(readFileSync(sky1k)));
 console.log('sky.hdr');
 
 /** A Radiance .hdr at half the width and height, averaging each 2×2 block. */

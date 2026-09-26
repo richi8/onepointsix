@@ -32,6 +32,50 @@
       <p>Loading the island…</p>
       <button type="button" id="loading-skip" hidden>Play now in flat colours</button>
     </div>
+    <script>
+      // The loading bar, before any module runs: every file the game waits
+      // for, by its uncompressed size (#sizes, from the build). Files count as
+      // they land; the game reports those still coming in (src/client/loading.ts).
+      (() => {
+        const sizes = JSON.parse(document.getElementById('sizes')?.textContent || '{"files":{},"alternatives":{}}');
+        const bar = document.querySelector('#loading .bar div');
+        const href = (url) => new URL(url, document.baseURI).href;
+        const want = new Map(Object.entries(sizes.files).map(([f, n]) => [href(f), n]));
+        const alternatives = new Map(Object.entries(sizes.alternatives).map(([f, n]) => [href(f), n]));
+        const got = new Map();
+        let shown = 0;
+        const draw = () => {
+          let total = 0;
+          let done = 0;
+          for (const [url, n] of want) {
+            total += n;
+            done += Math.min(got.get(url) ?? 0, n);
+          }
+          // Never backward, even when a file is swapped for a bigger one.
+          if (total) shown = Math.max(shown, done / total);
+          bar.style.width = `${(shown * 100).toFixed(1)}%`;
+        };
+        window.loading = {
+          progress(url, bytes) {
+            const u = href(url);
+            if (!want.has(u)) return;
+            got.set(u, Math.max(got.get(u) ?? 0, bytes));
+            draw();
+          },
+          swap(from, to) {
+            const f = href(from);
+            const t = href(to);
+            if (!want.has(f) || !alternatives.has(t)) return;
+            want.delete(f);
+            want.set(t, alternatives.get(t));
+            draw();
+          },
+        };
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) window.loading.progress(e.name, Infinity);
+        }).observe({ type: 'resource', buffered: true });
+      })();
+    </script>
     <div class="menu" id="menu">
       <h1>onepointsix</h1>
       <div class="island">
