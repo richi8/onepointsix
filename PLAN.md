@@ -505,6 +505,12 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The first-person arms are about twice as long in the upper arm** (21). Only the forearms and
   hands show, so it can't be seen, but the elbows sit where no real elbow would. Watched only in
   still pictures.
+  **Improved** (21, follow-up): aiming the pistol, the arms, long enough for the rifle's fore-end,
+  folded up with their elbows right in front of the eye, and the left hand held the grip like the
+  right one with its thumb sticking out sideways (seen in play). Now a shoulder slides back behind
+  the eye whenever its hand is near, until the arm is nearly straight (90% of its length), and on
+  the pistol the left hand wraps round the right hand's fingers with its thumb forward along the
+  frame, in first and third person. A test picture of the aimed pistol was added.
 - **The soldier download grew by 78 kB** (21), 33 kB gzipped, to 599 kB: the new clips' keys
   aren't compressed (meshopt only quantizes the meshes), though they're sampled at 20 per second
   and resampling drops the keys a straight line would give.

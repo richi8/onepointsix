@@ -27,6 +27,8 @@ const RIGHT_SHOULDER = new THREE.Vector3(0.19, -0.3, -0.02);
 const LEFT_SHOULDER = new THREE.Vector3(-0.12, -0.32, -0.22);
 /** How much the forearm is lengthened; the upper arm takes the rest of the reach. */
 const FOREARM_LENGTH = 1.3;
+/** How straight an arm is at least, as its reach over its length: a near hand sends the shoulder back. */
+const ARM_STRAIGHT = 0.9;
 /** Where the left hand goes for a magazine or a round, out of sight below. */
 const POUCH = new THREE.Vector3(-0.1, -0.75, -0.3);
 /** Only the parts of the soldier weighted to these bones are kept for the arms. */
@@ -288,8 +290,6 @@ export class ViewModel {
   private poseArms(a: Arms, m: Model, s: HeldState, cycle: number): void {
     for (const [bone, q] of a.rest) bone.quaternion.copy(q);
     this.root.updateMatrixWorld(true);
-    placeWorld(a.bones.rArm, this.root.localToWorld(this.tmp.copy(RIGHT_SHOULDER)));
-    placeWorld(a.bones.lArm, this.root.localToWorld(this.tmp.copy(LEFT_SHOULDER)));
     const g = m.group;
     const right = V_RIGHT.set(1, 0, 0).transformDirection(g.matrixWorld);
     const up = V_UP.set(0, 1, 0).transformDirection(g.matrixWorld);
@@ -329,6 +329,7 @@ export class ViewModel {
       thumb.lerp(forward, rightAway);
     }
     wristFor('R', rightAt, along, thumb, wrist);
+    this.shoulder(a.bones.rArm, RIGHT_SHOULDER, wrist, a);
     pole.set(0.5, -0.8, 0.3).add(wrist);
     reach(b.rArm, b.rForeArm, b.rHand, wrist, pole, a.arm, a.forearm);
     orientHand(a.hands[1], along, thumb);
@@ -338,8 +339,9 @@ export class ViewModel {
     along = new THREE.Vector3().copy(right).addScaledVector(forward, 0.9);
     thumb = new THREE.Vector3().copy(forward).addScaledVector(right, -0.5).addScaledVector(up, 0.4);
     if (pistol) {
-      along = new THREE.Vector3().copy(forward).addScaledVector(up, -0.3);
-      thumb = new THREE.Vector3().copy(up).addScaledVector(forward, 0.5);
+      // Wrapped round the right hand's fingers from the left, the thumb forward along the frame.
+      along = new THREE.Vector3().copy(right).addScaledVector(up, -0.35).addScaledVector(forward, 0.2);
+      thumb = new THREE.Vector3().copy(forward).addScaledVector(up, 0.3);
     }
     a.nade.visible = false;
     let closed = s.reload > 0 ? 0.8 : pistol ? 0.9 : 0.8;
@@ -358,6 +360,7 @@ export class ViewModel {
       a.nade.visible = t < 0.3;
     }
     wristFor('L', target, along, thumb, wrist);
+    this.shoulder(a.bones.lArm, LEFT_SHOULDER, wrist, a);
     pole.set(-0.6, -0.8, 0.3).add(wrist);
     reach(b.lArm, b.lForeArm, b.lHand, wrist, pole, a.arm, a.forearm);
     orientHand(a.hands[0], along, thumb);
@@ -379,6 +382,23 @@ export class ViewModel {
       if (carried === a.nade) at.addScaledVector(V_FORWARD.crossVectors(along, thumb).normalize(), 0.05);
       carried.position.copy(this.root.worldToLocal(at));
     }
+  }
+
+  /**
+   * Put a shoulder where it sits, in view space, or further back if the hand
+   * is so near that the long arm would fold up in front of the eye: back
+   * until the arm is nearly straight. Behind the eye it can't be seen.
+   */
+  private shoulder(bone: THREE.Object3D, at: THREE.Vector3, wrist: THREE.Vector3, a: Arms): void {
+    const hand = this.root.worldToLocal(V_REACH.copy(wrist));
+    const want = (a.arm + a.forearm) * ARM_STRAIGHT;
+    // Back along +z by t, until |hand - (at + t z)| = want.
+    const dx = hand.x - at.x;
+    const dy = hand.y - at.y;
+    const dz = hand.z - at.z;
+    const flat = want * want - dx * dx - dy * dy;
+    const t = flat > 0 ? Math.max(dz + Math.sqrt(flat), 0) : 0;
+    placeWorld(bone, this.root.localToWorld(this.tmp.set(at.x, at.y, at.z + t)));
   }
 
   /** Hide the gun, as when looking through a scope. */
@@ -542,6 +562,7 @@ const V_RIGHT = new THREE.Vector3();
 const V_UP = new THREE.Vector3();
 const V_FORWARD = new THREE.Vector3();
 const V_BACK = new THREE.Vector3();
+const V_REACH = new THREE.Vector3();
 
 /**
  * A copy of a soldier mesh's geometry with only the triangles that move

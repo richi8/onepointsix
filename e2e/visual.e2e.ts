@@ -49,6 +49,7 @@ const POSES: Record<string, string> = {
   firstperson: 'view=fp&weapon=0',
   'firstperson-reload': 'view=fp&weapon=1&act=reload&t=0.5',
   'firstperson-bolt': 'view=fp&weapon=2&act=reload&t=0.45',
+  'firstperson-pistol-aimed': 'view=fp&weapon=1&aim=1',
   reloads: 'show=reload:0.58:0,reload:0.5:1,reload:0.36:2,cycle:0.6&view=front&eye=2.4,1.35,2.2&at=2.4,1.15,0',
   reactions: 'show=stand,hit:0.2,hithead:0.2,shoot:0.08,land:0.12,land:0.35&view=side&d=11',
 };

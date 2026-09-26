@@ -18,7 +18,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'They flinch when hit, snapping the head back from a headshot, and every shot kicks the gun and shoulders.',
       'Each gun reloads its own way, in your hands and in theirs: the rifle swaps its magazine, the pistol drops a small one, takes a fresh one from the belt and racks the slide, and the bolt-action opens its bolt and thumbs rounds in one by one. The bolt-action’s bolt is also worked after every shot.',
       'Hands grip each gun where its grip and fore-end really are, and the pistol is a little bigger in the hand.',
-      'Your arms in first person are no longer drawn oversized to reach the gun: they are the soldier’s own, just long enough.',
+      'Your arms in first person are no longer drawn oversized to reach the gun: they are the soldier’s own, just long enough. Aiming the pistol, both arms reach straight out to it, and the left hand wraps round the right.',
       'Grenades look like grenades, in the hand and in the air.',
       'A crouching or leaning soldier’s head is now exactly where it can be hit. Distant soldiers move more smoothly.',
     ],

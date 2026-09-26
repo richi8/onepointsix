@@ -974,15 +974,16 @@ export class Bodies {
     if (rightAway > 0) curl(s.hands[1], lerp(0.9, 0.6, rightAway));
 
     // The left hand: palm up under the fore-end, a little below its middle, fingers angled forward round its
-    // far side and the thumb along the near side; or wrapped round the right hand on a pistol.
+    // far side and the thumb along the near side.
     let target = leftAt;
     let closed = 0.8;
     along = V_TMP3.copy(gunRight).addScaledVector(gunForward, 0.9);
     thumb = V_TMP4.copy(gunForward).addScaledVector(gunRight, -0.5).addScaledVector(gunUp, 0.4);
     if (pistol) {
+      // Wrapped round the right hand's fingers from the left, the thumb forward along the frame.
       closed = 0.9;
-      along = V_TMP3.copy(gunForward).addScaledVector(gunUp, -0.3);
-      thumb = V_TMP4.copy(gunUp).addScaledVector(gunForward, 0.5);
+      along = V_TMP3.copy(gunRight).addScaledVector(gunUp, -0.35).addScaledVector(gunForward, 0.2);
+      thumb = V_TMP4.copy(gunForward).addScaledVector(gunUp, 0.3);
     }
     if (p.act === 'throw') {
       // Back over the shoulder, over the top and down in front, then back to the gun.
