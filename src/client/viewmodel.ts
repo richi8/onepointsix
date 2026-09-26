@@ -6,7 +6,7 @@ import { BOLT } from '../shared/weapons.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
 import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
-import { type Bones, curl, findBones, findHand, type Hand, limitBend, orientHand, placeWorld, reach, span, wristFor } from './rig.ts';
+import { type Bones, curl, findBones, findHand, type Hand, limitBend, orientHand, placeWorld, reach, span, untwist, wristFor } from './rig.ts';
 
 // The weapon in your hands. It is drawn in its own scene after the world, over
 // a cleared depth buffer, so it never clips into walls. Simple shapes stand in
@@ -29,6 +29,8 @@ const LEFT_SHOULDER = new THREE.Vector3(-0.12, -0.32, -0.22);
 const FOREARM_LENGTH = 1.3;
 /** How far a wrist bends from its forearm's line at most, in radians, before its skin folds up. */
 const WRIST_BEND = 0.7;
+/** How far the left wrist twists about its forearm at most, aiming the pistol, before its skin wrings. */
+const WRIST_TWIST = 0.4;
 /** How straight an arm is at least, as its reach over its length: a near hand sends the shoulder back. */
 const ARM_STRAIGHT = 0.9;
 /** Where the left hand goes for a magazine or a round, out of sight below. */
@@ -370,6 +372,8 @@ export class ViewModel {
     pole.set(-0.6, -0.8, 0.3).add(wrist);
     reach(b.lArm, b.lForeArm, b.lHand, wrist, pole, a.arm, a.forearm);
     orientHand(a.hands[0], along, thumb);
+    // Wrapped round the pistol the left hand is turned half over; the forearm turns with it.
+    if (pistol) untwist(a.hands[0], lerp(Math.PI, WRIST_TWIST, s.aim));
     curl(a.hands[0], closed);
 
     // Whatever the left hand carries sits in its fingers.

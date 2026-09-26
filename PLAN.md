@@ -520,6 +520,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   the grip. The limit eases in with the aim. From the hip, and for the other guns, nothing changed:
   moving the hip stance out and limiting every wrist too looked worse (the user preferred the
   previous hip view). Third person has no such limit.
+  Still wrong: the aimed pistol's left wrist was twisted 142° about its forearm (the hand is turned
+  half over to wrap the right), so its skin wrung into a thin strip. While aiming the pistol the left
+  forearm now rolls with the hand, leaving the wrist at most 23° of twist; the hand stays exactly
+  where it was. The right hand (46°) is left as it was.
 - **The soldier download grew by 78 kB** (21), 33 kB gzipped, to 599 kB: the new clips' keys
   aren't compressed (meshopt only quantizes the meshes), though they're sampled at 20 per second
   and resampling drops the keys a straight line would give.

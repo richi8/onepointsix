@@ -126,6 +126,27 @@ export function limitBend(along: THREE.Vector3, thumb: THREE.Vector3, arm: THREE
   thumb.applyQuaternion(Q_E);
 }
 
+/**
+ * Roll the forearm with the hand, as a real one turns, so the wrist twists
+ * no more than `maxTwist` radians about the forearm: twisted further, the skin
+ * there wrings into a thin strip. The hand stays where it is, turned the same.
+ */
+export function untwist(hand: Hand, maxTwist: number): void {
+  const w = hand.wrist;
+  const axis = V_A.copy(w.position).normalize();
+  const q = w.quaternion;
+  const along = axis.x * q.x + axis.y * q.y + axis.z * q.z;
+  const twist = 2 * Math.atan2(along, q.w);
+  const angle = Math.atan2(Math.sin(twist), Math.cos(twist));
+  const move = Math.sign(angle) * Math.max(Math.abs(angle) - maxTwist, 0);
+  if (move === 0) return;
+  // The wrist sits on the forearm's axis, so rolling the forearm about it leaves the wrist in place.
+  Q_D.setFromAxisAngle(axis, move);
+  w.parent!.quaternion.multiply(Q_D);
+  q.premultiply(Q_D.invert());
+  w.parent!.updateMatrixWorld(true);
+}
+
 /** How far the middle of the palm is from the wrist, along the fingers and out of the palm. */
 const PALM_LENGTH = 0.07 * HAND_SCALE;
 const PALM_DEPTH = 0.035 * HAND_SCALE;
