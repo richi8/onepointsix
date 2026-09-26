@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { Building } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { LAYERS } from '../shared/layers.ts';
+import { addIndoor } from './indoorlight.ts';
 
 // PBR surfaces textured in world space, so nothing needs UVs: the island's
 // terrain blends five ground layers painted per vertex, and props, rocks and
@@ -10,29 +10,6 @@ import { LAYERS } from '../shared/layers.ts';
 
 const LAYER_SCALE = LAYERS.map((l) => l.scale);
 const LAYER_TINT = LAYERS.map(({ tint: [r, g, b] }) => new THREE.Vector3(r, g, b));
-/** Most buildings a material dims the inside of. */
-const MAX_ROOMS = 8;
-/** Share of the sky's light that reaches inside a building. */
-const INDOOR_LIGHT = 0.3;
-
-/**
- * The insides of the buildings: each one's floor plan inside its walls (min x,
- * min z, max x, max z) and its floor and roof heights. Shared by every material
- * that dims indoors; set once the world is known.
- */
-const rooms = {
-  plans: { value: Array.from({ length: MAX_ROOMS }, () => new THREE.Vector4(0, 0, -1, -1)) },
-  heights: { value: Array.from({ length: MAX_ROOMS }, () => new THREE.Vector2()) },
-};
-
-/** Where the buildings are, for materials made with `indoor`. Walls are `wall` thick. */
-export function setRooms(buildings: readonly Building[], wall: number): void {
-  buildings.slice(0, MAX_ROOMS).forEach((b, i) => {
-    rooms.plans.value[i].set(b.minX + wall, b.minZ + wall, b.maxX - wall, b.maxZ - wall);
-    rooms.heights.value[i].set(b.floor, b.roof);
-  });
-}
-
 export interface SurfaceOptions {
   /** Dim the sky's light inside buildings, which it would otherwise reach through the roof. */
   indoor?: boolean;
@@ -57,8 +34,6 @@ export function surfaceMaterial(
   const material = new THREE.MeshStandardMaterial(params);
   const { indoor = false, local = false } = options;
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.surfRooms = rooms.plans;
-    shader.uniforms.surfRoomHeights = rooms.heights;
     shader.uniforms.surfAlbedo = { value: assets.albedo };
     shader.uniforms.surfNormal = { value: assets.normal };
     shader.uniforms.surfScale = { value: LAYER_SCALE };
@@ -72,7 +47,6 @@ export function surfaceMaterial(
 
         varying vec3 vSurfPos;
         varying vec3 vSurfNormal;
-        varying vec3 vSurfWorld;
         ${local ? 'varying mat3 vSurfFrame;' : ''}
         ${terrain ? 'attribute vec4 splatA; attribute float splatB; varying vec4 vSplatA; varying float vSplatB;' : ''}
         ${mapping.kind === 'instanced' ? 'attribute float layer; varying float vSurfLayer;' : ''}`],
@@ -84,8 +58,7 @@ export function surfaceMaterial(
             p = instanceMatrix * p;
             n = mat3(instanceMatrix) * n;
           #endif
-          vSurfWorld = (modelMatrix * p).xyz;
-          vSurfPos = vSurfWorld;
+          vSurfPos = (modelMatrix * p).xyz;
           vSurfNormal = normalize(mat3(modelMatrix) * n);
           ${local ? `
           #ifdef USE_INSTANCING
@@ -107,11 +80,8 @@ export function surfaceMaterial(
         uniform float surfScale[${LAYER_SCALE.length}];
         uniform vec3 surfTint[${LAYER_SCALE.length}];
         uniform float surfBump;
-        uniform vec4 surfRooms[${MAX_ROOMS}];
-        uniform vec2 surfRoomHeights[${MAX_ROOMS}];
         varying vec3 vSurfPos;
         varying vec3 vSurfNormal;
-        varying vec3 vSurfWorld;
         ${local ? 'varying mat3 vSurfFrame;' : ''}
         ${terrain ? 'varying vec4 vSplatA; varying float vSplatB;' : ''}
         ${mapping.kind === 'instanced' ? 'varying float vSurfLayer;' : ''}
@@ -126,13 +96,8 @@ export function surfaceMaterial(
       ['#include <normal_fragment_maps>', /* glsl */ `
         ${local ? 'surfN = vSurfFrame * surfN;' : ''}
         normal = normalize((viewMatrix * vec4(normalize(surfN), 0.0)).xyz);`],
-      ...(indoor ? [['#include <lights_fragment_end>', /* glsl */ `
-        {
-          float sky = indoorSky(vSurfWorld);
-          reflectedLight.indirectDiffuse *= sky;
-          reflectedLight.indirectSpecular *= sky;
-        }`] as [string, string]] : []),
     ]);
+    if (indoor) addIndoor(shader);
   };
   // Every variant compiles its own program.
   material.customProgramCacheKey = () =>
@@ -153,19 +118,6 @@ function patch(source: string, edits: [anchor: string, code: string, replace?: b
 }
 
 const SURFACE_GLSL = /* glsl */ `
-  // How much of the sky's light reaches p: less inside a building, below its
-  // roof and inside the inner faces of its walls.
-  float indoorSky(vec3 p) {
-    float sky = 1.0;
-    for (int i = 0; i < ${MAX_ROOMS}; i++) {
-      vec4 r = surfRooms[i];
-      vec2 h = surfRoomHeights[i];
-      float inside = min(min(p.x - r.x, r.z - p.x), min(p.z - r.y, r.w - p.z));
-      if (inside > -0.02 && p.y < h.y + 0.01 && p.y > h.x - 1.0) sky = ${INDOOR_LIGHT.toFixed(2)};
-    }
-    return sky;
-  }
-
   // A tangent-space normal from the map, tilted more or less. The map holds
   // only X and Y (in RGB and alpha), so Z is rebuilt.
   vec3 surfTangent(vec2 uv, float layer) {

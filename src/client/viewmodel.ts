@@ -119,6 +119,9 @@ export class ViewModel {
   /** The spill of your own flashlight on the gun, always there so switching it never recompiles. */
   private readonly torch = new THREE.PointLight(0xfff2de, 0, 3, 2);
   private sky = 1;
+  private sunShare = 0;
+  /** Share of the sky's light where you stand, 1 outdoors. */
+  private indoors = 1;
 
   constructor() {
     this.scene.add(this.hemi);
@@ -141,13 +144,24 @@ export class ViewModel {
    * day's light, `sun` the sun's or moon's colour and `sunShare` its share.
    */
   setLight(ambient: number, sun: THREE.Color, sunShare: number, sky: THREE.Color, ground: THREE.Color): void {
-    this.hemi.intensity = 1.4 * ambient;
     this.hemi.color.copy(sky);
     this.hemi.groundColor.copy(ground);
     this.sun.color.copy(sun);
-    this.sun.intensity = 2 * sunShare;
+    this.sunShare = sunShare;
     this.sky = ambient;
-    this.scene.environmentIntensity = 0.8 * ambient;
+    this.shade(this.indoors);
+  }
+
+  /**
+   * How much of the sky's light reaches where you stand, from 1 outdoors
+   * down to a dim room's: the gun is lit that much less. The sun is too, as
+   * walls and a roof mostly keep it off.
+   */
+  shade(share: number): void {
+    this.indoors = share;
+    this.hemi.intensity = 1.4 * this.sky * share;
+    this.sun.intensity = 2 * this.sunShare * share;
+    this.scene.environmentIntensity = 0.8 * this.sky * share;
   }
 
   /** Your flashlight is on, lighting the gun from the side. */
@@ -158,7 +172,7 @@ export class ViewModel {
   /** Swap the stand-in shapes for real guns, in WEAPONS order, lit by the sky. */
   setGuns(guns: GLTF[], environment: THREE.Texture): void {
     this.scene.environment = environment;
-    this.scene.environmentIntensity = 0.8 * this.sky;
+    this.scene.environmentIntensity = 0.8 * this.sky * this.indoors;
     this.models.forEach((m, i) => {
       const gun = fitGun(guns[i], i);
       for (const part of m.body) m.group.remove(part);

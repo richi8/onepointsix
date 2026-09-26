@@ -2,14 +2,15 @@ import * as THREE from 'three';
 import type { Conditions } from '../shared/conditions.ts';
 import type { ExtractView } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
-import { HOUSE_WALL, type PropStyle, type World } from '../shared/world.ts';
+import { leafRect, type PropStyle, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import type { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain } from './rain.ts';
-import { setRooms, surfaceMaterial } from './surfaces.ts';
+import { IndoorLight } from './indoorlight.ts';
+import { surfaceMaterial } from './surfaces.ts';
 import { Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
 import { Water } from './water.ts';
@@ -32,6 +33,8 @@ const PROP_COLORS: Record<PropStyle, number[]> = {
   metal: [0x7a3b2e, 0x2f5a73, 0x4e6b3a, 0x8a7a3a, 0x5d6166],
   fence: [0x7d6a4f, 0x6e5c42],
   roof: [0x55595c],
+  door: [0x5a4a36],
+  glass: [0xa8c4c8],
 };
 /** With textures, props are tinted rather than coloured. */
 const PROP_TINTS: Record<PropStyle, number[]> = {
@@ -41,6 +44,8 @@ const PROP_TINTS: Record<PropStyle, number[]> = {
   metal: [0xc0584a, 0x5d8aad, 0x7d9a5e, 0xc8ae62, 0xa4a8ac],
   fence: [0xffffff, 0xe0d4c0],
   roof: [0xa09a90],
+  door: [0x8a7560],
+  glass: [0xffffff],
 };
 /** Wood textures are dark; they're brightened past themselves. */
 const GAIN: Partial<Record<PropStyle, number>> = { crate: 1.7, wood: 1.8, fence: 1.5 };
@@ -51,8 +56,13 @@ const PROP_LAYERS: Record<PropStyle, number> = {
   metal: Layer.metal,
   fence: Layer.boards,
   roof: Layer.metal,
+  door: Layer.boards,
+  glass: Layer.concrete,
 };
+/** Seconds a door takes to swing open or shut. */
+const DOOR_SWING = 0.35;
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
+const V_SCALE = new THREE.Vector3();
 
 /** The rendered island: terrain, water, sky, props, vegetation and lighting. */
 export class WorldView {
@@ -65,6 +75,11 @@ export class WorldView {
   private readonly props: THREE.InstancedMesh;
   /** Each prop's matrix while it stands. */
   private readonly propMatrices: THREE.Matrix4[];
+  /** Window glass, see-through and drawn apart from the other props; `glassOf` maps a prop to its instance here, or -1. */
+  private readonly glass: THREE.InstancedMesh;
+  private readonly glassOf: Int32Array;
+  /** How far each door leaf has swung, from 0 shut to 1 open. */
+  private readonly swing: Float32Array;
   private readonly terrain: Terrain;
   private readonly trees: Trees;
   private readonly rocks: THREE.InstancedMesh;
@@ -79,6 +94,9 @@ export class WorldView {
   private lighting: Lighting;
   private raining: boolean;
   private textured = false;
+  private lastTime = 0;
+  /** How much of the sky reaches inside each building. */
+  readonly light3d: IndoorLight;
   private previewing = true;
 
   constructor(world: World, conditions: Conditions) {
@@ -97,17 +115,22 @@ export class WorldView {
     this.light();
 
     this.world = world;
-    setRooms(world.buildings, HOUSE_WALL);
+    this.light3d = new IndoorLight(world);
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
     const props = makeProps(world);
     this.props = props.mesh;
     this.propMatrices = props.matrices;
+    const glass = makeGlass(world, props.mesh);
+    this.glass = glass.mesh;
+    this.glassOf = glass.of;
+    this.swing = Float32Array.from(world.doors, (d) => (d.open ? 1 : 0));
+    this.swing.forEach((_, i) => this.placeDoor(i));
     this.terrain = new Terrain(world);
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
-    scene.add(this.terrain.group, this.water.group, this.props, this.trees.group, this.rocks, extracts.group, this.rain.mesh);
+    scene.add(this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, extracts.group, this.rain.mesh);
   }
 
   /**
@@ -198,18 +221,55 @@ export class WorldView {
     this.rocks.instanceColor!.needsUpdate = true;
   }
 
-  /** Show panels standing or broken as the world has them. */
+  /** Show panels standing or broken and doors open or shut as the world has them, at once. */
   syncPanels(): void {
-    this.world.panels.forEach((p) => this.props.setMatrixAt(p.prop, p.box.gone ? GONE : this.propMatrices[p.prop]));
+    this.world.doors.forEach((d, i) => (this.swing[i] = d.open ? 1 : 0));
+    this.world.panels.forEach((_, i) => this.showPanel(i));
     this.props.instanceMatrix.needsUpdate = true;
+    this.glass.instanceMatrix.needsUpdate = true;
+    this.light3d.changed();
   }
 
   /** Show one panel as the world has it. */
   updatePanel(id: number): void {
-    const p = this.world.panels[id];
-    if (!p) return;
-    this.props.setMatrixAt(p.prop, p.box.gone ? GONE : this.propMatrices[p.prop]);
+    if (!this.world.panels[id]) return;
+    this.showPanel(id);
     this.props.instanceMatrix.needsUpdate = true;
+    this.glass.instanceMatrix.needsUpdate = true;
+    this.light3d.changed();
+  }
+
+  /** A door leaf was opened or shut: it swings there, and the light through its doorway changes. */
+  updateDoor(id: number): void {
+    if (this.world.doors[id]) this.light3d.changed();
+  }
+
+  private showPanel(id: number): void {
+    const p = this.world.panels[id];
+    const g = this.glassOf[p.prop];
+    if (g >= 0) this.glass.setMatrixAt(g, p.box.gone ? GONE : this.propMatrices[p.prop]);
+    else if (p.box.door !== undefined) this.placeDoor(p.box.door);
+    else this.props.setMatrixAt(p.prop, p.box.gone ? GONE : this.propMatrices[p.prop]);
+  }
+
+  /** Set a door leaf's matrix from how far it has swung. */
+  private placeDoor(id: number): void {
+    const d = this.world.doors[id];
+    const p = this.world.panels[d.panel];
+    if (p.box.gone) {
+      this.props.setMatrixAt(p.prop, GONE);
+      return;
+    }
+    const a = (this.swing[id] * Math.PI) / 2;
+    const dx = d.shutX * Math.cos(a) + d.openX * Math.sin(a);
+    const dz = d.shutZ * Math.cos(a) + d.openZ * Math.sin(a);
+    const [x0, z0, x1, z1] = leafRect(d, false);
+    const thick = Math.min(x1 - x0, z1 - z0);
+    const m = this.propMatrices[p.prop];
+    m.makeRotationY(Math.atan2(-dz, dx));
+    m.scale(V_SCALE.set(d.length, d.y1 - d.y0, thick));
+    m.setPosition(d.x + (dx * d.length) / 2, (d.y0 + d.y1) / 2, d.z + (dz * d.length) / 2);
+    this.props.setMatrixAt(p.prop, m);
   }
 
   /** A panel's colour, for its debris: flat, or a tint over its texture once textured. */
@@ -250,6 +310,26 @@ export class WorldView {
     this.trees.update(camera.position);
     this.cover?.update(camera.position);
     this.rain.update(camera.position, time);
+    this.swingDoors(time);
+    this.light3d.focus(camera.position);
+    this.light3d.update();
+  }
+
+  /** Move each swinging door leaf on toward where the world has it. */
+  private swingDoors(time: number): void {
+    const dt = Math.min(Math.max(time - this.lastTime, 0), 0.1);
+    this.lastTime = time;
+    let moved = false;
+    this.world.doors.forEach((d, i) => {
+      const to = d.open ? 1 : 0;
+      const s = this.swing[i];
+      if (s === to) return;
+      const step = dt / DOOR_SWING;
+      this.swing[i] = Math.abs(to - s) <= step ? to : s + Math.sign(to - s) * step;
+      this.placeDoor(i);
+      moved = true;
+    });
+    if (moved) this.props.instanceMatrix.needsUpdate = true;
   }
 }
 
@@ -305,6 +385,34 @@ function makeSky(): THREE.Mesh {
 
 function pick(palette: number[], t: number): number {
   return palette[Math.min(palette.length - 1, Math.floor(t * palette.length))];
+}
+
+/**
+ * The window glass: pale, shiny and mostly see-through. It casts no shadow,
+ * so sunlight falls through a window. Its props are hidden from `props`.
+ */
+function makeGlass(world: World, props: THREE.InstancedMesh): { mesh: THREE.InstancedMesh; of: Int32Array } {
+  const of = new Int32Array(world.props.length).fill(-1);
+  let n = 0;
+  world.props.forEach((p, i) => p.style === 'glass' && (of[i] = n++));
+  const mesh = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({
+      color: PROP_COLORS.glass[0], roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
+    }),
+    n,
+  );
+  const m = new THREE.Matrix4();
+  world.props.forEach((_, i) => {
+    if (of[i] < 0) return;
+    props.getMatrixAt(i, m);
+    mesh.setMatrixAt(of[i], m);
+    props.setMatrixAt(i, GONE);
+  });
+  mesh.receiveShadow = true;
+  // Drawn after the solid world, so what's behind it shows through.
+  mesh.renderOrder = 1;
+  return { mesh, of };
 }
 
 function makeProps(world: World): { mesh: THREE.InstancedMesh; matrices: THREE.Matrix4[] } {

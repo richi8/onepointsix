@@ -94,6 +94,12 @@ export interface ContractView {
   name: string;
 }
 
+/** The cover as it stands: the panels broken and the door leaves open. */
+export interface CoverState {
+  broken: number[];
+  open: number[];
+}
+
 /** Something that happened during a server tick, sent reliably to whoever should hear. */
 export type GameEvent =
   // To the shooter: their round hit `target` for `damage` at (x, y, z).
@@ -151,6 +157,8 @@ export type GameEvent =
   | { k: 'break'; panels: number[]; x: number; y: number; z: number }
   // To everyone: broken panels were rebuilt.
   | { k: 'repair'; panels: number[] }
+  // To everyone: door leaves were opened or shut, in the doorway at (x, y, z).
+  | { k: 'door'; doors: number[]; open: boolean; x: number; y: number; z: number }
   // To everyone: a grenade went off.
   | { k: 'boom'; x: number; y: number; z: number }
   // To everyone but the shooter, who predicted it: a round from (ox, oy, oz) that stopped at (ex, ey, ez).
@@ -257,7 +265,7 @@ export interface BountyView {
 
 export type ServerMsg =
   // `broken` lists the panels down right now; the client's world starts from it.
-  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number; mode: Mode; broken: number[] }
+  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number; mode: Mode; broken: number[]; open: number[] }
   // `ack` is the highest command seq the server has simulated for the recipient,
   // and `you` its full movement state right after that command, which the
   // client replays its unacknowledged commands on top of.

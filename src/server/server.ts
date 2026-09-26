@@ -8,6 +8,8 @@ import {
   CMD_DT,
   DEATHCAM_AFTER,
   DEATHCAM_BEFORE,
+  DOOR_NOISE,
+  DOOR_REACH,
   EYE_HEIGHT,
   EXTRACT_TIME,
   GRENADE_DAMAGE,
@@ -21,6 +23,7 @@ import {
   MAX_HP,
   MAX_REWIND,
   OPERATOR_REFILL,
+  PANEL_HP,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
   RESPONSE_SQUAD,
@@ -46,7 +49,7 @@ import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../
 import { Tape, TAPE_TIME } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
-import { World, type Box, type Point } from '../shared/world.ts';
+import { leafRect, World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
@@ -64,6 +67,8 @@ const HISTORY_TICKS = Math.ceil(MAX_REWIND * SERVER_TICK_RATE) + 2;
 const THINK_TICKS = 3;
 /** Path searches all bots together may start per tick. */
 const PATH_BUDGET = 6;
+/** How far ahead of a walking bot a shut door is opened. */
+const BOT_DOOR_REACH = 0.7;
 /** Guards this close to one who spots an enemy hear the callout. */
 const CALLOUT_RANGE = 60;
 /** Guards this close to a called extraction hear the call. */
@@ -272,7 +277,7 @@ export class GameServer {
         p.name = msg.name.slice(0, 24) || 'player';
         p.send({
           t: 'welcome', id, seed: this.seed, tick: this.tick, tickRate: SERVER_TICK_RATE, mode: this.mode,
-          broken: this.world.brokenPanels(),
+          broken: this.world.brokenPanels(), open: this.world.openDoors(),
         });
         break;
       case 'ping':
@@ -376,6 +381,7 @@ export class GameServer {
         p.tape.record(cmd, p);
         p.light = this.ctx.senses.dark && !p.dead && (cmd.buttons & Btn.Light) !== 0;
         if (p.run && !p.dead) this.use(p, cmd.buttons);
+        if (p.bot && !p.dead) this.botDoors(p, cmd.buttons, cmd.yaw);
         p.lastSim = cmd.seq;
       }
       p.queue.splice(0, n);
@@ -504,7 +510,65 @@ export class GameServer {
       return;
     }
     const zone = this.extracts.at(p);
-    if (zone >= 0 && this.extracts.call(zone, this.time)) this.called(p, zone);
+    if (zone >= 0 && this.extracts.call(zone, this.time)) {
+      this.called(p, zone);
+      return;
+    }
+    const door = this.world.doorFacing(p.x, p.y, p.z, p.yaw, DOOR_REACH);
+    if (door >= 0) this.useDoor(door, !this.world.doors[door].open, p);
+  }
+
+  /**
+   * Open or shut a doorway's leaves, unless someone other than `by` stands
+   * where they'd swing to. Everyone sees it and bots near enough hear it.
+   * Returns whether it moved.
+   */
+  private useDoor(id: number, open: boolean, by: Player): boolean {
+    const w = this.world;
+    const d = w.doors[id];
+    const leaves = [id, d.pair].filter((i) => i >= 0 && !w.panels[w.doors[i].panel].box.gone && w.doors[i].open !== open);
+    if (!leaves.length) return false;
+    const r = PLAYER_RADIUS;
+    for (const i of leaves) {
+      const leaf = w.doors[i];
+      const [x0, z0, x1, z1] = leafRect(leaf, open);
+      for (const p of this.players.values()) {
+        if (p === by || p.dead) continue;
+        if (p.x > x0 - r && p.x < x1 + r && p.z > z0 - r && p.z < z1 + r && p.y < leaf.y1 && p.y + PLAYER_HEIGHT > leaf.y0) return false;
+      }
+    }
+    for (const i of leaves) w.setDoor(i, open);
+    const [x0, z0, x1, z1] = leafRect(d, false);
+    const x = d.pair >= 0 ? (d.x + w.doors[d.pair].x) / 2 : (x0 + x1) / 2;
+    const z = d.pair >= 0 ? (d.z + w.doors[d.pair].z) / 2 : (z0 + z1) / 2;
+    this.broadcast({ k: 'door', doors: leaves, open, x, y: d.y0, z });
+    this.noise(x, d.y0, z, DOOR_NOISE, by.id);
+    return true;
+  }
+
+  /**
+   * A bot walking into a shut door opens it: its paths go through doorways
+   * as if they were open. `buttons` and `yaw` are the command it just played.
+   */
+  private botDoors(p: Player, buttons: number, yaw: number): void {
+    const fwd = ((buttons & Btn.Forward) !== 0 ? 1 : 0) - ((buttons & Btn.Back) !== 0 ? 1 : 0);
+    const side = ((buttons & Btn.Right) !== 0 ? 1 : 0) - ((buttons & Btn.Left) !== 0 ? 1 : 0);
+    const len = Math.hypot(fwd, side);
+    if (!len) return;
+    const sin = Math.sin(yaw);
+    const cos = Math.cos(yaw);
+    const x = p.x + ((-sin * fwd + cos * side) / len) * BOT_DOOR_REACH;
+    const z = p.z + ((-cos * fwd - sin * side) / len) * BOT_DOOR_REACH;
+    const w = this.world;
+    for (let i = 0; i < w.doors.length; i++) {
+      const d = w.doors[i];
+      if (d.open || p.y > d.y1 || p.y + PLAYER_HEIGHT < d.y0 || w.panels[d.panel].box.gone) continue;
+      const [x0, z0, x1, z1] = leafRect(d, false);
+      if (x > x0 - PLAYER_RADIUS && x < x1 + PLAYER_RADIUS && z > z0 - PLAYER_RADIUS && z < z1 + PLAYER_RADIUS) {
+        this.useDoor(i, true, p);
+        return;
+      }
+    }
   }
 
   /** Someone called in a pickup: guards around hear it, and a response squad sets off toward it. */
@@ -795,7 +859,8 @@ export class GameServer {
     shooter.protection = 0;
     const w = WEAPONS[shot.weapon];
     const { ox, oy, oz, dx, dy, dz } = shot;
-    const { t: wall, panel } = this.world.raycastPanel(ox, oy, oz, dx, dy, dz, w.range);
+    // Glass doesn't stop a round: it's looked through here, and broken below.
+    const { t: wall, panel } = this.world.raycastPanel(ox, oy, oz, dx, dy, dz, w.range, true);
     let t = Math.min(wall, w.range);
     let victim: Player | null = null;
     let zone: Zone = 'torso';
@@ -810,6 +875,12 @@ export class GameServer {
         victim = target;
         zone = hit.zone;
       }
+    }
+
+    for (let k = 0; k < 4; k++) {
+      const pane = this.world.raycastPanel(ox, oy, oz, dx, dy, dz, t);
+      if (pane.panel < 0 || pane.t >= t - 1e-6 || this.world.panels[pane.panel].kind !== 'glass') break;
+      this.panelsBroke(this.cover.damage(pane.panel, PANEL_HP.glass, this.time), ox, oy, oz, shooter);
     }
 
     const ex = ox + dx * t;

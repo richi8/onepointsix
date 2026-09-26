@@ -12,6 +12,20 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-26',
+    title: 'Doors, glass and new buildings',
+    notes: [
+      'Doorways have doors. Press F facing one to open or shut it, and anyone nearby hears it. Guards and other operators open doors on their way through. A door can be shot or blown off its hinges, and it won’t shut on someone standing in the doorway.',
+      'Windows are glazed. You can see through the glass, but not walk or climb through it until it’s broken, and any shot or blast smashes it. A round goes through a pane and on to whatever is behind it.',
+      'Roofs can come down: each section falls once every wall and post under it has been blown out.',
+      'Outposts no longer all have the same building. There are one-room huts, two-room houses, L-shaped buildings round a small yard, and two-storey buildings with stairs up to a lookout with a window on every side. The first four outposts on an island each get a different one.',
+      'Small huts stand out in the country too, each with a crate inside.',
+      'Rooms are lit by what comes in through their doors, windows and any holes blown in them: brighter by a window or an open door, darker in the far corners, and lighter once a wall or the roof is gone. Soldiers, debris and the gun in your hands are lit the same way.',
+      'A yard with walls round it but open sky above no longer echoes like a closed room.',
+      'Inside the outposts, the containers and crates have moved round the new buildings; the rest of each island is as it was. Replays saved before this update can’t be watched any more.',
+    ],
+  },
+  {
+    date: '2026-09-26',
     title: 'Bodies that fall',
     notes: [
       'Soldiers who die now go limp partway through falling and drop like real bodies: against walls, down slopes, over crates and on top of each other, without passing through them. A steep slope sends a body sliding.',

@@ -1,4 +1,4 @@
-import { PLAYER_HEIGHT, PLAYER_RADIUS, WATER_LEVEL } from '../shared/constants.ts';
+import { PLAYER_HEIGHT, PLAYER_RADIUS, STEP_HEIGHT, WATER_LEVEL } from '../shared/constants.ts';
 import type { Box, World } from '../shared/world.ts';
 
 // Where bots can walk: a 1 m grid over the island, each cell open, wet
@@ -16,6 +16,8 @@ const BLOCKED = 3;
 const WET_COST = 4;
 /** Clearance kept from obstacles beyond the body's radius, so paths don't scrape corners. */
 const MARGIN = 0.15;
+/** Obstacles this far above the feet or less are stepped onto, not walked round. */
+const STEP_UP = STEP_HEIGHT * 0.95;
 /** Terrain below this counts as wet. */
 const WET_BELOW = WATER_LEVEL + 0.3;
 /** Above 1, A* goes greedier: slightly longer paths for far fewer cells searched. */
@@ -263,7 +265,9 @@ export class NavGrid {
     const x = this.center(ix);
     const z = this.center(iz);
     const y = w.groundHeight(x, z, w.floorHeight(x, z));
-    if (!w.clear(x, y, z, PLAYER_HEIGHT, PLAYER_RADIUS + MARGIN)) return BLOCKED;
+    // Door leaves are left out: bots open a shut door on their way through.
+    // So is anything low enough to step up onto, such as a raised floor's edge.
+    if (!w.clear(x, y, z, PLAYER_HEIGHT, PLAYER_RADIUS + MARGIN, false, STEP_UP)) return BLOCKED;
     return w.terrainHeight(x, z) < WET_BELOW ? WET : OPEN;
   }
 }

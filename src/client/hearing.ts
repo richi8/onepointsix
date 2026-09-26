@@ -46,9 +46,15 @@ const ENCLOSURE_RAYS = 12;
 /** Walls further than this don't make a place ring. */
 const ENCLOSURE_RANGE = 30;
 
+/** A roof within this far overhead makes a room of the walls round the ear. */
+const ROOF_RANGE = 12;
+/** Share of the ringing left under the open sky: a walled yard echoes a little, but doesn't ring like a room. */
+const OPEN_SKY = 0.3;
+
 /**
  * How closed in the ear is, from 0 in the open to 1 boxed in on every side:
- * each way round counts by how near the first wall, hill or tree is.
+ * each way round counts by how near the first wall, hill or tree is. Walls
+ * with only sky above them count for much less than a room's.
  */
 export function enclosure(world: World, ear: Point3): number {
   let sum = 0;
@@ -57,7 +63,8 @@ export function enclosure(world: World, ear: Point3): number {
     const t = world.raycast(ear.x, ear.y, ear.z, Math.sin(a), 0, Math.cos(a), ENCLOSURE_RANGE);
     if (t < ENCLOSURE_RANGE) sum += 1 - t / ENCLOSURE_RANGE;
   }
-  return sum / ENCLOSURE_RAYS;
+  const roofed = world.raycast(ear.x, ear.y, ear.z, 0, 1, 0, ROOF_RANGE) < ROOF_RANGE;
+  return (sum / ENCLOSURE_RAYS) * (roofed ? 1 : OPEN_SKY);
 }
 
 const SHORE_DIRECTIONS = 16;

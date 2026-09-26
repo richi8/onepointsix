@@ -1,7 +1,7 @@
 import { CMD_RATE, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { wrapAngle } from '../shared/geom.ts';
 import type {
-  Action, BagSnap, BountyView, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, Motion, PlayerSnap, RunView,
+  Action, BagSnap, BountyView, CoverState, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, Motion, PlayerSnap, RunView,
 } from '../shared/protocol.ts';
 import { copyState, spawnState, type PlayerState } from '../shared/sim.ts';
 import type { TapeClip, TapeKey } from '../shared/tape.ts';
@@ -10,7 +10,8 @@ import type { Snapshot } from './connection.ts';
 
 /** What a replay file says it is, and the layout it's in. */
 const FORMAT = 'onepointsix-replay';
-const VERSION = 1;
+/** 2 since chunk 23: the buildings changed, and door leaves open and shut. */
+const VERSION = 2;
 /** Seconds between the frames of everyone else kept; snapshots in between are dropped. */
 const FRAME_DT = 1 / 15;
 
@@ -35,8 +36,9 @@ export interface ReplayData {
   /** Server seconds the replay runs from and to. */
   from: number;
   to: number;
-  /** Panels down at the start. */
+  /** Panels down and door leaves open at the start. */
   broken: number[];
+  open: number[];
   /** The player's own inputs, rebuilt exactly through the simulation. */
   tape: TapeClip;
   /** Everyone else, and grenades, FRAME_DT apart, packed by FramePacker. */
@@ -63,7 +65,7 @@ export class RunRecorder {
   private readonly build: string;
   private readonly date = new Date().toISOString();
   private id = 0;
-  private broken: number[] = [];
+  private cover: CoverState = { broken: [], open: [] };
   private readonly frames = new FramePacker();
   private lastFrame = -Infinity;
   private readonly runs: Timed<RunView>[] = [];
@@ -84,10 +86,10 @@ export class RunRecorder {
     this.build = build;
   }
 
-  /** Joined as `id`, with these panels down. */
-  welcome(id: number, broken: readonly number[]): void {
+  /** Joined as `id`, with the cover standing as it does. */
+  welcome(id: number, cover: CoverState): void {
     this.id = id;
-    this.broken = [...broken];
+    this.cover = { broken: [...cover.broken], open: [...cover.open] };
   }
 
   snapshot(
@@ -144,7 +146,7 @@ export class RunRecorder {
     const to = Math.max(Math.min(this.endAt + after, this.lastAt), from);
     return {
       world: { ...this.world }, mode: this.mode, name: this.name, id: this.id, date: this.date, build: this.build,
-      end: this.end, from, to, broken: [...this.broken], tape: this.tape, frames: this.frames.data(),
+      end: this.end, from, to, broken: [...this.cover.broken], open: [...this.cover.open], tape: this.tape, frames: this.frames.data(),
       runs: [...this.runs], extracts: [...this.extracts], bags: [...this.bags], bounty: [...this.bounty], events: this.events.filter(([at]) => at <= to),
     };
   }

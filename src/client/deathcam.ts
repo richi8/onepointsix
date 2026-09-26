@@ -1,11 +1,11 @@
 import { DEATHCAM_AFTER, DEATHCAM_BEFORE } from '../shared/constants.ts';
-import type { GameEvent, GrenadeSnap, PlayerSnap } from '../shared/protocol.ts';
+import type { CoverState, GameEvent, GrenadeSnap, PlayerSnap } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
 import { grenadesAt, playersAt, type Recording, type ReplayEvent } from './connection.ts';
-import { brokenBefore } from './replay.ts';
+import { coverBefore } from './replay.ts';
 
 export type DeathcamEvent = Extract<GameEvent, { k: 'deathcam' }>;
 
@@ -28,15 +28,15 @@ export class Deathcam {
   /** Server time being shown. */
   time: number;
   readonly end: number;
-  /** Panels down when it starts. */
-  readonly broken: number[];
+  /** The cover when it starts. */
+  readonly cover: CoverState;
   private readonly kill: number;
   private readonly player: TapePlayer;
   private readonly recording: Recording;
   private nextEvent = 0;
 
-  /** `broken` is the panels down now. */
-  constructor(world: World, e: DeathcamEvent, recording: Recording, broken: Iterable<number>) {
+  /** `cover` is how the cover stands now. */
+  constructor(world: World, e: DeathcamEvent, recording: Recording, cover: CoverState) {
     this.killer = e.killer;
     this.name = e.name;
     this.kill = e.time;
@@ -47,7 +47,7 @@ export class Deathcam {
     this.end = Math.max(Math.min(e.time + DEATHCAM_AFTER, this.player.end), this.time);
     // Catch up silently to where it starts, and skip what happened before.
     this.player.seek(this.time);
-    this.broken = brokenBefore(broken, recording.events, this.time);
+    this.cover = coverBefore(cover, recording.events, this.time);
     while (this.nextEvent < recording.events.length && recording.events[this.nextEvent].time <= this.time) this.nextEvent++;
   }
 

@@ -3,7 +3,7 @@ import { DEFAULT_CONDITIONS, type Conditions, type TimeOfDay } from '../shared/c
 import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
-import type { World } from '../shared/world.ts';
+import type { PanelKind, World } from '../shared/world.ts';
 import { enclosure, nearestWater, occlusion, woodland } from './hearing.ts';
 import { download, swap } from './loading.ts';
 import { bankLead, type SoundBanks, type SoundFormat } from './soundlist.ts';
@@ -49,6 +49,8 @@ const SUPPRESSED_REACH = 0.3;
 const SPEED_OF_SOUND = 343;
 /** Footsteps further off than this aren't worth playing. */
 const STEP_RANGE = 45;
+/** Doors opening and shutting are heard this far off, metres. */
+const DOOR_RANGE = 40;
 /** Shots and blasts this close send the birds quiet. */
 const SCARE_RANGE = 150;
 /** Seconds the birds stay quiet after a scare, then take to come back. */
@@ -353,12 +355,30 @@ export class Sfx {
     if (d < SCARE_RANGE * 2) this.scare();
   }
 
-  /** Cover breaking: wood splinters, masonry crumbles. */
-  crumble(wood: boolean, at: At): void {
+  /**
+   * Cover breaking: wood splinters, masonry crumbles, and glass smashes (the
+   * splinter played high, until it has a recording of its own).
+   */
+  crumble(kind: PanelKind, at: At): void {
     const d = this.distance(at);
     const occ = this.occlusion(at);
     const gain = 0.7 * (HALF_DISTANCE / (HALF_DISTANCE + d)) * (1 - occ * 0.5);
-    this.play(wood ? 'splinter' : 'crumble', { at, gain, rate: jitter(0.08), delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, occ), send: 0.3 });
+    const clip = kind === 'wall' || kind === 'roof' ? 'crumble' : 'splinter';
+    const rate = (kind === 'glass' ? 1.9 : 1) * jitter(0.08);
+    this.play(clip, { at, gain, rate, delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, occ), send: 0.3 });
+  }
+
+  /**
+   * A door swinging open or banging shut: a knock on wood, borrowed from the
+   * wooden footsteps until it has a recording of its own.
+   */
+  door(open: boolean, at: At): void {
+    const d = this.distance(at);
+    if (d > DOOR_RANGE) return;
+    const occ = this.occlusion(at);
+    const falloff = 1 - d / DOOR_RANGE;
+    const gain = (open ? 0.6 : 0.9) * falloff * falloff * (1 - occ * 0.6);
+    this.play(STEPS.wood.clip, { at, gain, rate: (open ? 0.8 : 0.6) * jitter(0.05), cutoff: this.cutoff(d * 2, occ), send: 0.2 });
   }
 
   /**

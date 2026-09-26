@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { brokenBefore, Replay } from '../src/client/replay.ts';
+import { coverBefore, Replay } from '../src/client/replay.ts';
 import { decodeReplay, encodeReplay, FramePacker, Frames, quantizeLook, RunRecorder } from '../src/client/replayfile.ts';
 import { GameServer } from '../src/server/server.ts';
 import { Btn, CMD_DT, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
@@ -35,7 +35,7 @@ function playRun(seconds: number) {
   const snapshots: Snapshot[] = [];
   let ended = false;
   const id = server.connect((m) => {
-    if (m.t === 'welcome') recorder.welcome(m.id, m.broken);
+    if (m.t === 'welcome') recorder.welcome(m.id, { broken: m.broken, open: m.open });
     if (m.t === 'snapshot') {
       snapshots.push(m);
       recorder.snapshot(m.tick * SERVER_DT, m.players, m.grenades, m.run, m.extracts, m.bags);
@@ -210,14 +210,21 @@ describe('frames', () => {
 });
 
 describe('cover history', () => {
-  it('rebuilds the panels down at an earlier time', () => {
+  it('rebuilds the panels down and the doors open at an earlier time', () => {
     const events = [
       { time: 1, e: { k: 'break', panels: [3, 4], x: 0, y: 0, z: 0 } as GameEvent },
       { time: 2, e: { k: 'repair', panels: [9] } as GameEvent },
+      { time: 2.2, e: { k: 'door', doors: [0, 1], open: true, x: 0, y: 0, z: 0 } as GameEvent },
       { time: 3, e: { k: 'break', panels: [5], x: 0, y: 0, z: 0 } as GameEvent },
+      { time: 3.5, e: { k: 'door', doors: [6], open: false, x: 0, y: 0, z: 0 } as GameEvent },
     ];
-    // Down now: 3, 4, 5 and 7; 9 was rebuilt at 2.
-    expect(brokenBefore([3, 4, 5, 7], events, 0.5).sort()).toEqual([7, 9]);
-    expect(brokenBefore([3, 4, 5, 7], events, 2.5).sort()).toEqual([3, 4, 7]);
+    // Down now: 3, 4, 5 and 7; 9 was rebuilt at 2. Open now: 0, 1 and 2; 6 was shut at 3.5.
+    const now = { broken: [3, 4, 5, 7], open: [0, 1, 2] };
+    const early = coverBefore(now, events, 0.5);
+    expect(early.broken.sort()).toEqual([7, 9]);
+    expect(early.open.sort()).toEqual([2, 6]);
+    const later = coverBefore(now, events, 2.5);
+    expect(later.broken.sort()).toEqual([3, 4, 7]);
+    expect(later.open.sort()).toEqual([0, 1, 2, 6]);
   });
 });

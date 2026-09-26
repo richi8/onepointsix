@@ -9,7 +9,7 @@ import { hitboxes } from '../src/shared/hitbox.ts';
 import type { GameEvent, ServerMsg } from '../src/shared/protocol.ts';
 import { applyCmd, spawnState, type PlayerState } from '../src/shared/sim.ts';
 import { BOLT } from '../src/shared/weapons.ts';
-import { World, type Box } from '../src/shared/world.ts';
+import { inBuilding, World, type Box } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const w = new World(1);
@@ -21,6 +21,8 @@ function tallWall(world: World): Box {
     const o = world.outposts.find((a) => Math.abs(b.maxY - a.y - 3) < 1e-6);
     if (!o) return false;
     const x = (b.minX + b.maxX) / 2;
+    // Nothing near behind it either, such as a building.
+    if (world.buildings.some((h) => inBuilding(h, x, (b.minZ + b.maxZ) / 2, 6))) return false;
     return world.fits(x, o.y, b.maxZ + 1, 1.8) && world.fits(x, o.y, b.minZ - 1, 1.8) && world.fits(x, o.y, b.maxZ + 6, 1.8);
   })!;
 }
@@ -86,8 +88,11 @@ describe('breakable panels', () => {
     const a = nav.nearestWalkable(x, wall.maxZ + 1.5, 1)!;
     const b = nav.nearestWalkable(x, wall.minZ - 1.5, 1)!;
     expect(nav.lineWalkable(a.x, a.z, b.x, b.z)).toBe(false);
-    const [bottom] = column(world, wall, x);
-    for (const i of world.breakPanel(bottom)) nav.refresh(world.panels[i].box);
+    // Three columns side by side, so the hole is wide enough wherever the grid's cells fall.
+    for (const cx of [x - 1.6, x, x + 1.6]) {
+      const [bottom] = column(world, wall, cx);
+      for (const i of world.breakPanel(bottom)) nav.refresh(world.panels[i].box);
+    }
     expect(nav.lineWalkable(a.x, a.z, b.x, b.z)).toBe(true);
   });
 });
@@ -290,6 +295,9 @@ describe('cover on the server', () => {
     tick(server, [c], 5);
     expect(server.world.panels[top].box.gone).toBe(true);
 
+    // Told to everyone, whoever is still alive by then.
+    const heard: GameEvent[] = [];
+    server.onEvent = (e) => heard.push(e);
     const late = client(server);
     server.step();
     expect(late.inbox[0]).toEqual(expect.objectContaining({ t: 'welcome', broken: expect.arrayContaining([bottom, top]) }));
@@ -298,6 +306,6 @@ describe('cover on the server', () => {
     expect(server.world.panels[bottom].box.gone).toBe(false);
     expect(server.world.panels[top].box.gone).toBe(false);
     expect(server.cover.health(bottom)).toBe(PANEL_HP.wall);
-    expect(c.events().some((e) => e.k === 'repair' && e.panels.includes(bottom) && e.panels.includes(top))).toBe(true);
+    expect(heard.some((e) => e.k === 'repair' && e.panels.includes(bottom) && e.panels.includes(top))).toBe(true);
   });
 });

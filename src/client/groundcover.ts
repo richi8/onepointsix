@@ -3,7 +3,7 @@ import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp } from '../shared/geom.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { type Vegetation, VEG_CELL, vegetationOf } from '../shared/vegetation.ts';
-import type { World } from '../shared/world.ts';
+import { inBuilding, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { groundWeights } from '../shared/ground.ts';
 import { Layer } from '../shared/layers.ts';
@@ -198,7 +198,7 @@ export class GroundCover {
       if (keep > kind.keep(this.weights, i)) continue;
       // Not inside or under anything: props, trees, rocks or roofs.
       if (!w.clear(x, y, z, 3.5, 0.05)) continue;
-      if (w.buildings.some((b) => x > b.minX - 0.3 && x < b.maxX + 0.3 && z > b.minZ - 0.3 && z < b.maxZ + 0.3)) continue;
+      if (w.buildings.some((b) => inBuilding(b, x, z, 0.3))) continue;
       pos.set(x, y - (name === 'pebble' ? size * 0.3 : 0.02), z);
       if (name === 'pebble') {
         q.setFromEuler(e.set(rand() * 3, turn, rand() * 3));

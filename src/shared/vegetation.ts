@@ -3,7 +3,7 @@ import { clamp } from './geom.ts';
 import { GROUND_LAYERS, groundWeights } from './ground.ts';
 import { Layer } from './layers.ts';
 import { mulberry32 } from './rng.ts';
-import type { World } from './world.ts';
+import { inBuilding, type World } from './world.ts';
 
 // The bushes and grass on the ground, as far as sight is concerned. Bushes are
 // scattered here, the same on every client and the server, so the ones a
@@ -94,7 +94,7 @@ export class Vegetation {
       if (keep > (this.weights[i + Layer.grass] + this.weights[i + Layer.dryGrass] * 0.5) * 0.9) continue;
       // Not inside or under anything: props, trees, rocks or roofs.
       if (!w.clear(x, y, z, 3.5, size * 0.5)) continue;
-      if (w.buildings.some((b) => x > b.minX - 0.3 && x < b.maxX + 0.3 && z > b.minZ - 0.3 && z < b.maxZ + 0.3)) continue;
+      if (w.buildings.some((b) => inBuilding(b, x, z, 0.3))) continue;
       out.push({ x, y: y - 0.02, z, size, height: size * tall, turn, leanX, leanZ, shade });
     }
     this.cells.set(key, out);

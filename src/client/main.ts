@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { CMD_DT, MAX_PITCH, OPERATOR_CAPACITY, SERVER_DT, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
+import { CMD_DT, DOOR_REACH, MAX_PITCH, OPERATOR_CAPACITY, SERVER_DT, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
 import { conditionsLabel, sensesOf, TIMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, smoothstep, wrapAngle } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
 import { extractName } from '../shared/loot.ts';
-import { isReliable, parseMode, type ClientMsg, type DevCmd, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
+import { isReliable, parseMode, type ClientMsg, type CoverState, type DevCmd, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
 import { runRecord } from '../shared/runstats.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared/share.ts';
@@ -169,7 +169,7 @@ setTimeout(() => (loadingSkip.hidden = false), SKIP_LOADING_AFTER * 1000);
 
 function dress(assets: Assets): void {
   view.applyAssets(assets);
-  effects.setDebrisMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true }));
+  effects.setDebrisMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }));
   bodies.setModel(assets.soldier, assets.guns);
   viewModel.setGuns(assets.guns, assets.environment);
   viewModel.setArms(assets.soldier);
@@ -522,10 +522,7 @@ function join(): void {
   ownReplay = null;
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
   conn.onEvents = (events) => events.forEach((e) => onEvent(e));
-  conn.onWelcome = (broken) => {
-    world.syncPanels(broken);
-    view.syncPanels();
-  };
+  conn.onWelcome = (cover) => showCover(cover);
   conn.onSpawn = (s) => {
     input.yaw = s.yaw;
     input.pitch = s.pitch;
@@ -632,8 +629,8 @@ function playDeathcam(): void {
     void loadPlayback().then(playDeathcam, () => showLastResults?.());
     return;
   }
-  deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.broken ?? []);
-  showCover(deathcam.broken);
+  deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? NO_COVER);
+  showCover(deathcam.cover);
   // Start the bodies afresh, as they were then.
   bodies.update([], 0);
   runHud.hideResults();
@@ -651,7 +648,7 @@ function stopDeathcam(results = true): void {
   deathcamEl.hidden = true;
   hudEl.hidden = true;
   hudEl.classList.remove('watching');
-  showCover(conn ? [...conn.broken] : []);
+  showCover(conn?.cover ?? NO_COVER);
   bodies.update([], 0);
   if (results) showLastResults?.();
 }
@@ -665,13 +662,20 @@ window.addEventListener('keydown', (e) => {
 });
 document.getElementById('replay')!.onclick = playDeathcam;
 
-/** Put the panels in the world as `broken` says, for a replay's moment or back to now. */
-function showCover(broken: readonly number[]): void {
-  world.syncPanels(broken);
+/** Nothing broken, and every door as the world starts with it. */
+const NO_COVER: CoverState = { broken: [], open: world.openDoors() };
+
+/** Put the panels and doors in the world as `cover` says, for a replay's moment or back to now. */
+function showCover(cover: CoverState): void {
+  world.syncPanels(cover.broken);
+  world.syncDoors(cover.open);
   view.syncPanels();
 }
 
 // ------------------------------------------------------------------ replays
+
+/** Share of the sky's light where the first-person camera is. */
+let indoors = 1;
 
 /** The update of the game, saved in replays to tell one from an older version. */
 const BUILD = CHANGELOG[0]?.date ?? '';
@@ -770,7 +774,7 @@ function closeReplay(back = true): void {
   fly.keys.clear();
   hudEl.hidden = true;
   hudEl.classList.remove('watching', 'replaying', 'free');
-  showCover(conn ? [...conn.broken] : []);
+  showCover(conn?.cover ?? NO_COVER);
   bodies.update([], 0);
   bags.update([]);
   grenades.update([]);
@@ -787,7 +791,7 @@ function closeReplay(back = true): void {
 /** The replay jumped: the panels, bodies and HUD are set right for the new moment. */
 function afterSeek(): void {
   if (!replay) return;
-  showCover(replay.brokenAt());
+  showCover(replay.coverAt());
   bodies.update([], 0);
   bodies.forget();
   for (const e of replay.killsBefore()) bodies.killed(e);
@@ -1076,7 +1080,8 @@ function ownShot(shot: Shot, players: readonly PlayerSnap[]): void {
   sfx.shot(shot.weapon, undefined, shot.quiet);
   const { ox, oy, oz, dx, dy, dz } = shot;
   const range = WEAPONS[shot.weapon].range;
-  let t = world.raycast(ox, oy, oz, dx, dy, dz, range);
+  // Glass breaks and lets the round on, so the impact is past it.
+  let t = world.raycast(ox, oy, oz, dx, dy, dz, range, true);
   let struck: Struck = t <= range ? 'world' : 'none';
   t = Math.min(t, range);
   for (const p of players) {
@@ -1149,7 +1154,7 @@ function onEvent(e: GameEvent, replayed = false): void {
       const first = world.panels[e.panels[0]];
       if (first) {
         const b = first.box;
-        sfx.crumble(first.kind !== 'wall', { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 });
+        sfx.crumble(first.kind, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 });
       }
       break;
     }
@@ -1158,6 +1163,13 @@ function onEvent(e: GameEvent, replayed = false): void {
         world.setPanel(id, true);
         view.updatePanel(id);
       }
+      break;
+    case 'door':
+      for (const id of e.doors) {
+        world.setDoor(id, e.open);
+        view.updateDoor(id);
+      }
+      sfx.door(e.open, e);
       break;
     case 'boom': {
       const d = me ? Math.hypot(e.x - me.x, e.y - me.y, e.z - me.z) : Infinity;
@@ -1220,6 +1232,8 @@ const devCam = ((): number[] | null => {
  * every time.
  */
 const still = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('still') ?? NaN) : NaN;
+// And the light inside every building is worked out at once, rather than a little each frame.
+if (!Number.isNaN(still)) view.light3d.finishAll();
 
 /** Seconds for the wind, waves and rain. */
 function sceneTime(): number {
@@ -1270,6 +1284,9 @@ function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt:
   }
   focus.set(me.x, me.y, me.z);
   view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, sceneTime());
+  // The gun in your hands is lit like the room you're in, easing as you go in or out.
+  indoors = lerp(indoors, view.light3d.at(camera.position.x, camera.position.y, camera.position.z), Math.min(dt * 4, 1));
+  viewModel.shade(indoors);
 
   const speed = Math.hypot(s.vx, s.vz);
   const lookDx = angleDiff(lastYaw, yaw) * 600;
@@ -1408,11 +1425,11 @@ renderer.setAnimationLoop(() => {
     hud.update(dt, state, aim, clamp(spreadPx, 0, innerHeight / 3), !!state && sprinting(state), camera, !cam);
   }
   if (rep && eye) {
-    runHud.update(rep.time <= rep.runOver ? rep.run() : null, rep.extracts(), eye.x, eye.z, eye.yaw, camera);
+    runHud.update(rep.time <= rep.runOver ? rep.run() : null, rep.extracts(), eye.x, eye.z, eye.yaw, camera, world.doorFacing(eye.x, eye.y, eye.z, eye.yaw, DOOR_REACH));
     replayBar?.update(rep, replayCam);
   } else if (cam) runHud.update(null, [], 0, 0, 0, camera);
   else if (conn) {
-    if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera);
+    if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera, world.doorFacing(me.x, me.y, me.z, input.yaw, DOOR_REACH));
     else runHud.update(null, [], 0, 0, 0, camera);
     if (!paused.hidden) runHud.updatePause(conn.run, pauseStanding());
   }

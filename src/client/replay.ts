@@ -1,4 +1,4 @@
-import type { BagSnap, BountyView, ExtractView, GameEvent, GrenadeSnap, PlayerSnap, RunView } from '../shared/protocol.ts';
+import type { BagSnap, BountyView, CoverState, ExtractView, GameEvent, GrenadeSnap, PlayerSnap, RunView } from '../shared/protocol.ts';
 import { motionOf, type PlayerState } from '../shared/sim.ts';
 import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
@@ -67,7 +67,7 @@ export class Replay {
     if (this.time >= this.end) this.playing = false;
   }
 
-  /** Jump to server time `t` without playing what's in between; the caller sets the panels right from brokenAt(). */
+  /** Jump to server time `t` without playing what's in between; the caller sets the cover right from coverAt(). */
   seek(t: number): void {
     this.time = Math.min(Math.max(t, this.start), this.end);
     this.player.seek(this.time);
@@ -132,15 +132,17 @@ export class Replay {
     return latest(this.data.bounty ?? [], this.time)?.[1] ?? null;
   }
 
-  /** Panels down at the time shown. */
-  brokenAt(): number[] {
+  /** Panels down and door leaves open at the time shown. */
+  coverAt(): CoverState {
     const down = new Set(this.data.broken);
+    const open = new Set(this.data.open);
     for (const [at, e] of this.data.events) {
       if (at > this.time) break;
       if (e.k === 'break') for (const i of e.panels) down.add(i);
       if (e.k === 'repair') for (const i of e.panels) down.delete(i);
+      if (e.k === 'door') for (const i of e.doors) (e.open ? open.add(i) : open.delete(i));
     }
-    return [...down];
+    return { broken: [...down], open: [...open] };
   }
 
   /** Kills by the player, and how the run ended, for the timeline. */
@@ -175,15 +177,17 @@ function latest<T>(track: readonly Timed<T>[], t: number): Timed<T> | null {
 }
 
 /**
- * The panels down at `from`, rebuilt from those down now by undoing the
- * breaks and rebuilds since, latest first.
+ * The cover at `from`, rebuilt from how it stands now by undoing the breaks,
+ * rebuilds and doors used since, latest first.
  */
-export function brokenBefore(now: Iterable<number>, events: readonly { time: number; e: GameEvent }[], from: number): number[] {
-  const down = new Set(now);
+export function coverBefore(now: CoverState, events: readonly { time: number; e: GameEvent }[], from: number): CoverState {
+  const down = new Set(now.broken);
+  const open = new Set(now.open);
   for (let i = events.length - 1; i >= 0 && events[i].time > from; i--) {
     const e = events[i].e;
     if (e.k === 'break') for (const p of e.panels) down.delete(p);
     if (e.k === 'repair') for (const p of e.panels) down.add(p);
+    if (e.k === 'door') for (const d of e.doors) (e.open ? open.delete(d) : open.add(d));
   }
-  return [...down];
+  return { broken: [...down], open: [...open] };
 }

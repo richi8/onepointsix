@@ -10,6 +10,8 @@ import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
 import { clip, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
+import { dimIndoors } from './indoorlight.ts';
+import { inBuilding, type Building } from '../shared/world.ts';
 import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
 import { JOINT, RAGDOLL_STEP, Ragdoll, type Solid, Tumbler, type Verlet } from './ragdoll.ts';
 import { RagRig, type Slump, slump } from './ragrig.ts';
@@ -104,6 +106,7 @@ const ROUND_MAT = new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0
 const PACK_MAT = new THREE.MeshStandardMaterial({ color: 0x3a3d33, roughness: 0.9 });
 const RED_MAT = new THREE.MeshStandardMaterial({ color: 0xa3201b, roughness: 0.8 });
 const MAST_MAT = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+for (const m of [GUN_MAT, CAN_MAT, MAG_MAT, ROUND_MAT, PACK_MAT, RED_MAT, MAST_MAT]) dimIndoors(m);
 const FLASH_MAT = new THREE.SpriteMaterial({
   map: flashTexture(), color: 0xffc070, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
 });
@@ -116,10 +119,11 @@ const MAG_GEO = [
 ];
 const ROUND_GEO = new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6).rotateX(Math.PI / 2);
 
-/** What a body stands on and falls against. */
+/** What a body stands on and falls against, and the buildings it may be inside. */
 export interface Ground extends Solid {
   groundHeight(x: number, z: number, feetY: number): number;
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number;
+  readonly buildings: readonly Building[];
 }
 
 /** A carried gun, barrel along -z with the grip at z = 0, as fitGun makes them, and its marked points. */
@@ -154,6 +158,8 @@ interface Figure {
   group: THREE.Group;
   /** While too far to cast a visible shadow: the parts that cast one up close. */
   casters: THREE.Object3D[] | null;
+  /** Its meshes take the world's shadows, as they do in and round buildings. */
+  shaded: boolean;
   materials: THREE.MeshStandardMaterial[];
   /** Where the last round landed, in the figure's own space, and how bright its flash is. */
   hit: { value: THREE.Vector4 };
@@ -334,6 +340,13 @@ export class Bodies {
     this.model = gltf;
     GUNS = guns.map((g, i) => {
       const { object, ...points } = fitGun(g, i);
+      // Their own materials, dimmed indoors: the first-person gun shares the model's.
+      object.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.material = (mesh.material as THREE.Material).clone();
+        dimIndoors(mesh.material);
+      });
       return { make: () => object.clone(), ...points };
     });
     const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -462,14 +475,17 @@ export class Bodies {
       deadFor: -1, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, ragSteps: 0, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
       air: 0, mantle: 0, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, headFix: 0, duck: 0,
-      firedFor: 1e3, hitFor: 1e3, hitHead: false, soldier: null, casters: null,
+      firedFor: 1e3, hitFor: 1e3, hitHead: false, soldier: null, casters: null, shaded: false,
       // Far off, bodies take turns to be posed rather than all in one frame.
       wait: Math.random() * FAR_UPDATE,
     };
     placeCan(f);
     if (this.model) f.soldier = this.soldier(f, team, commander);
     else this.placeholder(f, team);
-    for (const m of f.materials) flashWhereHit(m, f.hit);
+    for (const m of f.materials) {
+      flashWhereHit(m, f.hit);
+      dimIndoors(m);
+    }
     return f;
   }
 
@@ -600,6 +616,7 @@ export class Bodies {
       f.gun.remove(f.held);
       f.held = GUNS[p.weapon].make();
       f.held.castShadow = true;
+      f.held.traverse((o) => (o as THREE.Mesh).isMesh && (o.receiveShadow = f.shaded));
       f.gun.add(f.held);
       placeCan(f);
     }
@@ -686,6 +703,14 @@ export class Bodies {
     f.group.visible = distance < SHADOW_REACH || (distance < FOG_END && this.frustum.intersectsSphere(this.bounds));
     // Beyond that, a body's shadow is too small to see but costs a draw in each shadow map.
     const shadow = distance < SHADOW_REACH;
+    // In or beside a building, shadowed like the world, so a room keeps the sun
+    // off them bar what comes in its windows. Out in the open that costs more
+    // than it shows.
+    const indoors = shadow && this.ground.buildings.some((b) => inBuilding(b, p.x, p.z, 1.5));
+    if (indoors !== f.shaded) {
+      f.shaded = indoors;
+      f.group.traverse((o) => (o as THREE.Mesh).isMesh && (o.receiveShadow = indoors));
+    }
     if (!shadow && !f.casters) {
       f.casters = [];
       f.group.traverse((o) => o.castShadow && f.casters!.push(o));

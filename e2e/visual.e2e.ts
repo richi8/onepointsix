@@ -26,8 +26,10 @@ const SPOTS: Record<string, string> = {
   impostors: '0,76,0,300,20,-200',
   // Over an outpost: both shadow cascades, near and far.
   cascades: 'o0,20,9,25,-6,1,6',
-  // Inside a building, lit from its doorway.
-  indoor: '-63.3,18.1,38.2,-63.3,18,33',
+  // Inside a two-storey building, lit from its windows: the stairs, crates and glass.
+  indoor: '-65.28,18.16,36.55,-60.34,17.56,42.72',
+  // Its upper floor, with the sun through the windows.
+  upstairs: '-65.28,21.16,36.55,-60.34,20.56,42.72',
 };
 
 for (const [name, cam] of Object.entries(SPOTS)) {

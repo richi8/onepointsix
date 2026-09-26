@@ -118,7 +118,7 @@ export class Effects {
     this.debris = new THREE.InstancedMesh(chunkGeo, new THREE.MeshStandardMaterial({ roughness: 0.9 }), MAX_DEBRIS);
     this.debris.count = 0;
     this.debris.frustumCulled = false;
-    this.debris.castShadow = true;
+    this.debris.castShadow = this.debris.receiveShadow = true;
     scene.add(this.debris);
   }
 

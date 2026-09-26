@@ -1,7 +1,7 @@
 import { INTERP_DELAY, SERVER_DT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp } from '../shared/geom.ts';
 import type {
-  BagSnap, BountyView, ClientMsg, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
+  BagSnap, BountyView, ClientMsg, CoverState, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
 } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { TAPE_TIME } from '../shared/tape.ts';
@@ -44,7 +44,7 @@ export interface Snapshot {
 export type ReplayEvent = Extract<GameEvent, { k: 'shot' } | { k: 'boom' } | { k: 'break' } | { k: 'repair' }>;
 
 function isReplayEvent(e: GameEvent): e is ReplayEvent {
-  return e.k === 'shot' || e.k === 'boom' || e.k === 'break' || e.k === 'repair';
+  return e.k === 'shot' || e.k === 'boom' || e.k === 'break' || e.k === 'repair' || e.k === 'door';
 }
 
 /** The last few seconds as this client saw them, everyone included, for replays. */
@@ -73,6 +73,13 @@ export class Connection {
   over = false;
   /** Panels down right now, as the server says; what the world shows can differ while a replay plays. */
   readonly broken = new Set<number>();
+  /** Door leaves open right now. */
+  readonly open = new Set<number>();
+
+  /** The cover as it stands now. */
+  get cover(): CoverState {
+    return { broken: [...this.broken], open: [...this.open] };
+  }
   /** Records the whole run for its replay, if set. */
   recorder: RunRecorder | null = null;
   /** Round-trip time in ms, smoothed. */
@@ -84,8 +91,8 @@ export class Connection {
   onEvents: ((events: GameEvent[]) => void) | null = null;
   /** The server (re)spawned the local player; `state` is where and facing which way. */
   onSpawn: ((state: PlayerState) => void) | null = null;
-  /** Joined: these panels are broken right now. */
-  onWelcome: ((broken: number[]) => void) | null = null;
+  /** Joined: this is how the cover stands right now. */
+  onWelcome: ((cover: CoverState) => void) | null = null;
   private life = 0;
   private seq = 0;
   private ack = 0;
@@ -176,8 +183,9 @@ export class Connection {
         this.mode = msg.mode;
         this.clock = msg.tick * SERVER_DT;
         for (const i of msg.broken) this.broken.add(i);
-        this.recorder?.welcome(msg.id, msg.broken);
-        this.onWelcome?.(msg.broken);
+        for (const i of msg.open) this.open.add(i);
+        this.recorder?.welcome(msg.id, this.cover);
+        this.onWelcome?.(this.cover);
         break;
       case 'pong': {
         const sample = performance.now() - msg.time;
@@ -198,6 +206,7 @@ export class Connection {
           if (isReplayEvent(e)) this.recording.events.push({ time: msg.tick * SERVER_DT, e });
           if (e.k === 'break') for (const i of e.panels) this.broken.add(i);
           if (e.k === 'repair') for (const i of e.panels) this.broken.delete(i);
+          if (e.k === 'door') for (const i of e.doors) (e.open ? this.open.add(i) : this.open.delete(i));
           this.recorder?.event(msg.tick * SERVER_DT, e);
         }
         this.trimRecording(msg.tick * SERVER_DT);

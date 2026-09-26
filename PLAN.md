@@ -205,7 +205,7 @@ human pass comes last so people play the finished result.
 | 20 | **Lean loading and portable tooling** | Sounds on the loading bar (the ambience and your own gun before Play, the rest after); the loading bar counts the script download and uncompressed sizes; skipping the loading screen fades the assets in instead of swapping; the entry chunk split so ground cover, impostors, replays and the death cam load lazily; a smaller Basis transcoder (an ETC1S-only build) or a measured case against it; KTX2 and the prefiltered sky compared to the originals by number, not only by eye; smaller sounds (Opus where supported, AAC fallback); the sound and asset scripts run on Linux and Intel Macs (ffmpeg instead of `afconvert`, any-platform KTX tools); a click soon after Esc resumes at once or says why it can't | Total JavaScript at start is down by a measured amount, the first sound plays with the first shot, and both scripts run in CI on Linux | **Done** (JavaScript and wasm before the menu down from 1,550 kB to 1,227 kB, 544 kB to 396 kB gzipped, almost all of it the transcoder; the scripts' CI job was only run in a Linux container, since it isn't pushed yet) |
 | 21 | **Animation clips and hands** | Real clips from a CC0 animation library (e.g. Quaternius's Universal Animation Library) retargeted to the soldier: crouch-walk, jump, fall, climb, shooting and hit reactions; walk and run speeds measured from the clips' foot contacts, with foot locking; a reload per gun (the bolt-action works its bolt and loads rounds, the pistol swaps a small magazine); a grenade model; hand grips placed from marked points on each gun model instead of hand-measured fractions, and the pistol sized for the fist; first-person arms that reach without stretching (longer bones or a dedicated arms model); the leaning and crouched head matched to its hitbox; distant bodies at a higher rate if the chunk 19 benchmark allows it (a new, more realistic soldier model is left for a later phase) | Watching someone jump, climb, reload a bolt-action or take a hit shows a real motion, and the benchmark shows no frame cost over chunk 19's | **Done** (crouch, jump, fall, landing, shooting and hit clips; climb still a pose, as the free library has no climb clip; checked by still pictures in the pose viewer, nobody has watched it in play) |
 | 22 | **Ragdolls** | A light verlet ragdoll that takes over from the death clip partway through, colliding with terrain, props, fences and other bodies, sliding on slopes and pushed by the killing round; every dead body drops its gun, including those that die out of sight, and the gun collides as it falls; replays and the death cam get the same result (the ragdoll runs from recorded data so it plays back the same) | Bodies fall against walls, down slopes and over each other without passing through, and a replay shows the same fall | **Done** (a replay falls bit for bit the same in each engine; walls, slopes and pile-ups checked by unit tests and pose viewer screenshots, not watched in play) |
-| 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Not started** |
+| 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Done** (bots only: nobody has fought through the new buildings; the light volume and glass were checked by screenshots) |
 | 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Not started** |
 | 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Not started** |
 | 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Not started** |
@@ -444,18 +444,53 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 
 - **Doors are open doorways** (15). There are no door leaves to open or shut. Doorways are 2.2 m
   wide so a bot's path always fits through the 1 m nav grid. Windows are open holes with no glass.
+  **Resolved** (23): every doorway is hung with a pair of wooden leaves that swing into the room
+  (about 40% start open). Interact (F) facing a doorway opens or shuts both, unless someone else
+  stands where a leaf would go; everyone is sent a `door` event and bots within 22 m hear it. A
+  leaf is a breakable panel (120 HP) whose box moves between its shut and open places; the
+  collider grid files it under the cells of both. The nav grid leaves door leaves out, so paths go
+  through shut doors, and a bot about to walk into a shut leaf opens it. The open doors are in the
+  join message, in replays and the death cam (rebuilt like broken panels). Every window has a
+  pane of glass (a 1 HP panel on its sill) that stops bodies and rounds but not sight or light: bots
+  and the light volume look through it, and a round breaks it and carries on. The doorways stayed
+  2.2 m wide.
 - **One building plan for every outpost** (15): two rooms, a front door, an end door and a door
   between them. It varies only in size, the placement of its openings and which of four corners
   and turns it takes. There are no buildings outside the outposts.
+  **Resolved** (23): four plans (one room; two rooms; an L of two rooms round a small yard, joined
+  by a doorway; two storeys, with stairs up the back wall to an upper floor with a window each
+  way). The plans are shuffled per island, so its first four outposts each get a different one.
+  Two to six one- or two-room huts stand out in the country, on flat ground away from outposts,
+  extraction points and trees, each on a concrete floor with one ordinary crate; they're placed
+  last from their own random stream, so nothing else moved.
 - **Outposts were rearranged** (15). The building takes a corner, so the containers and crates
   landed elsewhere on every island. An older link or leaderboard score is for the old layout of
   the same island. Only the outposts' insides changed; terrain, trees, rocks, fences and
   extraction points didn't move.
+  **Again** (23): with the new plans, the containers and crates inside every outpost moved once
+  more (they're now placed from the outpost's own stream). The island's stream is still drawn
+  from as it was before and the draws thrown away, so everything outside the outposts stands
+  where it did (checked by hashing the terrain, trees, rocks, scattered cover, fences, extraction
+  points and outpost walls of six islands before and after).
 - **The roof can't be broken** (15), though every wall can. With all the walls blown out, a
   roof is left standing on its four corner posts.
+  **Resolved** (23): roofs are sections about 2.4 m wide (400 HP each), each held up by every wall
+  panel, lintel and corner post whose top it rests on, and coming down only once all of them have
+  gone (a panel's `falls: 'all'`). Corner posts can be broken too. A section can be rebuilt once
+  anything under it stands again.
 - **Indoor light is a flat cut** (15). Surfaces inside a building's walls and under its roof get
   30% of the sky's light, with a hard edge at the doorway. Light through doors and windows isn't
   modelled, and soldiers and debris inside aren't dimmed.
+  **Resolved** (23): each building has a light volume (`indoorlight.ts`): cells about 0.5 m across,
+  each holding the share of 40 directions over the sky that leave the building without meeting a
+  solid 0.25 m block (walls, shut doors, roof; glass lets light through), marched through a
+  voxelized copy of the building. A cell gets 30% of the sky's light plus 2.6 times the share it
+  sees, up to all of it. The grids share one 3D texture; terrain, props, debris, soldiers and their
+  guns sample it a little off the surface, so a wall's two faces read their own sides, and the
+  first-person gun takes the value at the camera. A building's grid is worked out again, a little
+  each frame, when its doors or panels change; all ten buildings of the default island take about
+  35 ms in Node. Sunlight through windows comes from the shadow maps as before; bodies now take
+  the world's shadows in and near buildings, so a room keeps the sun off them.
 - **Ground cover is only for looks** (15). Nothing collides with grass, bushes or pebbles, and bots
   see straight through them, so bushes are kept under 0.9 m and grass under 0.6 m. Near the
   coast grass can stand on sand, because each tuft reads the paint at the nearest terrain vertex.
@@ -503,6 +538,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   the tests. The mid-range laptop and watching it move are left for chunk 30.
 - **Building ceilings show shadow acne** (19): the indoor screenshots show streaks across the
   underside of the roof, dark by day and orange at dusk. Seen only now that a test looks inside.
+  Still there (23): the streaks look like the corrugated metal texture's ridges seen from below,
+  catching the sky's reflection, rather than shadow acne; with the light volume they're dimmer
+  but still bright against a dark room.
 
 - **The climb is still a pose** (21). The free set of Quaternius's animation library has no
   climbing clip, so a mantle holds the same leg pose, forward bend and hand on the ledge as in
@@ -565,6 +603,38 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   it wasn't replaced.
 - **Working the bolt fills a corner of the screen** (21). In first person the right hand comes
   back to the bolt near the eye, and the forearm covers the bottom right while it does.
+
+- **Bots never go upstairs** (23). The nav grid is one layer over the ground, so a two-storey
+  building's upper floor and stairs don't exist for bots: they path about the ground floor under
+  it and never climb to the lookout, and a player up there is only shot at through the windows.
+  Loot crates are kept on the ground floor for that reason.
+- **Some of the new buildings can't break** (23): a two-storey building's upper floor, stairs and
+  ground-floor corner posts, and a hut's concrete floor. The upper storey's walls stand on the
+  walls below and fall once everything under them has gone, but its floor stays hanging on the
+  posts.
+- **Bots only ever open doors** (23), and only by walking into them; they never shut one or use
+  a door to block a chase, so an island's doors end up open as bots pass through. A door that
+  someone is standing in the way of just doesn't move, with nothing said to the player.
+- **Doors swing only on screen** (23). The leaf's collider jumps between shut and open at once;
+  its picture swings over 0.35 s. Pressing F waits for the server, so a door opens a round trip
+  after the press.
+- **Glass is simple** (23): a flat, faintly tinted pane with no reflection or dirt, the same whether
+  looked at or through. Bots see through it exactly as through air, grenades bounce off it rather
+  than breaking it (the blast does), and it shatters into the same flying chunks as a wall, in a
+  pale colour.
+- **The light volume is rough** (23). Cells about 0.5 m across leave a little light leaking at the
+  foot of walls; only sky light is counted (no light bounced off the floor, no colour), and only
+  what the building itself hides: hills, trees and other buildings outside don't darken a room.
+  Materials look only at the four buildings nearest the camera, so a far building's inside, seen
+  through its doorway, is lit like the outdoors. Floors under the hemisphere light still look
+  brighter than the walls round them. The first-person gun reads the cell it's in, eased over a
+  quarter of a second. Tuned (30% floor, 2.6 gain) by screenshots only.
+- **Bodies take shadows only near buildings** (23), within 1.5 m of one, as receiving them
+  everywhere cost 1–3 ms a frame with 24 near bodies. Out in the open, a soldier in a tree's or a
+  wall's shadow is lit as before.
+- **Fewer huts than planned** (23): nine were planned, but most islands have room for two to six
+  on ground flat enough (0.4 m of fall under the whole hut and a metre round it).
+
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
@@ -621,6 +691,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   when its walls are close.
   **Improved** (15): the outposts' buildings have roofs, so inside them the reverb is right. The
   walled yards around them still ring like a room.
+  **Improved** (23): a place with nothing within 12 m overhead counts as only 30% as enclosed, so a
+  walled yard echoes a little instead of ringing like a room; the wind and crickets come through
+  there as in the open. It's one ray straight up, so an overhang or a tree above counts as a
+  roof. Reverb per space is still chunk 26's.
 - **The sea's bearing is an average** (14) of the directions that found water at the nearest
   radius, so on a narrow point with sea on both sides it can seem to come from inland.
 - **Far fights fill the voice pool** (14). A distant shot holds a voice through its delay and its
@@ -662,6 +736,10 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   tested by blocking the Opus files; which real Safari versions need it wasn't checked.
 - **The sounds are decoded at 48 kHz before audio is unlocked** (20), in an
   OfflineAudioContext, so a device running at 44.1 kHz resamples them as they play.
+
+- **Doors and glass borrow sounds** (23): a door is the wooden footstep played slow, and breaking
+  glass is the wood splinter played high. Real recordings of both are left for chunk 26's better
+  recordings.
 
 ### Performance and loading
 - **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat
@@ -795,6 +873,13 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   there, but a key pressed by a test doesn't free it the way Esc does, so Chrome's hold itself
   still hasn't been seen by a test; the messages were checked in WebKit, which refuses every
   lock, with the time since Esc faked.
+
+- **Chunk 23's cost** (23): with the light volume in the shader of every lit surface, the
+  browser tests' benchmark came out as before in all three engines once materials looked only at
+  the four nearest buildings (Chromium 3.3–3.7 ms empty, 10.9–11.4 ms with 24 bodies; the kept
+  baseline is 3.1 and 10.6). Looking at all sixteen cost 2.6 ms in Chromium's empty frame, and
+  bodies taking shadows everywhere cost 1–3 ms. Chromium's empty frame also comes out at 7–8 ms
+  about one run in three, with this chunk's code and with chunk 22's alike, so that's the machine.
 
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
@@ -952,6 +1037,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   camera and back, Esc), the file picker, dropping a file on the menu, a file that isn't a replay,
   and the handover to another island, which opens paused, in all three engines. Flying the free
   camera about isn't tested.
+
+- **Replays from before chunk 23 can't be watched** (23). The buildings changed, so the replay
+  format's version went up to 2 and older files are refused as from another version. The door
+  state in them is rebuilt like broken panels, from the doors open at the start and every door
+  event since.
 
 ### Rivals
 - **You can't tell a bot's personality except by how it plays** (18). Names, the kill feed and
@@ -1115,6 +1205,17 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   at once. Crossing into a new cell after that takes about 1 ms (1.7 ms at the 95th percentile in
   Chromium), and into cells seen before about the same, so the copying costs as much as the
   scattering.
+
+- **Chunk 23's tests** (23): unit tests cover the plans, huts, doors (pairs, swinging, facing,
+  walking through open and not shut), glass (stops rounds and bodies, not sight; breaks at a
+  touch), roofs falling only when nothing holds them, the stairs, the upper storey, bots reaching
+  every crate from outside, and on the server F opening and shutting a door, a body holding it,
+  a late joiner told the open doors, a guard opening a door on its way and a round breaking a
+  pane. The cover tests had to pick their test wall more carefully and blow a wider hole, as the
+  new buildings sit behind walls that used to have room. The light volume, the door swing, the
+  glass and the door prompt were checked by screenshots only: the indoor spot moved into the
+  two-storey building and an upstairs spot was added.
+
 ### Playtest and tuning
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
   the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
@@ -1148,6 +1249,15 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The run log panel has no automated tests** (12). The records, summary and storage are tested;
   the F4 panel was only checked by typecheck. Resolved: the F4 panel (and the F3 net panel with
   its fake-lag sliders) were removed.
+
+- **The new buildings were tried by bots only** (23). Two bot playtests of 6 islands × 20 minutes
+  each, before and after, came out the same: operator bots got out of 12% of runs before and
+  12.5% after (13% → 11% on seeds 1–6, 11% → 14% on seeds 7–12), with the same kill rates. Over
+  30 minutes of bot games bots opened 10 doors and broke 5 panes; no roof came down. Nothing
+  was tuned, as nothing moved. Nobody has fought through the new buildings.
+- **Bots now path onto low obstacles** (23). The nav grid treats anything up to 0.52 m above a
+  cell's floor as something to step onto rather than walk round, so a hut's raised floor doesn't
+  block its doorway. Small rocks and the first step of a stair count too.
 
 ## Future
 - **Multiplayer**

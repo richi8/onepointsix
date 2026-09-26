@@ -57,6 +57,7 @@ const slope = Number(q.get('slope') ?? 0);
 
 const floor = (x: number): number => Math.max(0, x * slope);
 const ground = {
+  buildings: [],
   groundHeight: floor,
   floorHeight: floor,
   // The wall is a box 0.2 thick, 2 high and 4 long.
