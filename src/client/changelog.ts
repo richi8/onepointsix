@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'More natural grass',
+    notes: [
+      'Grass now grows out of the ground it stands on, taking the earth’s colour at its roots, and fields vary in patches of drier and greener grass.',
+      'Tufts are shaded like clumps, glow when the sun is behind them, and have softer edges.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Lamps in the outposts',
     notes: [
       'Every outpost has lamps on poles along its walls. At dusk and at night they light the yard, and you can see an outpost’s lamps glowing from across the island.',

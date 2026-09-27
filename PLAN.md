@@ -1165,6 +1165,16 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The replay test's floor was lowered** (lamps): with the poles in the world, the test run's
   player is shot 24 s in rather than lasting the 40 s, so fewer ticks are compared (16,905 rather
   than 38,467); the check now asks for 9,000.
+- **Grass is still crossed cards** (natural grass, after chunk 29). Tufts now take the ground's
+  colour at their roots (the terrain's textures, blended by its weights, from a small mip in the
+  vertex shader), lean their normals out so a tuft shades like a clump, glow when the sun or a lamp
+  is behind them, vary in patches of drier and greener and a finer mottle, and have soft edges by
+  alpha-to-coverage. Up close each tuft is still three flat cards; it reads as grass, not as blades.
+  Until the textures load the roots keep the blades' own colour. The patches are colour only, so
+  what bots see through is unchanged; distant grass looks a touch thinner than before (its alpha is
+  thickened by mip level at 0.2 rather than 0.3, which keeps its tops ragged), a little less than
+  the sight model's cover. Checked by screenshots only; the frame cost wasn't measured apart from
+  the benchmark still passing.
 
 ### Death cam
 - **Only the killer is replayed from inputs** (10). Everyone else is drawn from the snapshots the

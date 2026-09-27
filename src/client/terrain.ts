@@ -75,6 +75,16 @@ export class Terrain {
   }
 }
 
+/**
+ * The tint the textured ground takes at (x, z), into `out`: patches of lusher
+ * grass, fading to none where it's `bare` (sand or rock), 0..1. Grass roots
+ * take it too, to match the ground they grow from.
+ */
+export function groundTint(world: World, x: number, z: number, bare: number, out: THREE.Color): THREE.Color {
+  const lush = fbm(x / 23, z / 23, world.seed + 11, 2);
+  return out.copy(TINT_GRASS).lerp(TINT_LUSH, smoothstep(0.35, 0.75, lush)).lerp(WHITE, bare);
+}
+
 /** Every full-detail vertex's normal, flat colour, tint and layer weights. */
 function vertices(world: World): Vertices {
   const n = world.res + 1;
@@ -114,9 +124,7 @@ function vertices(world: World): Vertices {
     splatA.set(weights.slice(0, 4), i * 4);
     splatB[i] = weights[4];
 
-    const lush = fbm(x / 23, z / 23, world.seed + 11, 2);
-    c.copy(TINT_GRASS).lerp(TINT_LUSH, smoothstep(0.35, 0.75, lush)).lerp(WHITE, Math.max(sand, rock));
-    c.lerp(TINT_SEABED, seabed);
+    groundTint(world, x, z, Math.max(sand, rock), c).lerp(TINT_SEABED, seabed);
     c.toArray(tint, i * 3);
   }
   whole.dispose();
