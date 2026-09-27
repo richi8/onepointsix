@@ -109,6 +109,10 @@ export interface Death {
   head: boolean;
   /** The killer was an operator bot of this kind. */
   kind?: Personality;
+  /** How far off the killer was, in whole metres. */
+  distance?: number;
+  /** Everyone else who hit them in the last few seconds, the killer included. */
+  shooters?: { guards: number; operators: number };
 }
 
 /** Something that happened during a server tick, sent reliably to whoever should hear. */
@@ -158,6 +162,8 @@ export type GameEvent =
       extract: number;
       /** How they died, if killed. */
       death: Death | null;
+      /** Damage taken over the run from guards and from other operators. */
+      taken?: { guards: number; operators: number };
     }
   // To a player killed by someone else, a moment after: their killer's inputs
   // around the kill at server time `time`, to replay from the killer's eyes.

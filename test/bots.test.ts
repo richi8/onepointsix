@@ -80,7 +80,7 @@ describe('bot perception', () => {
     const far = openGround(60);
     const self = agent(1, 'operator', far.ax, far.az);
     const guard = agent(2, 'guard', far.bx, far.bz);
-    const role: Role = { kind: 'operator', loot: [], greed: 20 };
+    const role: Role = { kind: 'operator', loot: [], planned: 0, greed: 20 };
     const yaw = yawToward(far.ax, far.az, far.bx, far.bz);
     const calm = watch(self, [guard], yaw, 3, undefined, role);
     expect(calm.awareness(2)).toBe(1);

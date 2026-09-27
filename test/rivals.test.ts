@@ -46,7 +46,7 @@ function context(agents: Agent[], bags: BagSnap[] = [], bounty = 0): BotContext 
 
 /** An operator bot that has searched every crate, or has `loot` still to go to. */
 function operator(personality: Personality, loot: Point[] = []): Bot {
-  const role: Role = { kind: 'operator', loot: loot.map((p) => ({ ...p, look: p })), greed: 20, personality };
+  const role: Role = { kind: 'operator', loot: loot.map((p) => ({ ...p, look: p })), planned: loot.length, greed: 20, personality };
   return new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(2));
 }
 
@@ -74,7 +74,8 @@ describe('operator personalities', () => {
       const t = TEMPERS[p];
       expect(plan.role.greed).toBeGreaterThanOrEqual(t.greed[0]);
       expect(plan.role.greed).toBeLessThanOrEqual(t.greed[1]);
-      expect(plan.role.loot.length).toBeLessThanOrEqual(t.stops[1]);
+      expect(plan.role.planned).toBeLessThanOrEqual(t.stops[1]);
+      expect(plan.role.loot.length).toBeGreaterThan(plan.role.planned);
     }
     expect([...seen].sort()).toEqual([...PERSONALITIES].sort());
   });
@@ -158,7 +159,7 @@ describe('bot senses and stealth', () => {
     const shooter = agent(2, 'operator', at.x + 200, at.z);
     const offs: number[] = [];
     for (let seed = 1; seed <= 6; seed++) {
-      const bot = new Bot({ kind: 'operator', loot: [], greed: 20, personality: 'hunter' }, SKILLS.normal, RIFLE, 0, mulberry32(seed));
+      const bot = new Bot({ kind: 'operator', loot: [], planned: 0, greed: 20, personality: 'hunter' }, SKILLS.normal, RIFLE, 0, mulberry32(seed));
       const ctx = context([self, shooter]);
       think(bot, ctx, self, 0.2);
       bot.hear(self, { x: shooter.x, y: shooter.y, z: shooter.z, radius: 300, source: 2, gunfire: true }, 0.2);
@@ -185,7 +186,7 @@ describe('bot senses and stealth', () => {
           if (veg.seeThrough(self.x, self.y + 1.6, self.z, guard.x, guard.y + 1.2, guard.z) < 0.5) continue;
           tried++;
           self.hp = 50;
-          const bot = new Bot({ kind: 'operator', loot: [], greed: 20, personality: 'rat' }, SKILLS.normal, RIFLE, yawToward(self.x, self.z, guard.x, guard.z), mulberry32(1));
+          const bot = new Bot({ kind: 'operator', loot: [], planned: 0, greed: 20, personality: 'rat' }, SKILLS.normal, RIFLE, yawToward(self.x, self.z, guard.x, guard.z), mulberry32(1));
           const ctx = context([self, guard]);
           bot.hurt(guard, 0);
           think(bot, ctx, self, 0.1);

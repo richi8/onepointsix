@@ -4,7 +4,9 @@ import {
   CMD_DT,
   CMDS_PER_TICK,
   CROUCH_EYE_HEIGHT,
+  CARRY_MAX,
   CROUCH_SPEED,
+  EXTRACT_FEE,
   EXTRACT_RADIUS,
   EYE_HEIGHT,
   MAX_HP,
@@ -52,10 +54,11 @@ export type Role =
   // does. Never strays more than `leash` from home, or without a home, from
   // where it was when called away.
   | { kind: 'guard'; route: Point[]; leash: number; home?: Point; leader?: number }
-  // Plays a run: search the crate at each loot spot, taking what it can carry
-  // up to `greed` kg, then leave at the nearest open extraction point. Its
-  // personality decides what else it does along the way.
-  | { kind: 'operator'; loot: LootSpot[]; greed: number; personality?: Personality; thorough?: boolean };
+  // Plays a run: search the crate at each of the first `planned` loot spots,
+  // taking what it can carry up to `greed` kg, and the spots after them too
+  // until it can pay for extraction; then leave at the nearest open extraction
+  // point. Its personality decides what else it does along the way.
+  | { kind: 'operator'; loot: LootSpot[]; planned: number; greed: number; personality?: Personality; thorough?: boolean };
 
 export interface LootSpot extends Point {
   /** What to look at while searching, such as the crate. */
@@ -104,6 +107,8 @@ export interface BotContext {
   beam?(a: Agent): Point | null;
   /** Whether someone stands in a lamp's light; the server works each out once a tick. */
   lamplit?(a: Agent): boolean;
+  /** What the loot someone carries is worth. */
+  carried?(a: Agent): number;
 }
 
 /**
@@ -367,6 +372,10 @@ export class Bot {
   private born = -1;
   /** Health as of the last think: badly hurt, it gives up on hunting and camping. */
   private hp = MAX_HP;
+  /** Crates it means to search whatever it finds; those after them only until it can pay for extraction. */
+  private planned: number;
+  /** Whether it carries enough to pay for extraction. */
+  private paid = false;
   /** Gunfire heard lately, for telling where a fight is. */
   private gunfire: (Point & { source: number; at: number })[] = [];
   /** Where the bounty was last called, if it's worth going after. */
@@ -398,6 +407,7 @@ export class Bot {
     this.personality = role.kind === 'operator' ? (role.personality ?? null) : null;
     this.temper = this.personality ? TEMPERS[this.personality] : null;
     this.loot = role.kind === 'operator' ? [...role.loot] : [];
+    this.planned = role.kind === 'operator' ? role.planned : 0;
     this.state = this.routine();
   }
 
@@ -490,6 +500,7 @@ export class Bot {
     this.now = ctx.time;
     if (this.born < 0) this.born = ctx.time;
     this.hp = self.hp;
+    this.paid = (ctx.carried?.(self) ?? Infinity) >= EXTRACT_FEE;
     if (this.isRoutine(this.state)) this.anchor = { x: self.x, y: self.y, z: self.z };
     this.perceive(ctx, self, dt);
     this.decide(ctx, self);
@@ -769,7 +780,7 @@ export class Bot {
   /** A bag worth the detour lies nearby: go through it next. */
   private pickUpBag(ctx: BotContext, self: Agent): boolean {
     const t = this.temper;
-    if (!t || t.bagValue === Infinity || this.role.kind !== 'operator' || self.carry >= this.role.greed) return false;
+    if (!t || t.bagValue === Infinity || this.role.kind !== 'operator' || self.carry >= this.carryLimit()) return false;
     for (const b of ctx.bags()) {
       if (this.bagsTried.has(b.id) || (this.bagValues.get(b.id) ?? 0) < t.bagValue) continue;
       const d = Math.hypot(b.x - self.x, b.z - self.z);
@@ -780,6 +791,7 @@ export class Bot {
       const p = ctx.nav.nearestWalkable(self.x + (b.x - self.x) * k, self.z + (b.z - self.z) * k, 3);
       if (!p) continue;
       const y = ctx.world.groundHeight(p.x, p.z, ctx.world.floorHeight(p.x, p.z));
+      if (this.step < this.planned) this.planned++;
       this.loot.splice(Math.min(this.step, this.loot.length), 0, { x: p.x, y, z: p.z, look: { x: b.x, y: b.y, z: b.z }, bag: b.id });
       this.enter('loot', true);
       return true;
@@ -834,8 +846,8 @@ export class Bot {
       case 'loot': {
         if (role.kind !== 'operator') break;
         const spot = this.loot[this.step];
-        // Done, or short of time.
-        if (!spot || now - this.born >= RUN_TIME - LEAVE_BY) {
+        // Done, or short of time with enough to get out.
+        if (!spot || (now - this.born >= RUN_TIME - LEAVE_BY && this.paid)) {
           this.enter(this.routine());
           break;
         }
@@ -856,7 +868,7 @@ export class Bot {
         // The bag was emptied, or someone else got to it.
         else if (spot.bag !== undefined && view?.id !== spot.bag) this.nextStop();
         else if (!view || !view.searched) this.use = 'hold';
-        else if (next !== undefined && (ITEMS[next].use || self.carry + ITEMS[next].mass <= role.greed)) this.use = 'tap';
+        else if (next !== undefined && (ITEMS[next].use || self.carry + ITEMS[next].mass <= this.carryLimit())) this.use = 'tap';
         else this.nextStop();
         break;
       }
@@ -1196,6 +1208,11 @@ export class Bot {
     return best;
   }
 
+  /** How much it's willing to carry, kg: more while it can't yet pay for extraction. */
+  private carryLimit(): number {
+    return this.role.kind !== 'operator' ? 0 : this.paid ? this.role.greed : CARRY_MAX;
+  }
+
   private nextStop(): void {
     this.step++;
     this.waitUntil = 0;
@@ -1289,8 +1306,9 @@ export class Bot {
   private routine(): BotState {
     if (this.role.kind !== 'operator') return 'patrol';
     const run = this.born < 0 ? 0 : this.now - this.born;
-    // Badly hurt or short of time, it leaves what it hasn't searched yet.
-    if (this.step < this.loot.length && this.hp >= WOUNDED && run < RUN_TIME - LEAVE_BY) return 'loot';
+    // Badly hurt or short of time, it leaves what it hasn't searched yet, unless it can't yet pay to get out.
+    if (this.step < this.loot.length && !this.paid) return 'loot';
+    if (this.step < this.planned && this.hp >= WOUNDED && run < RUN_TIME - LEAVE_BY) return 'loot';
     // Hunters and campers stay on a while once done looting, but leave in time.
     const t = this.temper;
     if (t && run < Math.min(t.linger, RUN_TIME - LEAVE_BY) && this.hp >= WOUNDED) {

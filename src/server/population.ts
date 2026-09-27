@@ -132,6 +132,8 @@ const NEAR_OUTPOST = 60;
 
 /** How a thorough operator bot loots, the way a person tends to: many crates and a heavy pack. */
 const THOROUGH: Pick<Temper, 'stops' | 'greed'> = { stops: [6, 10], greed: [30, 40] };
+/** Crates an operator bot plans past its own stops, to search until it can pay for extraction. */
+const SPARE_CRATES = 12;
 
 /**
  * A fresh operator bot: where it drops in and the crates it will search on
@@ -158,7 +160,9 @@ export function planOperator(
   const stops = fewest + Math.floor(rand() * (most - fewest + 1));
   let from: Point = spawn;
   const used = new Set<number>();
-  for (let s = 0; s < stops; s++) {
+  let planned = -1;
+  for (let s = 0; s < stops + SPARE_CRATES; s++) {
+    if (s === stops) planned = loot.length;
     // One of the few nearest unsearched crates.
     const near = crates
       .map((c, i) => ({ i, d: Math.hypot((c.minX + c.maxX) / 2 - from.x, (c.minZ + c.maxZ) / 2 - from.z) }))
@@ -173,6 +177,7 @@ export function planOperator(
     loot.push(spot);
     from = spot;
   }
+  if (planned < 0) planned = loot.length;
 
   const free = CALLSIGNS.filter((c) => !taken.has(c));
   const name = free.length ? free[Math.floor(rand() * free.length)] : `Op ${Math.floor(rand() * 100)}`;
@@ -180,7 +185,7 @@ export function planOperator(
   const skill: Difficulty = r < 0.2 ? 'easy' : r < 0.75 ? 'normal' : 'hard';
   const primary = skill !== 'easy' && rand() < 0.2 ? BOLT : RIFLE;
   const yaw = loot[0] ? yawToward(spawn.x, spawn.z, loot[0].x, loot[0].z) : rand() * Math.PI * 2;
-  return { name, role: { kind: 'operator', loot, greed, personality, ...(thorough ? { thorough } : {}) }, skill, primary, spawn: { ...spawn, yaw } };
+  return { name, role: { kind: 'operator', loot, planned, greed, personality, ...(thorough ? { thorough } : {}) }, skill, primary, spawn: { ...spawn, yaw } };
 }
 
 /**

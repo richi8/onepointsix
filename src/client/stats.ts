@@ -85,7 +85,7 @@ function shortDate(iso: string): string {
 
 /** The run log as a file to send: every run, and the build it was played on. */
 export function exportRuns(records: readonly RunRecord[], build: string): void {
-  const file = { format: RUNS_FORMAT, version: 1, build, exported: new Date().toISOString(), runs: records };
+  const file = { format: RUNS_FORMAT, version: 2, build, exported: new Date().toISOString(), runs: records };
   const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 1)], { type: 'application/json' }));
   const a = document.createElement('a');
   const d = new Date();

@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Bot } from '../src/server/bot.ts';
 import { planContracts, type Contract } from '../src/server/contracts.ts';
 import { GameServer } from '../src/server/server.ts';
-import { Btn, CONTRACT_REWARD, EXTRACT_TIME, INTEL_TIME, SEARCH_TIME, SUPPRESSED_NOISE } from '../src/shared/constants.ts';
+import { Btn, CONTRACT_REWARD, EXTRACT_FEE, EXTRACT_TIME, INTEL_TIME, SEARCH_TIME, SUPPRESSED_NOISE } from '../src/shared/constants.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import { ITEMS } from '../src/shared/loot.ts';
+
+const GOLD = ITEMS.findIndex((i) => i.name === 'Gold bar');
 import type { GameEvent, ServerMsg } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import type { PlayerState } from '../src/shared/sim.ts';
@@ -136,6 +138,7 @@ describe('contracts', () => {
     const me = body(server, h.id);
     const intel = contractOf(server.world, 'intel');
     me.run.contracts = [intel];
+    me.run.items = [GOLD, GOLD];
     const t = watchtower(server.world.outposts[intel.outpost]);
     Object.assign(me, { x: t.x, y: t.y, z: t.z, vx: 0, vz: 0 });
     const face = yawToward(t.x, t.z, intel.x, intel.z);
@@ -157,7 +160,7 @@ describe('contracts', () => {
     Object.assign(me, { x: e.x, z: e.z, y: server.world.groundHeight(e.x, e.z, server.world.floorHeight(e.x, e.z) + 0.5) });
     h.hold(0, Math.round(EXTRACT_TIME * 60) + 10, 0);
     expect(h.events()).toContainEqual(expect.objectContaining({
-      k: 'runEnd', outcome: 'extracted', score: CONTRACT_REWARD.intel, contracts: [expect.objectContaining({ kind: 'intel', state: 'done' })],
+      k: 'runEnd', outcome: 'extracted', score: 2 * ITEMS[GOLD].value - EXTRACT_FEE + CONTRACT_REWARD.intel, contracts: [expect.objectContaining({ kind: 'intel', state: 'done' })],
     }));
   });
 

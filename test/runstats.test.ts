@@ -34,6 +34,15 @@ describe('run records', () => {
       .toBe('camper, Assault rifle');
   });
 
+  it('records how far off the killer was, who else had hit them and the damage taken', () => {
+    const death = { by: 'guard', weapon: 0, head: false, distance: 64, shooters: { guards: 3, operators: 0 } } as const;
+    const r = runRecord(end({ outcome: 'killed', death, taken: { guards: 180, operators: 20 } }), DEFAULT_WORLD, 'online', names);
+    expect(r).toMatchObject({ killDistance: 64, guardShooters: 3, operatorShooters: 0, takenGuards: 180, takenOperators: 20 });
+    const s = summarize([r, { ...r, killDistance: 20, guardShooters: 1 }, runRecord(end(), DEFAULT_WORLD, 'online', names)]);
+    expect(s.medianKillDistance).toBe(42);
+    expect(s.guardShooters).toEqual([['1 guard', 1], ['3 guards', 1]]);
+  });
+
   it('counts contracts done', () => {
     const c = { kind: 'intel', outpost: 0, x: 0, y: 0, z: 0, reward: 1, progress: 0, panel: -1, name: '' } as const;
     const r = runRecord(end({ contracts: [{ ...c, state: 'done' }, { ...c, state: 'failed' }] }), DEFAULT_WORLD, 'online', names);

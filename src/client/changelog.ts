@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Pickups cost, contracts pay',
+    notes: [
+      'Getting off the island now costs $5,000, paid from the loot you carry. Until you carry that much you can’t call a pickup or leave from a beach; your pack shows how close you are.',
+      'Contracts pay five times as much: $7,500 for the intel, $6,000 for a supply cache and $12,500 for a commander.',
+      'Other operators know about the fee too, so they stay out looting longer.',
+      'Your run stats now remember how far off your killer was and how many enemies had been hitting you, for the stats you export.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Guards shoot less well',
     notes: [
       'Guards no longer aim for your head, sway more on a far target, take a moment longer to open fire and fire shorter bursts, so running into two or three of them at once is no longer over in a second.',

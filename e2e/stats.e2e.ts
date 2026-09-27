@@ -27,7 +27,7 @@ test('Stats sums up your runs, and exports them as a file', async ({ page }) => 
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^onepointsix-runs-\d{4}-\d\d-\d\d\.json$/);
   const data = JSON.parse(await readFile((await file.path())!, 'utf8'));
-  expect(data).toMatchObject({ format: 'onepointsix-runs', version: 1, runs: [{ outcome: 'extracted', mode: 'offline' }] });
+  expect(data).toMatchObject({ format: 'onepointsix-runs', version: 2, runs: [{ outcome: 'extracted', mode: 'offline' }] });
   expect(typeof data.build).toBe('string');
   await expect(page.locator('#toast')).toHaveText('Runs exported. Send the file to the developer.');
 });

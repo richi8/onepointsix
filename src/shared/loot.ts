@@ -1,4 +1,4 @@
-import { KILL_SCORE_GUARD, KILL_SCORE_OPERATOR } from './constants.ts';
+import { EXTRACT_FEE, KILL_SCORE_GUARD, KILL_SCORE_OPERATOR } from './constants.ts';
 import type { Box, World } from './world.ts';
 
 // What can be found in crates, what it is worth and what it weighs. Valuables
@@ -79,9 +79,9 @@ export function lootMass(items: readonly number[]): number {
   return Math.round(items.reduce((sum, i) => sum + ITEMS[i].mass, 0) * 10) / 10;
 }
 
-/** `contracts` is the reward for the contracts done. */
+/** `contracts` is the reward for the contracts done. The extraction fee comes out of the loot. */
 export function runScore(value: number, kills: number, guardKills: number, contracts = 0): number {
-  return value + kills * KILL_SCORE_OPERATOR + guardKills * KILL_SCORE_GUARD + contracts;
+  return Math.max(value - EXTRACT_FEE, 0) + kills * KILL_SCORE_OPERATOR + guardKills * KILL_SCORE_GUARD + contracts;
 }
 
 /** Crates standing on the ground, in outposts and out in the open; stacked ones are just cover. */

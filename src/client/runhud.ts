@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CALL_TIME, CARRY_HEAVY, EXTRACT_TIME, KILL_SCORE_GUARD, KILL_SCORE_OPERATOR } from '../shared/constants.ts';
+import { CALL_TIME, CARRY_HEAVY, EXTRACT_FEE, EXTRACT_TIME, KILL_SCORE_GUARD, KILL_SCORE_OPERATOR } from '../shared/constants.ts';
 import { extractKind, extractName, ITEMS, lootMass, lootValue, runScore } from '../shared/loot.ts';
 import { PERSONALITY_NOTES } from '../shared/personality.ts';
 import type { ContractView, ExtractView, GameEvent, RunView } from '../shared/protocol.ts';
@@ -78,7 +78,9 @@ export class RunHud {
     const lines = [...counts].slice(0, PACK_SHOWN).map(([i, n]) => `<li>${ITEMS[i].name}${n > 1 ? ` ×${n}` : ''}</li>`);
     if (counts.size > PACK_SHOWN) lines.push(`<li>+${counts.size - PACK_SHOWN} more</li>`);
     const kills = run.kills + run.guardKills;
-    const sum = `<b>${money(value)}</b> · <span class="${mass >= CARRY_HEAVY ? 'heavy' : ''}">${mass.toFixed(1)} kg</span>` +
+    // Short of the fee, the loot shows how far it has to go before a pickup will take you.
+    const worth = value < EXTRACT_FEE ? `<b>${money(value)}</b> of ${money(EXTRACT_FEE)}` : `<b>${money(value)}</b>`;
+    const sum = `${worth} · <span class="${mass >= CARRY_HEAVY ? 'heavy' : ''}">${mass.toFixed(1)} kg</span>` +
       (kills ? ` · ${kills} kill${kills > 1 ? 's' : ''}` : '');
     this.set('pack', this.pack, `${sum}|${lines.join('')}`, () => {
       this.packSum.innerHTML = sum;
@@ -145,7 +147,9 @@ export class RunHud {
     } else if (run.zone >= 0) {
       const v = views[run.zone];
       const call = extractKind(run.zone) === 'call';
-      if (v && v.call >= 0) {
+      const value = lootValue(run.items);
+      if (value < EXTRACT_FEE) title = `A pickup costs ${money(EXTRACT_FEE)} — you carry ${money(value)}`;
+      else if (v && v.call >= 0) {
         title = `Pickup in ${Math.ceil(v.call)} — hold the zone`;
         bar = 1 - v.call / CALL_TIME;
       } else if (v && !v.open) title = `Extraction shut — opens in ${clock(v.next)}`;
@@ -172,9 +176,11 @@ export class RunHud {
     if (run) {
       const value = lootValue(run.items);
       const done = run.contracts.filter((c) => c.state === 'done').reduce((sum, c) => sum + c.reward, 0);
-      score = runScore(value, run.kills, run.guardKills, done).toLocaleString('en-US');
+      score = value < EXTRACT_FEE ? `${money(EXTRACT_FEE - value)} short of the fee`
+        : runScore(value, run.kills, run.guardKills, done).toLocaleString('en-US');
       rows = [
         ['Loot', money(value)],
+        ['Extraction fee', `−${money(EXTRACT_FEE)}`],
         [`Operators killed × ${KILL_SCORE_OPERATOR}`, String(run.kills)],
         [`Guards killed × ${KILL_SCORE_GUARD}`, String(run.guardKills)],
         ...run.contracts.map((c): [string, string] => [
@@ -210,6 +216,7 @@ export class RunHud {
     const out = e.outcome === 'extracted';
     const rows: [string, string][] = [
       ['Loot', out ? money(e.value) : `<s>${money(e.value)}</s>`],
+      ...(out ? [['Extraction fee', `−${money(EXTRACT_FEE)}`] as [string, string]] : []),
       [`Operators killed × ${KILL_SCORE_OPERATOR}`, String(e.kills)],
       [`Guards killed × ${KILL_SCORE_GUARD}`, String(e.guardKills)],
       ...e.contracts.map((c): [string, string] => {

@@ -3,7 +3,7 @@ import { Directory } from '../src/server/directory.ts';
 import { Extracts } from '../src/server/extracts.ts';
 import { GameServer } from '../src/server/server.ts';
 import {
-  Btn, CALL_TIME, EXTRACT_TIME, OPERATOR_CAPACITY, RESPONSE_SQUAD, RUN_TIME, SEARCH_TIME, SERVER_TICK_RATE,
+  Btn, CALL_TIME, EXTRACT_FEE, EXTRACT_TIME, OPERATOR_CAPACITY, RESPONSE_SQUAD, RUN_TIME, SEARCH_TIME, SERVER_TICK_RATE,
 } from '../src/shared/constants.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import { ITEMS, lootMass, lootValue, rollItems, runScore, sortForTaking } from '../src/shared/loot.ts';
@@ -109,7 +109,7 @@ describe('loot', () => {
   });
 
   it('scores loot and kills', () => {
-    expect(runScore(1000, 2, 3)).toBe(1000 + 2 * 500 + 3 * 150);
+    expect(runScore(6000, 2, 3)).toBe(6000 - EXTRACT_FEE + 2 * 500 + 3 * 150);
   });
 });
 
@@ -178,18 +178,35 @@ describe('a run', () => {
     const e = server.extracts.points[0];
     expect(e.kind).toBe('walk');
     Object.assign(e, { open: true, next: Infinity });
-    body(server, h.id).run.items = [GOLD, WATCH];
+    body(server, h.id).run.items = [GOLD, GOLD, WATCH];
     place(server, h.id, e.x, e.z);
     h.hold(0, Math.round(EXTRACT_TIME * 60) - 10);
     expect(h.snap().run).toMatchObject({ zone: 0 });
     expect(h.events().some((ev) => ev.k === 'runEnd')).toBe(false);
     h.hold(0, 20);
-    const value = ITEMS[GOLD].value + ITEMS[WATCH].value;
+    const value = 2 * ITEMS[GOLD].value + ITEMS[WATCH].value;
     expect(h.events()).toContainEqual(expect.objectContaining({
-      k: 'runEnd', outcome: 'extracted', score: value, value, items: [GOLD, WATCH], extract: 0, death: null,
+      k: 'runEnd', outcome: 'extracted', score: value - EXTRACT_FEE, value, items: [GOLD, GOLD, WATCH], extract: 0, death: null,
     }));
     expect(onEvent).toContainEqual({ k: 'extract', id: h.id, name: `h${h.id}`, value });
     expect(server.humans()).toBe(0);
+  });
+
+  it('does not extract, nor call a pickup, carrying less than the fee', () => {
+    const server = runsServer();
+    const h = human(server);
+    body(server, h.id).run.items = [GOLD];
+    const walk = server.extracts.points[0];
+    Object.assign(walk, { open: true, next: Infinity });
+    place(server, h.id, walk.x, walk.z);
+    h.hold(0, Math.round(EXTRACT_TIME * 60) * 2);
+    expect(h.events().some((ev) => ev.k === 'runEnd')).toBe(false);
+    const call = server.extracts.points[1];
+    Object.assign(call, { open: true, next: Infinity });
+    place(server, h.id, call.x, call.z);
+    body(server, h.id).protection = Infinity;
+    h.press(Btn.Interact);
+    expect(h.events().some((ev) => ev.k === 'call')).toBe(false);
   });
 
   it('does not extract at a shut point', () => {
@@ -208,6 +225,7 @@ describe('a run', () => {
     const e = server.extracts.points[1];
     expect(e.kind).toBe('call');
     Object.assign(e, { open: true, next: Infinity });
+    body(server, h.id).run.items = [GOLD, GOLD];
     place(server, h.id, e.x, e.z);
     body(server, h.id).protection = Infinity;
     h.press(Btn.Interact);
@@ -235,7 +253,8 @@ describe('a run', () => {
     server.step();
     expect(h.events()).toContainEqual(expect.objectContaining({
       k: 'runEnd', outcome: 'killed', score: 0, value: ITEMS[GOLD].value, killer: `h${other.id}`, extract: -1,
-      death: { by: 'operator', weapon: 0, head: true },
+      death: { by: 'operator', weapon: 0, head: true, distance: expect.any(Number), shooters: { guards: 0, operators: 1 } },
+      taken: { guards: 0, operators: 100 },
     }));
     expect(body(server, other.id).run).toMatchObject({ kills: 1 });
     const [bag] = h.snap().bags;

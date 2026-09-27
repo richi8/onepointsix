@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { EXTRACT_FEE } from '../src/shared/constants.ts';
 import { lootValue } from '../src/shared/loot.ts';
 import { parseShareLink } from '../src/shared/share.ts';
 import { copyLinks, dev, endRun, GOLD, open, play } from './game.ts';
@@ -10,15 +11,15 @@ test.describe('results', () => {
     await page.fill('#name', 'Tester');
     await page.locator('#name').blur();
     await play(page);
-    await dev(page, { act: 'give', items: [GOLD] });
+    await dev(page, { act: 'give', items: [GOLD, GOLD] });
     await endRun(page, 'extracted');
     const results = page.locator('#results');
     await expect(results.locator('h2')).toHaveText('Extracted');
     await expect(results.locator('.why')).toHaveText('You made it off the island.');
     const score = Number((await results.locator('.score span').textContent())!.replace(/,/g, ''));
-    expect(score).toBeGreaterThanOrEqual(lootValue([GOLD]));
+    expect(score).toBeGreaterThanOrEqual(lootValue([GOLD, GOLD]) - EXTRACT_FEE);
     await expect(results.locator('.standing')).toHaveText('New best on this island!');
-    await expect(results.locator('.items')).toHaveText('Gold bar');
+    await expect(results.locator('.items')).toHaveText('Gold bar ×2');
     for (const id of ['again', 'to-menu', 'share-run', 'watch-run', 'save-run']) await expect(page.locator(`#${id}`)).toBeVisible();
     await expect(page.locator('#replay')).toBeHidden();
 

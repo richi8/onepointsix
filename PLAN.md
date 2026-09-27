@@ -214,7 +214,7 @@ human pass comes last so people play the finished result.
 | 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Done** (by bot playtests: 15% of operator bot runs extract by day and 17% at night in rain, against 13% in chunk 18 and 12% just before; bots take a bush for 37% of their cover and 35% of their waits; fights joined are guessed 12 m off the shooter on average. Nobody has played against it) |
 | 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Done** (a 42 s test run's file is 38% of chunk 17's; the game run again matches every body to the centimetre in unit tests and in the browser tests of each engine, and a file from Chromium ran again exactly in Firefox and WebKit; nobody has watched a replay by hand) |
 | 29 | **Rivals and results** | A dead operator's personality shown on the results screen, in the feed after they die and on their bag; operator bot extraction back near chunk 12's 19% without undoing the personalities; a stats page on the menu that reads the run log, with export to a file; the playtest counts unfinished runs, measures how often drop-in falls back to anywhere, and has a bot mode that searches like a human so run length can be read; the share button opens the system share sheet where there is one; PvE's old board removed from storage | You can tell who killed you and what kind of rival they were, and anyone can send their run stats as a file | **Done** (operator bot extraction came back only part of the way: 16% of runs by day over 24 islands, from 14%, and 18% at night in rain, from 16%; the stats page, share sheet and personalities were checked by browser tests, nobody has played with them) |
-| 30 | **Human pass** | The chunks that need people and hardware this machine can't give: several full runs by other people (using chunk 29's stats export), a listening pass on the mix, reverb and ambience, a mid-range laptop for the 60 fps and 5 s load targets, Firefox and Safari by hand, and tuning from what they show (guards, weapons, extraction timings, loot, night, buildings, how far operator bots engage) | The Playtest and tuning goals from chunk 12 are met with human data, and every item in Known Issues is Resolved, Moot or listed below as left for later | **Not started** |
+| 30 | **Human pass** | The chunks that need people and hardware this machine can't give: several full runs by other people (using chunk 29's stats export), a listening pass on the mix, reverb and ambience, a mid-range laptop for the 60 fps and 5 s load targets, Firefox and Safari by hand, and tuning from what they show (guards, weapons, extraction timings, loot, night, buildings, how far operator bots engage) | The Playtest and tuning goals from chunk 12 are met with human data, and every item in Known Issues is Resolved, Moot or listed below as left for later | **Started**: the developer's own run log read, guards softened, contracts paid 5×, an extraction fee, the death record in the export; Safari checked by hand and looks good; Firefox by hand, other people's runs, the listening pass and a mid-range laptop still to come |
 
 Known Issues that Phase 3 leaves alone:
 - **Waiting on multiplayer or a backend** (Future): scores in links can be faked, leaderboards
@@ -1710,6 +1710,30 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The stats export hasn't had a real file sent yet** (29). Its format may need more (the
   browser, the screen, the frame rate) once chunk 30's playtesters use it; there's no way to
   clear the log from the page either.
+  **Resolved in part** (30): the developer sent the first file (84 runs, see "Guards were too
+  deadly for a person"). Every run now records the damage taken from guards and from other
+  operators, and a death at someone else's hands how far off the killer was and how many guards
+  and operators had hit them in the last 5 s (`SHOOTERS_WINDOW`); the export is version 2, and the
+  playtest's summary prints the killer's median distance and the guard counts. Practice runs
+  aren't marked (the user decided against it), and the browser, screen and frame rate still
+  aren't recorded. Nothing reads the files back yet.
+- **Nobody did contracts** (30). In the first human run log 1 of 168 contracts offered was done:
+  they're risky (in and around the outposts) and paid 1,200–2,500, less than a crate or two.
+  **Changed** (30): rewards are 5× as much (intel 7,500, cache 6,000, commander 12,500). Not yet
+  played with; bots still get no contracts.
+- **Extracted runs were short** (30): 2:30 at the median in the first human run log, below
+  the 3–10 minute goal; getting in and out with a couple of crates paid.
+  **Changed** (30): a pickup now costs 5,000 (`EXTRACT_FEE`), paid from the loot on
+  extraction: carrying less, you can't call a pickup or hold a walk-in point, and the HUD says
+  so (the pack shows "$X of $5,000", the zone "A pickup costs $5,000 — you carry $X", the pause
+  menu how far short you are). Operator bots plan 12 spare crates past their own stops and
+  search them, carrying up to 50 kg, until they can pay, even when hurt or short of time. That
+  hit them hard: in the bot playtest (6 islands × 20 min) 3% of their runs extract by day (19%
+  just before) and 10% at night in rain (21%), their extracted runs last 3:45 and 3:06, and 97%
+  and 90% end in death; left as it is for now. Scores kept on leaderboards and in share links
+  from before don't pay the fee, so they're 5,000 higher than the same run would score now. The
+  dev shortcut that ends a run as extracted skips the check, so the loot's part of a score is
+  never below zero.
 
 ## Future
 - **Multiplayer**

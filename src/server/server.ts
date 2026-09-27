@@ -11,7 +11,9 @@ import {
   DOOR_NOISE,
   DOOR_REACH,
   EYE_HEIGHT,
+  EXTRACT_FEE,
   EXTRACT_TIME,
+  SHOOTERS_WINDOW,
   GRENADE_DAMAGE,
   GRENADE_FUSE,
   GRENADE_NOISE,
@@ -103,6 +105,15 @@ interface Run {
   death: Death | null;
   /** Objectives paid on extraction; only humans get them. */
   contracts: Contract[];
+  /** When each enemy last hit them, and from which side. */
+  hitBy: Map<number, { at: number; team: Team }>;
+  /** Damage taken from guards and from other operators. */
+  taken: { guards: number; operators: number };
+}
+
+/** Whether they carry enough loot to pay for extraction. */
+function paid(run: Run): boolean {
+  return lootValue(run.items) >= EXTRACT_FEE;
 }
 
 interface Player extends PlayerState {
@@ -250,6 +261,10 @@ export class GameServer {
         let spot = this.beams.get(a.id);
         if (spot === undefined) this.beams.set(a.id, (spot = beamSpot(this.world, a)));
         return spot;
+      },
+      carried: (a) => {
+        const run = players.get(a.id)?.run;
+        return run ? lootValue(run.items) : 0;
       },
       lamplit: (a) => {
         let lit = this.lamplit.get(a.id);
@@ -568,7 +583,7 @@ export class GameServer {
       return;
     }
     const zone = this.extracts.at(p);
-    if (zone >= 0 && this.extracts.call(zone, this.time)) {
+    if (zone >= 0 && paid(run) && this.extracts.call(zone, this.time)) {
       this.called(p, zone);
       return;
     }
@@ -654,8 +669,8 @@ export class GameServer {
     const e = this.extracts.points[zone];
     if (e.kind === 'call') {
       run.hold = e.pickup >= 0 ? run.hold + SERVER_DT : 0;
-      if (landed.includes(zone)) this.endRun(p, 'extracted');
-    } else if (e.open) {
+      if (landed.includes(zone) && paid(run)) this.endRun(p, 'extracted');
+    } else if (e.open && paid(run)) {
       run.hold += SERVER_DT;
       if (run.hold >= EXTRACT_TIME - 1e-9) this.endRun(p, 'extracted');
     } else run.hold = 0;
@@ -673,7 +688,7 @@ export class GameServer {
     const end: RunEndEvent = {
       k: 'runEnd', outcome, score, value, items: [...run.items], kills: run.kills, guardKills: run.guardKills,
       contracts, time: this.time - run.start, killer: run.killer, extract: outcome === 'extracted' ? run.zone : -1,
-      death: outcome === 'killed' ? run.death : null,
+      death: outcome === 'killed' ? run.death : null, taken: { ...run.taken },
     };
     p.events.push(end);
     if (!p.plan) {
@@ -1073,6 +1088,10 @@ export class GameServer {
     if (victim.protection > 0 || unhurt) amount = 0;
     amount = Math.min(amount, victim.hp);
     victim.hp -= amount;
+    if (victim.run && attacker !== victim && amount > 0) {
+      victim.run.hitBy.set(attacker.id, { at: this.time, team: attacker.team });
+      victim.run.taken[attacker.team === 'guard' ? 'guards' : 'operators'] += amount;
+    }
     const killed = victim.hp <= 0;
     attacker.events.push({ k: 'hit', target: victim.id, zone, damage: amount, killed, x, y, z });
     victim.events.push({ k: 'hurt', damage: amount, x: from.x, z: from.z });
@@ -1097,7 +1116,13 @@ export class GameServer {
     if (victim.run) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
       const kind = attacker === victim ? undefined : kindOf(attacker);
-      victim.run.death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head', ...(kind ? { kind } : {}) };
+      const death: Death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head', ...(kind ? { kind } : {}) };
+      if (attacker !== victim) {
+        death.distance = Math.round(Math.hypot(attacker.x - victim.x, attacker.y - victim.y, attacker.z - victim.z));
+        const recent = [...victim.run.hitBy.values()].filter((h) => this.time - h.at <= SHOOTERS_WINDOW);
+        death.shooters = { guards: recent.filter((h) => h.team === 'guard').length, operators: recent.filter((h) => h.team !== 'guard').length };
+      }
+      victim.run.death = death;
       this.endRun(victim, 'killed');
     }
   }
@@ -1146,7 +1171,7 @@ function kindOf(p: Player): Personality | undefined {
 function newRun(start: number): Run {
   return {
     start, items: [], kills: 0, guardKills: 0, search: null, useHeld: false, dropHeld: false, zone: -1, hold: 0, killer: '', death: null,
-    contracts: [],
+    contracts: [], hitBy: new Map(), taken: { guards: 0, operators: 0 },
   };
 }
 

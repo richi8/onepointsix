@@ -1,4 +1,5 @@
 import { conditionsLabel } from './conditions.ts';
+import { SHOOTERS_WINDOW } from './constants.ts';
 import type { Death, GameEvent, Mode } from './protocol.ts';
 import { weaponName } from './weapons.ts';
 import type { WorldConfig } from './worldconfig.ts';
@@ -31,6 +32,13 @@ export interface RunRecord {
   extract: string;
   /** What killed them, such as "guard, Assault rifle, head" or "hunter, Bolt-action rifle" for an operator bot, or ''. */
   cause: string;
+  /** Killed by someone else: how far off they were, in metres, and how many guards and operators hit them in the last seconds. */
+  killDistance?: number;
+  guardShooters?: number;
+  operatorShooters?: number;
+  /** Damage taken from guards and from other operators; missing from runs logged before chunk 30. */
+  takenGuards?: number;
+  takenOperators?: number;
 }
 
 /** A run's record, from how it ended. `extractName` names an extraction point by index. */
@@ -52,6 +60,9 @@ export function runRecord(
     contractsDone: e.contracts.filter((c) => c.state === 'done').length,
     extract: e.extract >= 0 ? extractName(e.extract) : '',
     cause: e.death ? causeOf(e.death) : '',
+    ...(e.death?.distance !== undefined ? { killDistance: e.death.distance } : {}),
+    ...(e.death?.shooters ? { guardShooters: e.death.shooters.guards, operatorShooters: e.death.shooters.operators } : {}),
+    ...(e.taken ? { takenGuards: e.taken.guards, takenOperators: e.taken.operators } : {}),
   };
 }
 
@@ -78,6 +89,9 @@ export interface RunSummary {
   /** Counts, most common first. */
   causes: [string, number][];
   extracts: [string, number][];
+  /** Over deaths at someone else's hands that recorded it: the median distance to the killer, in metres, and how many guards had hit them in the last seconds. */
+  medianKillDistance: number;
+  guardShooters: [string, number][];
 }
 
 export function summarize(records: readonly RunRecord[]): RunSummary {
@@ -98,6 +112,8 @@ export function summarize(records: readonly RunRecord[]): RunSummary {
     contractsDone: contracts ? records.reduce((s, r) => s + r.contractsDone, 0) / contracts : 0,
     causes: tally(records.map((r) => r.cause).filter(Boolean)),
     extracts: tally(out.map((r) => r.extract)),
+    medianKillDistance: median(records.flatMap((r) => (r.killDistance !== undefined ? [r.killDistance] : []))),
+    guardShooters: tally(records.flatMap((r) => (r.guardShooters !== undefined ? [`${r.guardShooters} guard${r.guardShooters === 1 ? '' : 's'}`] : []))),
   };
 }
 
@@ -112,6 +128,8 @@ export function summaryText(s: RunSummary): string {
     `contracts done: ${pct(s.contractsDone)}`,
     `killed by:\n${list(s.causes)}`,
     `got out at:\n${list(s.extracts)}`,
+    `killer's distance: median ${Math.round(s.medianKillDistance)} m`,
+    `guards who hit them in the last ${SHOOTERS_WINDOW} s before a death:\n${list(s.guardShooters)}`,
   ].join('\n');
 }
 
