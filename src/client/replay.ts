@@ -74,6 +74,14 @@ export class Replay {
     this.nextEvent = after(this.data.events, this.time);
   }
 
+  /** The events of the last `seconds` up to now, oldest first, with how long ago each was. */
+  recent(seconds: number): { ago: number; e: GameEvent }[] {
+    const out: { ago: number; e: GameEvent }[] = [];
+    const events = this.data.events;
+    for (let i = this.nextEvent - 1; i >= 0 && events[i][0] > this.time - seconds; i--) out.push({ ago: this.time - events[i][0], e: events[i][1] });
+    return out.reverse();
+  }
+
   /** The kill events up to now, oldest first, so bodies already dead after a seek lie as they fell. */
   killsBefore(): Extract<GameEvent, { k: 'kill' }>[] {
     return this.data.events.slice(0, this.nextEvent).flatMap(([, e]) => (e.k === 'kill' ? [e] : []));

@@ -33,9 +33,12 @@ export const SOUNDS: SoundSource[] = [
   // Guns. The long-range shot is heard far off, under the near one fading out.
   { name: 'rifle', freesound: 427596, author: 'michorvath', title: 'AR15 rifle shot', from: 0, to: 1.3, kind: 'shot' },
   { name: 'pistol', freesound: 427592, author: 'michorvath', title: '9mm pistol shot', from: 0, to: 1.0, kind: 'shot' },
-  { name: 'bolt', freesound: 49513, author: 'Jon285', title: '405Win.wav', from: 0, to: 1.6, kind: 'shot' },
+  { name: 'bolt', freesound: 431834, author: 'moosegravy', title: 'Sauer 404 close shot.wav', from: 0.45, to: 2.3, kind: 'shot', fade: 0.8 },
   { name: 'far', freesound: 52357, author: 'trip2000', title: 'gun shot.aif', from: 0, to: 2.0, kind: 'shot' },
-  { name: 'quiet', freesound: 384685, author: 'morganpurkis', title: 'Silenced Gunshot 3.wav', from: 0, to: 0.3, kind: 'shot' },
+  // Suppressed shots, one per gun: a sniper rifle for the rifle, a suppressed 9 mm and a .50 bolt-action.
+  { name: 'quietRifle', freesound: 182815, author: 'qubodup', title: 'Silenced Sniper Rifle.flac', from: 0.98, to: 1.95, kind: 'shot', fade: 0.5 },
+  { name: 'quietPistol', freesound: 828790, author: 'areniporgen', title: 'SIG Sauer P226 (Suppressed)', from: 0, to: 0.7, kind: 'shot', fade: 0.4 },
+  { name: 'quietBolt', freesound: 737570, author: 'areniporgen', title: 'MacMillan Tac-50A1-R2 Suppressed', from: 0, to: 0.9, kind: 'shot', fade: 0.5 },
   { name: 'cycle', freesound: 204204, author: 'Danwardvs', title: '22 Bolt.wav', from: 0.2, to: 0.9, kind: 'shot' },
   { name: 'dry', freesound: 725402, author: 'serøutōnin--deprivəd', title: 'A rifle being dry fired once', from: 0, to: 0.3, kind: 'shot' },
   // Reloads: the magazine out and in at the start, the charging handle at the end.
@@ -43,11 +46,19 @@ export const SOUNDS: SoundSource[] = [
   { name: 'chargeRifle', freesound: 432141, author: 'MaximBomba', title: 'Rifle-or-shotgun-reload.wav', from: 1.35, to: 2.0, kind: 'shot' },
   { name: 'magPistol', freesound: 432139, author: 'MaximBomba', title: 'PistolReloadSound.wav', from: 0, to: 1.0, kind: 'shot' },
   { name: 'chargePistol', freesound: 432139, author: 'MaximBomba', title: 'PistolReloadSound.wav', from: 1.25, to: 1.6, kind: 'shot' },
+  // The bolt-action's reload: the bolt up and back, rounds pressed in from a clip, the bolt home.
+  { name: 'boltOpen', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 2.9, to: 3.8, kind: 'shot', fade: 0.15 },
+  { name: 'boltLoad', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 7.7, to: 9.7, kind: 'shot', fade: 0.2 },
+  { name: 'boltClose', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 19.95, to: 20.8, kind: 'shot', fade: 0.15 },
   { name: 'draw', freesound: 396331, author: 'nioczkus', title: '1911 Reload', from: 0.26, to: 0.6, kind: 'shot' },
   { name: 'whoosh', freesound: 60013, author: 'qubodup', title: 'Whoosh', from: 0, to: 0.43, kind: 'shot' },
   { name: 'boom', freesound: 235968, author: 'tommccann', title: 'Explosion_01.wav', from: 0, to: 5.0, kind: 'shot' },
   // Cover breaking.
   { name: 'splinter', freesound: 536777, author: 'egomassive', title: 'Smash.ogg', from: 0, to: 1.05, kind: 'shot' },
+  { name: 'glass', freesound: 221528, author: 'unfa', title: 'Glass Break', from: 0.25, to: 1.4, kind: 'shot', fade: 0.4 },
+  // Doors.
+  { name: 'doorOpen', freesound: 398750, author: 'Anthousai', title: 'door - open 01.wav', from: 0, to: 1.2, kind: 'shot', fade: 0.4 },
+  { name: 'doorShut', freesound: 444409, author: 'MootMcnoodles', title: 'Wood Door Slam.wav', from: 0, to: 0.93, kind: 'shot', fade: 0.4 },
   { name: 'crumble', freesound: 843339, author: 'loganzsound', title: 'Concrete Breaks Several Denoised', from: 6.0, to: 7.5, kind: 'shot' },
   // Bodies.
   { name: 'hurt', freesound: 423301, author: 'u1769092', title: 'VisceralBulletImpacts.wav', from: 0.1, to: 0.45, kind: 'shot' },
@@ -57,6 +68,7 @@ export const SOUNDS: SoundSource[] = [
   step('dirt', 352870, 'PotatokingXII', 'Footsteps Dirt Gravel', 4, 35),
   step('sand', 384082, 'savataivanov', 'Foot_Step_grit_Sand.wav', 0, 15.4),
   step('rock', 813622, 'SecureSubset', 'Footsteps - Stone, Rock, Concrete, Cement', 0, 6.7),
+  step('concrete', 459964, 'florianreichelt', 'Footsteps on concrete', 0, 19.8),
   step('wood', 198962, 'Mydo1', 'footsteps on wood', 0, 17),
   step('metal', 208101, 'Phil25', 'Metal Steps', 8, 18),
   step('water', 106395, 'j1987', 'puddlewalk.wav', 0, 7, 0.45),
@@ -77,8 +89,9 @@ export const SOUNDS: SoundSource[] = [
  * the menu.
  */
 export const EARLY: ReadonlySet<string> = new Set([
-  'rifle', 'pistol', 'bolt', 'quiet', 'cycle', 'dry', 'magRifle', 'chargeRifle', 'magPistol', 'chargePistol', 'draw',
-  'land', 'grass', 'dirt', 'sand', 'rock', 'wood', 'metal', 'water',
+  'rifle', 'pistol', 'bolt', 'quietRifle', 'quietPistol', 'quietBolt', 'cycle', 'dry', 'magRifle', 'chargeRifle', 'magPistol',
+  'chargePistol', 'boltOpen', 'boltLoad', 'boltClose', 'draw',
+  'land', 'grass', 'dirt', 'sand', 'rock', 'concrete', 'wood', 'metal', 'water',
   'wind', 'sea', 'birds', 'rain', 'crickets',
 ]);
 

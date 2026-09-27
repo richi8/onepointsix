@@ -7,7 +7,7 @@ import {
   WATER_LEVEL,
   WORLD_SIZE,
 } from './constants.ts';
-import { clamp, rayAabb, rayCylinder, smoothstep } from './geom.ts';
+import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
 import { fbm, mulberry32 } from './rng.ts';
 
 export interface Cyl {
@@ -523,6 +523,51 @@ export class World {
     const t = this.raycast(ox, oy, oz, dx, dy, dz, maxT, glass);
     const hit = this.hit;
     return { t, panel: t <= maxT && hit?.kind === 'box' ? (hit.panel ?? -1) : -1 };
+  }
+
+  /**
+   * Everything standing that the segment `len` metres from o along the
+   * normalized d passes through, glass included, with how far it runs inside
+   * each, in no particular order. The ground isn't counted.
+   */
+  collidersAlong(
+    ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, len: number,
+    visit: (c: Collider, inside: number) => void,
+  ): void {
+    const stamp = ++this.stamp;
+    let gx = Math.floor(ox / GRID_CELL);
+    let gz = Math.floor(oz / GRID_CELL);
+    const stepX = dx > 0 ? 1 : -1;
+    const stepZ = dz > 0 ? 1 : -1;
+    const ax = Math.abs(dx);
+    const az = Math.abs(dz);
+    const deltaX = ax > 1e-12 ? GRID_CELL / ax : Infinity;
+    const deltaZ = az > 1e-12 ? GRID_CELL / az : Infinity;
+    let nextX = ax > 1e-12 ? ((dx > 0 ? (gx + 1) * GRID_CELL - ox : ox - gx * GRID_CELL) / ax) : Infinity;
+    let nextZ = az > 1e-12 ? ((dz > 0 ? (gz + 1) * GRID_CELL - oz : oz - gz * GRID_CELL) / az) : Infinity;
+    for (let enter = 0; enter <= len;) {
+      const cell = this.grid.get((gx + GRID_OFFSET) * 4096 + gz + GRID_OFFSET);
+      if (cell) {
+        for (const c of cell) {
+          if (c.stamp === stamp || c.gone) continue;
+          c.stamp = stamp;
+          const t = c.kind === 'cyl'
+            ? rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
+            : rayAabb(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
+          if (t < len) visit(c, Math.min(rayExit(), len) - t);
+        }
+      }
+      const exit = Math.min(nextX, nextZ);
+      if (exit === Infinity) break;
+      enter = exit;
+      if (nextX < nextZ) {
+        nextX += deltaX;
+        gx += stepX;
+      } else {
+        nextZ += deltaZ;
+        gz += stepZ;
+      }
+    }
   }
 
   // ----------------------------------------------------------------- panels

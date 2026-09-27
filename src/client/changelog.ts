@@ -11,6 +11,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-09-27',
+    title: 'Hearing round corners',
+    notes: [
+      'Sound finds its way round walls: a shot inside a house is heard from its open door, and seems to come from there, while a shut door or a solid wall muffles it far more. Doors open and shut with a real latch and slam.',
+      'What stands between you and a sound matters by what it is: a tree trunk barely dulls it, a fence or a door a little, glass more, and a brick wall or a hill a lot. A sound inside a building no longer carries out over its roof.',
+      'Rooms, walled yards and the open each sound different: a close, quick ring indoors, sharp echoes off yard walls, and a faint, long wash out in the country.',
+      'A long firefight far across the island rumbles on as a distant battle without drowning out the steps and shots close to you.',
+      'Suppressed shots are real recordings, a different one for each gun. The bolt-action has a new shot, and reloads by working its bolt and pressing in rounds. Concrete has its own footsteps, and breaking glass sounds like glass.',
+      'The sea is always heard from the water, even on a narrow point with sea on both sides.',
+      'In replays, jumping to a moment brings in what was still sounding then, and at 2× and 4× the sounds no longer pile on top of each other.',
+    ],
+  },
+  {
     date: '2026-09-26',
     title: 'Storms and flashlights',
     notes: [

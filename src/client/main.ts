@@ -14,7 +14,7 @@ import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
 import type { Assets } from './assets.ts';
-import { Sfx } from './audio.ts';
+import { REBUILD, Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies, strideLength } from './bodies.ts';
 import { CHANGELOG } from './changelog.ts';
@@ -683,6 +683,7 @@ function showCover(cover: CoverState): void {
   world.syncPanels(cover.broken);
   world.syncDoors(cover.open);
   view.syncPanels();
+  sfx.changed();
 }
 
 // ------------------------------------------------------------------ replays
@@ -810,6 +811,22 @@ function afterSeek(): void {
   for (const e of replay.killsBefore()) bodies.killed(e);
   hud.reset();
   deadFor = 0;
+  sfx.hush();
+  soundAfterSeek = true;
+}
+
+/** Set when a replay jumped, so the next frame it plays in plays on what was sounding then, once the ear is at the new moment. */
+let soundAfterSeek = false;
+
+/** What was sounding at the replay's new moment plays on from where it would be: far shots still on their way, blasts still rolling. */
+function rebuildSound(): void {
+  soundAfterSeek = false;
+  if (!replay) return;
+  for (const { ago, e } of replay.recent(REBUILD)) {
+    sfx.ago = ago;
+    eventSound(e);
+  }
+  sfx.ago = 0;
 }
 
 function seekReplay(t: number): void {
@@ -1164,17 +1181,15 @@ function onEvent(e: GameEvent, replayed = false): void {
         effects.shatter(world.panels[id].box, view.panelColor(id, color), view.panelLayer(id), e.x, e.y, e.z);
       }
       bodies.shake(e.x, e.y, e.z, 4);
-      const first = world.panels[e.panels[0]];
-      if (first) {
-        const b = first.box;
-        sfx.crumble(first.kind, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 });
-      }
+      for (const id of e.panels) sfx.changed(world.panels[id].box);
+      eventSound(e);
       break;
     }
     case 'repair':
       for (const id of e.panels) {
         world.setPanel(id, true);
         view.updatePanel(id);
+        sfx.changed(world.panels[id].box);
       }
       break;
     case 'door':
@@ -1182,12 +1197,13 @@ function onEvent(e: GameEvent, replayed = false): void {
         world.setDoor(id, e.open);
         view.updateDoor(id);
       }
-      sfx.door(e.open, e);
+      sfx.doorsChanged(e.doors);
+      eventSound(e);
       break;
     case 'boom': {
       const d = me ? Math.hypot(e.x - me.x, e.y - me.y, e.z - me.z) : Infinity;
       effects.explosion(to.set(e.x, e.y, e.z));
-      sfx.boom(e);
+      eventSound(e);
       shake = Math.max(shake, clamp(1 - d / SHAKE_RANGE, 0, 1));
       break;
     }
@@ -1204,7 +1220,29 @@ function onEvent(e: GameEvent, replayed = false): void {
       }
       to.set(e.ex, e.ey, e.ez);
       showRound(e.struck, dx, dy, dz, e.quiet);
+      eventSound(e);
+      break;
+    }
+  }
+}
+
+/** What an event out in the world sounds like: a shot, a blast, cover breaking or a door. */
+function eventSound(e: GameEvent): void {
+  switch (e.k) {
+    case 'shot':
       sfx.shot(e.weapon, { x: e.ox, y: e.oy, z: e.oz }, e.quiet);
+      break;
+    case 'boom':
+      sfx.boom(e);
+      break;
+    case 'door':
+      sfx.door(e.open, e);
+      break;
+    case 'break': {
+      const first = world.panels[e.panels[0]];
+      if (!first) break;
+      const b = first.box;
+      sfx.crumble(first.kind, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 });
       break;
     }
   }
@@ -1432,7 +1470,9 @@ renderer.setAnimationLoop(() => {
   view.torch(torch && flashlights.dark, camera.position, camera.getWorldDirection(V_LOOK));
   viewModel.torchOn = torch;
   sfx.underwater = view.underwater;
+  sfx.pace = rep?.playing ? rep.speed : 1;
   sfx.update(camera, dt);
+  if (soundAfterSeek && rep?.playing) rebuildSound();
   effects.update(dt);
 
   if (shown || conn) {

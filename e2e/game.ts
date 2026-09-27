@@ -8,6 +8,19 @@ import type { DevCmd, Mode } from '../src/shared/protocol.ts';
 
 export const GOLD = ITEMS.findIndex((i) => i.name === 'Gold bar');
 
+/** What the tests use of the game's sound. */
+export interface Sfx {
+  unlock(context?: BaseAudioContext): void;
+  loaded(): Promise<void>;
+  update(camera: Game['camera'], dt: number): void;
+  shot(weapon: number, at?: { x: number; y: number; z: number }, quiet?: boolean): void;
+  boom(at: { x: number; y: number; z: number }): void;
+  step(surface: string, speed: number, crouched: boolean, at?: { x: number; y: number; z: number }): void;
+  ago: number;
+  format: { ext: string } | null;
+  clips: Record<string, { buffer: AudioBuffer; start: number; duration: number }[]>;
+}
+
 /** What the tests read of window.game; the rest is there for the console. */
 interface Game {
   dev(cmd: DevCmd): void;
@@ -21,12 +34,9 @@ interface Game {
   } | null;
   replay: { playing: boolean; time: number; speed: number } | null;
   deathcam: object | null;
-  sfx: {
-    unlock(): void;
-    loaded(): Promise<void>;
-    format: { ext: string } | null;
-    clips: Record<string, { buffer: AudioBuffer; start: number; duration: number }[]>;
-  };
+  sfx: Sfx;
+  world: unknown;
+  camera: { matrixWorld: { elements: number[] }; updateMatrixWorld(): void };
   input: { yaw: number; pitch: number; freedAt: number };
 }
 

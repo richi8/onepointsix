@@ -35,6 +35,17 @@ export class VoicePool<V> {
     return { voice: this.voices[pick], stolen };
   }
 
+  /** Every voice, busy or not. */
+  each(f: (voice: V) => void): void {
+    this.voices.forEach(f);
+  }
+
+  /** Every voice free again, as after cutting them all off. */
+  clear(): void {
+    this.until.fill(-Infinity);
+    this.level.fill(0);
+  }
+
   /** How many voices are still sounding at `now`. */
   busy(now: number): number {
     return this.until.filter((t) => t > now).length;

@@ -37,6 +37,11 @@ export function yawToward(x: number, z: number, tx: number, tz: number): number 
 let T0 = 0;
 let T1 = 0;
 
+/** Where the ray left what the last rayAabb or rayCylinder hit. */
+export function rayExit(): number {
+  return T1;
+}
+
 function slab(o: number, d: number, lo: number, hi: number): boolean {
   if (Math.abs(d) < 1e-12) return o >= lo && o <= hi;
   let a = (lo - o) / d;

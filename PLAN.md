@@ -208,7 +208,7 @@ human pass comes last so people play the finished result.
 | 23 | **Buildings II** | Door leaves that open and shut (noise when used, bots open them, cover state and replays keep them); glass in windows that breaks; a breakable roof (panels that drop when their posts go); more building plans (one room, L-shaped, two storeys with stairs) and small buildings outside the outposts; indoor light that comes in through doors and windows (a light volume per building) and dims soldiers and debris inside; walled yards stop ringing like rooms (see chunk 26); bot and tuning playtest with the new buildings | Two outposts on one island look and fight differently inside, and a room is lit from its window | **Done** (bots only: nobody has fought through the new buildings; the light volume and glass were checked by screenshots) |
 | 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Done** (checked by screenshots at 200, 400 and 600 m and by the benchmark, which holds 60 fps but comes out 1–2 ms slower than chunk 23 in runs side by side; the far sea still fades into the horizon's haze through the fog; nobody has watched the fade, the swaying or the waves in motion) |
 | 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Done** (checked by screenshots, the benchmark and unit tests; nobody has played a stormy night; fog banks stand still rather than drift; a bot test covers a beam seen with its holder behind the bot, not literally over a wall) |
-| 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Not started** |
+| 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Done** (checked by unit tests and a browser test, not by ear: nobody has listened to the new recordings, reverbs or corners; the round path uses a sound grid of its own rather than the nav grid, which ignores doors) |
 | 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Not started** |
 | 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Not started** |
 | 29 | **Rivals and results** | A dead operator's personality shown on the results screen, in the feed after they die and on their bag; operator bot extraction back near chunk 12's 19% without undoing the personalities; a stats page on the menu that reads the run log, with export to a file; the playtest counts unfinished runs, measures how often drop-in falls back to anywhere, and has a bot mode that searches like a human so run length can be read; the share button opens the system share sheet where there is one; PvE's old board removed from storage | You can tell who killed you and what kind of rival they were, and anyone can send their run stats as a file | **Not started** |
@@ -738,6 +738,15 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   Winchester lever-action, and concrete footsteps reuse the stone ones played 10% faster. Every
   gun shares the one suppressed shot, pitched per gun, and the bolt-action reloads with the rifle's
   magazine sound.
+  **Resolved in part** (26): each gun has a real suppressed shot (a suppressed SIG P226 for the
+  pistol, a MacMillan Tac-50 for the bolt-action, and for the rifle a suppressed sniper rifle from
+  a US government video, the nearest real one found); the bolt-action fires a Sauer 404 (a
+  bolt-action rifle), and reloads with a Mauser K98's bolt going back, rounds pressed in from a
+  clip and the bolt going home, cut from one recording by its loudness envelope; concrete has its
+  own footsteps. All CC0 previews, checked on their pages by the script. Still stand-ins: the rifle
+  and pistol magazine reloads (mixes of other recordings), and the rifle's suppressed shot is a
+  sniper rifle's. The Tac-50 recording stays loud for two seconds after the shot (echo or wind on
+  a phone microphone, going by the envelope), so only its first 0.9 s is used.
 - **Only real fights make distant fighting** (14). In PvE the guards only fight you, so the
   island is quiet apart from your own fights.
   **Resolved** (modes change): PvE is gone. Offline has 7 operator bots, and they fight the guards
@@ -745,6 +754,19 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Occlusion is three steps and only along lines** (14): clear, over the top or blocked. It
   doesn't bend round corners, the thickness of what's in between doesn't count, and a tree trunk
   exactly on the line muffles a sound as much as a building does.
+  **Resolved** (26): a sound takes the loudest of three ways. Straight through, where everything
+  on the line counts by what it's made of and how thick it is there (per metre: masonry 9, a
+  door 6, a fence 4, glass 40, a crate 1.2, a tree trunk 0.5, a rock 2, a metre of hill 0.6, as the
+  exponent of what gets through), so a 0.3 m wall lets under a tenth through and a trunk most of
+  it. Over the top, as before, but only when neither end has a roof over it (a sound inside a
+  house used to get "over" its roof). Or round, within 48 m: `src/client/soundfield.ts` keeps a
+  1 m grid of where sound can pass at head height (shut doors block it, open doors and anything
+  under 1.2 m don't) and floods it from the listener's cell with Dijkstra, again once the
+  listener has moved two cells or a door or panel changed (0.9 ms a flood on an M3 Pro). The way
+  is pulled tight into corners; it's heard from the first corner, from the whole way's length, and
+  muffled 10% plus up to 25% more per bend by how sharp it is. It's not the nav grid, as planned:
+  that one ignores doors (bots open them) and keeps a body's clearance, which closes gaps sound
+  gets through.
 - **The reverb is one generated room** (14), the same everywhere, only louder when walled in.
   It isn't placed in 3D, and a place with no roof yet (every building so far) rings like a room
   when its walls are close.
@@ -754,11 +776,26 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   walled yard echoes a little instead of ringing like a room; the wind and crickets come through
   there as in the open. It's one ray straight up, so an overhang or a tree above counts as a
   roof. Reverb per space is still chunk 26's.
+  **Resolved in part** (26): three reverbs, each its own generated impulse: a room (dense early
+  reflections, a second's tail), a walled yard (a few distinct slaps 45–170 ms in, a thinner tail)
+  and the open (a faint, dark wash dying over nearly 3 s). Where the listener stands is split
+  between them by how walled in it is and whether it's roofed; a sound out in the world rings half
+  with the listener's space and half with its own (6 rays round it and one up). Your own sounds and
+  footsteps ring with the listener's. The returns still aren't placed in 3D, and a roof is still
+  one ray straight up.
 - **The sea's bearing is an average** (14) of the directions that found water at the nearest
   radius, so on a narrow point with sea on both sides it can seem to come from inland.
+  **Resolved** (26): the sea comes from the middle of the widest run of neighbouring directions
+  that find water at that radius, so it always lies on the water. With sea on both sides of a
+  point, it comes from one side only (the wider); a second sea voice would be needed for both.
 - **Far fights fill the voice pool** (14). A distant shot holds a voice through its delay and its
   2 s tail, so a long firefight far off keeps most of the 24 voices busy. When all are busy, the
   quietest sound is cut off (or the new one isn't played), so near sounds still win.
+  **Resolved** (26): shots and blasts more than 150 m off go to a distant-battle bed: 10 voices of
+  its own, fed into 8 buses placed round the listener by compass bearing, through one 2.5 kHz
+  low-pass and into the open reverb. The 24 voices are left for near sounds; a browser test fires
+  60 shots from 250 m and checks none of them takes one. Far sounds are still muffled by hills
+  straight in between, but not routed round anything.
 - **A slide from someone else always scrapes for the slide's full 0.9 s**, even if it ends early.
   **Moot** (after 14): sliding was removed.
 - **Sounds arrive after the game starts** (14). The 854 kB file downloads in the background and
@@ -799,6 +836,20 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Doors and glass borrow sounds** (23): a door is the wooden footstep played slow, and breaking
   glass is the wood splinter played high. Real recordings of both are left for chunk 26's better
   recordings.
+  **Resolved** (26): a door opening (a latch and swing) and a wooden door slamming, and a pane
+  of glass smashed by a rock, all CC0 recordings.
+- **Sound round corners is worked out on a flat grid** (26). The grid is at ground level, so
+  upstairs, on a roof or up a watchtower, routes are worked out as if on the ground below; the
+  legs are checked in 3D, so a wrong route is dropped rather than heard, but a right one upstairs
+  can be missed. Sound can't go round through an open window, only straight through its gap, and
+  goes round only within 48 m; past that it's straight through or over. The losses per material
+  and per bend were picked, not measured or heard.
+- **The new recordings are unheard** (26), like the rest: picked by title, description and
+  loudness envelope. They added 42 kB to the Opus banks (early 700 to 728 kB, late 84 to 99 kB)
+  and 96 kB to the AAC ones.
+- **The battle bed places far fights only roughly** (26): by the nearest of 8 compass points,
+  all through the same filter, and with no difference between a fight 160 m and 400 m off beyond
+  its level and dullness.
 - **Under water is only muffled** (24): everything heard goes through one low-pass filter (450 Hz)
   and drops to 60% while the camera is under the surface. There's no underwater ambience, and
   nothing was listened to: the cut-off was picked, not tuned by ear.
@@ -1141,6 +1192,13 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   it's shown as the player saw it. Feed rows fade by real time, not replay time.
 - **Sounds in replays aren't rebuilt when seeking** (17), and the player's own footsteps only
   play through their eyes. At 4× everything plays four times as often.
+  **Resolved in part** (26): a jump cuts off everything playing, then, once the replay plays and
+  the ear is at the new moment, the shots, blasts, breaking cover and doors of the 3 s before it
+  play on from where they'd be: a far shot still on its way arrives, a blast's rumble picks up
+  part way. At 2× and 4×, sound arrives that much sooner, and footsteps, doors and far shots play
+  one time in two or four (chosen at random, so two viewings differ). The player's own shots and
+  reloads from their inputs aren't rebuilt, own footsteps still only play through their eyes, and
+  pausing doesn't pause sounds already playing.
 - **The live game goes on unseen behind a replay** (17). Watching your run from the results
   keeps the connection; live events are dropped but for keeping the books, and the panels are set
   back to how they stand now when the replay closes.
