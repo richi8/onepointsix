@@ -1,4 +1,5 @@
 import {
+  BAG_SIGHT,
   Btn,
   CMD_DT,
   CMDS_PER_TICK,
@@ -17,7 +18,7 @@ import type { Senses } from '../shared/conditions.ts';
 import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
-import { vegetationOf } from '../shared/vegetation.ts';
+import { type Bush, CONCEALED, VEG_CELL, bagShows, vegetationOf } from '../shared/vegetation.ts';
 import type { Point, World } from '../shared/world.ts';
 import type { ExtractPoint } from './extracts.ts';
 import type { NavGrid, Waypoint } from './nav.ts';
@@ -129,8 +130,6 @@ export function hostile(a: Agent, b: Agent): boolean {
 const LOST_TIME = 1.6;
 /** A target this close is noticed even outside the view cone. */
 const TOUCH_RANGE = 3;
-/** Below this much showing through bushes and grass, a target is hidden. */
-const CONCEALED = 0.3;
 /** Sight range multiple for crouched targets. */
 const CROUCH_SIGHT = 0.65;
 /** Awareness lost per second by a half-noticed target out of sight. */
@@ -178,6 +177,8 @@ const BOUNTY_LOUD = 1.6;
 const BOUNTY_REACH = 1.5;
 /** Hunters count anyone with less health than this as wounded. */
 const WOUNDED = 60;
+/** Metres off a fight's gunfire is guessed to be, per metre away it's heard from. */
+const FIGHT_GUESS = 0.12;
 /** Seconds gunfire is remembered for telling where a fight is, and how far apart two sides' shots can be to be one fight. */
 const FIGHT_MEMORY = 8;
 const FIGHT_SPREAD = 70;
@@ -194,6 +195,17 @@ const BAG_RANGE = 50;
 /** Hunters roam to points this far off, and campers wait this far from their extraction point. */
 const HUNT_RANGE = 150;
 const CAMP_RANGE: [number, number] = [25, 45];
+/** A camper that could only find a spot blind to its extraction point looks again this often, a little farther out each time. */
+const CAMP_RETRY = 20;
+const CAMP_WIDEN = 10;
+const CAMP_FARTHEST = 85;
+/** Bushes at least this tall hide someone crouched in them, head and all. */
+const HIDING_BUSH = 1.15;
+/** How far a bot goes to hide in a bush: taking cover, and settling down to wait or watch. */
+const BUSH_COVER = 12;
+const BUSH_WAIT = 15;
+/** Close enough to a bush's middle to be in it. */
+const IN_BUSH = 0.3;
 /** Operators head out with at least this many seconds of the run clock left, whatever their personality. */
 const LEAVE_BY = 150;
 /** Rounds passing this close to a bot's chest put it under fire. */
@@ -227,6 +239,26 @@ const TARGET_WIDTH = 0.35;
 const IDLE_PITCH = -0.06;
 /** How much of the remaining turn is taken each command, before the turn-rate cap. */
 const TURN_GAIN = 0.35;
+
+/** What bots have been up to, summed over every bot, for the playtest. */
+export const tally = {
+  /** Places taken to hide from a threat, and of those in a bush. */
+  covers: 0,
+  bushCovers: 0,
+  /** Places settled at to wait or watch (camping, hunting, watching a fight), and of those in a bush. */
+  waits: 0,
+  bushWaits: 0,
+  /** Fights between others gone to, and how far off the real shooter the guess was, summed. */
+  joins: 0,
+  guessOff: 0,
+  /** Camp spots picked, those that couldn't see the extraction point, and those later swapped for one that could. */
+  camps: 0,
+  blindCamps: 0,
+  campFixes: 0,
+};
+
+/** A place to go to, and whether it's in a bush, where it has to be reached more exactly. */
+type Spot = Point & { bush?: boolean };
 
 interface Contact {
   /** 0 unnoticed to 1 spotted. */
@@ -308,7 +340,7 @@ export class Bot {
   // Plans.
   private step = 0;
   private waitUntil = 0;
-  private spot: Point | null = null;
+  private spot: Spot | null = null;
   private spotUntil = 0;
   private heard: (Point & { at: number }) | null = null;
   private hurtAt = -Infinity;
@@ -339,9 +371,16 @@ export class Bot {
   /** Where the fight or the bounty being closed in on is. */
   private fightAt: Point | null = null;
   /** Where a camper waits and for which extraction point; set once it gives up camping. */
-  private camp: Point | null = null;
+  private camp: (Spot & { sees: boolean }) | null = null;
   private campFor = -1;
   private campDone = false;
+  /** Its camp can't see the extraction point: when to look for a better one, and how many looks so far. */
+  private campRetry = Infinity;
+  private campTries = 0;
+  /** What it has seen bags to be worth, by id. */
+  private readonly bagValues = new Map<number, number>();
+  /** Who it has been told carries the bounty, or 0. */
+  private bountyKnown = 0;
 
   constructor(role: Role, skill: Skill, primary: number, yaw: number, rand: () => number) {
     this.role = role;
@@ -367,12 +406,19 @@ export class Bot {
   /** A sound reached the bot. The server checks the range. */
   hear(self: Agent, noise: Noise, now: number): void {
     if (noise.source === self.id) return;
-    if (noise.gunfire && this.temper?.thirdParty) {
-      this.gunfire = this.gunfire.filter((g) => now - g.at < FIGHT_MEMORY);
-      this.gunfire.push({ x: noise.x, y: noise.y, z: noise.z, source: noise.source, at: now });
-    }
     // The farther away, the vaguer the sense of where it came from.
     const d = Math.hypot(noise.x - self.x, noise.z - self.z);
+    if (noise.gunfire && this.temper?.thirdParty) {
+      this.gunfire = this.gunfire.filter((g) => now - g.at < FIGHT_MEMORY);
+      const guess = d * FIGHT_GUESS;
+      this.gunfire.push({
+        x: noise.x + (this.rand() - 0.5) * 2 * guess,
+        y: noise.y,
+        z: noise.z + (this.rand() - 0.5) * 2 * guess,
+        source: noise.source,
+        at: now,
+      });
+    }
     const fuzz = d * 0.08;
     this.heard = {
       x: noise.x + (this.rand() - 0.5) * 2 * fuzz,
@@ -382,8 +428,14 @@ export class Bot {
     };
   }
 
+  /** Told who carries the bounty now, or 0 for nobody. */
+  bountyTold(holder: number): void {
+    this.bountyKnown = holder;
+  }
+
   /** Roughly where the bounty, `holder`, is now. Those who want it go after it. */
   bountyCalled(self: Agent, holder: number, at: Point, now: number): void {
+    this.bountyKnown = holder;
     const range = this.temper?.bountyRange ?? 0;
     if (holder === self.id || Math.hypot(at.x - self.x, at.z - self.z) > range) return;
     this.lure = { x: at.x, y: at.y, z: at.z, at: now };
@@ -484,8 +536,8 @@ export class Bot {
         if (flash) time *= 0.3;
         else if (lit) time *= 0.5;
         if (off > s.fov * 0.3) time *= 1.5;
-        // Everyone is looking out for the bounty.
-        if (a.id === ctx.bounty) time *= BOUNTY_SPOT;
+        // Everyone who has been told is looking out for the bounty.
+        if (this.isBounty(ctx, a.id)) time *= BOUNTY_SPOT;
         const was = c.level;
         c.level = Math.min(c.level + dt / time, 1);
         if (!c.visible) c.since = now;
@@ -512,7 +564,7 @@ export class Bot {
       }
       // Footsteps, when not in sight.
       const loud = (!a.onGround ? 0 : speed > WALK_SPEED + 0.5 ? STEPS_SPRINT : speed > CROUCH_SPEED + 0.3 ? STEPS_WALK : 0) *
-        (a.id === ctx.bounty ? BOUNTY_LOUD : 1);
+        (this.isBounty(ctx, a.id) ? BOUNTY_LOUD : 1);
       if (d < loud * senses.hearing) this.heard = { x: a.x, y: a.y, z: a.z, at: now };
       else if (senses.dark && a.light) this.seeBeam(ctx, self, a, eye.headX, eye.headY, eye.headZ, now);
     }
@@ -520,6 +572,24 @@ export class Bot {
       const a = ctx.agent(id);
       if (!a || a.dead) this.contacts.delete(id);
     }
+    this.seeBags(ctx, self, eye.headX, eye.headY, eye.headZ);
+  }
+
+  /** What the bags in sight are worth, as a player reads it off their tags. Only those who pick bags up look. */
+  private seeBags(ctx: BotContext, self: Agent, ex: number, ey: number, ez: number): void {
+    if (!this.temper || this.temper.bagValue === Infinity) return;
+    for (const b of ctx.bags()) {
+      if (b.value === undefined || this.bagsTried.has(b.id)) continue;
+      const d = Math.hypot(b.x - self.x, b.z - self.z);
+      if (d > BAG_SIGHT) continue;
+      if (d > TOUCH_RANGE && Math.abs(angleDiff(yawToward(self.x, self.z, b.x, b.z), this.yaw)) > this.skill.fov / 2) continue;
+      if (bagShows(ctx.world, ex, ey, ez, b.x, b.y, b.z)) this.bagValues.set(b.id, b.value);
+    }
+  }
+
+  /** Whether `id` carries the bounty and this bot has been told so. */
+  private isBounty(ctx: BotContext, id: number): boolean {
+    return id !== 0 && id === ctx.bounty && id === this.bountyKnown;
   }
 
   /**
@@ -622,17 +692,17 @@ export class Bot {
     if (!this.temper) return 0;
     const a = ctx.agent(id);
     if (!a) return 0;
-    return (id === ctx.bounty && !this.temper.shy ? 20 : 0) + (this.personality === 'hunter' ? (MAX_HP - a.hp) * 0.4 : 0);
+    return (this.isBounty(ctx, id) && !this.temper.shy ? 20 : 0) + (this.personality === 'hunter' ? (MAX_HP - a.hp) * 0.4 : 0);
   }
 
   /**
    * A fight between others it wants to join, or the bounty, not followed yet:
    * gunfire from two sides close together, or for a hunter any gunfire.
    */
-  private lured(ctx: BotContext, self: Agent): (Point & { at: number; guards?: boolean }) | null {
+  private lured(ctx: BotContext, self: Agent): (Point & { at: number; guards?: boolean; source?: number }) | null {
     const t = this.temper;
     if (!t) return null;
-    let best: (Point & { at: number; guards?: boolean }) | null = null;
+    let best: (Point & { at: number; guards?: boolean; source?: number }) | null = null;
     let bestD = Infinity;
     for (const g of this.gunfire) {
       if (g.at <= this.stalkAt || this.now - g.at >= FIGHT_MEMORY) continue;
@@ -654,7 +724,7 @@ export class Bot {
    * Close in on a fight or the bounty: stop short, then watch. A fight at an
    * outpost is watched from outside it, for whoever comes out.
    */
-  private stalk(ctx: BotContext, self: Agent, at: Point & { at: number; guards?: boolean }): void {
+  private stalk(ctx: BotContext, self: Agent, at: Point & { at: number; guards?: boolean; source?: number }): void {
     this.stalkAt = at.at;
     const d = Math.hypot(at.x - self.x, at.z - self.z);
     const standoff = at.guards ? GUARD_STANDOFF : STALK_STANDOFF;
@@ -670,8 +740,14 @@ export class Bot {
     }
     const p = ctx.nav.nearestWalkable(self.x + (at.x - self.x) * k, self.z + (at.z - self.z) * k, 10);
     if (!p) return;
+    const shooter = at.source !== undefined ? ctx.agent(at.source) : undefined;
+    if (shooter && this.state !== 'stalk') {
+      tally.joins++;
+      tally.guessOff += Math.hypot(shooter.x - at.x, shooter.z - at.z);
+    }
     this.enter('stalk', true);
-    this.spot = { x: p.x, y: at.y, z: p.z };
+    // Watch from a bush nearby, if there's one that can see that way.
+    this.spot = this.waitSpot(ctx, { x: p.x, y: at.y, z: p.z }, at);
     this.fightAt = { x: at.x, y: at.y, z: at.z };
   }
 
@@ -680,7 +756,7 @@ export class Bot {
     const t = this.temper;
     if (!t || t.bagValue === Infinity || this.role.kind !== 'operator' || self.carry >= this.role.greed) return false;
     for (const b of ctx.bags()) {
-      if (this.bagsTried.has(b.id) || (b.value ?? 0) < t.bagValue) continue;
+      if (this.bagsTried.has(b.id) || (this.bagValues.get(b.id) ?? 0) < t.bagValue) continue;
       const d = Math.hypot(b.x - self.x, b.z - self.z);
       if (d > BAG_RANGE) continue;
       this.bagsTried.add(b.id);
@@ -801,7 +877,7 @@ export class Bot {
           this.waitUntil = 0;
         }
         const d = this.spot ? Math.hypot(this.spot.x - self.x, this.spot.z - self.z) : 0;
-        if (this.spot && d > ARRIVE * 2) {
+        if (this.spot && d > arrival(this.spot, ARRIVE * 2)) {
           this.goTo(this.around(ctx, self, this.spot));
           this.travel(ctx, self, d);
           break;
@@ -825,8 +901,13 @@ export class Bot {
           break;
         }
         if (this.campFor !== this.exit) {
-          this.camp = this.campSpot(ctx, e);
+          this.campTries = 0;
+          this.pickCamp(ctx, e, now);
           this.campFor = this.exit;
+        } else if (now >= this.campRetry) {
+          // Blind to the extraction point from here: look again, a little farther out.
+          this.campTries++;
+          this.pickCamp(ctx, e, now);
         }
         if (!this.camp) {
           this.campDone = true;
@@ -834,7 +915,7 @@ export class Bot {
           break;
         }
         const d = Math.hypot(this.camp.x - self.x, this.camp.z - self.z);
-        if (d > ARRIVE) {
+        if (d > arrival(this.camp, ARRIVE)) {
           this.goTo(this.around(ctx, self, this.camp));
           this.travel(ctx, self, d);
           break;
@@ -850,7 +931,7 @@ export class Bot {
         const d = Math.hypot(spot.x - self.x, spot.z - self.z);
         const fight = this.fightAt ?? spot;
         const toFight = Math.hypot(fight.x - self.x, fight.z - self.z);
-        if (d > ARRIVE * 2 && this.waitUntil === 0) {
+        if (d > arrival(spot, ARRIVE * 2) && this.waitUntil === 0) {
           this.goTo(spot);
           // Run while far off, then close in carefully, watching where the shots came from.
           if (toFight > 90 && self.stamina > 0.3 && !this.temper?.sneaky) this.pace = 'sprint';
@@ -929,7 +1010,7 @@ export class Bot {
         const spot = this.spot!;
         const c = this.contacts.get(this.target);
         if (c) this.focus = { x: c.x, y: c.y + EYE_HEIGHT, z: c.z };
-        if (Math.hypot(spot.x - self.x, spot.z - self.z) > ARRIVE) {
+        if (Math.hypot(spot.x - self.x, spot.z - self.z) > arrival(spot, ARRIVE)) {
           this.goTo(spot);
           this.pace = 'sprint';
           this.focus = null;
@@ -1013,7 +1094,7 @@ export class Bot {
     const exits = ctx.extracts.filter((e) => Math.hypot(e.x - self.x, e.z - self.z) < HUNT_RANGE * 2);
     if (exits.length && this.rand() < 0.4) {
       const e = exits[Math.floor(this.rand() * exits.length)];
-      const p = this.campSpot(ctx, e);
+      const p = this.campSpot(ctx, e, CAMP_RANGE[1]);
       if (p) return p;
     }
     for (let i = 0; i < 6; i++) {
@@ -1023,27 +1104,78 @@ export class Bot {
       if (!p || !ctx.nav.dry(p.x, p.z)) continue;
       const near = ctx.world.nearestOutpost(p.x, p.z)?.dist ?? Infinity;
       if (near < OUTPOST_BERTH) continue;
-      return { x: p.x, y: ctx.world.groundHeight(p.x, p.z, ctx.world.floorHeight(p.x, p.z)), z: p.z };
+      return this.waitSpot(ctx, { x: p.x, y: ctx.world.groundHeight(p.x, p.z, ctx.world.floorHeight(p.x, p.z)), z: p.z });
     }
     return null;
   }
 
-  /** A dry spot a little way off an extraction point, one that can see into it from a crouch if there is one. */
-  private campSpot(ctx: BotContext, e: Point): Point | null {
+  /** A camp for extraction point `e`, and when to look again if it can't see into it. */
+  private pickCamp(ctx: BotContext, e: ExtractPoint, now: number): void {
+    const far = CAMP_RANGE[1] + this.campTries * CAMP_WIDEN;
+    const found = this.campSpot(ctx, e, Math.min(far, CAMP_FARTHEST));
+    if (this.campTries === 0) {
+      this.camp = found;
+      tally.camps++;
+      if (found && !found.sees) tally.blindCamps++;
+    } else if (found?.sees) {
+      // Only a spot that sees replaces the blind one it's at.
+      this.camp = found;
+      tally.campFixes++;
+    }
+    this.campRetry = this.camp && !this.camp.sees && far < CAMP_FARTHEST ? now + CAMP_RETRY : Infinity;
+  }
+
+  /**
+   * A dry spot a little way off an extraction point, out to `far`, that can
+   * see into it from a crouch if there is one: in a bush if one will do.
+   */
+  private campSpot(ctx: BotContext, e: Point, far: number): (Spot & { sees: boolean }) | null {
     const w = ctx.world;
+    const sees = (x: number, y: number, z: number): boolean => w.hasLineOfSight(x, y + CROUCH_EYE_HEIGHT, z, e.x, e.y + 1, e.z);
+    const clear = (x: number, z: number): boolean => ctx.nav.dry(x, z) && (w.nearestOutpost(x, z)?.dist ?? Infinity) >= OUTPOST_BERTH;
+    let best: (Spot & { sees: boolean }) | null = null;
+    let bestD = Infinity;
+    for (const b of hidingBushes(ctx.world, e.x, e.z, far)) {
+      const d = Math.hypot(b.x - e.x, b.z - e.z);
+      if (d < CAMP_RANGE[0] || !clear(b.x, b.z) || !sees(b.x, b.y, b.z)) continue;
+      // Nearest the middle of the range.
+      const off = Math.abs(d - (CAMP_RANGE[0] + CAMP_RANGE[1]) / 2);
+      if (off < bestD) (best = { x: b.x, y: b.y, z: b.z, bush: true, sees: true }), (bestD = off);
+    }
+    if (best) return best;
     const turn = this.rand() * Math.PI * 2;
-    let blind: Point | null = null;
+    let blind: (Spot & { sees: boolean }) | null = null;
     for (let i = 0; i < 16; i++) {
       const a = turn + (i / 16) * Math.PI * 2;
-      const r = CAMP_RANGE[0] + this.rand() * (CAMP_RANGE[1] - CAMP_RANGE[0]);
+      const r = CAMP_RANGE[0] + this.rand() * (far - CAMP_RANGE[0]);
       const x = e.x + Math.sin(a) * r;
       const z = e.z + Math.cos(a) * r;
-      if (!ctx.nav.dry(x, z) || (w.nearestOutpost(x, z)?.dist ?? Infinity) < OUTPOST_BERTH) continue;
+      if (!clear(x, z)) continue;
       const y = w.groundHeight(x, z, w.floorHeight(x, z));
-      if (w.hasLineOfSight(x, y + CROUCH_EYE_HEIGHT, z, e.x, e.y + 1, e.z)) return { x, y, z };
-      blind ??= { x, y, z };
+      if (sees(x, y, z)) return { x, y, z, sees: true };
+      blind ??= { x, y, z, sees: false };
     }
     return blind;
+  }
+
+  /**
+   * Somewhere to settle down near `near`: in a bush that hides a crouched body
+   * within BUSH_WAIT of it, one that can see `watch` if given, or else `near` itself.
+   */
+  private waitSpot(ctx: BotContext, near: Point, watch?: Point): Spot {
+    tally.waits++;
+    let best: Spot | null = null;
+    let bestD = Infinity;
+    for (const b of hidingBushes(ctx.world, near.x, near.z, BUSH_WAIT)) {
+      const d = Math.hypot(b.x - near.x, b.z - near.z);
+      if (d >= bestD || !ctx.nav.dry(b.x, b.z)) continue;
+      if (watch && !ctx.world.hasLineOfSight(b.x, b.y + CROUCH_EYE_HEIGHT, b.z, watch.x, watch.y + 1, watch.z)) continue;
+      best = { x: b.x, y: b.y, z: b.z, bush: true };
+      bestD = d;
+    }
+    if (!best) return near;
+    tally.bushWaits++;
+    return best;
   }
 
   private nextStop(): void {
@@ -1104,7 +1236,7 @@ export class Bot {
     let range = OPERATOR_GUARD_RANGE;
     if (ctx.agent(id)?.team !== 'guard') {
       range = EFFECTIVE_RANGE[this.primary] * (this.temper?.fightRange ?? 1);
-      if (id === ctx.bounty) range *= BOUNTY_REACH;
+      if (this.isBounty(ctx, id)) range *= BOUNTY_REACH;
       // A hunter goes after the wounded from farther.
       else if (this.personality === 'hunter' && (ctx.agent(id)?.hp ?? MAX_HP) < WOUNDED) range *= BOUNTY_REACH;
     }
@@ -1163,7 +1295,7 @@ export class Bot {
     const w = ctx.world;
     const eyeY = threat.y + EYE_HEIGHT;
     const away = Math.hypot(threat.x - self.x, threat.z - self.z);
-    let best: Point | null = null;
+    let best: Spot | null = null;
     let bestScore = Infinity;
     const turn = this.rand() * Math.PI * 2;
     for (let i = 0; i < 18; i++) {
@@ -1179,7 +1311,22 @@ export class Bot {
       const score = r + Math.max(0, away - dT);
       if (score < bestScore) (best = { x, y, z }), (bestScore = score);
     }
+    // Or a bush that hides a crouched body from the threat.
+    const veg = vegetationOf(w);
+    for (const b of hidingBushes(w, self.x, self.z, BUSH_COVER)) {
+      const r = Math.hypot(b.x - self.x, b.z - self.z);
+      const dT = Math.hypot(threat.x - b.x, threat.z - b.z);
+      const score = r + Math.max(0, away - dT);
+      if (dT < 6 || score >= bestScore || !ctx.nav.dry(b.x, b.z)) continue;
+      const h = hitboxes({ x: b.x, y: b.y, z: b.z, yaw: 0, duck: 1, lean: 0 });
+      const shows = (y: number): number => w.hasLineOfSight(threat.x, eyeY, threat.z, b.x, y, b.z) ? veg.seeThrough(threat.x, eyeY, threat.z, b.x, y, b.z) : 0;
+      if (shows(h.headY) >= CONCEALED || shows((h.hipY + h.neckY) / 2) >= CONCEALED) continue;
+      best = { x: b.x, y: b.y, z: b.z, bush: true };
+      bestScore = score;
+    }
+    tally.covers++;
     if (!best) return false;
+    if (best.bush) tally.bushCovers++;
     this.enter('cover', true);
     this.spot = best;
     this.spotUntil = now + this.between(COVER_TIME);
@@ -1471,4 +1618,21 @@ export class Bot {
   private between([lo, hi]: [number, number]): number {
     return lo + this.rand() * (hi - lo);
   }
+}
+
+/** How close to a spot counts as there: in a bush, near its middle. */
+function arrival(spot: Spot, near: number): number {
+  return spot.bush ? IN_BUSH : near;
+}
+
+/** Bushes within `r` of (x, z) tall enough to hide someone crouched in them. */
+function hidingBushes(world: World, x: number, z: number, r: number): Bush[] {
+  const veg = vegetationOf(world);
+  const out: Bush[] = [];
+  for (let iz = Math.floor((z - r) / VEG_CELL); iz <= Math.floor((z + r) / VEG_CELL); iz++) {
+    for (let ix = Math.floor((x - r) / VEG_CELL); ix <= Math.floor((x + r) / VEG_CELL); ix++) {
+      for (const b of veg.bushes(ix, iz)) if (b.height >= HIDING_BUSH && Math.hypot(b.x - x, b.z - z) <= r) out.push(b);
+    }
+  }
+  return out;
 }

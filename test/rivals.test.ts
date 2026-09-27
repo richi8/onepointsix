@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Bot, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
+import { Bot, tally, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
 import { Containers } from '../src/server/containers.ts';
 import { Extracts } from '../src/server/extracts.ts';
 import { NavGrid } from '../src/server/nav.ts';
@@ -7,12 +7,15 @@ import { PERSONALITIES, TEMPERS, type Personality } from '../src/server/personal
 import { planOperator } from '../src/server/population.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
-import { BOUNTY_MIN, BOUNTY_PING, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { BOUNTY_MIN, BOUNTY_PING, EYE_HEIGHT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { DEFAULT_CONDITIONS, sensesOf } from '../src/shared/conditions.ts';
 import { ITEMS, lootValue } from '../src/shared/loot.ts';
 import type { BagSnap, GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { spawnState, type PlayerState } from '../src/shared/sim.ts';
+import { bagShows, CONCEALED, vegetationOf } from '../src/shared/vegetation.ts';
+import { hitboxes } from '../src/shared/hitbox.ts';
+import { yawToward } from '../src/shared/geom.ts';
 import { RIFLE } from '../src/shared/weapons.ts';
 import { World, type Point } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
@@ -121,17 +124,95 @@ describe('operator personalities', () => {
     expect(camper.state).toBe('extract');
   });
 
-  it('a looter goes through a valuable bag nearby', () => {
-    const at = openSpot(150);
+  it('a looter goes through a valuable bag it has seen nearby', () => {
+    // Somewhere a bag 12 m ahead (the bot faces -z) shows, and one 12 m behind would too.
+    let at = openSpot(150);
+    let y = 0;
+    for (let seed = 6; ; seed++) {
+      y = world.groundHeight(at.x, at.z, world.floorHeight(at.x, at.z));
+      const shows = (dz: number) => bagShows(world, at.x, y + EYE_HEIGHT, at.z, at.x, world.terrainHeight(at.x, at.z + dz), at.z + dz);
+      if (shows(-12) && shows(12)) break;
+      at = openSpot(150, seed);
+    }
     const self = agent(1, 'operator', at.x, at.z);
-    const bag: BagSnap = { id: 7, x: at.x + 12, y: self.y, z: at.z, value: 4000 };
+    const bag = (dz: number, value: number): BagSnap => ({ id: 7, x: at.x, y: world.terrainHeight(at.x, at.z + dz), z: at.z + dz, value });
     const bot = operator('looter');
-    think(bot, context([self], [bag]), self, 0.5);
+    think(bot, context([self], [bag(-12, 4000)]), self, 0.5);
     expect(bot.state).toBe('loot');
     const cheap = operator('looter');
-    think(cheap, context([self], [{ ...bag, value: 100 }]), self, 0.5);
+    think(cheap, context([self], [bag(-12, 100)]), self, 0.5);
     expect(cheap.state).toBe('extract');
+    // Behind it, it can't know what the bag holds.
+    const unseen = operator('looter');
+    think(unseen, context([self], [bag(12, 4000)]), self, 0.5);
+    expect(unseen.state).toBe('extract');
   });
+});
+
+describe('bot senses and stealth', () => {
+  it('a hunter goes for a guess round where far shots came from, not the very spot', () => {
+    // Both well away from the outposts, whose fights are watched from outside.
+    let at = openSpot(150);
+    for (let seed = 6; world.outposts.some((o) => Math.hypot(o.x - at.x - 200, o.z - at.z) < 150) || !nav.dry(at.x + 200, at.z); seed++) at = openSpot(150, seed);
+    const self = agent(1, 'operator', at.x, at.z);
+    const shooter = agent(2, 'operator', at.x + 200, at.z);
+    const offs: number[] = [];
+    for (let seed = 1; seed <= 6; seed++) {
+      const bot = new Bot({ kind: 'operator', loot: [], greed: 20, personality: 'hunter' }, SKILLS.normal, RIFLE, 0, mulberry32(seed));
+      const ctx = context([self, shooter]);
+      think(bot, ctx, self, 0.2);
+      bot.hear(self, { x: shooter.x, y: shooter.y, z: shooter.z, radius: 300, source: 2, gunfire: true }, 0.2);
+      think(bot, ctx, self, 0.3, 0.2);
+      expect(bot.state).toBe('stalk');
+      const fight = (bot as unknown as { fightAt: Point }).fightAt;
+      offs.push(Math.hypot(fight.x - shooter.x, fight.z - shooter.z));
+    }
+    expect(Math.max(...offs)).toBeGreaterThan(3);
+    expect(Math.max(...offs)).toBeLessThan(200 * 0.12 * Math.SQRT2 + 0.01);
+  });
+
+  it('an operator hurt by a guard in the open hides in a bush that keeps them out of sight', () => {
+    const veg = vegetationOf(world);
+    let tried = 0;
+    let inBush = 0;
+    for (let iz = -50; iz < 50 && tried < 12; iz++) {
+      for (let ix = -50; ix < 50 && tried < 12; ix++) {
+        for (const b of veg.bushes(ix, iz)) {
+          if (b.height < 1.2 || !nav.dry(b.x, b.z) || world.outposts.some((o) => Math.hypot(o.x - b.x, o.z - b.z) < 120)) continue;
+          const self = agent(1, 'operator', b.x + 4, b.z + 3);
+          const guard = agent(2, 'guard', b.x - 40, b.z);
+          if (!nav.dry(self.x, self.z) || !world.hasLineOfSight(self.x, self.y + 1.6, self.z, guard.x, guard.y + 1.2, guard.z)) continue;
+          if (veg.seeThrough(self.x, self.y + 1.6, self.z, guard.x, guard.y + 1.2, guard.z) < 0.5) continue;
+          tried++;
+          self.hp = 50;
+          const bot = new Bot({ kind: 'operator', loot: [], greed: 20, personality: 'rat' }, SKILLS.normal, RIFLE, yawToward(self.x, self.z, guard.x, guard.z), mulberry32(1));
+          const ctx = context([self, guard]);
+          bot.hurt(guard, 0);
+          think(bot, ctx, self, 0.1);
+          const spot = (bot as unknown as { spot: (Point & { bush?: boolean }) | null }).spot;
+          if (bot.state !== 'cover' || !spot?.bush) continue;
+          inBush++;
+          // Crouched in it, neither chest nor head shows to the guard.
+          const h = hitboxes({ x: spot.x, y: spot.y, z: spot.z, yaw: 0, duck: 1, lean: 0 });
+          for (const y of [h.headY, (h.hipY + h.neckY) / 2]) {
+            expect(veg.seeThrough(guard.x, guard.y + 1.6, guard.z, spot.x, y, spot.z)).toBeLessThan(CONCEALED);
+          }
+          break;
+        }
+      }
+    }
+    expect(tried).toBe(12);
+    expect(inBush).toBeGreaterThan(2);
+  });
+
+  it('bots settle into bushes to wait and hide over a game', () => {
+    const before = { ...tally };
+    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 7 });
+    for (let t = 0; t < 4 * 60 * SERVER_TICK_RATE; t++) server.step();
+    expect(tally.waits - before.waits).toBeGreaterThan(0);
+    expect(tally.bushWaits - before.bushWaits).toBeGreaterThan(0);
+    expect(tally.covers - before.covers).toBeGreaterThan(0);
+  }, 30_000);
 });
 
 describe('bags', () => {
@@ -181,7 +262,7 @@ describe('the bounty', () => {
     expect(events.filter((e) => e.k === 'bounty').at(-1)).toMatchObject({ id: 0 });
   });
 
-  it('is spotted sooner than anyone else', () => {
+  it('is spotted sooner than anyone else, by those told who it is', () => {
     let self: Agent;
     let target: Agent;
     for (let seed = 1; ; seed++) {
@@ -190,12 +271,14 @@ describe('the bounty', () => {
       target = agent(2, 'operator', at.x, at.z - 70);
       if (world.hasLineOfSight(self.x, self.y + 1.6, self.z, target.x, target.y + 1.2, target.z)) break;
     }
-    const aware = (bounty: number) => {
+    const aware = (bounty: number, told: boolean) => {
       const bot = new Bot({ kind: 'sentry', post: { x: self.x, y: self.y, z: self.z, yaw: 0 } }, SKILLS.normal, RIFLE, 0, mulberry32(1));
+      if (told) bot.bountyTold(bounty);
       const ctx = context([self, target], [], bounty);
       think(bot, ctx, self, 0.6);
       return bot.awareness(2);
     };
-    expect(aware(2)).toBeGreaterThan(aware(0));
+    expect(aware(2, true)).toBeGreaterThan(aware(0, false));
+    expect(aware(2, false)).toBe(aware(0, false));
   });
 });

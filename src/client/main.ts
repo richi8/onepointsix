@@ -634,6 +634,8 @@ const hudEl = document.getElementById('hud')!;
 /** The killer's inputs from the server, and what we saw around then. */
 let killedBy: { e: DeathcamEvent; recording: Recording } | null = null;
 let deathcam: Deathcam | null = null;
+/** The death cam shows our own grenade killing us, through our own eyes. */
+let ownDeath = false;
 
 /** Replay how we died, then show the results; straight to them if the death cam can't load. */
 function playDeathcam(): void {
@@ -643,6 +645,7 @@ function playDeathcam(): void {
     return;
   }
   deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? NO_COVER);
+  ownDeath = killedBy.e.killer === conn?.id;
   showCover(deathcam.cover);
   // Start the bodies afresh, as they were then.
   bodies.update([], 0);
@@ -650,7 +653,7 @@ function playDeathcam(): void {
   // The killer's health, ammo and hits.
   hudEl.hidden = false;
   hudEl.classList.add('watching');
-  deathcamEl.querySelector('.banner span')!.textContent = `Killed by ${deathcam.name}`;
+  deathcamEl.querySelector('.banner span')!.textContent = ownDeath ? 'Killed by your own grenade' : `Killed by ${deathcam.name}`;
   deathcamEl.hidden = false;
 }
 
@@ -1439,7 +1442,7 @@ renderer.setAnimationLoop(() => {
   const rep = replay;
   // Bodies move on the time shown: slowed round the kill in a death cam, at the replay's speed, still while paused.
   const before = cam?.time ?? rep?.time ?? 0;
-  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true), (kill) => hud.mark(false, kill));
+  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true), (kill) => ownDeath || hud.mark(false, kill));
   rep?.update(dt, (fx) => weaponFx(fx, () => rep.others()), (e) => onEvent(e, true));
   const bodyDt = cam || rep ? Math.max((cam?.time ?? rep?.time ?? 0) - before, 0) : dt;
   const free = !!rep && replayCam === 'free';

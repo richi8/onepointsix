@@ -79,6 +79,17 @@ test.describe('death cam', () => {
     await expect(results).toBeVisible();
   });
 
+  test('shows your own grenade killing you through your own eyes', async ({ page }) => {
+    await open(page);
+    await play(page);
+    await dev(page, { act: 'end', outcome: 'killed', self: true });
+    const deathcam = page.locator('#deathcam');
+    await expect(deathcam).toBeVisible();
+    await expect(deathcam.locator('.banner span')).toHaveText('Killed by your own grenade');
+    await deathcam.click();
+    await expect(page.locator('#results .why')).toHaveText('You died. Your loot stays with your body.');
+  });
+
   test('ends by itself and shows the results', async ({ page }) => {
     await open(page);
     await play(page);

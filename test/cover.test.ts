@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GameServer } from '../src/server/server.ts';
 import { NavGrid } from '../src/server/nav.ts';
 import {
-  Btn, CMD_DT, CMDS_PER_TICK, EYE_HEIGHT, GRENADE_FUSE, GRENADES, PANEL_HP, PANEL_REPAIR, SERVER_DT, SERVER_TICK_RATE,
+  Btn, CMD_DT, CMDS_PER_TICK, DEATHCAM_AFTER, EYE_HEIGHT, GRENADE_FUSE, GRENADES, PANEL_HP, PANEL_REPAIR, SERVER_DT, SERVER_TICK_RATE,
 } from '../src/shared/constants.ts';
 import { launchGrenade, stepGrenade } from '../src/shared/grenade.ts';
 import { hitboxes } from '../src/shared/hitbox.ts';
@@ -269,6 +269,25 @@ describe('cover on the server', () => {
     expect(c.events().some((e) => e.k === 'boom')).toBe(true);
     expect(c.events().some((e) => e.k === 'hurt')).toBe(true);
     expect(body(server, c.id).hp).toBeLessThan(100);
+  });
+
+  it('gives a death cam through their own eyes to someone killed by their own grenade', () => {
+    const server = new GameServer(1);
+    const c = client(server);
+    tick(server, [c], 1);
+    const o = server.world.outposts[0];
+    const me = body(server, c.id);
+    me.protection = 0;
+    me.x = o.x + 8;
+    me.z = o.z + 2;
+    me.y = server.world.groundHeight(me.x, me.z, o.y + 0.5);
+    tick(server, [c], 1);
+    c.lookAt(me.x, me.y - 5, me.z - 0.5);
+    tick(server, [c], 3, Btn.Throw);
+    me.hp = 1;
+    tick(server, [c], Math.ceil((GRENADE_FUSE + DEATHCAM_AFTER) * SERVER_TICK_RATE) + 2);
+    expect(c.events()).toContainEqual(expect.objectContaining({ k: 'runEnd', outcome: 'killed', killer: '' }));
+    expect(c.events()).toContainEqual(expect.objectContaining({ k: 'deathcam', killer: c.id }));
   });
 
   it('spills a smashed crate into a bag', () => {

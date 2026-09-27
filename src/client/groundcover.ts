@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
-import { clamp } from '../shared/geom.ts';
 import { mulberry32 } from '../shared/rng.ts';
-import { type Vegetation, VEG_CELL, vegetationOf } from '../shared/vegetation.ts';
+import { TUFT_STRIDE, type Vegetation, VEG_CELL, vegetationOf } from '../shared/vegetation.ts';
 import { inBuilding, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { groundWeights } from '../shared/ground.ts';
@@ -16,8 +15,8 @@ import { WIND_GLSL, wind } from './wind.ts';
 // ground is painted grass, and never on props, under roofs or in the sea.
 // Only the cells near the camera are drawn, and everything shrinks away
 // toward the edge of its range, so nothing pops in. Nothing collides with
-// them, but bots can't see through the bushes and thick grass: the bushes come
-// from shared/vegetation.ts, where the server finds them too.
+// them, but bots can't see through the bushes and grass: both come from
+// shared/vegetation.ts, where the server finds them too.
 
 const CELL = VEG_CELL;
 
@@ -33,7 +32,8 @@ interface Kind {
 }
 
 const KINDS = {
-  grass: { range: 42, density: 1.6, keep: (w, i) => w[i + Layer.grass] + w[i + Layer.dryGrass] * 0.8, size: [0.3, 0.6] },
+  // Placed by Vegetation.
+  grass: { range: 42, density: 1.6, keep: () => 0, size: [0, 0] },
   // Placed by Vegetation; drawn out to where bots can see.
   bush: { range: 120, density: 0.018, keep: () => 0, size: [0, 0] },
   pebble: { range: 35, density: 0.07, keep: (w, i) => 0.25 + w[i + Layer.rock] + w[i + Layer.dirt] * 0.8 + w[i + Layer.sand] * 0.5, size: [0.06, 0.26] },
@@ -144,9 +144,12 @@ export class GroundCover {
     const key = `${ix},${iz}`;
     let c = this.cells.get(key);
     if (c) return c;
+    const tufts = this.vegetation.tufts(ix, iz);
+    // Pebbles carry on from the grass's random numbers, as when both were scattered here.
     const rand = mulberry32((ix * 73856093) ^ (iz * 19349663) ^ this.world.seed);
+    for (let k = 0; k < tufts.draws; k++) rand();
     c = {
-      grass: this.scatter(ix, iz, 'grass', rand),
+      grass: this.placeGrass(ix, iz),
       bush: this.placeBushes(ix, iz),
       pebble: this.scatter(ix, iz, 'pebble', rand),
     };
@@ -172,7 +175,26 @@ export class GroundCover {
     return { matrices, colors, count: bushes.length };
   }
 
-  private scatter(ix: number, iz: number, name: 'grass' | 'pebble', rand: () => number): Scatter {
+  private placeGrass(ix: number, iz: number): Scatter {
+    const { count, data } = this.vegetation.tufts(ix, iz);
+    const matrices = new Float32Array(count * 16);
+    const colors = new Float32Array(count * 3);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const pos = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const c = new THREE.Color();
+    for (let k = 0; k < count; k++) {
+      const o = k * TUFT_STRIDE;
+      q.setFromEuler(e.set(data[o + 6], data[o + 5], data[o + 7]));
+      m.compose(pos.set(data[o], data[o + 1], data[o + 2]), q, scale.set(data[o + 3], data[o + 4], data[o + 3])).toArray(matrices, k * 16);
+      c.copy(LUSH).lerp(DRY, data[o + 9]).multiplyScalar(0.85 + data[o + 8] * 0.3).toArray(colors, k * 3);
+    }
+    return { matrices, colors, count };
+  }
+
+  private scatter(ix: number, iz: number, name: 'pebble', rand: () => number): Scatter {
     const w = this.world;
     const kind = KINDS[name];
     const tries = Math.round(CELL * CELL * kind.density + rand());
@@ -194,26 +216,17 @@ export class GroundCover {
       const shade = rand();
       if (Math.abs(x) > w.half - 1 || Math.abs(z) > w.half - 1) continue;
       const y = w.terrainHeight(x, z);
-      if (y < WATER_LEVEL + (name === 'pebble' ? -1 : 0.4)) continue;
+      if (y < WATER_LEVEL - 1) continue;
       const i = this.vegetation.vertex(x, z);
       if (keep > kind.keep(this.weights, i)) continue;
       // Not inside or under anything: props, trees, rocks or roofs.
-      if (!w.clear(x, y, z, 3.5, 0.05)) continue;
+      if (!w.clearAsBuilt(x, y, z, 3.5, 0.05)) continue;
       if (w.buildings.some((b) => inBuilding(b, x, z, 0.3))) continue;
-      pos.set(x, y - (name === 'pebble' ? size * 0.3 : 0.02), z);
-      if (name === 'pebble') {
-        q.setFromEuler(e.set(rand() * 3, turn, rand() * 3));
-        scale.set(size * (0.8 + rand() * 0.6), size * 0.6, size);
-      } else {
-        q.setFromEuler(e.set((rand() - 0.5) * 0.2, turn, (rand() - 0.5) * 0.2));
-        scale.set(size, size * (0.8 + rand() * 0.4), size);
-      }
+      pos.set(x, y - size * 0.3, z);
+      q.setFromEuler(e.set(rand() * 3, turn, rand() * 3));
+      scale.set(size * (0.8 + rand() * 0.6), size * 0.6, size);
       m.compose(pos, q, scale).toArray(matrices, count * 16);
-      if (name === 'grass') {
-        const dry = clamp(this.weights[i + Layer.dryGrass] / (this.weights[i + Layer.grass] + this.weights[i + Layer.dryGrass] + 1e-3), 0, 1);
-        c.copy(LUSH).lerp(DRY, dry).multiplyScalar(0.85 + shade * 0.3);
-      } else c.setScalar(0.35 + shade * 0.25);
-      c.toArray(colors, count * 3);
+      c.setScalar(0.35 + shade * 0.25).toArray(colors, count * 3);
       count++;
     }
     return { matrices, colors, count };

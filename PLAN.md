@@ -209,7 +209,7 @@ human pass comes last so people play the finished result.
 | 24 | **Landscape rendering** | Tree impostors from several angles with normals, lit like the full trees, cross-faded at the switch, and swaying crowns with swaying shadows; the sea reflects the island (a low-resolution reflection pass) and far waves roll; underwater muffles sound and wobbles the view; a third shadow cascade or a baked far-terrain shadow past 230 m; far terrain tiles move what stands on them to the tile's height; distant bushes lose the blue-grey cast; the cascade patch pinned by a test against three.js's chunk; the adaptive-resolution check repeated with chunk 19's benchmark | Screenshots at 200–600 m show no pop, floating trees or pale sea, and the frame budget from chunk 15 still holds | **Done** (checked by screenshots at 200, 400 and 600 m and by the benchmark, which holds 60 fps but comes out 1–2 ms slower than chunk 23 in runs side by side; the far sea still fades into the horizon's haze through the fog; nobody has watched the fade, the swaying or the waves in motion) |
 | 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Done** (checked by screenshots, the benchmark and unit tests; nobody has played a stormy night; fog banks stand still rather than drift; a bot test covers a beam seen with its holder behind the bot, not literally over a wall) |
 | 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Done** (checked by unit tests and a browser test, not by ear: nobody has listened to the new recordings, reverbs or corners; the round path uses a sound grid of its own rather than the nav grid, which ignores doors) |
-| 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Not started** |
+| 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Done** (by bot playtests: 15% of operator bot runs extract by day and 17% at night in rain, against 13% in chunk 18 and 12% just before; bots take a bush for 37% of their cover and 35% of their waits; fights joined are guessed 12 m off the shooter on average. Nobody has played against it) |
 | 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Not started** |
 | 29 | **Rivals and results** | A dead operator's personality shown on the results screen, in the feed after they die and on their bag; operator bot extraction back near chunk 12's 19% without undoing the personalities; a stats page on the menu that reads the run log, with export to a file; the playtest counts unfinished runs, measures how often drop-in falls back to anywhere, and has a bot mode that searches like a human so run length can be read; the share button opens the system share sheet where there is one; PvE's old board removed from storage | You can tell who killed you and what kind of rival they were, and anyone can send their run stats as a file | **Not started** |
 | 30 | **Human pass** | The chunks that need people and hardware this machine can't give: several full runs by other people (using chunk 29's stats export), a listening pass on the mix, reverb and ambience, a mid-range laptop for the 60 fps and 5 s load targets, Firefox and Safari by hand, and tuning from what they show (guards, weapons, extraction timings, loot, night, buildings, how far operator bots engage) | The Playtest and tuning goals from chunk 12 are met with human data, and every item in Known Issues is Resolved, Moot or listed below as left for later | **Not started** |
@@ -505,6 +505,14 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   collides with them; bullets go straight through; bots don't look for bushes to hide in. With no
   prone stance, a crouched chest (0.7 m) is above the tallest grass, so grass alone rarely hides
   anyone.
+  **Resolved in part** (27): grass is now placed tuft by tuft in `shared/vegetation.ts`, the same
+  tufts the client draws, and a sight line loses up to 85% to each tuft it crosses, by how low and
+  how near its middle it passes (thick to half height, thinning to nothing at the top). A lone
+  tuft hides a little and a gap hides nothing. Bots hide in bushes tall enough to cover a crouched
+  head (1.15 m and up): as cover from a threat, and to wait in while camping, hunting or watching
+  a fight. Someone inside a bush sees out of it as if it weren't there. Still open: nothing
+  collides with grass or bushes and bullets pass through them (both accepted), and a crouched
+  chest is still mostly above the grass.
 - **The tree impostors are rough** (15). There's one picture from the side, lit evenly and then
   darkened by a hand-set 0.4 to match the full trees. Trees switch between full and impostor at
   170–190 m with no cross-fade. A sun-facing card only approximates a crown's shadow, and
@@ -1010,6 +1018,18 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   bodies taking shadows everywhere cost 1–3 ms. Chromium's empty frame also comes out at 7–8 ms
   about one run in three, with this chunk's code and with chunk 22's alike, so that's the machine.
 
+- **Sight through grass costs about twice as much** (27): about 10 µs a sight line in one part of
+  the island, against 4.5 µs before, as each tuft near the low stretches of the line is checked.
+  Grass cells are kept for sight up to 3,000 (under a third of the island) and then all let go at
+  once, to be scattered again as needed. The frame benchmark showed no change beyond its noise.
+- **Pebbles are tied to the grass** (27). They carry on from the grass's random numbers, so the
+  client runs the generator through the grass's draws for each cell to leave them where they were.
+  A change to how grass is scattered moves the pebbles too.
+- **Bushes and grass once depended on the broken panels** (found in 27). They were scattered the
+  first time a cell was needed, avoiding colliders as they stood then, so a cell first needed
+  after a wall fell could differ between the server and a client. **Resolved** (27): they're
+  scattered against the world as built (`World.clearAsBuilt`).
+
 ### Sharing and leaderboards
 - **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
   query parameters, so anyone can edit them. They're a friendly challenge, not a record.
@@ -1159,6 +1179,8 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   **Resolved** (17) for sharing: whole runs are saved and opened as replay files.
   **Resolved** for the range only (modes change): the range was removed. A self-kill with a
   grenade still gets no death cam.
+  **Resolved** (27): a self-kill gets a death cam through the player's own eyes, headed "Killed by
+  your own grenade", with no kill marker.
 
 ### Replays
 - **Only the player is replayed exactly** (17). Their inputs rebuild them through the simulation;
@@ -1241,13 +1263,35 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   seeing it, and a bot joining a fight goes for exactly where the shots came from, not a guess.
   Everyone is spotted faster and heard farther while carrying the bounty, whether or not the bot
   was told about it.
+  **Resolved** (27): a bot learns what a bag holds only on seeing it, within 40 m, in its view and
+  not hidden by walls, bushes or grass (as a player reads the tag), and remembers it. Gunfire
+  heard for joining a fight is placed up to 12% of its distance off, so a fight 200 m away is
+  guessed up to 24 m off in each direction; the bot stops short of the guess and watches. The
+  bounty's advantages (spotted sooner, heard farther, fought from farther) go only to operator
+  bots told who carries it, when it changes hands or is called; guards are never told.
 - **Killing the bounty pays nothing extra** (18). The reward is their loot, left in their bag. The
   bounty goes to whoever carries the most (at least $3,000), keeps to its carrier on a tie, and is
   called every 20 s within 15 m of where they are. It shows in the HUD for 8 s after each call.
 - **Bag values show through bushes and grass** (18): the tags only check that walls and terrain
   don't hide the bag, up to 40 m.
+  **Resolved** (27): a tag shows only when the bag's top (0.3 m up) is in sight and not hidden by
+  bushes or grass, the same test bots use (`bagShows`). Before, the check went to where the tag
+  floats, 0.8 m up, so a bag behind a low wall showed its value too.
 - **Campers may wait where they can't see the extraction point** (18). A spot that can see into it
   from a crouch is preferred, but if none of 16 tries finds one, any dry spot 25–45 m off will do.
+  **Resolved in part** (27): a camper first looks for a big bush 25 m out to the range that sees
+  into the extraction point, then for any spot that does. A blind camp is looked at again every
+  20 s, 10 m farther out each time up to 85 m, and swapped for a spot that sees. In the day
+  playtest 19% of first camps were blind and 22 of those 50 later moved to one that could see; the
+  rest ran out of range or time. Campers still settle for a blind spot while they look.
+- **Bots know who fired which shots** (27). A bot joining a fight guesses where the shots came
+  from, but still tells two shooters apart exactly and knows whether guards are in the fight.
+- **A new fill bot learns who the bounty is only at the next call** (27), up to 20 s later, while
+  a player sees the name at once. Guards no longer spot or hear the bounty any sooner than anyone.
+- **Bots remember a bag's value as they last saw it** (27). If someone takes loot from it after,
+  the bot comes for what was there, and finds out on searching it.
+- **A grenade whose thrower has left counts as the victim's own** (27), as it did before for the
+  score, so its death cam is through the victim's eyes, headed "Killed by your own grenade".
 - **Replays gained the bounty without a new file version** (18). It's an optional part of the file,
   so older replays still play, with no bounty and no bag values.
 - **Snapshots are bigger** (18): each carries the bounty, and each bag its value.
@@ -1445,6 +1489,14 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   12.5% after (13% → 11% on seeds 1–6, 11% → 14% on seeds 7–12), with the same kill rates. Over
   30 minutes of bot games bots opened 10 doors and broke 5 panes; no roof came down. Nothing
   was tuned, as nothing moved. Nobody has fought through the new buildings.
+- **Bot stealth was tried by bots only** (27). Two 6-island × 30-minute bot playtests, by day and
+  at night in rain: operator bots got out of 15% and 17% of runs (12% just before the chunk);
+  rats 24% and 36%, hunters 6% and 9%. The playtest now prints how often bots take a bush for
+  cover and to wait in, how far off their guesses at fights are and how often camps are blind
+  (counted in `tally`, a module-level counter in `server/bot.ts`). Nobody has played against bots
+  that hide in bushes, and whether they're too hard to find there is untested.
+- **Bots don't sneak through grass or bushes** (27). They hide in bushes only to take cover or to
+  wait, never pick a route through cover, and rats don't hide on hearing a fight nearby.
 - **Bots now path onto low obstacles** (23). The nav grid treats anything up to 0.52 m above a
   cell's floor as something to step onto rather than walk round, so a hut's raised floor doesn't
   block its doorway. Small rocks and the first step of a stair count too.

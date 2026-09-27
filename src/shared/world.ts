@@ -390,6 +390,20 @@ export class World {
     return true;
   }
 
+  /**
+   * Like clear, but against the world as it was built: broken panels count
+   * and door leaves don't, so what's scattered by it comes out the same
+   * whenever it's first asked for.
+   */
+  clearAsBuilt(x: number, feetY: number, z: number, height: number, pad: number): boolean {
+    for (const c of this.query(x, z, pad, true)) {
+      if (topOf(c) <= feetY + 0.01 || bottomOf(c) >= feetY + height) continue;
+      if (c.kind === 'box' && c.door !== undefined) continue;
+      if (overlapsFootprint(c, x, z, pad)) return false;
+    }
+    return true;
+  }
+
   /** Push a body horizontally out of any obstacle taller than a step. */
   collide(b: Body, height = PLAYER_HEIGHT): void {
     const R = PLAYER_RADIUS;
@@ -804,7 +818,8 @@ export class World {
     return Infinity;
   }
 
-  private query(x: number, z: number, r: number): Collider[] {
+  /** Colliders near (x, z); `gone` ones too with `all`. */
+  private query(x: number, z: number, r: number, all = false): Collider[] {
     const out = this.nearby;
     out.length = 0;
     const stamp = ++this.stamp;
@@ -817,7 +832,7 @@ export class World {
         const cell = this.grid.get((gx + GRID_OFFSET) * 4096 + gz + GRID_OFFSET);
         if (!cell) continue;
         for (const c of cell) {
-          if (c.stamp === stamp || c.gone) continue;
+          if (c.stamp === stamp || (c.gone && !all)) continue;
           c.stamp = stamp;
           out.push(c);
         }

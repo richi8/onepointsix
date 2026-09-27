@@ -1,12 +1,11 @@
 import * as THREE from 'three';
-import { BOUNTY_PING } from '../shared/constants.ts';
+import { BAG_SIGHT, BOUNTY_PING } from '../shared/constants.ts';
 import type { BagSnap, BountyView } from '../shared/protocol.ts';
+import { bagShows } from '../shared/vegetation.ts';
 import type { World } from '../shared/world.ts';
 
 const $ = (id: string) => document.getElementById(id)!;
 
-/** Bags this close show what they're worth, if in sight. */
-const BAG_RANGE = 40;
 /** Tags float this far above a bag, and the bounty's marker this far above the ground. */
 const BAG_LIFT = 0.8;
 const BOUNTY_LIFT = 3;
@@ -63,9 +62,10 @@ export class RivalHud {
   private updateTags(bags: readonly BagSnap[], eye: THREE.Vector3, camera: THREE.Camera): void {
     let n = 0;
     for (const b of bags) {
-      if (!b.value || Math.hypot(b.x - eye.x, b.z - eye.z) > BAG_RANGE) continue;
+      if (!b.value || Math.hypot(b.x - eye.x, b.z - eye.z) > BAG_SIGHT) continue;
+      // The bag itself has to show, not only where its tag would float.
+      if (!bagShows(this.world, eye.x, eye.y, eye.z, b.x, b.y, b.z)) continue;
       const y = b.y + BAG_LIFT;
-      if (!this.world.hasLineOfSight(eye.x, eye.y, eye.z, b.x, y, b.z)) continue;
       const at = this.project(b.x, y, b.z, camera);
       if (!at) continue;
       const el = (this.tags.children[n++] as HTMLElement | undefined) ?? this.tags.appendChild(document.createElement('div'));

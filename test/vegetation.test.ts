@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EYE_HEIGHT } from '../src/shared/constants.ts';
-import { VEG_CELL, vegetationOf, type Bush } from '../src/shared/vegetation.ts';
+import { bagShows, TUFT_STRIDE, VEG_CELL, vegetationOf, type Bush } from '../src/shared/vegetation.ts';
 import { World } from '../src/shared/world.ts';
 
 const w = new World(1);
@@ -53,5 +53,61 @@ describe('vegetation', () => {
       expect(Math.floor(b.x / VEG_CELL)).toBe(5);
       expect(Math.floor(b.z / VEG_CELL)).toBe(5);
     }
+  });
+
+  it('scatters the same grass tufts every time, each in its square', () => {
+    const a = veg.tufts(3, -2);
+    expect(vegetationOf(new World(1)).tufts(3, -2)).toEqual(a);
+    for (let sq = 0; sq < VEG_CELL * VEG_CELL; sq++) {
+      for (let k = a.start[sq]; k < a.start[sq + 1]; k++) {
+        expect(Math.floor(a.data[k * TUFT_STRIDE] - 3 * VEG_CELL)).toBe(sq % VEG_CELL);
+        expect(Math.floor(a.data[k * TUFT_STRIDE + 2] + 2 * VEG_CELL)).toBe(Math.floor(sq / VEG_CELL));
+      }
+    }
+  });
+
+  it('hides a little behind a lone tuft, and nothing through a gap', () => {
+    // A tuft with no other within 1.5 m of it, on fairly flat ground.
+    let tuft: number[] | null = null;
+    let all: number[][] = [];
+    for (let iz = -30; iz < 30 && !tuft; iz++) {
+      for (let ix = -30; ix < 30 && !tuft; ix++) {
+        const t = veg.tufts(ix, iz);
+        all = [];
+        for (const [dx, dz] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]) {
+          const n = veg.tufts(ix + dx, iz + dz);
+          for (let k = 0; k < n.count; k++) all.push([...n.data.subarray(k * TUFT_STRIDE, k * TUFT_STRIDE + 5)]);
+        }
+        for (let k = 0; k < t.count && !tuft; k++) {
+          const [x, y, z, , h] = t.data.subarray(k * TUFT_STRIDE, k * TUFT_STRIDE + 5);
+          const alone = all.every(([ox, , oz]) => (ox === x && oz === z) || Math.hypot(ox - x, oz - z) > 1.5);
+          const flat = Math.abs(w.terrainHeight(x - 5, z) - y) < 0.2 && Math.abs(w.terrainHeight(x + 5, z) - y) < 0.2;
+          if (alone && flat && h > 0.45) tuft = [x, y, z, h];
+        }
+      }
+    }
+    if (!tuft) throw new Error('no lone tuft');
+    const [x, y, z] = tuft;
+    // Low across it: some lost, not all. Just beside it, where there's no grass: nothing lost.
+    const across = veg.seeThrough(x - 5, y + 0.15, z, x + 5, y + 0.15, z);
+    expect(across).toBeLessThan(0.5);
+    expect(across).toBeGreaterThan(0.1);
+    expect(veg.seeThrough(x - 1, y + 0.15, z + 0.9, x + 1, y + 0.15, z + 0.9)).toBe(1);
+  });
+
+  it('lets someone in a bush see out of it, though not in', () => {
+    const b = bigBush();
+    const inside = { x: b.x, y: b.y + 0.7, z: b.z };
+    const out = { x: b.x - 25, y: w.terrainHeight(b.x - 25, b.z) + EYE_HEIGHT, z: b.z };
+    expect(veg.seeThrough(inside.x, inside.y, inside.z, out.x, out.y, out.z)).toBeGreaterThan(0.3);
+    expect(veg.seeThrough(out.x, out.y, out.z, inside.x, inside.y, inside.z)).toBeLessThan(0.3);
+  });
+
+  it('hides a bag behind a bush', () => {
+    const b = bigBush();
+    const eyeX = b.x - 25;
+    const eyeY = w.terrainHeight(eyeX, b.z) + EYE_HEIGHT;
+    const behind = b.x + b.size * 0.4;
+    expect(bagShows(w, eyeX, eyeY, b.z, behind, w.terrainHeight(behind, b.z), b.z)).toBe(false);
   });
 });

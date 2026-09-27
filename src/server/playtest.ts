@@ -11,6 +11,7 @@ import { extractName } from '../shared/loot.ts';
 import { runRecord, summarize, summaryText, type RunRecord } from '../shared/runstats.ts';
 import { WEAPONS } from '../shared/weapons.ts';
 import { MODES } from './directory.ts';
+import { tally } from './bot.ts';
 import type { BotPlan } from './population.ts';
 import { GameServer } from './server.ts';
 
@@ -60,6 +61,12 @@ console.log('Runs still going when the game stopped are left out, so long runs a
 console.log(summaryText(summarize(played.map((p) => p.record))));
 console.log(`\nbounties: ${bounty.held} (${(bounty.held / ((islands * minutes) / 60)).toFixed(0)} per hour), ${bounty.killed} killed, ${bounty.extracted} got out`);
 console.log(`kills per hour of game: ${[...kills].map(([k, n]) => `${k} ${(n / ((islands * minutes) / 60)).toFixed(0)}`).join(', ')}`);
+const share = (n: number, of: number) => `${n} of ${of} (${of ? Math.round((n / of) * 100) : 0}%)`;
+console.log(
+  `stealth: hid from a threat in a bush ${share(tally.bushCovers, tally.covers)}, waited in a bush ${share(tally.bushWaits, tally.waits)}; ` +
+  `fights joined ${tally.joins}, guessed ${tally.joins ? (tally.guessOff / tally.joins).toFixed(1) : '-'} m off the shooter on average; ` +
+  `camps blind to their extraction point ${share(tally.blindCamps, tally.camps)}, ${tally.campFixes} later moved to one that could see`,
+);
 
 /** One line per group of runs, to compare ways of playing. */
 function compare(title: string, key: (p: Played) => string): void {

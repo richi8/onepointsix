@@ -321,9 +321,10 @@ export class GameServer {
         if (!p.run || p.dead) return;
         if (cmd.outcome !== 'killed') this.endRun(p, cmd.outcome);
         else {
-          const by = rival ?? p;
+          const by = (!cmd.self && rival) || p;
           p.protection = 0;
-          this.damage(p, by, p.hp, 'head', by.weapon, p.x, p.y + 1.6, p.z);
+          if (by === p) this.damage(p, p, p.hp, 'torso', GRENADE, p.x, p.y + 1.2, p.z, { x: p.x, y: p.y, z: p.z });
+          else this.damage(p, by, p.hp, 'head', by.weapon, p.x, p.y + 1.6, p.z);
         }
         break;
       case 'give': {
@@ -690,7 +691,10 @@ export class GameServer {
       if (v > most || (v === most && p === current)) (holder = p), (most = v);
     }
     if (!holder) {
-      if (this.bounty) this.broadcast({ k: 'bounty', id: 0, name: '', value: 0 });
+      if (this.bounty) {
+        this.broadcast({ k: 'bounty', id: 0, name: '', value: 0 });
+        this.tellBounty(0);
+      }
       this.bounty = null;
       this.ctx.bounty = 0;
       return;
@@ -699,6 +703,7 @@ export class GameServer {
       this.bounty = { id: holder.id, x: 0, y: 0, z: 0, at: -Infinity };
       this.ctx.bounty = holder.id;
       this.broadcast({ k: 'bounty', id: holder.id, name: holder.name, value: most });
+      this.tellBounty(holder.id);
     }
     const b = this.bounty!;
     if (now - b.at < BOUNTY_PING) return;
@@ -708,6 +713,11 @@ export class GameServer {
     for (const p of this.players.values()) {
       if (p.bot && !p.dead && p.team === 'operator') p.bot.bountyCalled(p, holder.id, b, now);
     }
+  }
+
+  /** The operator bots hear who carries the bounty now, as players read it in the feed. Guards aren't told. */
+  private tellBounty(id: number): void {
+    for (const p of this.players.values()) if (p.bot && p.team === 'operator') p.bot.bountyTold(id);
   }
 
   private bountyView(): BountyView | null {
@@ -1026,7 +1036,8 @@ export class GameServer {
       ...deathPose(victim, x, y, z, from),
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
-    if (!victim.plan && attacker !== victim) victim.deathcam = { killer: attacker, time: this.time };
+    // Killed by their own grenade, they watch it through their own eyes.
+    if (!victim.plan) victim.deathcam = { killer: attacker, time: this.time };
     if (victim.run) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
       victim.run.death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head' };

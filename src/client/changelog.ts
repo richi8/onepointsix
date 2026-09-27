@@ -12,6 +12,19 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Hiding in the grass',
+    notes: [
+      'Grass hides you tuft by tuft, exactly as you see it: a lone tuft hides a little, a thick patch hides a lot, and a bare gap in a field hides nothing. Someone crouched inside a big bush can see out, but can’t be seen in.',
+      'Guards and other operators take cover in bushes too, and operators settle into them to watch a fight or camp an extraction point. Check the big bushes.',
+      'Campers keep looking for a spot that can see their extraction point, rather than settling for one that can’t.',
+      'Operators only go for a bag they have seen, and know what it’s worth only by reading its tag as you do. Bag tags no longer show through bushes and grass.',
+      'Operators drawn to a far fight head for a guess of where the shots came from, not the shooter’s exact spot, and watch from short of it.',
+      'Only other operators hunt the bounty harder, and only once they’ve been told who carries it. Guards don’t care who carries what.',
+      'Killed by your own grenade, you get a death cam of it, through your own eyes.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Hearing round corners',
     notes: [
       'Sound finds its way round walls: a shot inside a house is heard from its open door, and seems to come from there, while a shut door or a solid wall muffles it far more. Doors open and shut with a real latch and slam.',

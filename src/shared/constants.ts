@@ -126,6 +126,8 @@ export const SEARCH_TIME = 2.5;
 export const CRATE_RESTOCK = 300;
 /** Seconds a dropped bag or a body's bag stays on the ground. */
 export const BAG_TIME = 300;
+/** A bag in sight this close shows what it's worth, to players and bots alike. */
+export const BAG_SIGHT = 40;
 /** Standing within this of an extraction point counts as being in it, metres. */
 export const EXTRACT_RADIUS = 6;
 /** Seconds to stay in an open walk-in extraction. */
