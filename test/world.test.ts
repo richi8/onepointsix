@@ -4,6 +4,7 @@ import { rayAabb, rayCylinder } from '../src/shared/geom.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
 import { World } from '../src/shared/world.ts';
+import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const w1 = new World(1);
 
@@ -111,5 +112,32 @@ describe('applyCmd with collision', () => {
       applyCmd(w1, p, { seq: i, buttons: Btn.Right, yaw: 0, pitch: 0 }, CMD_DT);
       expect(p.y).toBeGreaterThanOrEqual(w1.floorHeight(p.x, p.z) - 1e-6);
     }
+  });
+});
+
+describe('lamps', () => {
+  const world = new World(DEFAULT_WORLD.seed);
+
+  it('stand in every outpost, inside its walls, lighting the ground in front of them', () => {
+    for (const [i, o] of world.outposts.entries()) {
+      const lamps = world.lamps.filter((l) => l.outpost === i);
+      expect(lamps.length).toBeGreaterThanOrEqual(2);
+      for (const l of lamps) {
+        expect(Math.max(Math.abs(l.x - o.x), Math.abs(l.z - o.z))).toBeLessThan(14);
+        expect(world.panels[l.panel].kind).toBe('lamp');
+        // Aimed inward.
+        expect((o.x - l.x) * l.dx + (o.z - l.z) * l.dz).toBeGreaterThan(0);
+      }
+    }
+    const l = world.lamps.find((l) => world.inLamplight(l.hx + l.dx * 3, l.y + 1.2, l.hz + l.dz * 3))!;
+    expect(l).toBeDefined();
+    expect(world.inLamplight(l.hx + l.dx * 30, l.y + 1.2, l.hz + l.dz * 30)).toBe(false);
+  });
+
+  it('go out when shot', () => {
+    const w = new World(DEFAULT_WORLD.seed);
+    const l = w.lamps.find((l) => w.inLamplight(l.hx + l.dx * 3, l.y + 1.2, l.hz + l.dz * 3))!;
+    for (const o of w.lamps) if (o.outpost === l.outpost) w.breakPanel(o.panel);
+    expect(w.inLamplight(l.hx + l.dx * 3, l.y + 1.2, l.hz + l.dz * 3)).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import { patchFog } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
+import { Lamps } from './lamps.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
@@ -36,6 +37,7 @@ const PROP_COLORS: Record<PropStyle, number[]> = {
   roof: [0x55595c],
   door: [0x5a4a36],
   glass: [0xa8c4c8],
+  lamp: [0x3a3d40],
 };
 /** With textures, props are tinted rather than coloured. */
 const PROP_TINTS: Record<PropStyle, number[]> = {
@@ -47,6 +49,7 @@ const PROP_TINTS: Record<PropStyle, number[]> = {
   roof: [0xa09a90],
   door: [0x8a7560],
   glass: [0xffffff],
+  lamp: [0x6a6e72],
 };
 /** Wood textures are dark; they're brightened past themselves. */
 const GAIN: Partial<Record<PropStyle, number>> = { crate: 1.7, wood: 1.8, fence: 1.5 };
@@ -59,6 +62,7 @@ const PROP_LAYERS: Record<PropStyle, number> = {
   roof: Layer.metal,
   door: Layer.boards,
   glass: Layer.concrete,
+  lamp: Layer.metal,
 };
 /** How far our own sky is greyed as it's baked to light by. */
 const SKY_GREYING = 0.7;
@@ -97,6 +101,9 @@ export class WorldView {
   private readonly trees: Trees;
   private readonly rocks: THREE.InstancedMesh;
   private readonly water: Water;
+  /** The outposts' lamps, lit after dark. */
+  private readonly lamps: Lamps;
+  private dark: boolean;
   /** Grass, bushes and pebbles near the camera, once their code has loaded. */
   private cover: GroundCover | null = null;
   private assets: Assets | null = null;
@@ -126,6 +133,7 @@ export class WorldView {
     patchFog();
     this.lighting = lightingOf(conditions);
     this.raining = conditions.weather === 'rain';
+    this.dark = conditions.time !== 'day';
     this.rain = new Rain(world);
     scene.fog = this.fog;
     scene.background = this.background;
@@ -155,8 +163,10 @@ export class WorldView {
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
-    scene.add(this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, extracts.group, this.rain.group);
-    for (const o of [this.sky, this.terrain.group, this.props, this.trees.group, this.rocks, extracts.group]) reflected(o);
+    this.lamps = new Lamps(world);
+    this.lamps.setConditions(this.dark, this.fog.near, this.fog.far);
+    scene.add(this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, extracts.group, this.rain.group);
+    for (const o of [this.sky, this.terrain.group, this.props, this.trees.group, this.rocks, extracts.group, this.lamps.group]) reflected(o);
   }
 
   /**
@@ -188,7 +198,7 @@ export class WorldView {
   dispose(): void {
     this.disposed = true;
     const scene = this.scene;
-    const parts = [this.sky, this.hemi, this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
+    const parts = [this.sky, this.hemi, this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
     if (this.cover) parts.push(this.cover.group);
     const materials = new Set<THREE.Material>();
     for (const part of parts) {
@@ -223,6 +233,7 @@ export class WorldView {
   setConditions(conditions: Conditions): void {
     this.lighting = lightingOf(conditions);
     this.raining = conditions.weather === 'rain';
+    this.dark = conditions.time !== 'day';
     this.light();
   }
 
@@ -257,6 +268,7 @@ export class WorldView {
     this.rain.set(this.raining, l.horizon.clone().multiplyScalar(1.25));
     // Built after the first lighting.
     this.water?.relit(this.scene);
+    this.lamps?.setConditions(this.dark, this.fog.near, this.fog.far);
   }
 
   /** Swap the flat colours for textures and light everything from the sky. */
@@ -296,6 +308,7 @@ export class WorldView {
   syncPanels(): void {
     this.world.doors.forEach((d, i) => (this.swing[i] = d.open ? 1 : 0));
     this.world.panels.forEach((_, i) => this.showPanel(i));
+    this.lamps.show();
     this.props.instanceMatrix.needsUpdate = true;
     this.glass.instanceMatrix.needsUpdate = true;
     this.light3d.changed();
@@ -307,6 +320,7 @@ export class WorldView {
   updatePanel(id: number): void {
     if (!this.world.panels[id]) return;
     if (this.world.panels[id].kind === 'roof') this.rain.roofChanged();
+    if (this.world.panels[id].kind === 'lamp') this.lamps.show();
     this.showPanel(id);
     this.props.instanceMatrix.needsUpdate = true;
     this.glass.instanceMatrix.needsUpdate = true;
@@ -390,6 +404,7 @@ export class WorldView {
     wind.value = time;
     this.water.update(camera, time, this.scene, this.sky);
     this.trees.update(camera.position);
+    this.lamps.update(camera.position);
     this.cover?.update(camera.position);
     this.rain.update(camera.position, time);
     this.lightning(this.rain.flash);

@@ -1149,6 +1149,22 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   low ground hides you from the player's eye more than from a bot's.
 - **Beam spotting** (25) uses the holder's aim, while the drawn beam follows the gun, which dips
   while sprinting or reloading; a bot may notice a patch the picture puts a little elsewhere.
+- **Outpost lamps cast no shadows** (lamps, after chunk 29). Two or three lamps on poles stand
+  against each outpost's walls, lit at dusk and night, but only the four nearest the camera
+  really light the world (handed from lamp to lamp as you move, fading over 20 m first; gone past
+  150 m, where only the glare shows). With no shadow maps their light goes through walls: a strip
+  of ground outside the wall behind a lamp is lit, as can be a building's floor under its roof,
+  though lamps stand 9 m clear of the outpost's building. Soldiers cast no shadow under them, and
+  the gun in your hands isn't lit by them. The four lights cost no more than the benchmark's noise
+  on the rainy night (median 15.1 to 15.6 ms a frame against 15.1 ms without, Chromium, M3 Pro).
+- **Lamplight for bots is a disc** (lamps): anyone within 9 m of the spot a standing lamp points
+  at, below it and in its line of sight, is seen from as far as by day (as in a bot's own beam).
+  Crouching helps only as much as by day. Operator bots don't avoid lamplight, and nobody shoots
+  lamps out on purpose; only the player's and stray rounds or blasts do. A shot lamp comes back with the
+  other broken panels. Checked by unit tests and screenshots only; nobody has played it.
+- **The replay test's floor was lowered** (lamps): with the poles in the world, the test run's
+  player is shot 24 s in rather than lasting the 40 s, so fewer ticks are compared (16,905 rather
+  than 38,467); the check now asks for 9,000.
 
 ### Death cam
 - **Only the killer is replayed from inputs** (10). Everyone else is drawn from the snapshots the

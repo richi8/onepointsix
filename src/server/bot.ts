@@ -102,6 +102,8 @@ export interface BotContext {
   bags(): readonly BagSnap[];
   /** Where someone's lit flashlight lands, as beamSpot; the server works each out once a tick. */
   beam?(a: Agent): Point | null;
+  /** Whether someone stands in a lamp's light; the server works each out once a tick. */
+  lamplit?(a: Agent): boolean;
 }
 
 /**
@@ -503,12 +505,13 @@ export class Bot {
       if (a.dead || !hostile(self, a)) continue;
       const d = Math.hypot(a.x - self.x, a.z - self.z);
       // In the dark, a light or a muzzle flash gives someone away from far off,
-      // and anyone in a bot's own beam is as plain as by day.
+      // and anyone in a bot's own beam or under an outpost's lamp is as plain as by day.
       const flash = a.sinceShot < 1 && !a.suppressed[a.weapon];
       const senses = ctx.senses;
       const lit = senses.dark && (a.light || flash);
-      const beamed = senses.dark && !!self.light && d < BEAM_RANGE &&
-        Math.abs(angleDiff(yawToward(self.x, self.z, a.x, a.z), this.yaw)) < BEAM_ANGLE;
+      const beamed = senses.dark && (
+        (!!self.light && d < BEAM_RANGE && Math.abs(angleDiff(yawToward(self.x, self.z, a.x, a.z), this.yaw)) < BEAM_ANGLE) ||
+        !!ctx.lamplit?.(a));
       const range = lit
         ? s.sight * Math.min(senses.sight * LIGHT_REACH, senses.haze)
         : s.sight * (beamed ? senses.haze : senses.sight) * (a.duck > 0.5 ? CROUCH_SIGHT : 1);

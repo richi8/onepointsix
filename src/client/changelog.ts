@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Lamps in the outposts',
+    notes: [
+      'Every outpost has lamps on poles along its walls. At dusk and at night they light the yard, and you can see an outpost’s lamps glowing from across the island.',
+      'Anyone standing in lamplight is as easy to spot as by day, for guards, other operators and you alike. Keep to the shadows, or shoot a lamp out: one hit puts it out, with a crash of glass the guards may hear, for a few minutes until it’s fixed.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Wet ground',
     notes: [
       'In the rain, the ground no longer shines like polished metal. Soaked earth turns darker and richer, with only a faint sheen on the flattest spots; puddles still mirror the sky.',

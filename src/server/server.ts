@@ -196,6 +196,8 @@ export class GameServer {
   private bagList: BagSnap[] | null = null;
   /** Where each lit flashlight lands this tick, for bots, worked out when first asked for. */
   private readonly beams = new Map<number, Point | null>();
+  /** Who stands in a lamp's light this tick, for bots, worked out when first asked for. */
+  private readonly lamplit = new Map<number, boolean>();
   /** When each operator slot emptied by a bot leaving gets filled again, soonest first. */
   private readonly refills: number[] = [];
   private readonly ctx: BotContext;
@@ -247,6 +249,11 @@ export class GameServer {
         let spot = this.beams.get(a.id);
         if (spot === undefined) this.beams.set(a.id, (spot = beamSpot(this.world, a)));
         return spot;
+      },
+      lamplit: (a) => {
+        let lit = this.lamplit.get(a.id);
+        if (lit === undefined) this.lamplit.set(a.id, (lit = this.world.inLamplight(a.x, a.y + 1.2, a.z)));
+        return lit;
       },
     };
     if (options.guards) {
@@ -410,6 +417,7 @@ export class GameServer {
     ctx.pathBudget = PATH_BUDGET;
     this.bagList = null;
     this.beams.clear();
+    this.lamplit.clear();
     for (const p of this.players.values()) {
       if (p.bot && !p.dead) {
         if ((this.tick + p.id) % THINK_TICKS === 0) p.bot.think(ctx, p, THINK_TICKS * SERVER_DT);

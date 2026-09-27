@@ -152,6 +152,19 @@ describe('bot perception', () => {
     expect(spots(true)).toBe(1);
   });
 
+  it('sees someone crouching in the dark under a lamp', () => {
+    const near = openGround(35);
+    const yaw = yawToward(near.ax, near.az, near.bx, near.bz);
+    const sentry: Role = { kind: 'sentry', post: { x: near.ax, y: 0, z: near.az, yaw } };
+    const spots = (time: 'night' | 'day', lamp: boolean): number => {
+      const enemy = { ...agent(2, 'operator', near.bx, near.bz), crouched: true, duck: 1 };
+      const lit = (_: unknown, ctx: BotContext) => (ctx.lamplit = (a) => lamp && a.id === 2);
+      return watch(agent(1, 'guard', near.ax, near.az), [enemy], yaw, 3, lit, sentry, sensesOf({ time, weather: 'clear' })).awareness(2);
+    };
+    expect(spots('night', false)).toBe(0);
+    expect(spots('night', true)).toBe(1);
+  });
+
   it('turns toward someone out of sight whose beam lands in view', () => {
     // The enemy stands 12 m behind the sentry and shines past it at the ground 8 m ahead.
     const rand = mulberry32(5);

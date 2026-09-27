@@ -41,8 +41,8 @@ export interface Box {
 }
 
 export type Collider = Cyl | Box;
-export type PropStyle = 'crate' | 'wall' | 'wood' | 'metal' | 'fence' | 'roof' | 'door' | 'glass';
-export type PanelKind = 'wall' | 'fence' | 'crate' | 'door' | 'glass' | 'roof';
+export type PropStyle = 'crate' | 'wall' | 'wood' | 'metal' | 'fence' | 'roof' | 'door' | 'glass' | 'lamp';
+export type PanelKind = 'wall' | 'fence' | 'crate' | 'door' | 'glass' | 'roof' | 'lamp';
 
 export interface Prop {
   box: Box;
@@ -181,6 +181,33 @@ export function watchtower(o: Outpost): Point {
   return { x: o.x + TOWER_OFFSET, y: o.y + TOWER_TOP, z: o.z + TOWER_OFFSET };
 }
 
+/**
+ * A lamp on a pole in an outpost, lit after dark. The pole stands at (x, z)
+ * on ground `y`; the lamp hangs from an arm over (hx, hy, hz), facing down and
+ * a little toward the outpost's middle, and is a panel that a shot puts out.
+ */
+export interface Lamp {
+  x: number;
+  y: number;
+  z: number;
+  hx: number;
+  hy: number;
+  hz: number;
+  /** Across the ground from the lamp toward where its light falls, unit length. */
+  dx: number;
+  dz: number;
+  panel: number;
+  outpost: number;
+}
+
+/** A lamp's height over the ground, how far its arm reaches, and how far round its foot it lights someone up. */
+export const LAMP_HEIGHT = 5.5;
+const LAMP_ARM = 0.9;
+export const LAMP_REACH = 9;
+/** Lamps in each outpost, and the least room between two of them. */
+const LAMPS = 3;
+const LAMP_SPACING = 12;
+
 /** A doorway or window in a building's wall, centred `at` along it. */
 interface Opening {
   at: number;
@@ -273,6 +300,7 @@ export class World {
   /** The buildings: one in each outpost, in order, then those out in the country. */
   readonly buildings: Building[] = [];
   readonly doors: Door[] = [];
+  readonly lamps: Lamp[] = [];
   readonly maxHeight: number;
   private readonly grid = new Map<number, Collider[]>();
   private readonly nearby: Collider[] = [];
@@ -307,9 +335,26 @@ export class World {
     this.placeExtracts(mulberry32(this.seed ^ 0x6a09e667));
     this.placeFences(mulberry32(this.seed ^ 0x3c6ef372));
     this.placeHuts(mulberry32(this.seed ^ 0x510e527f));
+    this.placeLamps(mulberry32(this.seed ^ 0x9b05688c));
   }
 
   // ---------------------------------------------------------------- queries
+
+  /**
+   * Whether a lamp still standing shines on (x, y, z): within its reach
+   * across the ground and in its line of sight, so not behind a wall or
+   * under a roof. Only after dark does that mean anything.
+   */
+  inLamplight(x: number, y: number, z: number): boolean {
+    for (const l of this.lamps) {
+      if (this.panels[l.panel].box.gone) continue;
+      const px = l.hx + l.dx * LAMP_REACH * 0.35;
+      const pz = l.hz + l.dz * LAMP_REACH * 0.35;
+      if (Math.hypot(x - px, z - pz) > LAMP_REACH || y > l.hy) continue;
+      if (this.hasLineOfSight(l.hx, l.hy - 0.2, l.hz, x, y, z)) return true;
+    }
+    return false;
+  }
 
   /** Height of the rendered terrain mesh, matching its triangulation exactly. */
   terrainHeight(x: number, z: number): number {
@@ -1485,6 +1530,52 @@ export class World {
       placed++;
     }
     for (let i = start; i < this.colliders.length; i++) this.insert(this.colliders[i]);
+  }
+
+  /**
+   * Lamps on poles in each outpost, against the inside of its walls, in a
+   * corner or beside a gate, clear of the building and of each other. Placed
+   * last, from their own random stream, so nothing else moved when they were added.
+   */
+  private placeLamps(rng: () => number): void {
+    const S = 14;
+    const T = 0.25;
+    // The pole's middle, just off the wall's inner face.
+    const e = S - T - 0.15;
+    this.outposts.forEach((o, index) => {
+      const sites: [number, number][] = [];
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) sites.push([sx * e, sz * e]);
+        for (const a of [-5, 5]) sites.push([sx * e, a], [a, sx * e]);
+      }
+      const house = this.buildings.find((b) => b.outpost === index);
+      const tower = watchtower(o);
+      const placed: Lamp[] = [];
+      for (const [ox, oz] of shuffled(sites, rng)) {
+        if (placed.length >= LAMPS) break;
+        const x = o.x + ox;
+        const z = o.z + oz;
+        // Toward the middle, as the arm reaches: straight in from a wall, across from a corner.
+        const len = Math.hypot(ox, oz);
+        const [dx, dz] = Math.abs(Math.abs(ox) - Math.abs(oz)) < 1 ? [-ox / len, -oz / len] : Math.abs(ox) > Math.abs(oz) ? [-Math.sign(ox), 0] : [0, -Math.sign(oz)];
+        if (house && inBuilding(house, x, z, 9)) continue;
+        if (Math.hypot(x - tower.x, z - tower.z) < 6) continue;
+        if (placed.some((l) => Math.hypot(l.x - x, l.z - z) < LAMP_SPACING)) continue;
+        // Room in front of it, so it never narrows a way through.
+        if (this.blocked(x + dx * 1.5, z + dz * 1.5, 1.1)) continue;
+        const y = this.terrainHeight(x, z);
+        const hx = x + dx * LAMP_ARM;
+        const hz = z + dz * LAMP_ARM;
+        const hy = y + LAMP_HEIGHT - 0.2;
+        const pole: Cyl = { kind: 'cyl', x, z, r: 0.09, y0: y - 0.5, y1: y + LAMP_HEIGHT, stamp: 0 };
+        this.colliders.push(pole);
+        this.insert(pole);
+        const panel = this.addPanel(hx - 0.25, hy - 0.08, hz - 0.25, hx + 0.25, hy + 0.12, hz + 0.25, 'lamp');
+        this.insert(this.panels[panel].box);
+        placed.push({ x, y, z, hx, hy, hz, dx, dz, panel, outpost: index });
+      }
+      this.lamps.push(...placed);
+    });
   }
 
   /** Whether nothing solid stands on the rectangle. */

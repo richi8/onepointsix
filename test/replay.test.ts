@@ -271,7 +271,8 @@ describe('the game run again', () => {
         compared++;
       }
     }
-    expect(compared).toBeGreaterThan(30 * 30 * 20);
+    // At least 15 s of twenty others: the tester walking about can be shot before the 40 s are up.
+    expect(compared).toBeGreaterThan(15 * 30 * 20);
   });
 
   it('stops at the first tick that differs from the frames, and the replay goes on with them', async () => {
