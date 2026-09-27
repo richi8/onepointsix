@@ -1019,6 +1019,75 @@ canvas.fade-in {
   margin-top: 4px;
 }
 
+/* The replays kept in the browser. */
+.replays .note,
+.replays .empty {
+  margin: 0 0 12px;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.replays .kept {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.replays .kept li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.replays .kept li:last-child {
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.replays .what {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.replays .what span {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.65;
+}
+
+.replays button.watch,
+.replays button.secondary {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1b1b1b;
+  background: #e8c35a;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.replays button.watch:hover {
+  background: #f2d27a;
+}
+
+.replays button.secondary {
+  color: #eee;
+  background: rgb(255 255 255 / 0.12);
+}
+
+.replays button.secondary:hover {
+  background: rgb(255 255 255 / 0.2);
+}
+
 /* ------------------------------------------------------------------ run */
 
 .clock {

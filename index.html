@@ -110,7 +110,7 @@
       </div>
       <div class="menu-foot">
         <button type="button" class="news-button" id="news-open">What's new<span class="dot" hidden></span></button>
-        <button type="button" class="news-button" id="replay-open">Watch a replay</button>
+        <button type="button" class="news-button" id="replay-open">Replays</button>
         <input type="file" id="replay-file" accept=".replay,application/gzip,application/json" hidden />
       </div>
       <a class="support" href="https://buymeacoffee.com/richi8" target="_blank" rel="noopener"><span aria-hidden="true">☕</span>Buy me a coffee</a>
@@ -122,6 +122,20 @@
           <button type="button" id="news-close" aria-label="Close">×</button>
         </header>
         <div class="entries"></div>
+      </div>
+    </div>
+    <div class="news replays" id="replays" hidden role="dialog" aria-modal="true" aria-labelledby="replays-title">
+      <div class="card">
+        <header>
+          <h2 id="replays-title">Replays</h2>
+          <button type="button" id="replays-close" aria-label="Close">×</button>
+        </header>
+        <div class="entries">
+          <p class="note">Your last 5 runs are kept in this browser.</p>
+          <ol class="kept"></ol>
+          <p class="empty">No runs kept yet. Play one and its replay waits here.</p>
+          <button type="button" class="secondary" id="replay-file-open">Open a replay file</button>
+        </div>
       </div>
     </div>
     <div class="hud" id="hud" hidden>

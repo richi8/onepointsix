@@ -13,13 +13,19 @@ const STRAP_OUT = 0.02;
 
 export class ContractProps {
   private readonly group = new THREE.Group();
-  private readonly world: World;
+  private world: World;
   /** What's built, so it's only rebuilt on change. */
   private shown = '';
 
   constructor(scene: THREE.Scene, world: World) {
     this.world = world;
     scene.add(this.group);
+  }
+
+  /** Show another island's contracts from now on. */
+  setWorld(world: World): void {
+    this.world = world;
+    this.update([]);
   }
 
   /** Call once per frame with the open run's contracts, or none. */

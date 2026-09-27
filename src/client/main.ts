@@ -12,11 +12,12 @@ import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
 import { World } from '../shared/world.ts';
-import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
+import { DEFAULT_WORLD, type WorldConfig } from '../shared/worldconfig.ts';
 import type { Assets } from './assets.ts';
 import { REBUILD, Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
 import { Bodies, strideLength } from './bodies.ts';
+import { BUILD } from './build.ts';
 import { CHANGELOG } from './changelog.ts';
 import { ContractProps } from './contractprops.ts';
 import { Connection, WorkerTransport, type Recording, type ReplayEvent } from './connection.ts';
@@ -35,6 +36,7 @@ import { RunLog } from './runlog.ts';
 import type { Replay } from './replay.ts';
 import type { ReplayBar, ReplayCamera } from './replaybar.ts';
 import { decodeReplay, encodeReplay, RunRecorder, type ReplayData } from './replayfile.ts';
+import { browserId, keepReplay, keptReplay, keptReplays, type KeptReplay } from './replaystore.ts';
 import { RivalHud } from './rivalhud.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
@@ -87,16 +89,18 @@ const WEATHER_NOTES: Record<Weather, string> = {
   fog: 'Nobody sees far, you included.',
 };
 
-const link = parseShareLink(location.search);
+/** The link the page came in on, or the island opened since, which carries no challenge. */
+let link = parseShareLink(location.search);
 /** The island from the link, in the conditions picked on the menu. */
 let config = link.world;
-const world = new World(config.seed);
-const view = new WorldView(world, config);
+let world = new World(config.seed);
+let view = new WorldView(world, config);
+/** Drawn into by every island in turn. */
 const scene = view.scene;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 /** The lazily loaded parts of the island. */
-const prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
+let prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
 const resolution = new Resolution(renderer);
 // Neutral keeps the colours ACES would bleach; the sun outweighs the sky light so shadows read.
 renderer.toneMapping = THREE.NeutralToneMapping;
@@ -126,15 +130,18 @@ const flashlights = new Flashlights(scene);
 const bodies = new Bodies(scene, world);
 const bags = new Bags(scene);
 const hud = new Hud();
-const runHud = new RunHud(world);
-const rivalHud = new RivalHud(world);
+let runHud = new RunHud(world);
+let rivalHud = new RivalHud(world);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
 sfx.conditions = config;
 view.onThunder = (distance) => sfx.thunder(distance);
-const surfaces = new Surfaces(world);
+
+let surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
-const extractNames = world.extracts.map((_, i) => extractName(world, i));
+let extractNames = world.extracts.map((_, i) => extractName(world, i));
+/** Nothing broken, and every door as the island starts with it. */
+let noCover: CoverState = { broken: [], open: world.openDoors() };
 
 // ---------------------------------------------------------------- loading
 
@@ -161,7 +168,6 @@ function finishLoading(): void {
   playButton.focus();
   void sfx.loadLate();
   void loadPlayback().catch((err: unknown) => console.warn('The death cam and replays failed to load.', err));
-  void openHandedReplay();
 }
 
 loadingSkip.onclick = () => {
@@ -170,7 +176,11 @@ loadingSkip.onclick = () => {
 };
 setTimeout(() => (loadingSkip.hidden = false), SKIP_LOADING_AFTER * 1000);
 
+/** The textures and models, once loaded, for another island opened later. */
+let dressed: Assets | null = null;
+
 function dress(assets: Assets): void {
+  dressed = assets;
   view.applyAssets(assets);
   effects.setDebrisMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }));
   bodies.setModel(assets.soldier, assets.guns);
@@ -227,8 +237,10 @@ const playButton = document.getElementById('play') as HTMLButtonElement;
 const store = localStore();
 const board = new Leaderboard(store);
 const runLog = new RunLog(store);
-document.getElementById('world-label')!.textContent =
-  config.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${config.seed}`;
+function showIsland(): void {
+  document.getElementById('world-label')!.textContent = config.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${config.seed}`;
+}
+showIsland();
 
 // ------------------------------------------------------------------ name
 
@@ -286,9 +298,47 @@ function shareIsland(): void {
 }
 
 document.getElementById('share-island')!.onclick = shareIsland;
-document.getElementById('new-island')!.onclick = () => {
-  location.search = shareQuery({ ...config, seed: 1 + Math.floor(Math.random() * NEW_ISLAND_SEEDS) }, mode);
-};
+document.getElementById('new-island')!.onclick = () => openIsland({ ...config, seed: 1 + Math.floor(Math.random() * NEW_ISLAND_SEEDS) });
+
+/**
+ * Open another island in place of this one, without reloading the page: it's
+ * built and drawn afresh in the same scene, and the menu, the board and the
+ * address follow it, in the conditions `next` has. Only from the menu.
+ */
+function openIsland(next: WorldConfig): void {
+  if (next.seed >>> 0 === config.seed >>> 0) {
+    setConditions(next);
+    return;
+  }
+  view.dispose();
+  world = new World(next.seed);
+  view = new WorldView(world, next, scene);
+  view.onThunder = (distance) => sfx.thunder(distance);
+  view.preview = !menu.hidden;
+  prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
+  if (dressed) view.applyAssets(dressed);
+  if (!Number.isNaN(still)) view.light3d.finishAll();
+  bodies.forget();
+  bodies.update([], 0);
+  bodies.ground = world;
+  bags.update([]);
+  grenades.update([]);
+  effects.clear();
+  contractProps.setWorld(world);
+  sfx.setWorld(world);
+  surfaces = new Surfaces(world);
+  runHud = new RunHud(world);
+  rivalHud = new RivalHud(world);
+  extractNames = world.extracts.map((_, i) => extractName(world, i));
+  noCover = { broken: [], open: world.openDoors() };
+  // The link's challenge was for the island it came with.
+  link = { world: next, mode: null, challenge: null };
+  config = { ...next };
+  history.replaceState(null, '', `${location.pathname}${shareQuery(next)}${location.hash}`);
+  setConditions(next);
+  showIsland();
+  showBoard();
+}
 
 const challengeEl = document.getElementById('challenge')!;
 const boardEl = document.getElementById('board')!;
@@ -530,7 +580,7 @@ function join(): void {
   killedBy = null;
   bodies.forget();
   conn = new Connection(config, world, mode, playerName(), transport);
-  conn.recorder = new RunRecorder(config, mode, playerName(), BUILD);
+  conn.recorder = new RunRecorder(config, mode, playerName(), OWNER, BUILD);
   ownReplay = null;
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
   conn.onEvents = (events) => events.forEach((e) => onEvent(e));
@@ -613,6 +663,7 @@ function endRun(e: RunEnd): void {
   showLastResults = () => {
     (document.getElementById('replay') as HTMLButtonElement).hidden = !killedBy;
     const recorded = !!conn?.recorder?.ready;
+    void keepLastRun();
     (document.getElementById('watch-run') as HTMLButtonElement).hidden = !recorded;
     (document.getElementById('save-run') as HTMLButtonElement).hidden = !recorded;
     runHud.showResults(e, standing.join(' '));
@@ -644,7 +695,7 @@ function playDeathcam(): void {
     void loadPlayback().then(playDeathcam, () => showLastResults?.());
     return;
   }
-  deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? NO_COVER);
+  deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? noCover);
   ownDeath = killedBy.e.killer === conn?.id;
   showCover(deathcam.cover);
   // Start the bodies afresh, as they were then.
@@ -664,7 +715,7 @@ function stopDeathcam(results = true): void {
   deathcamEl.hidden = true;
   hudEl.hidden = true;
   hudEl.classList.remove('watching');
-  showCover(conn?.cover ?? NO_COVER);
+  showCover(conn?.cover ?? noCover);
   bodies.update([], 0);
   if (results) showLastResults?.();
 }
@@ -678,8 +729,6 @@ window.addEventListener('keydown', (e) => {
 });
 document.getElementById('replay')!.onclick = playDeathcam;
 
-/** Nothing broken, and every door as the world starts with it. */
-const NO_COVER: CoverState = { broken: [], open: world.openDoors() };
 
 /** Put the panels and doors in the world as `cover` says, for a replay's moment or back to now. */
 function showCover(cover: CoverState): void {
@@ -694,10 +743,12 @@ function showCover(cover: CoverState): void {
 /** Share of the sky's light where the first-person camera is. */
 let indoors = 1;
 
-/** The update of the game, saved in replays to tell one from an older version. */
-const BUILD = CHANGELOG[0]?.date ?? '';
+/** This browser, in the replays played in it. */
+const OWNER = browserId();
 /** Seconds of a replay after the run ends: the fall, like the death camera's. */
 const REPLAY_AFTER = RESULTS_DELAY_DEAD;
+/** Seconds of events a replay looks back over for the feed after a jump: as long as a row shows. */
+const FEED_REBUILD = 6.4;
 /** Seconds a replay skips back or forward with the arrow keys. */
 const REPLAY_SKIP = 5;
 /** The free camera's speed in metres per second, and with Shift held. */
@@ -705,6 +756,10 @@ const FLY_SPEED = 10;
 const FLY_FAST = 40;
 /** Radians the free camera turns per pixel dragged. */
 const FLY_LOOK = 0.004;
+/** How close the free camera comes to a wall, rock or trunk, and the most it moves between checks. */
+const FLY_RADIUS = 0.3;
+const FLY_STEP = 0.2;
+const V_PUSH = { x: 0, y: 0, z: 0 };
 const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 
 /** The death cam and replay viewer, once loaded. */
@@ -734,24 +789,10 @@ function replayTitle(r: ReplayData): string {
 }
 
 /**
- * Watch a replay: ours from the results, or one opened from a file. One of
- * another island loads that island first, so it's handed over through the
- * session and the page reloads.
+ * Watch a replay: ours from the results, one kept in the browser or one
+ * opened from a file. One of another island opens that island first, in place.
  */
-async function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array): Promise<void> {
-  if (r.world.seed >>> 0 !== config.seed >>> 0) {
-    if (!bytes) return;
-    try {
-      let bin = '';
-      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      sessionStorage.setItem('replay', btoa(bin));
-    } catch {
-      toast(`This replay is on ${r.world.seed === DEFAULT_WORLD.seed ? 'the default island' : `island #${r.world.seed}`}, and it's too big to take there. Open that island, then the replay.`);
-      return;
-    }
-    location.search = shareQuery(r.world);
-    return;
-  }
+async function watchReplay(r: ReplayData, unsaved: boolean): Promise<void> {
   if (!loaded) return;
   // Unlocked while this is still the click's doing.
   sfx.unlock();
@@ -767,7 +808,11 @@ async function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array):
   if (replay || conn?.over === false) return;
   if (r.build !== BUILD) toast('This replay is from another version of the game, so it may not play back exactly.');
   stopDeathcam(false);
-  if (r.world.time !== config.time || r.world.weather !== config.weather) setConditions({ time: r.world.time, weather: r.world.weather });
+  if (r.world.seed >>> 0 !== config.seed >>> 0) {
+    // Only from the menu: a run's own replay is on its island.
+    if (conn) return;
+    openIsland(r.world);
+  } else if (r.world.time !== config.time || r.world.weather !== config.weather) setConditions({ time: r.world.time, weather: r.world.weather });
   document.exitPointerLock();
   menu.hidden = true;
   paused.hidden = true;
@@ -775,6 +820,10 @@ async function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array):
   view.preview = false;
   replay = new Replay(world, r);
   replayCam = 'eyes';
+  // Someone else's run says their name where yours would say "You".
+  hud.you = r.owner === OWNER ? null : r.name;
+  // An Offline game waits while you watch; nobody else is in it.
+  if (conn?.mode === 'offline') conn.transport.send({ t: 'pause', on: true });
   hud.reset();
   hud.show();
   hudEl.classList.add('watching', 'replaying');
@@ -786,12 +835,15 @@ async function watchReplay(r: ReplayData, unsaved: boolean, bytes?: Uint8Array):
 /** Back to the results, or the menu if there's no run to go back to. */
 function closeReplay(back = true): void {
   if (!replay) return;
+  replay.stopRerun();
   replay = null;
+  hud.you = null;
+  conn?.transport.send({ t: 'pause', on: false });
   replayBar?.hide();
   fly.keys.clear();
   hudEl.hidden = true;
   hudEl.classList.remove('watching', 'replaying', 'free');
-  showCover(conn?.cover ?? NO_COVER);
+  showCover(conn?.cover ?? noCover);
   bodies.update([], 0);
   bags.update([]);
   grenades.update([]);
@@ -813,6 +865,8 @@ function afterSeek(): void {
   bodies.forget();
   for (const e of replay.killsBefore()) bodies.killed(e);
   hud.reset();
+  // The feed and hit numbers as they stood then.
+  for (const { ago, e } of replay.recent(FEED_REBUILD)) feedEvent(e, ago);
   deadFor = 0;
   sfx.hush();
   soundAfterSeek = true;
@@ -858,8 +912,8 @@ function setReplayCam(cam: ReplayCamera): void {
   hudEl.classList.toggle('free', cam === 'free');
 }
 
-async function saveReplay(r: ReplayData): Promise<void> {
-  const bytes = await encodeReplay(r);
+async function saveReplay(r: ReplayData, packed?: Uint8Array<ArrayBuffer>): Promise<void> {
+  const bytes = packed ?? (await encodeReplay(r));
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/gzip' }));
   const a = document.createElement('a');
   const d = new Date(r.date);
@@ -875,26 +929,7 @@ async function saveReplay(r: ReplayData): Promise<void> {
 async function openReplayFile(file: File): Promise<void> {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    await watchReplay(await decodeReplay(bytes), false, bytes);
-  } catch (err) {
-    toast(err instanceof Error ? err.message : 'That replay couldn’t be opened.');
-  }
-}
-
-/** A replay handed over from another island's page: open it paused, since sound needs a click first. */
-async function openHandedReplay(): Promise<void> {
-  let saved: string | null = null;
-  try {
-    saved = sessionStorage.getItem('replay');
-    sessionStorage.removeItem('replay');
-  } catch {
-    return;
-  }
-  if (!saved) return;
-  try {
-    const bytes = Uint8Array.from(atob(saved), (c) => c.charCodeAt(0));
     await watchReplay(await decodeReplay(bytes), false);
-    if (replay) replay.playing = false;
   } catch (err) {
     toast(err instanceof Error ? err.message : 'That replay couldn’t be opened.');
   }
@@ -930,11 +965,95 @@ document.getElementById('save-run')!.onclick = () => {
   if (r) void saveReplay(r);
 };
 
+// The last few runs, kept in the browser, and a file of anyone's.
+const replaysEl = document.getElementById('replays')!;
+const keptList = replaysEl.querySelector('.kept')!;
 const replayFile = document.getElementById('replay-file') as HTMLInputElement;
-document.getElementById('replay-open')!.onclick = () => replayFile.click();
+/** The run last kept, so it's kept once. */
+let keptRun: ReplayData | null = null;
+
+/** Keep our last run's replay in the browser, if it has ended and isn't kept yet. */
+async function keepLastRun(): Promise<void> {
+  const r = lastRun();
+  if (!r || keptRun === r) return;
+  keptRun = r;
+  if (!(await keepReplay(r, await encodeReplay(r)))) console.warn('The replay couldn’t be kept in this browser.');
+}
+
+/** A kept replay's line in the list: how it went, and where, when and how long. */
+function keptRow(k: KeptReplay): HTMLLIElement {
+  const li = document.createElement('li');
+  const what = document.createElement('div');
+  what.className = 'what';
+  const how = document.createElement('b');
+  how.textContent = k.outcome === 'extracted' ? `Extracted · ${k.score.toLocaleString('en-US')}`
+    : k.outcome === 'killed' ? `Killed${k.killer ? ` by ${k.killer}` : ''}` : 'Missing in action';
+  const where = document.createElement('span');
+  const island = k.world.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${k.world.seed}`;
+  const when = new Date(k.date).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const length = `${Math.floor(k.time / 60)}:${String(Math.floor(k.time % 60)).padStart(2, '0')}`;
+  where.textContent = [k.name, island, conditionsLabel(k.world) || 'Day', length, when].join(' · ');
+  what.append(how, where);
+  const watch = document.createElement('button');
+  watch.type = 'button';
+  watch.className = 'watch';
+  watch.textContent = 'Watch';
+  watch.onclick = () => void openKept(k.key, true);
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'secondary save';
+  save.textContent = 'Save';
+  save.onclick = () => void openKept(k.key, false);
+  li.append(what, watch, save);
+  return li;
+}
+
+async function showReplays(open: boolean): Promise<void> {
+  replaysEl.hidden = !open;
+  if (!open) {
+    (document.getElementById('replay-open') as HTMLButtonElement).focus();
+    return;
+  }
+  const kept = await keptReplays();
+  keptList.replaceChildren(...kept.map(keptRow));
+  (replaysEl.querySelector('.empty') as HTMLElement).hidden = kept.length > 0;
+  ((keptList.querySelector('.watch') ?? document.getElementById('replays-close')) as HTMLButtonElement).focus();
+}
+
+/** Watch a kept replay, or save it as a file. */
+async function openKept(key: number, watch: boolean): Promise<void> {
+  const bytes = await keptReplay(key);
+  if (!bytes) {
+    toast('That replay is no longer kept.');
+    void showReplays(true);
+    return;
+  }
+  try {
+    const r = await decodeReplay(bytes);
+    if (!watch) {
+      void saveReplay(r, bytes);
+      return;
+    }
+    replaysEl.hidden = true;
+    await watchReplay(r, true);
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'That replay couldn’t be opened.');
+  }
+}
+
+document.getElementById('replay-open')!.onclick = () => void showReplays(true);
+document.getElementById('replays-close')!.onclick = () => void showReplays(false);
+document.getElementById('replay-file-open')!.onclick = () => replayFile.click();
+replaysEl.onclick = (e) => {
+  if (e.target === replaysEl) void showReplays(false);
+};
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && !replaysEl.hidden) void showReplays(false);
+});
 replayFile.onchange = () => {
   const file = replayFile.files?.[0];
   replayFile.value = '';
+  replaysEl.hidden = true;
   if (file) void openReplayFile(file);
 };
 
@@ -1015,6 +1134,7 @@ renderer.domElement.addEventListener('pointercancel', () => (fly.drag = false));
 function toMenu(): void {
   stopDeathcam(false);
   closeReplay(false);
+  void keepLastRun();
   conn?.leave();
   conn = null;
   showBoard();
@@ -1030,6 +1150,7 @@ function toMenu(): void {
 }
 
 document.getElementById('again')!.onclick = () => {
+  void keepLastRun();
   conn?.leave();
   join();
 };
@@ -1084,7 +1205,7 @@ playButton.onclick = play;
 window.addEventListener('keydown', (e) => {
   // Enter plays from anywhere on the menu but its other buttons.
   const active = document.activeElement;
-  if (e.code === 'Enter' && !conn && news.hidden && (!(active instanceof HTMLButtonElement) || active === playButton)) play();
+  if (e.code === 'Enter' && !conn && news.hidden && replaysEl.hidden && (!(active instanceof HTMLButtonElement) || active === playButton)) play();
 });
 playButton.focus();
 
@@ -1136,10 +1257,9 @@ function onEvent(e: GameEvent, replayed = false): void {
   // Whose eyes we see through: our own, or the player of the replay or death cam.
   const me = deathcam?.state ?? replay?.state ?? conn?.predictor.state;
   const meYaw = replay ? replay.view().yaw : input.yaw;
-  const meId = replay ? replay.id : (conn?.id ?? 0);
   switch (e.k) {
     case 'hit':
-      hud.hit(e.zone, e.killed, e.damage, e.x, e.y, e.z);
+      feedEvent(e, 0);
       sfx.hit(e.zone === 'head', e.killed);
       bodies.flash(e.target, e.x, e.y, e.z);
       break;
@@ -1149,27 +1269,23 @@ function onEvent(e: GameEvent, replayed = false): void {
       break;
     case 'kill':
       bodies.killed(e);
-      hud.kill(e, meId);
+      feedEvent(e, 0);
       break;
     case 'extract':
-      hud.extract(e, meId);
-      break;
     case 'bounty':
-      hud.bounty(e, meId);
+      feedEvent(e, 0);
       break;
     case 'call':
-      hud.call(e, extractNames[e.index], meId);
+      feedEvent(e, 0);
       sfx.call();
       break;
     case 'took':
       sfx.pickup();
       break;
-    case 'contract': {
-      const c = (replay ? replay.run() : conn?.run)?.contracts[e.index];
-      if (c) hud.contract(contractTitle(c), e.state);
+    case 'contract':
+      feedEvent(e, 0);
       if (e.state === 'done') sfx.pickup();
       break;
-    }
     case 'runEnd':
       endRun(e);
       break;
@@ -1224,6 +1340,37 @@ function onEvent(e: GameEvent, replayed = false): void {
       to.set(e.ex, e.ey, e.ez);
       showRound(e.struck, dx, dy, dz, e.quiet);
       eventSound(e);
+      break;
+    }
+  }
+}
+
+/**
+ * What an event puts over the view: a row in the feed, or a hit number.
+ * `ago` is how long before the time shown it happened, as a replay rebuilds
+ * what was showing after a jump.
+ */
+function feedEvent(e: GameEvent, ago: number): void {
+  const meId = replay ? replay.id : (conn?.id ?? 0);
+  switch (e.k) {
+    case 'hit':
+      hud.hit(e.zone, e.killed, e.damage, e.x, e.y, e.z, ago);
+      break;
+    case 'kill':
+      hud.kill(e, meId, ago);
+      break;
+    case 'extract':
+      hud.extract(e, meId, ago);
+      break;
+    case 'bounty':
+      hud.bounty(e, meId, ago);
+      break;
+    case 'call':
+      hud.call(e, extractNames[e.index], meId, ago);
+      break;
+    case 'contract': {
+      const c = (replay ? replay.run() : conn?.run)?.contracts[e.index];
+      if (c) hud.contract(contractTitle(c), e.state, ago);
       break;
     }
   }
@@ -1371,13 +1518,22 @@ function flyCamera(dt: number): void {
   const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
   const up = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
   const cp = Math.cos(fly.pitch);
-  fly.x += (-Math.sin(fly.yaw) * cp * fwd + Math.cos(fly.yaw) * side) * step;
-  fly.z += (-Math.cos(fly.yaw) * cp * fwd - Math.sin(fly.yaw) * side) * step;
-  fly.y += (Math.sin(fly.pitch) * fwd + up) * step;
+  const mx = (-Math.sin(fly.yaw) * cp * fwd + Math.cos(fly.yaw) * side) * step;
+  const mz = (-Math.cos(fly.yaw) * cp * fwd - Math.sin(fly.yaw) * side) * step;
+  const my = (Math.sin(fly.pitch) * fwd + up) * step;
+  // In steps short enough not to pass through a wall, pushed back out of walls, rocks and trunks after each.
+  const steps = Math.ceil(Math.hypot(mx, my, mz) / FLY_STEP);
   const edge = world.half * 1.5;
-  fly.x = clamp(fly.x, -edge, edge);
-  fly.z = clamp(fly.z, -edge, edge);
-  fly.y = clamp(fly.y, world.floorHeight(fly.x, fly.z) + 0.3, world.maxHeight + 200);
+  for (let i = 0; i < steps; i++) {
+    fly.x = clamp(fly.x + mx / steps, -edge, edge);
+    fly.z = clamp(fly.z + mz / steps, -edge, edge);
+    fly.y = clamp(fly.y + my / steps, world.floorHeight(fly.x, fly.z) + FLY_RADIUS, world.maxHeight + 200);
+    for (let k = 0; k < 3 && world.sphereOut(fly.x, fly.y, fly.z, FLY_RADIUS, V_PUSH); k++) {
+      fly.x += V_PUSH.x;
+      fly.y = Math.max(fly.y + V_PUSH.y, world.floorHeight(fly.x, fly.z) + FLY_RADIUS);
+      fly.z += V_PUSH.z;
+    }
+  }
   if (Math.abs(camera.fov - PLAY_FOV) > 1e-3) {
     camera.fov = PLAY_FOV;
     camera.updateProjectionMatrix();
@@ -1425,7 +1581,13 @@ if (import.meta.env.DEV) {
   // For poking at the game from the console or a test browser. `dev` sends
   // the local host a shortcut, such as ending the run (see DevCmd).
   const dev = (cmd: DevCmd) => conn?.transport.send({ t: 'dev', cmd });
-  Object.assign(window, { THREE, game: { treeFade, camera, scene, renderer, view, bodies, effects, sfx, world, viewModel, input, resolution, dev, get conn() { return conn; }, get deathcam() { return deathcam; }, get replay() { return replay; } } });
+  Object.assign(window, {
+    THREE,
+    game: {
+      treeFade, camera, scene, renderer, bodies, effects, sfx, viewModel, input, resolution, dev, fly,
+      get view() { return view; }, get world() { return world; }, get conn() { return conn; }, get deathcam() { return deathcam; }, get replay() { return replay; },
+    },
+  });
 }
 
 renderer.setAnimationLoop(() => {
@@ -1445,6 +1607,7 @@ renderer.setAnimationLoop(() => {
   cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true), (kill) => ownDeath || hud.mark(false, kill));
   rep?.update(dt, (fx) => weaponFx(fx, () => rep.others()), (e) => onEvent(e, true));
   const bodyDt = cam || rep ? Math.max((cam?.time ?? rep?.time ?? 0) - before, 0) : dt;
+  hud.age(bodyDt);
   const free = !!rep && replayCam === 'free';
   const players = cam ? cam.others() : rep ? (free ? [...rep.others(), rep.self()] : rep.others()) : (conn?.interpolated() ?? []);
   bodies.update(players, bodyDt, camera);

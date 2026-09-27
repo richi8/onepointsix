@@ -210,7 +210,7 @@ human pass comes last so people play the finished result.
 | 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Done** (checked by screenshots, the benchmark and unit tests; nobody has played a stormy night; fog banks stand still rather than drift; a bot test covers a beam seen with its holder behind the bot, not literally over a wall) |
 | 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Done** (checked by unit tests and a browser test, not by ear: nobody has listened to the new recordings, reverbs or corners; the round path uses a sound grid of its own rather than the nav grid, which ignores doors) |
 | 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Done** (by bot playtests: 15% of operator bot runs extract by day and 17% at night in rain, against 13% in chunk 18 and 12% just before; bots take a bush for 37% of their cover and 35% of their waits; fights joined are guessed 12 m off the shooter on average. Nobody has played against it) |
-| 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Not started** |
+| 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Done** (a 42 s test run's file is 38% of chunk 17's; the game run again matches every body to the centimetre in unit tests and in the browser tests of each engine, and a file from Chromium ran again exactly in Firefox and WebKit; nobody has watched a replay by hand) |
 | 29 | **Rivals and results** | A dead operator's personality shown on the results screen, in the feed after they die and on their bag; operator bot extraction back near chunk 12's 19% without undoing the personalities; a stats page on the menu that reads the run log, with export to a file; the playtest counts unfinished runs, measures how often drop-in falls back to anywhere, and has a bot mode that searches like a human so run length can be read; the share button opens the system share sheet where there is one; PvE's old board removed from storage | You can tell who killed you and what kind of rival they were, and anyone can send their run stats as a file | **Not started** |
 | 30 | **Human pass** | The chunks that need people and hardware this machine can't give: several full runs by other people (using chunk 29's stats export), a listening pass on the mix, reverb and ambience, a mid-range laptop for the 60 fps and 5 s load targets, Firefox and Safari by hand, and tuning from what they show (guards, weapons, extraction timings, loot, night, buildings, how far operator bots engage) | The Playtest and tuning goals from chunk 12 are met with human data, and every item in Known Issues is Resolved, Moot or listed below as left for later | **Not started** |
 
@@ -1187,22 +1187,51 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   everyone else is drawn from the snapshots their client got, 15 a second (every other one),
   rounded to the centimetre and milliradian. Others' recoil, exact aim and footing aren't theirs,
   and a body dying between two frames snaps to the next one.
+  **Resolved** (28): the server logs everything its humans do, by the tick it heard it, from the
+  game's start (`GameLog`), and sends the log with the run's tape. The server is deterministic, so
+  a worker runs the whole game again from its seed and the log (`Rerun`, `ExactRun`) and hands the
+  viewer every tick of everyone, exact. Each tick is checked against the frames the file kept: the
+  same bodies, and each body sampled to the centimetre. Only checked ticks are used; from the first
+  that differs the replay goes on with the frames. A dying body holds its state until the next
+  snapshot rather than snapping to it (live too).
 - **Replays are tied to the game's version** (17). A change to the simulation, the weapons or
   the island generator makes an older replay play back differently; the player would walk
   through a moved wall. A replay from another version only gets a warning, and versions are told
   apart by the date of the newest "What's new" entry, so two updates on one day look the same.
   The file format has its own version, and a replay in another format is refused.
+  **Resolved in part** (28): the build is a hash of the simulation's code (`src/shared` and
+  `src/server`, see `vite.config.ts`), so only a change there warns. The game run again stops at
+  the first tick that differs from the file and falls back to the frames, so others are never
+  drawn wrong; the player's own tape can still drift on another build.
 - **A ten-minute replay is about 900 kB** (17), most of it the other 30-odd bodies. A 45-second
   test run is about 70 kB. Frames at 10 a second, or leaving out bodies far from the player,
   would halve it.
+  **Resolved** (28): the file is packed bytes (variable-length integers, floats only where a
+  number isn't whole) gzipped with `CompressionStream`; frames are kept 10 a second for bodies
+  within 80 m and 2 a second farther off, unless something about them changes (dying, a gun
+  switch), and filled in between when read; the log points at the player's own commands on the
+  tape rather than repeating them. The same 42 s run is 23.6 kB against chunk 17's 61.8 kB (38%),
+  game log included, and a 5-minute run 144 kB against 381 kB (38%).
 - **A replay lasts only until the next run** (17). Watch replay and Save replay act on the last
   run; nothing is kept in the browser, so an unsaved replay is gone once you play again or leave.
+  **Resolved** (28): the last 5 runs are kept in IndexedDB (`replaystore.ts`) as their files, on
+  the results or on leaving them. **Replays** on the menu lists them (how it went, island,
+  conditions, length, when) to watch or save as a file, and opens a file too. Where storage is
+  blocked nothing is kept, and the list says so only by being empty.
 - **Opening a replay of another island reloads the page** (17). The file is handed over through
   the tab's session storage and opened paused, since sound needs a click first. If it doesn't fit
   there (a few MB), you're told to open that island and then the replay. Its conditions replace
   the ones chosen on the menu.
+  **Resolved** (28): the island is opened in place (`openIsland`): the old one is taken out of
+  the scene and freed, and the new one built in the same scene, with the bodies, sound, hint
+  props and HUDs pointed at it and the address rewritten. **New island** does the same. It's only
+  done from the menu; a link's challenge is dropped on leaving its island.
 - **The free camera flies through everything** (17). It stays above the ground and near the
   island, but walls, rocks and trees don't stop it.
+  **Resolved** (28): it moves in steps of at most 0.2 m, each pushed back out of any collider it
+  overlaps (a 0.3 m ball, as ragdoll joints are), so walls, door leaves, rocks and trunks stop it.
+  Checked once by a script flying it at 10 m/s into a wall for 2 s in headless Chromium (it
+  stopped short of the wall); the browser tests don't fly it.
 - **Seeking starts the scene afresh** (17): the kill feed, hit numbers and the death notice are
   cleared, tracers and debris already flying stay, and the dead fall again from standing. What
   happened before the new moment isn't rebuilt, only the panels.
@@ -1212,6 +1241,9 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   slowed round the kill in the death cam.
 - **The kill feed says "You" for the replay's player** (17), even when a friend watches it, since
   it's shown as the player saw it. Feed rows fade by real time, not replay time.
+  **Resolved** (28): each browser has a random id, saved in the replays played in it; a replay
+  from another browser says the player's name where "You" was. Feed rows and hit numbers age on
+  the replay's time: held while paused, faster at 2× and 4×.
 - **Sounds in replays aren't rebuilt when seeking** (17), and the player's own footsteps only
   play through their eyes. At 4× everything plays four times as often.
   **Resolved in part** (26): a jump cuts off everything playing, then, once the replay plays and
@@ -1221,12 +1253,19 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   one time in two or four (chosen at random, so two viewings differ). The player's own shots and
   reloads from their inputs aren't rebuilt, own footsteps still only play through their eyes, and
   pausing doesn't pause sounds already playing.
+  **Resolved** (28) for the feed and hit numbers: after a jump the events of the last 6.4 s are
+  shown again as they stood, each row and number aged by how long before it happened. Tracers and
+  debris already flying still stay.
 - **The live game goes on unseen behind a replay** (17). Watching your run from the results
   keeps the connection; live events are dropped but for keeping the books, and the panels are set
   back to how they stand now when the replay closes.
+  **Resolved in part** (28): in Offline the local host holds the game still while you watch (a
+  `pause` message the host handles, not the game, so it isn't logged). Online games go on, since
+  other players could be in them.
 - **Look angles are rounded** (17). Commands carry yaw and pitch in whole 0.00001 rad steps, so
   the replay stores them as small whole numbers and still replays exactly. It's far below a
-  pixel, but it is a change to what the server simulates.
+  pixel, but it is a change to what the server simulates. Since chunk 28 the tick a command was
+  sampled at (for rewinding shots) is rounded to a thousandth of a tick as well, for the game log.
 - **The server keeps a human's whole run** (17): every command and a key every 0.5 s, about
   36,000 commands for ten minutes. Fine locally; a multiplayer server should keep it packed.
 - **Replays were checked in a headless browser only** (17). The recorder, file, player, frames
@@ -1247,6 +1286,33 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   format's version went up to 2 and older files are refused as from another version. The door
   state in them is rebuilt like broken panels, from the doors open at the start and every door
   event since.
+- **Replays from before chunk 28 can't be watched** (28). Version 3 files are packed bytes, not
+  JSON; older ones are refused as from another version.
+- **Running the game again takes a while for an old game** (28). The worker runs it from the
+  game's start, about 0.3 ms a tick, so a run that began 10 minutes into a game is exact only
+  after some 6 s; until then, and anywhere the check fails, the frames are shown. A game that ran
+  more than 15 minutes (`RERUN_HISTORY`) before the run started sends no log at all, so its replay
+  is frames only. Play again in the same game makes each later run's log longer.
+- **The log carries every human's inputs** (28). Locally that's only you, but a multiplayer
+  server would hand one player everyone's inputs from the game's start; it should run replays
+  itself or send only what's needed.
+- **Nothing after the run's end is logged** (28): the log goes with the tape at the end, so
+  anything from the next 2.2 s of replay (a new run joined at once in the same game) makes the run
+  again differ, and the replay finishes on frames. A dead player's look after the end isn't logged
+  either; only their own body turns, and it's drawn from the tape.
+- **Engines were compared on one short run only** (28). A 6 s run saved in Chromium ran again
+  exactly in Chromium, Firefox and WebKit, every tick checked. A long run with many shots and
+  deaths might still come out differently where engines work out `Math.sin` and friends
+  differently; the check would then fall back to the frames from that moment.
+- **The exact track is held in memory** (28): every tick of everyone as 32-bit floats, about 23 MB
+  for a ten-minute run.
+- **Far bodies are coarser in the fallback** (28): kept 2 a second beyond 80 m and filled in
+  between, so they glide where the game run again isn't in use.
+- **Opening another island doesn't free everything** (28): the tree impostors' baked pictures and
+  a few other GPU buffers stay until the page closes, so many switches in one session use more
+  memory.
+- **Replay files carry a browser id** (28): a random 16-digit hex id, the same for every replay
+  from one browser, so replays can be told to come from one person, though not who.
 
 ### Rivals
 - **You can't tell a bot's personality except by how it plays** (18). Names, the kill feed and
@@ -1294,6 +1360,7 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   score, so its death cam is through the victim's eyes, headed "Killed by your own grenade".
 - **Replays gained the bounty without a new file version** (18). It's an optional part of the file,
   so older replays still play, with no bounty and no bag values.
+  **Resolved** (28): version 3 files always carry it.
 - **Snapshots are bigger** (18): each carries the bounty, and each bag its value.
 - **The rivals HUD was checked by one screenshot** (18): the bounty marker, the line under the
   clock and a bag's value, with the bounty and the bag faked in the page in headless Chrome. The

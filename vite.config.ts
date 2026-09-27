@@ -1,4 +1,5 @@
-import { statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig, type Plugin, type Rollup } from 'vite';
 
@@ -69,7 +70,23 @@ function withoutDefaultTranscoder(): Plugin {
   };
 }
 
+/**
+ * A hash of the simulation's code, the shared and server sources: the build a
+ * replay was played on, since a change there can make it play back differently.
+ */
+function simulationHash(): string {
+  const hash = createHash('sha256');
+  for (const dir of ['src/shared', 'src/server']) {
+    for (const f of readdirSync(dir).sort()) {
+      hash.update(f);
+      hash.update(readFileSync(join(dir, f)));
+    }
+  }
+  return hash.digest('hex').slice(0, 12);
+}
+
 export default defineConfig({
+  define: { __BUILD__: JSON.stringify(simulationHash()) },
   // Relative asset paths so the build works under a GitHub Pages subpath (/<repo>/).
   base: './',
   worker: { format: 'es' },

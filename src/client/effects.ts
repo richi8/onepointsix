@@ -249,6 +249,20 @@ export class Effects {
     p.sprite.visible = true;
   }
 
+  /** Clear away every mark, puff, tracer and piece of debris, as another island opens. */
+  clear(): void {
+    this.marks.count = 0;
+    this.nextMark = 0;
+    this.debris.count = 0;
+    this.chunks.length = 0;
+    this.nextChunk = 0;
+    for (const t of this.tracers) (t.dist = 0), (t.mesh.visible = false);
+    for (const p of this.puffs) (p.age = PUFF_LIFE), (p.sprite.visible = false);
+    for (const p of this.smoke) (p.age = SMOKE_LIFE), (p.sprite.visible = false);
+    this.flash = 0;
+    this.boom = BOOM_TIME;
+  }
+
   /** Light up the surroundings of a muzzle for a moment. */
   muzzleLight(at: THREE.Vector3): void {
     this.light.position.copy(at);

@@ -131,6 +131,11 @@ export class Water {
    * from `camera` mirrored in the surface, at a fraction of the screen's
    * resolution. Shadows and matrices are reused from the last frame.
    */
+  /** Free the reflection's picture. */
+  dispose(): void {
+    this.reflection.target.dispose();
+  }
+
   reflect(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
     const r = this.reflection;
     if (this.under || camera.position.y < WATER_LEVEL) {

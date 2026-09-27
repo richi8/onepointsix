@@ -118,6 +118,11 @@ export const OPERATOR_REFILL = 12;
 // Runs. Every operator plays one: drop in, loot, extract before the clock runs out.
 /** Seconds before a run ends missing in action. */
 export const RUN_TIME = 600;
+/**
+ * Seconds a game may have run before a run starts for its replay still to be
+ * run again from the start (see rerun.ts); past it, only what the player saw is kept.
+ */
+export const RERUN_HISTORY = 15 * 60;
 /** How far from a container's edge it can be searched, metres. */
 export const INTERACT_REACH = 1.6;
 /** Seconds of holding Interact to search a crate. */

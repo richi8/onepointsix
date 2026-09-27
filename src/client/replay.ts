@@ -3,7 +3,8 @@ import { motionOf, type PlayerState } from '../shared/sim.ts';
 import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
-import { grenadesAt, playersAt } from './connection.ts';
+import { grenadesAt, playersAt, type Snapshot } from './connection.ts';
+import { ExactTrack, type ExactJob, type ExactNews } from './exactrun.ts';
 import { Frames, type ReplayData, type Timed } from './replayfile.ts';
 
 /** Speeds a replay can play at. */
@@ -18,8 +19,10 @@ export interface Mark {
 /**
  * A whole run played back. The player is rebuilt from their inputs through
  * the shared simulation, so their view, aim and shots are exactly what the
- * server judged; everyone else, and the run around them, is drawn from what
- * their client was sent.
+ * server judged. Everyone else is drawn exactly too, from the game run again
+ * from its log in a worker, as far as that has got and matched the file;
+ * anywhere else, from what the player's client was sent. The run around
+ * them is what the client was sent.
  */
 export class Replay {
   readonly data: ReplayData;
@@ -29,14 +32,51 @@ export class Replay {
   playing = true;
   private readonly player: TapePlayer;
   private readonly frames: Frames;
+  /** Everyone else from the game run again, checked. */
+  readonly exact = new ExactTrack();
+  private worker: Worker | null = null;
   private nextEvent = 0;
 
-  constructor(world: World, data: ReplayData) {
+  /** With `rerun` (where there are Workers), the game is run again from its log to show everyone exactly. */
+  constructor(world: World, data: ReplayData, rerun = typeof Worker !== 'undefined') {
     this.data = data;
     this.player = new TapePlayer(world, data.tape);
     this.frames = new Frames(data.frames);
     this.time = data.from;
     this.seek(data.from);
+    if (rerun && data.log) {
+      const job: ExactJob = { log: data.log, watch: data.id, frames: data.frames, from: data.from, to: data.to };
+      const worker = (this.worker = new Worker(new URL('./rerun.worker.ts', import.meta.url), { type: 'module' }));
+      worker.onmessage = (e: MessageEvent<ExactNews>) => this.hear(e.data);
+      worker.onerror = () => this.stopRerun();
+      worker.postMessage(job);
+    }
+  }
+
+  /** News from the game being run again. */
+  hear(news: ExactNews): void {
+    if (news.k === 'batch') this.exact.add(news.batch);
+    else {
+      if (news.k === 'diverged') this.exact.divergedAt = news.at;
+      this.exact.done = true;
+      this.stopRerun();
+    }
+  }
+
+  /** Stop running the game again; done with, or closed. */
+  stopRerun(): void {
+    this.worker?.terminate();
+    this.worker = null;
+  }
+
+  /** Whether everyone else is shown exactly at the time shown, rather than as the client saw them. */
+  get exactNow(): boolean {
+    return !!this.exact.around(this.time);
+  }
+
+  /** Everyone at the time shown: exact where the game run again has got to, else the frames. */
+  private around(): Snapshot[] {
+    return this.exact.around(this.time) ?? this.frames.around(this.time);
   }
 
   get start(): number {
@@ -99,7 +139,7 @@ export class Replay {
 
   /** Everyone but the player, as their client saw them then. */
   others(): PlayerSnap[] {
-    return playersAt(this.frames.around(this.time), this.time).filter((p) => p.id !== this.id);
+    return playersAt(this.around(), this.time).filter((p) => p.id !== this.id);
   }
 
   /** The player's own body, seen from outside: where the replay puts them, doing what their client saw. */
@@ -115,7 +155,7 @@ export class Replay {
   }
 
   grenades(): GrenadeSnap[] {
-    return grenadesAt(this.frames.around(this.time), this.time);
+    return grenadesAt(this.around(), this.time);
   }
 
   /** The player's run then, its clock counting down since it was sent. */

@@ -10,7 +10,8 @@ import type { LagTransport, Transport } from '../shared/transport.ts';
 import type { World } from '../shared/world.ts';
 import type { WorldConfig } from '../shared/worldconfig.ts';
 import { Predictor } from './prediction.ts';
-import { quantizeLook, type RunRecorder } from './replayfile.ts';
+import { quantizeLook, quantizeView } from '../shared/gamelog.ts';
+import type { RunRecorder } from './replayfile.ts';
 
 /** How many unacknowledged commands ride along with each input packet. */
 const REDUNDANT_CMDS = 8;
@@ -131,7 +132,7 @@ export class Connection {
   sendCmd(buttons: number, yaw: number, pitch: number, weapon: number): void {
     if (!this.connected || this.over) return;
     // Whole look steps, so a replay stores them small and still plays back exactly.
-    const cmd = { seq: ++this.seq, buttons, yaw: quantizeLook(yaw), pitch: quantizeLook(pitch), weapon, view: this.renderTime() / SERVER_DT };
+    const cmd = { seq: ++this.seq, buttons, yaw: quantizeLook(yaw), pitch: quantizeLook(pitch), weapon, view: quantizeView(this.renderTime() / SERVER_DT) };
     this.unacked.push(cmd);
     this.predictor.predict(cmd, (fx) => this.onFx?.(fx));
     if (this.unacked.length > MAX_UNACKED) this.unacked.shift();
@@ -259,13 +260,14 @@ export function playersAt(snaps: readonly Snapshot[], t: number): PlayerSnap[] {
   const b = snaps[i];
   if (t >= b.time) return b.players;
   const f = (t - a.time) / (b.time - a.time);
-  return b.players.map((pb) => {
-    const pa = a.players.find((p) => p.id === pb.id);
-    // Don't slide a body across the map when it respawns.
-    if (!pa || pa.dead !== pb.dead) return pb;
+  // Those in the earlier snapshot, as they are until the next: someone gone by it is there until then.
+  return a.players.map((pa) => {
+    const pb = b.players.find((p) => p.id === pa.id);
+    // Don't slide a body across the map when it dies or respawns.
+    if (!pb || pa.dead !== pb.dead) return pa;
     return {
-      id: pb.id,
-      team: pb.team,
+      id: pa.id,
+      team: pa.team,
       x: lerp(pa.x, pb.x, f),
       y: lerp(pa.y, pb.y, f),
       z: lerp(pa.z, pb.z, f),
@@ -273,14 +275,15 @@ export function playersAt(snaps: readonly Snapshot[], t: number): PlayerSnap[] {
       pitch: lerp(pa.pitch, pb.pitch, f),
       duck: lerp(pa.duck, pb.duck, f),
       lean: lerp(pa.lean, pb.lean, f),
-      dead: pb.dead,
-      weapon: pb.weapon,
-      quiet: pb.quiet,
-      motion: pb.motion,
-      act: pb.act,
-      actT: pa.act === pb.act && pb.actT >= pa.actT ? lerp(pa.actT, pb.actT, f) : pb.actT,
-      commander: pb.commander,
-      light: pb.light,
+      // What they're doing holds until the next snapshot says otherwise.
+      dead: pa.dead,
+      weapon: pa.weapon,
+      quiet: pa.quiet,
+      motion: pa.motion,
+      act: pa.act,
+      actT: pa.act === pb.act && pb.actT >= pa.actT ? lerp(pa.actT, pb.actT, f) : pa.actT,
+      commander: pa.commander,
+      light: pa.light,
     };
   });
 }

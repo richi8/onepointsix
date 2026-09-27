@@ -11,6 +11,8 @@ const KILLMARKER_TIME = 0.35;
 const NUMBER_TIME = 0.9;
 const FEED_TIME = 6;
 const FEED_MAX = 5;
+/** Seconds a feed row takes to fade out. */
+const FEED_FADE = 0.4;
 const HURT_ARC_TIME = 1;
 const SLOT_NAMES = ['Rifle', 'Pistol', 'Bolt'];
 
@@ -19,6 +21,11 @@ const $ = (id: string) => document.getElementById(id)!;
 interface FloatingNumber {
   el: HTMLElement;
   pos: THREE.Vector3;
+  age: number;
+}
+
+interface FeedRow {
+  el: HTMLElement;
   age: number;
 }
 
@@ -47,7 +54,13 @@ export class Hud {
   private readonly stamina = $('stamina');
   private readonly staminaFill = this.stamina.firstElementChild as HTMLElement;
   private readonly numbers: FloatingNumber[] = [];
+  private readonly rows: FeedRow[] = [];
   private readonly tmp = new THREE.Vector3();
+  /**
+   * Who "you" are in the feed: null for the one watching, or a name shown in
+   * its place, for someone else's replay.
+   */
+  you: string | null = null;
   private marker = 0;
   private hurt = 0;
   private killer = '';
@@ -67,6 +80,24 @@ export class Hud {
   }
 
   /**
+   * Age the feed rows and hit numbers by `dt` seconds of the time shown: real
+   * time in play, the replay's time in a replay, so they stand still while it's
+   * paused and fade faster when it's sped up.
+   */
+  age(dt: number): void {
+    for (const n of this.numbers) n.age += dt;
+    for (let i = this.rows.length - 1; i >= 0; i--) {
+      const r = this.rows[i];
+      r.age += dt;
+      if (r.age >= FEED_TIME) r.el.style.opacity = '0';
+      if (r.age >= FEED_TIME + FEED_FADE) {
+        r.el.remove();
+        this.rows.splice(i, 1);
+      }
+    }
+  }
+
+  /**
    * Call once per frame. `spreadPx` is the current spread cone's radius on
    * screen; `aim` and `yaw` are the rendered values. `deathNotice` is off for
    * someone else's view, such as a killer's in the death cam.
@@ -76,7 +107,7 @@ export class Hud {
     this.hitmarker.style.opacity = String(Math.min(this.marker / HITMARKER_TIME, 1));
     this.hurt = Math.max(this.hurt - dt * 1.5, 0);
     this.hurtFlash.style.opacity = String(this.hurt);
-    this.updateNumbers(dt, camera);
+    this.updateNumbers(camera);
     if (!s) return;
 
     const w = WEAPONS[s.weapon];
@@ -106,14 +137,16 @@ export class Hud {
     if (s.dead) this.deathText.textContent = this.killer ? `by ${this.killer}` : '';
   }
 
-  /** The server confirmed one of our rounds hit. */
-  hit(zone: Zone, killed: boolean, damage: number, x: number, y: number, z: number): void {
-    this.mark(zone === 'head', killed);
+  /** The server confirmed one of our rounds hit, `ago` seconds back (when a replay rebuilds what was showing). */
+  hit(zone: Zone, killed: boolean, damage: number, x: number, y: number, z: number, ago = 0): void {
+    if (ago >= NUMBER_TIME) return;
+    if (ago === 0) this.mark(zone === 'head', killed);
     const el = document.createElement('span');
     el.textContent = String(damage);
     el.className = killed ? 'kill' : zone;
+    el.style.opacity = '0';
     this.numbersRoot.append(el);
-    this.numbers.push({ el, pos: new THREE.Vector3(x, y, z), age: 0 });
+    this.numbers.push({ el, pos: new THREE.Vector3(x, y, z), age: ago });
   }
 
   /** Flash the hit marker, bigger for a kill. */
@@ -132,10 +165,15 @@ export class Hud {
     setTimeout(() => arc.remove(), HURT_ARC_TIME * 1000);
   }
 
-  kill(e: Extract<GameEvent, { k: 'kill' }>, me: number): void {
+  /** "You" in the feed, or who you are in someone else's replay. */
+  private who(capital: boolean): string {
+    return this.you ?? (capital ? 'You' : 'you');
+  }
+
+  kill(e: Extract<GameEvent, { k: 'kill' }>, me: number, ago = 0): void {
     const row = document.createElement('div');
-    const killer = e.killer === me ? 'You' : e.killerName;
-    const victim = e.victim === me ? 'you' : e.victimName;
+    const killer = e.killer === me ? this.who(true) : e.killerName;
+    const victim = e.victim === me ? this.who(false) : e.victimName;
     row.append(killer);
     const how = document.createElement('em');
     how.textContent = `${weaponName(e.weapon)}${e.head ? ' · headshot' : ''}`;
@@ -147,53 +185,53 @@ export class Hud {
       row.append(b);
     }
     if (e.killer === me || e.victim === me) row.className = 'you';
-    this.pushFeed(row);
+    this.pushFeed(row, ago);
     if (e.victim === me) this.killer = e.killer === me ? '' : e.killerName;
   }
 
   /** Someone left the island. */
-  extract(e: Extract<GameEvent, { k: 'extract' }>, me: number): void {
+  extract(e: Extract<GameEvent, { k: 'extract' }>, me: number, ago = 0): void {
     const row = document.createElement('div');
-    row.append(e.id === me ? 'You' : e.name);
+    row.append(e.id === me ? this.who(true) : e.name);
     const how = document.createElement('em');
     how.textContent = `extracted · $${e.value.toLocaleString('en-US')}`;
     row.append(how);
     row.className = e.id === me ? 'you extract' : 'extract';
-    this.pushFeed(row);
+    this.pushFeed(row, ago);
   }
 
   /** Someone now carries the bounty; nobody losing it is told by the kill or extraction. */
-  bounty(e: Extract<GameEvent, { k: 'bounty' }>, me: number): void {
+  bounty(e: Extract<GameEvent, { k: 'bounty' }>, me: number, ago = 0): void {
     if (!e.id) return;
     const row = document.createElement('div');
-    row.append(e.id === me ? 'You' : e.name);
+    row.append(e.id === me ? this.who(true) : e.name);
     const how = document.createElement('em');
-    how.textContent = `${e.id === me ? 'carry' : 'carries'} the bounty · $${e.value.toLocaleString('en-US')}`;
+    how.textContent = `${e.id === me && !this.you ? 'carry' : 'carries'} the bounty · $${e.value.toLocaleString('en-US')}`;
     row.append(how);
     row.className = e.id === me ? 'you bounty' : 'bounty';
-    this.pushFeed(row);
+    this.pushFeed(row, ago);
   }
 
   /** Someone called in a pickup at a landing zone. */
-  call(e: Extract<GameEvent, { k: 'call' }>, where: string, me: number): void {
+  call(e: Extract<GameEvent, { k: 'call' }>, where: string, me: number, ago = 0): void {
     const row = document.createElement('div');
-    row.append(e.id === me ? 'You' : e.name);
+    row.append(e.id === me ? this.who(true) : e.name);
     const how = document.createElement('em');
     how.textContent = `called a pickup · ${where}`;
     row.append(how);
     row.className = 'extract';
-    this.pushFeed(row);
+    this.pushFeed(row, ago);
   }
 
   /** One of our contracts was done, or someone else got to it first. */
-  contract(title: string, state: 'done' | 'failed'): void {
+  contract(title: string, state: 'done' | 'failed', ago = 0): void {
     const row = document.createElement('div');
     row.append('Contract');
     const how = document.createElement('em');
     how.textContent = `${title} · ${state === 'done' ? 'done — get out to be paid' : 'failed'}`;
     row.append(how);
     row.className = state === 'done' ? 'you extract' : 'you';
-    this.pushFeed(row);
+    this.pushFeed(row, ago);
   }
 
   /** Clear what's left over from the last run. */
@@ -201,20 +239,23 @@ export class Hud {
     this.death.hidden = true;
     this.killer = '';
     this.feed.replaceChildren();
+    this.rows.length = 0;
+    for (const n of this.numbers) n.el.remove();
+    this.numbers.length = 0;
+    this.marker = 0;
     this.hurt = 0;
   }
 
-  private pushFeed(row: HTMLElement): void {
+  private pushFeed(row: HTMLElement, ago: number): void {
+    if (ago >= FEED_TIME) return;
     this.feed.append(row);
-    while (this.feed.children.length > FEED_MAX) this.feed.firstElementChild!.remove();
-    setTimeout(() => (row.style.opacity = '0'), FEED_TIME * 1000);
-    setTimeout(() => row.remove(), FEED_TIME * 1000 + 400);
+    this.rows.push({ el: row, age: ago });
+    while (this.rows.length > FEED_MAX) this.rows.shift()!.el.remove();
   }
 
-  private updateNumbers(dt: number, camera: THREE.Camera): void {
+  private updateNumbers(camera: THREE.Camera): void {
     for (let i = this.numbers.length - 1; i >= 0; i--) {
       const n = this.numbers[i];
-      n.age += dt;
       if (n.age >= NUMBER_TIME) {
         n.el.remove();
         this.numbers.splice(i, 1);

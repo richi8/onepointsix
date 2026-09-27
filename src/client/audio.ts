@@ -167,9 +167,9 @@ const OPEN_AIR = 20000;
 const UNDERWATER = 450;
 
 export class Sfx {
-  private readonly world: World;
+  private world: World;
   /** The ways round walls near the listener. */
-  readonly field: SoundField;
+  field: SoundField;
   private ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
   /** Where each space's reverb is fed. */
@@ -223,6 +223,13 @@ export class Sfx {
   constructor(world: World) {
     this.world = world;
     this.field = new SoundField(world);
+  }
+
+  /** Hear another island from now on. */
+  setWorld(world: World): void {
+    this.world = world;
+    this.field = new SoundField(world);
+    this.hush();
   }
 
   /**

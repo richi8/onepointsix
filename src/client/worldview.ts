@@ -76,11 +76,14 @@ const V_SCALE = new THREE.Vector3();
 
 /** The rendered island: terrain, water, sky, props, vegetation and lighting. */
 export class WorldView {
-  readonly scene = new THREE.Scene();
+  readonly scene: THREE.Scene;
   private readonly sun: Sun;
   private readonly sky: THREE.Mesh;
   /** Each extraction point's flag, coloured by whether it's open. */
   private readonly flags: THREE.MeshStandardMaterial[];
+  private readonly extractGroup: THREE.Group;
+  /** Set once another island has taken this one's place. */
+  private disposed = false;
   private readonly world: World;
   private readonly props: THREE.InstancedMesh;
   /** Each prop's matrix while it stands. */
@@ -117,8 +120,9 @@ export class WorldView {
   private renderer: THREE.WebGLRenderer | null = null;
   private skyPicture: { key: string; target: THREE.WebGLRenderTarget } | null = null;
 
-  constructor(world: World, conditions: Conditions) {
-    const scene = this.scene;
+  /** Drawn into `scene`, which may have been another island's; see dispose(). */
+  constructor(world: World, conditions: Conditions, scene = new THREE.Scene()) {
+    this.scene = scene;
     patchFog();
     this.lighting = lightingOf(conditions);
     this.raining = conditions.weather === 'rain';
@@ -138,6 +142,7 @@ export class WorldView {
     this.light3d = new IndoorLight(world);
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
+    this.extractGroup = extracts.group;
     const props = makeProps(world);
     this.props = props.mesh;
     this.propMatrices = props.matrices;
@@ -167,11 +172,46 @@ export class WorldView {
         this.sun.redraw();
       }),
       import('./groundcover.ts').then(({ GroundCover }) => {
+        if (this.disposed) return;
         this.cover = new GroundCover(this.world);
         if (this.assets) this.cover.applyAssets(this.assets);
         this.scene.add(this.cover.group);
       }),
     ]);
+  }
+
+  /**
+   * Take the island out of its scene and free what it was drawn with, as
+   * another island takes its place in the same scene. The textures shared
+   * with the next are kept; see Known Issues for what isn't freed.
+   */
+  dispose(): void {
+    this.disposed = true;
+    const scene = this.scene;
+    const parts = [this.sky, this.hemi, this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
+    if (this.cover) parts.push(this.cover.group);
+    const materials = new Set<THREE.Material>();
+    for (const part of parts) {
+      scene.remove(part);
+      part.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.geometry.dispose();
+        for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) materials.add(m);
+      });
+    }
+    for (const m of materials) {
+      // Data textures (heights, roofs) are the island's own, and could be sent again if shared.
+      const uniforms = (m as THREE.ShaderMaterial).uniforms ?? {};
+      for (const v of [...Object.values(m), ...Object.values(uniforms).map((u) => u?.value)]) {
+        if (v instanceof THREE.DataTexture) v.dispose();
+      }
+      m.dispose();
+    }
+    this.sun.removeFrom(scene);
+    this.water.dispose();
+    this.skyPicture?.target.dispose();
+    this.skyPicture = null;
   }
 
   /** How the island is lit now. */

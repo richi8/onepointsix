@@ -12,6 +12,20 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Replays you can keep',
+    notes: [
+      'Your last 5 runs are kept in your browser. Open Replays on the menu to watch one again or save it as a file, even days later.',
+      'Replays show everyone exactly as they were, every guard and operator, not just you: the whole game is played again from what everyone did.',
+      'Replay files are about half the size they were. Replays saved before this update can’t be opened any more.',
+      'A replay from another island opens that island straight away, with no reload. So does New island.',
+      'Jumping about a replay brings back the kill feed and the hit numbers as they stood then. The feed fades on the replay’s clock, so pausing holds it.',
+      'A friend watching your replay sees your name in the feed, where you see “You”.',
+      'The free camera stops at walls, rocks and trees instead of flying through them.',
+      'In Offline, the game waits while you watch your replay from the results.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Hiding in the grass',
     notes: [
       'Grass hides you tuft by tuft, exactly as you see it: a lone tuft hides a little, a thick patch hides a lot, and a bare gap in a field hides nothing. Someone crouched inside a big bush can see out, but can’t be seen in.',

@@ -313,7 +313,8 @@ export type StepListener = (x: number, y: number, z: number, speed: number, crou
 export class Bodies {
   onStep: StepListener | null = null;
   private readonly scene: THREE.Scene;
-  private readonly ground: Ground;
+  /** What bodies stand and fall on; another island's when that opens. */
+  ground: Ground;
   private readonly figures = new Map<number, Figure>();
   private model: GLTF | null = null;
   /** Scale that makes the model PLAYER_HEIGHT tall. */

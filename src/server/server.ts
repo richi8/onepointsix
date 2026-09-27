@@ -27,6 +27,7 @@ import {
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
   RESPONSE_SQUAD,
+  RERUN_HISTORY,
   RUN_TIME,
   SEARCH_TIME,
   SERVER_DT,
@@ -43,6 +44,7 @@ import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loo
 import type {
   Action, BagSnap, BountyView, ClientMsg, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
+import type { GameLog, LogEntry, Logged } from '../shared/gamelog.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
 import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
@@ -196,9 +198,13 @@ export class GameServer {
   private readonly history: { tick: number; poses: PoseRecord[] }[] = [];
   private nextId = 1;
   private nextGrenade = 1;
+  /** How it was set up, and everything its humans did since, to run it again for a replay. */
+  private readonly options: ServerOptions;
+  private readonly logged: LogEntry[] = [];
 
   constructor(seed: number, options: ServerOptions = {}) {
     this.seed = seed >>> 0;
+    this.options = JSON.parse(JSON.stringify(options));
     this.mode = options.mode ?? 'offline';
     this.conditions = options.conditions ?? DEFAULT_CONDITIONS;
     const night = isNight(this.conditions);
@@ -253,6 +259,7 @@ export class GameServer {
 
   connect(send: (msg: ServerMsg) => void): number {
     const p = this.add('player', 'operator', send);
+    this.note(p.id, { t: 'join' });
     // A human's whole run is kept, for its replay.
     p.tape = new Tape(RUN_TIME + TAPE_TIME);
     p.run = newRun(this.time);
@@ -272,12 +279,28 @@ export class GameServer {
   /** A client left: their slot opens up for a bot. */
   disconnect(id: number): void {
     const p = this.players.get(id);
-    if (p) this.leave(p);
+    if (!p) return;
+    this.note(id, { t: 'drop' });
+    this.leave(p);
+  }
+
+  /**
+   * The game so far as its setup and everything its humans did, enough to
+   * run it again exactly (see rerun.ts).
+   */
+  log(): GameLog {
+    return { seed: this.seed, options: JSON.parse(JSON.stringify(this.options)), entries: this.logged.map((e) => ({ ...e })) };
+  }
+
+  private note(id: number, msg: Logged): void {
+    this.logged.push({ tick: this.tick, id, msg });
   }
 
   receive(id: number, msg: ClientMsg): void {
     const p = this.players.get(id);
     if (!p) return;
+    if (msg.t === 'pause') return;
+    if (msg.t !== 'ping' && msg.t !== 'input') this.note(id, msg);
     switch (msg.t) {
       case 'hello':
         p.joined = true;
@@ -290,17 +313,22 @@ export class GameServer {
       case 'ping':
         p.send({ t: 'pong', time: msg.time });
         break;
-      case 'input':
+      case 'input': {
         if (!p.joined) break;
+        // Only the commands taken are logged; a resend of one already had changes nothing.
+        const taken: InputCmd[] = [];
         for (const cmd of msg.cmds) {
           if (cmd.seq <= p.lastRecv) continue;
           p.lastRecv = cmd.seq;
           p.queue.push(cmd);
+          taken.push(cmd);
         }
+        if (taken.length) this.note(id, { t: 'input', cmds: taken });
         if (p.queue.length > MAX_QUEUED_CMDS) p.queue.splice(0, p.queue.length - MAX_QUEUED_CMDS);
         break;
+      }
       case 'leave':
-        this.disconnect(id);
+        this.leave(p);
         break;
       case 'dev':
         this.dev(p, msg.cmd);
@@ -631,7 +659,8 @@ export class GameServer {
       // The run's replay: key how it ended first, such as the death.
       p.tape.sync(p);
       const clip = p.tape.clip(run.start);
-      if (clip) p.events.push({ k: 'tape', clip });
+      // The game's log goes with it, unless the game ran too long before this run to run again from the start.
+      if (clip) p.events.push(run.start <= RERUN_HISTORY ? { k: 'tape', clip, log: this.log() } : { k: 'tape', clip });
     }
     this.onRunEnd?.(end, p.plan);
     this.dismiss(run);

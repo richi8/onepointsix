@@ -121,6 +121,12 @@ export class Sun {
     scene.add(this.light, this.light.target, this.far, this.far.target, this.island, this.island.target);
   }
 
+  /** Take out of the scene, and free the shadow maps. */
+  removeFrom(scene: THREE.Scene): void {
+    scene.remove(this.light, this.light.target, this.far, this.far.target, this.island, this.island.target);
+    for (const l of [this.light, this.far, this.island]) l.shadow.dispose();
+  }
+
   /** Light from `dir` (towards the sun or moon) in `color` at `intensity`. */
   set(color: THREE.Color, intensity: number, dir: THREE.Vector3): void {
     this.light.color.copy(color);

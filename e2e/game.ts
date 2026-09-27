@@ -28,11 +28,13 @@ interface Game {
     id: number;
     run: { items: number[] } | null;
     over: boolean;
+    lastTick: number;
+    transport: { send(msg: { t: string }): void; sent?: string[] };
     bounty: { id: number; name: string; x: number; z: number } | null;
     bags: { x: number; z: number; value?: number }[];
     predictor: { state: { x: number; z: number } };
   } | null;
-  replay: { playing: boolean; time: number; speed: number } | null;
+  replay: { playing: boolean; time: number; speed: number; exactNow: boolean } | null;
   deathcam: object | null;
   sfx: Sfx;
   world: unknown;

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { coverBefore, Replay } from '../src/client/replay.ts';
-import { decodeReplay, encodeReplay, FramePacker, Frames, quantizeLook, RunRecorder } from '../src/client/replayfile.ts';
+import { ExactRun, ExactTrack, type ExactNews } from '../src/client/exactrun.ts';
+import { decodeReplay, encodeReplay, FramePacker, Frames, quantizeLook, RunRecorder, type ReplayData } from '../src/client/replayfile.ts';
+import { Directory } from '../src/server/directory.ts';
+import { ByteReader, ByteWriter } from '../src/shared/bytes.ts';
+import { quantizeView, readLog, writeLog, type GameLog } from '../src/shared/gamelog.ts';
 import { GameServer } from '../src/server/server.ts';
 import { Btn, CMD_DT, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { angleDiff } from '../src/shared/geom.ts';
@@ -31,7 +35,7 @@ function snap(id: number, x: number, over: Partial<PlayerSnap> = {}): PlayerSnap
 function playRun(seconds: number) {
   const server = new GameServer(DEFAULT_WORLD.seed, { mode: 'offline', guards: true, operators: 8 });
   const inside = server as unknown as Inside;
-  const recorder = new RunRecorder(DEFAULT_WORLD, 'offline', 'Tester', 'test');
+  const recorder = new RunRecorder(DEFAULT_WORLD, 'offline', 'Tester', 'me', 'test');
   const snapshots: Snapshot[] = [];
   let ended = false;
   const id = server.connect((m) => {
@@ -105,18 +109,27 @@ describe('replays', () => {
     expect(replay.state.dead).toBe(true);
   });
 
-  it('shows everyone else as the client was sent them, to the centimetre', async () => {
+  it('shows everyone else as the client was sent them: those sampled to the centimetre, the rest filled in between', async () => {
     const data = run.recorder.finish(2)!;
     const replay = new Replay(run.server.world, await decodeReplay(await encodeReplay(data)));
     const frames = new Frames(data.frames);
-    expect(frames.length).toBeGreaterThan(15 * 40);
+    expect(frames.length).toBeGreaterThan(10 * 40);
     let compared = 0;
+    let filled = 0;
     frames.times.forEach((time, i) => {
       const sent = run.snapshots.find((m) => Math.abs(m.tick * SERVER_DT - time) < 1e-6)!;
       const kept = frames.at(i).players;
-      expect(kept.map((p) => p.id)).toEqual(sent.players.map((p) => p.id));
-      kept.forEach((p, j) => {
-        const q = sent.players[j];
+      expect(kept.map((p) => p.id).sort()).toEqual(sent.players.map((p) => p.id).sort());
+      const { sampled } = frames.quantized(i);
+      kept.forEach((p) => {
+        const q = sent.players.find((o) => o.id === p.id)!;
+        if (!sampled.includes(p.id)) {
+          // Far off and not sampled: somewhere between its samples, and alive or dead as it was.
+          expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeLessThan(3);
+          expect(p.dead).toBe(q.dead);
+          filled++;
+          return;
+        }
         expect(Math.abs(p.x - q.x)).toBeLessThan(0.006);
         expect(Math.abs(p.y - q.y)).toBeLessThan(0.006);
         expect(Math.abs(p.z - q.z)).toBeLessThan(0.006);
@@ -138,6 +151,8 @@ describe('replays', () => {
       }
     });
     expect(compared).toBeGreaterThan(1000);
+    // Bodies far off are sampled a fifth as often.
+    expect(filled).toBeGreaterThan(compared);
   });
 
   it('keeps the run, the extraction points and the events, and plays them in order', async () => {
@@ -160,15 +175,184 @@ describe('replays', () => {
     expect(replay.marks()).toContainEqual(expect.objectContaining({ kind: 'death' }));
   });
 
-  it('stays small', async () => {
+  it('turns away what isn’t a replay, and those from before chunk 28 as another version', async () => {
+    await expect(decodeReplay(new TextEncoder().encode('hello'))).rejects.toThrow('isn’t a replay');
+    await expect(decodeReplay(new TextEncoder().encode('{"format":"onepointsix-replay","v":2}'))).rejects.toThrow('another version');
     const bytes = await encodeReplay(run.recorder.finish(2)!);
-    // About 45 s of play with 30-odd bodies on the island.
-    expect(bytes.length).toBeLessThan(150_000);
+    await expect(decodeReplay(bytes.slice(0, bytes.length >> 1))).rejects.toThrow('isn’t a replay');
+  });
+});
+
+/**
+ * A human playing on a server with guards and bots after it has run a while,
+ * touched by nothing but their commands and a development shortcut to end
+ * the run, as in the browser; recorded as the client records it.
+ */
+function cleanRun(seconds: number, before = 200) {
+  const server = new GameServer(DEFAULT_WORLD.seed, { mode: 'offline', guards: true, operators: 8 });
+  for (let t = 0; t < before; t++) server.step();
+  const recorder = new RunRecorder(DEFAULT_WORLD, 'offline', 'Tester', 'me', 'test');
+  const snapshots: Snapshot[] = [];
+  const id = server.connect((m) => {
+    if (m.t === 'welcome') recorder.welcome(m.id, { broken: m.broken, open: m.open });
+    if (m.t === 'snapshot') {
+      snapshots.push(m);
+      recorder.snapshot(m.tick * SERVER_DT, m.players, m.grenades, m.run, m.extracts, m.bags, m.bounty);
+    }
+    if (m.t === 'events') for (const e of m.events) recorder.event(m.tick * SERVER_DT, e);
+  });
+  server.receive(id, { t: 'hello', name: 'Tester', world: DEFAULT_WORLD, mode: 'offline' });
+  let seq = 0;
+  let yaw = 0;
+  for (let t = 1; t <= seconds * SERVER_TICK_RATE; t++) {
+    const cmds = [0, 1].map(() => {
+      yaw += Math.sin(t * 0.05) * 0.013;
+      const buttons = (t % 150 < 100 ? Btn.Forward : Btn.Left) | (t % 200 < 20 ? Btn.Fire | Btn.Aim : 0);
+      return { seq: ++seq, buttons, yaw: quantizeLook(yaw), pitch: 0, view: quantizeView(server.tick - 3.3) };
+    });
+    // Now and then a packet is late, and the next brings both.
+    if (t % 7) server.receive(id, { t: 'input', cmds });
+    server.step();
+  }
+  server.receive(id, { t: 'dev', cmd: { act: 'end', outcome: 'mia' } });
+  for (let t = 0; t < SERVER_TICK_RATE * 3; t++) server.step();
+  return { data: recorder.finish(2)!, snapshots, id, server };
+}
+
+/** Run a replay's game again in full, as the worker does, and gather what it sends. */
+function runAgain(data: ReplayData): { news: ExactNews[]; track: ExactTrack } {
+  const run = new ExactRun({ log: data.log!, watch: data.id, frames: data.frames, from: data.from, to: data.to });
+  const track = new ExactTrack();
+  const news: ExactNews[] = [];
+  for (;;) {
+    const n = run.next();
+    news.push(n);
+    if (n.k === 'batch') track.add(n.batch);
+    else break;
+  }
+  return { news, track };
+}
+
+describe('the game run again', () => {
+  const run = cleanRun(40);
+
+  it('keeps the game log in the file, exactly', async () => {
+    expect(run.data.log).toBeDefined();
+    const back = await decodeReplay(await encodeReplay(run.data));
+    expect(back.log).toEqual(run.data.log);
+    expect(back.log!.entries.some((e) => e.msg.t === 'input' && e.msg.cmds.some((c) => c.view !== undefined))).toBe(true);
   });
 
-  it('turns away what isn’t a replay', async () => {
-    await expect(decodeReplay(new TextEncoder().encode('hello'))).rejects.toThrow('isn’t a replay');
-    await expect(decodeReplay(new TextEncoder().encode('{"format":"onepointsix-replay","v":99}'))).rejects.toThrow('another version');
+  it('shows everyone exactly as they were, every tick, checked against the frames', async () => {
+    const data = await decodeReplay(await encodeReplay(run.data));
+    const { news, track } = runAgain(data);
+    expect(news.at(-1)).toEqual({ k: 'done' });
+    const ticks = Math.round((data.to - data.from) * SERVER_TICK_RATE);
+    expect(track.size).toBeGreaterThan(ticks - 5);
+    const replay = new Replay(run.server.world, data, false);
+    for (const n of news) replay.hear(n);
+    let compared = 0;
+    for (const m of run.snapshots) {
+      const t = m.tick * SERVER_DT;
+      if (t < data.from || t > data.to - 0.2) continue;
+      replay.seek(t);
+      expect(replay.exactNow).toBe(true);
+      const shown = replay.others();
+      const sent = m.players.filter((p) => p.id !== run.id);
+      expect(shown.map((p) => p.id).sort()).toEqual(sent.map((p) => p.id).sort());
+      for (const p of shown) {
+        const q = sent.find((o) => o.id === p.id)!;
+        // As exact as 32-bit floats keep them.
+        expect(Math.abs(p.x - q.x) + Math.abs(p.y - q.y) + Math.abs(p.z - q.z)).toBeLessThan(1e-3);
+        expect(Math.abs(angleDiff(p.yaw, q.yaw)) + Math.abs(p.pitch - q.pitch)).toBeLessThan(1e-5);
+        expect([p.dead, p.weapon, p.act, p.motion]).toEqual([q.dead, q.weapon, q.act, q.motion]);
+        compared++;
+      }
+    }
+    expect(compared).toBeGreaterThan(30 * 30 * 20);
+  });
+
+  it('stops at the first tick that differs from the frames, and the replay goes on with them', async () => {
+    const data = await decodeReplay(await encodeReplay(run.data));
+    // A game set up with one operator fewer goes differently from the start.
+    const log: GameLog = { ...data.log!, options: { ...data.log!.options, operators: 7 } };
+    const { news, track } = runAgain({ ...data, log });
+    expect(news.at(-1)?.k).toBe('diverged');
+    const replay = new Replay(run.server.world, { ...data, log }, false);
+    for (const n of news) replay.hear(n);
+    expect(track.size).toBe(0);
+    replay.seek(data.from + 5);
+    expect(replay.exactNow).toBe(false);
+    expect(replay.others().length).toBeGreaterThan(20);
+  });
+
+  it('is half the size of a replay in chunk 17’s file', async () => {
+    // Chunk 17's file of this same 42 s run, measured before the change: gzipped JSON, frames at 15 a second.
+    const chunk17 = 61_829;
+    const r = cleanRun(42, 0);
+    const bytes = await encodeReplay(r.data);
+    expect(bytes.length).toBeLessThan(chunk17 / 2);
+  });
+});
+
+describe('the game log', () => {
+  it('comes back exactly from its bytes, commands and all, as floats where they aren’t whole steps', () => {
+    const log: GameLog = {
+      seed: 4242, options: { mode: 'online', guards: true, operators: 8, conditions: { time: 'night', weather: 'rain' } },
+      entries: [
+        { tick: 0, id: 33, msg: { t: 'join' } },
+        { tick: 0, id: 33, msg: { t: 'hello', name: 'Ann', world: { seed: 4242, time: 'night', weather: 'rain' }, mode: 'online' } },
+        { tick: 3, id: 33, msg: { t: 'input', cmds: [{ seq: 1, buttons: 5, yaw: quantizeLook(-3.1), pitch: quantizeLook(0.2), view: quantizeView(0.123456) }] } },
+        { tick: 4, id: 33, msg: { t: 'input', cmds: [{ seq: 2, buttons: 0, yaw: quantizeLook(3.1), pitch: 0, weapon: 2 }, { seq: 5, buttons: 1 << 12, yaw: 0, pitch: 0, view: 3.5 }] } },
+        { tick: 90, id: 33, msg: { t: 'dev', cmd: { act: 'end', outcome: 'killed', self: true } } },
+        { tick: 91, id: 33, msg: { t: 'leave' } },
+        { tick: 95, id: 34, msg: { t: 'join' } },
+        { tick: 99, id: 34, msg: { t: 'drop' } },
+      ],
+    };
+    const pack = (l: GameLog) => {
+      const w = new ByteWriter();
+      writeLog(w, l);
+      return readLog(new ByteReader(w.data()));
+    };
+    expect(pack(log)).toEqual(log);
+    // A look that isn't a whole step still comes back exactly.
+    const odd: GameLog = { ...log, entries: [{ tick: 2, id: 1, msg: { t: 'input', cmds: [{ seq: 1, buttons: 0, yaw: Math.PI, pitch: 0.1, view: 1 / 3 }] } }] };
+    expect(pack(odd)).toEqual(odd);
+  });
+
+  it('bytes: whole numbers of either sign, floats and text come back as they went', () => {
+    const w = new ByteWriter();
+    const ints = [0, 1, -1, 63, -64, 64, 127, 128, 300, -300, 2 ** 31, -(2 ** 31), 2 ** 50];
+    w.ints(ints);
+    w.floats([Math.PI, -0, 1e-300, 123.456]);
+    w.text('Příliš žluťoučký');
+    const r = new ByteReader(w.data());
+    expect(r.ints()).toEqual(ints);
+    expect(r.floats()).toEqual([Math.PI, -0, 1e-300, 123.456]);
+    expect(r.text()).toBe('Příliš žluťoučký');
+    expect(r.done).toBe(true);
+    expect(() => r.uint()).toThrow();
+  });
+});
+
+describe('Offline, held still', () => {
+  it('stands still while its player watches their replay, and goes on after', () => {
+    const directory = new Directory();
+    const game = directory.quickJoin(DEFAULT_WORLD, 'offline');
+    directory.step();
+    const tick = game.tick;
+    directory.pause(game, true);
+    for (let i = 0; i < 10; i++) directory.step();
+    expect(game.tick).toBe(tick);
+    directory.pause(game, false);
+    directory.step();
+    expect(game.tick).toBe(tick + 1);
+    // Online never waits: others may be playing.
+    const online = directory.quickJoin(DEFAULT_WORLD, 'online');
+    directory.pause(online, true);
+    directory.step();
+    expect(directory.paused(online)).toBe(false);
   });
 });
 
@@ -187,9 +371,9 @@ describe('frames', () => {
       const s = frames.at(i);
       expect(s.time).toBeCloseTo(f.time, 9);
       expect(s.grenades).toEqual([{ id: 7, x: 1.11, y: 2, z: -3 }]);
-      expect(s.players.map((p) => p.id)).toEqual(f.players.map((p) => p.id));
-      s.players.forEach((p, j) => {
-        const q = f.players[j];
+      expect(s.players.map((p) => p.id).sort()).toEqual(f.players.map((p) => p.id).sort());
+      s.players.forEach((p) => {
+        const q = f.players.find((o) => o.id === p.id)!;
         expect(p.x).toBeCloseTo(q.x, 2);
         expect(p.z).toBeCloseTo(q.z, 2);
         expect(p.actT).toBeCloseTo(q.actT, 2);
@@ -203,9 +387,27 @@ describe('frames', () => {
     const packer = new FramePacker();
     packer.push(0, [snap(1, 5)], []);
     const before = packer.data().length;
-    packer.push(1 / 15, [snap(1, 5)], []);
-    // Ticks, count, then id and an empty mask, then no grenades.
-    expect(packer.data().length - before).toBe(5);
+    packer.push(1 / 10, [snap(1, 5)], []);
+    // Ticks, nobody come or gone, one sampled, its id and an empty mask, then no grenades.
+    expect(packer.data().length - before).toBe(7);
+  });
+
+  it('sample bodies far off a fifth as often, unless something about them changes, and fill them in between', () => {
+    const packer = new FramePacker();
+    const near = (p: PlayerSnap) => p.id === 1;
+    for (let i = 0; i <= 10; i++) {
+      const dead = i >= 7;
+      packer.push(i / 10, [snap(1, i), snap(2, 100 + i * 2, { dead })], [], near);
+    }
+    const frames = new Frames(packer.data());
+    expect(frames.length).toBe(11);
+    // The far one at 0 and 5 on the clock, then at 7 when it died, then 10 would be next... but it's the last frame.
+    expect([...Array(11).keys()].filter((i) => frames.quantized(i).sampled.includes(2))).toEqual([0, 5, 7]);
+    expect([...Array(11).keys()].every((i) => frames.quantized(i).sampled.includes(1))).toBe(true);
+    // In between, it's where it was on the way.
+    expect(frames.at(3).players.find((p) => p.id === 2)!.x).toBeCloseTo(106, 2);
+    expect(frames.at(6).players.find((p) => p.id === 2)!.dead).toBe(false);
+    expect(frames.at(8).players.find((p) => p.id === 2)!.dead).toBe(true);
   });
 });
 
