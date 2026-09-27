@@ -1241,6 +1241,12 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   overlaps (a 0.3 m ball, as ragdoll joints are), so walls, door leaves, rocks and trunks stop it.
   Checked once by a script flying it at 10 m/s into a wall for 2 s in headless Chromium (it
   stopped short of the wall); the browser tests don't fly it.
+- **The free camera's own shots came from the camera** (17). The player's rounds were drawn
+  as if from the first-person gun, so from the free camera the tracers and muzzle light started
+  at the camera, and the shot sounded as the viewer's own.
+  **Resolved** (after 29): with the free camera, the player's shots start at their body's muzzle
+  (or 0.7 m ahead of the eye if the body isn't drawn near there), flash on the body and sound
+  from where they were fired. Not checked by hand in the browser.
 - **Seeking starts the scene afresh** (17): the kill feed, hit numbers and the death notice are
   cleared, tracers and debris already flying stay, and the dead fall again from standing. What
   happened before the new moment isn't rebuilt, only the panels.
