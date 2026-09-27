@@ -86,6 +86,8 @@ export const MAX_HP = 100;
 /** Seconds after spawning during which a player takes no damage. */
 export const SPAWN_PROTECTION = 1.5;
 export const HEADSHOT_MUL = 2.5;
+/** Share of a headshot's damage that a guard's round does, so guards rarely kill with one head hit. */
+export const GUARD_HEAD_SHARE = 0.6;
 export const LEGS_MUL = 0.7;
 /** Spread multiple while crouched. */
 export const CROUCH_SPREAD_MUL = 0.7;

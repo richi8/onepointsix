@@ -34,6 +34,8 @@ export interface Skill {
   tapDelay: number;
   /** Chance per decision to aim for the head. */
   headChance: number;
+  /** Where on the torso a body shot aims, from the hips (0) to the neck (1). */
+  aimHeight: number;
   /** Chance to take cover when hurt, and to flank a target that went out of sight. */
   coverChance: number;
   flankChance: number;
@@ -60,6 +62,7 @@ export const SKILLS: Record<Difficulty, Skill> = {
     burstPause: [0.45, 0.9],
     tapDelay: 0.35,
     headChance: 0,
+    aimHeight: 0.35,
     coverChance: 0.3,
     flankChance: 0.15,
     memory: 12,
@@ -82,6 +85,7 @@ export const SKILLS: Record<Difficulty, Skill> = {
     burstPause: [0.3, 0.6],
     tapDelay: 0.22,
     headChance: 0.1,
+    aimHeight: 0.35,
     coverChance: 0.6,
     flankChance: 0.4,
     memory: 20,
@@ -104,8 +108,28 @@ export const SKILLS: Record<Difficulty, Skill> = {
     burstPause: [0.2, 0.4],
     tapDelay: 0.12,
     headChance: 0.25,
+    aimHeight: 0.35,
     coverChance: 0.8,
     flankChance: 0.6,
     memory: 30,
   },
 };
+
+/**
+ * A guard's skill: worse at hitting than an operator of the same grade, so
+ * that three guards at once don't cut a player down in a second. No aimed
+ * headshots, the aim lower on the body so a burst climbs into the chest, a
+ * wider sway, slower to react and to settle, and shorter bursts.
+ */
+export function guardSkill(s: Skill): Skill {
+  return {
+    ...s,
+    headChance: 0,
+    aimHeight: 0.15,
+    aimError: s.aimError * 1.3,
+    settle: s.settle * 0.6,
+    wobble: s.wobble * 3,
+    reaction: s.reaction * 1.3,
+    burst: [Math.round(s.burst[0] * 0.6), Math.round(s.burst[1] * 0.6)],
+  };
+}

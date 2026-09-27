@@ -33,6 +33,8 @@ interface Played {
 
 const played: Played[] = [];
 const kills = new Map<string, number>();
+/** Of those, kills by a round in the head. */
+const heads = new Map<string, number>();
 /** Operators who became the bounty, and how their runs ended. */
 const bounty = { held: 0, killed: 0, extracted: 0 };
 /** Runs still going when each game stopped. */
@@ -57,6 +59,7 @@ for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
     const team = (id: number) => server.bots().find((b) => b.id === id)?.team ?? '?';
     const key = `${team(e.killer)} killed ${team(e.victim)}`;
     kills.set(key, (kills.get(key) ?? 0) + 1);
+    if (e.head) heads.set(key, (heads.get(key) ?? 0) + 1);
   };
   const ticks = minutes * 60 * SERVER_TICK_RATE;
   for (let t = 0; t < ticks; t++) server.step();
@@ -75,6 +78,7 @@ console.log(
 console.log(summaryText(summarize(played.map((p) => p.record))));
 console.log(`\nbounties: ${bounty.held} (${(bounty.held / ((islands * minutes) / 60)).toFixed(0)} per hour), ${bounty.killed} killed, ${bounty.extracted} got out`);
 console.log(`kills per hour of game: ${[...kills].map(([k, n]) => `${k} ${(n / ((islands * minutes) / 60)).toFixed(0)}`).join(', ')}`);
+console.log(`in the head: ${[...kills].map(([k, n]) => `${k} ${Math.round(((heads.get(k) ?? 0) / n) * 100)}%`).join(', ')}`);
 const share = (n: number, of: number) => `${n} of ${of} (${of ? Math.round((n / of) * 100) : 0}%)`;
 console.log(
   `stealth: hid from a threat in a bush ${share(tally.bushCovers, tally.covers)}, waited in a bush ${share(tally.bushWaits, tally.waits)}; ` +

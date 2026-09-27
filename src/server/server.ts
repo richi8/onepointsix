@@ -17,6 +17,7 @@ import {
   GRENADE_NOISE,
   GRENADE_RADIUS,
   GRENADES,
+  GUARD_HEAD_SHARE,
   GUARD_RESPAWN,
   INTEL_TIME,
   MAX_CMDS_PER_TICK,
@@ -60,7 +61,7 @@ import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
 import { insertionPoint, planCommander, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
 import type { Personality } from './personality.ts';
-import { SKILLS } from './skill.ts';
+import { guardSkill, SKILLS } from './skill.ts';
 
 /** Commands buffered beyond this are dropped; the client is too far ahead. */
 const MAX_QUEUED_CMDS = MAX_CMDS_PER_TICK * 4;
@@ -883,7 +884,7 @@ export class GameServer {
     p.queue = [];
     if (p.plan) {
       const { role, skill, primary } = p.plan;
-      p.bot = new Bot(role, SKILLS[skill], primary, post.yaw, mulberry32((this.seed ^ Math.imul(p.id, 0x9e3779b1) ^ p.life) >>> 0));
+      p.bot = new Bot(role, role.kind === 'operator' ? SKILLS[skill] : guardSkill(SKILLS[skill]), primary, post.yaw, mulberry32((this.seed ^ Math.imul(p.id, 0x9e3779b1) ^ p.life) >>> 0));
       p.weapon = primary;
     }
   }
@@ -963,8 +964,10 @@ export class GameServer {
       if (Bot.nearMiss(p, ox, oy, oz, dx, dy, dz, t)) p.bot.underFire(shooter, now);
     }
     this.noise(ox, oy, oz, w.noise * (shot.quiet ? SUPPRESSED_NOISE : 1), shooter.id, undefined, true);
-    if (victim) this.damage(victim, shooter, damageAt(shot.weapon, t, zone), zone, shot.weapon, ex, ey, ez);
-    else if (panel >= 0) this.panelsBroke(this.cover.damage(panel, damageAt(shot.weapon, t, 'torso'), now), ox, oy, oz, shooter);
+    if (victim) {
+      const amount = damageAt(shot.weapon, t, zone) * (shooter.team === 'guard' && zone === 'head' ? GUARD_HEAD_SHARE : 1);
+      this.damage(victim, shooter, Math.round(amount), zone, shot.weapon, ex, ey, ez);
+    } else if (panel >= 0) this.panelsBroke(this.cover.damage(panel, damageAt(shot.weapon, t, 'torso'), now), ox, oy, oz, shooter);
   }
 
   /**

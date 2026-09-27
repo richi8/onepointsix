@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Guards shoot less well',
+    notes: [
+      'Guards no longer aim for your head, sway more on a far target, take a moment longer to open fire and fire shorter bursts, so running into two or three of them at once is no longer over in a second.',
+      'A guard’s round in the head still hurts, but no longer takes most of your health: one head hit and one more no longer kill you. Other operators shoot exactly as before.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'More natural grass',
     notes: [
       'Grass now grows out of the ground it stands on, taking the earth’s colour at its roots, and fields vary in patches of drier and greener grass.',

@@ -1505,7 +1505,7 @@ export class Bot {
       const head = this.aimHead || c.headOnly;
       const tx = head ? h.headX : h.torsoX;
       // Low on the torso, so that recoil climbs through it rather than over it.
-      const ty = head ? h.headY : h.hipY + (h.neckY - h.hipY) * 0.35;
+      const ty = head ? h.headY : h.hipY + (h.neckY - h.hipY) * s.aimHeight;
       const tz = head ? h.headZ : h.torsoZ;
       dist = Math.hypot(tx - eye.headX, tz - eye.headZ);
       aimYaw = yawToward(eye.headX, eye.headZ, tx, tz);

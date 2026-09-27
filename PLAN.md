@@ -1643,6 +1643,24 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   PvE easier for humans, so guards were left alone until humans have played.
   Still true after chunk 29 (see Rivals): 84% of their runs end in death by day, 82% at night in
   rain.
+- **Guards were too deadly for a person** (30). The first human run log (84 runs by the
+  developer on seed 1, about half of them tries with no aim to get out) had 88% of runs end in
+  death, 77% of those to guards, a median 0:30 into the run, and 42% of guard kills were
+  headshots; extracted runs lasted a median 2:30. Two or three guards firing at once was the
+  usual way to die. Most guard hits land at 50–100 m, often from towers, and 18% of rounds a
+  guard aimed at the body still struck the head, so removing aimed headshots alone changed
+  nothing: one head hit (70) and one body hit (28) kill.
+  **Resolved in part** (30): guards now take their grade's skill through `guardSkill`
+  (`server/skill.ts`): no aimed headshots, aim nearer the hips (so a burst climbs into the chest),
+  3× the sway, 30% more aim error and reaction time, 40% slower settling and bursts 40% shorter.
+  Their head hits do 0.6 of a headshot's damage (`GUARD_HEAD_SHARE`, 42 instead of 70), a rule
+  that applies to guards only; operators, bots and people alike, are unchanged. In the bot
+  playtest (6 islands × 20 min) guards kill 127 operators an hour instead of 155 by day and
+  136 instead of 146 at night in rain, with 21% and 11% of those kills in the head (38% and 33%
+  before); operator bots extract from 19% and 21% of runs (17% and 20%). Those playtests are
+  noisy (runs that should come out equal differ by up to 20%), and bots die charging guards, so
+  it waits on people playing to say whether it's enough. A limit on how many guards may shoot at
+  one person at once was tried and dropped at the user's request.
 - **Most of the listed tuning wasn't changed** (12): guard count, bot skill numbers, weapon damage
   and recoil, extraction timings and loot values. In the bot playtest the rifle and bolt-action
   came out even (about 210 and 190 points per run), as did light and heavy carrying, so there was
