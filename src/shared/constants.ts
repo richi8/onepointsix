@@ -108,6 +108,10 @@ export const GUARDS_PER_OUTPOST = 2;
 export const GUARD_PATROLS = 3;
 /** Seconds before a dead guard is replaced at its post. */
 export const GUARD_RESPAWN = 60;
+/** A dead guard waits while an operator is this close to its post, or can see it from this far, and looks again every few seconds. */
+export const RESPAWN_CLEAR = 50;
+export const RESPAWN_SIGHT = 150;
+export const RESPAWN_RETRY = 3;
 /** Seconds a fallen operator bot lies there before it leaves the game. */
 export const BODY_TIME = 5;
 /** The death cam replays the killer's view from this many seconds before the kill... */

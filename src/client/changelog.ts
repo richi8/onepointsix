@@ -18,6 +18,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Contracts pay five times as much: $7,500 for the intel, $6,000 for a supply cache and $12,500 for a commander.',
       'Other operators know about the fee too, so they stay out looting longer.',
       'Your run stats now remember how far off your killer was and how many enemies had been hitting you, for the stats you export.',
+      'A guard you killed no longer comes back at its post while you’re near it or can see it, so taking out a sentry and then climbing its tower for the intel is safe from a guard appearing next to you.',
     ],
   },
   {

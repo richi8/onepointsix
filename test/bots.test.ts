@@ -276,6 +276,27 @@ describe('guards', () => {
   });
 });
 
+describe('guard respawns', () => {
+  it('wait while an operator stands near the post, and come back once they leave', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { guards: true });
+    const sentry = server.bots().find((b) => b.bot.role.kind === 'sentry')!;
+    const players = (server as unknown as { players: Map<number, PlayerState & { respawn: number; protection: number; dead: boolean }> }).players;
+    const post = players.get(sentry.id)!;
+    const { x, y, z } = post;
+    Object.assign(post, { dead: true, respawn: 0.1 });
+    // Someone on the tower, where the intel lies, whom nothing hurts.
+    const op = players.get(human(server).id)!;
+    for (let t = 0; t < 10 * SERVER_TICK_RATE; t++) {
+      Object.assign(op, { x: x + 2, y, z, vx: 0, vy: 0, vz: 0, protection: Infinity });
+      server.step();
+    }
+    expect(post.dead).toBe(true);
+    Object.assign(op, { x: x + 400, z: z + 400 });
+    for (let t = 0; t < 4 * SERVER_TICK_RATE; t++) server.step();
+    expect(post.dead).toBe(false);
+  });
+});
+
 describe('operator bots', () => {
   it('fill the empty operator slots', () => {
     const server = new GameServer(DEFAULT_WORLD.seed, { operators: 5 });

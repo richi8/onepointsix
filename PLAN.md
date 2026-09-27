@@ -1721,6 +1721,15 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   they're risky (in and around the outposts) and paid 1,200–2,500, less than a crate or two.
   **Changed** (30): rewards are 5× as much (intel 7,500, cache 6,000, commander 12,500). Not yet
   played with; bots still get no contracts.
+- **A guard could respawn on top of the player** (30). Found in a replay the developer sent
+  (chunk 17's format, from Sep 25, which the game no longer opens; read as JSON): they shot the
+  Pinecrest sentry from 116 m, looted, climbed its watchtower for the intel 60 s later, and the
+  sentry came back at its post 2 m away and killed them in 0.3 s. Guards came back after
+  `GUARD_RESPAWN` whoever stood there, and the intel always lies on a sentry's platform.
+  **Resolved** (30): a dead guard now waits while a living operator (person or bot) is within
+  50 m of its post (`RESPAWN_CLEAR`) or can see it from within 150 m (`RESPAWN_SIGHT`), and
+  looks again every 3 s. A unit test stands someone on a tower. An operator bot camping near an
+  outpost holds its guards off too; in the bot playtest nothing changed beyond the noise.
 - **Extracted runs were short** (30): 2:30 at the median in the first human run log, below
   the 3–10 minute goal; getting in and out with a couple of crates paid.
   **Changed** (30): a pickup now costs 5,000 (`EXTRACT_FEE`), paid from the loot on

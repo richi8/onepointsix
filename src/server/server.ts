@@ -31,6 +31,9 @@ import {
   PLAYER_RADIUS,
   RESPONSE_SQUAD,
   RERUN_HISTORY,
+  RESPAWN_CLEAR,
+  RESPAWN_RETRY,
+  RESPAWN_SIGHT,
   RUN_TIME,
   SEARCH_TIME,
   SERVER_DT,
@@ -483,8 +486,10 @@ export class GameServer {
       if (!p.dead || !this.players.has(p.id)) continue;
       p.respawn -= SERVER_DT;
       if (p.respawn > 0) continue;
-      // A fallen operator's run is over, as is a response guard's job; a guard is replaced at its post.
+      // A fallen operator's run is over, as is a response guard's job; a guard is replaced at its
+      // post, but not in front of an operator: it waits until nobody is close to the post or sees it.
       if (p.run || p.plan?.temporary) this.leave(p);
+      else if (p.plan && this.watched(p.plan.spawn)) p.respawn = RESPAWN_RETRY;
       else this.spawn(p);
     }
     this.stepBounty(now);
@@ -902,6 +907,17 @@ export class GameServer {
       p.bot = new Bot(role, role.kind === 'operator' ? SKILLS[skill] : guardSkill(SKILLS[skill]), primary, post.yaw, mulberry32((this.seed ^ Math.imul(p.id, 0x9e3779b1) ^ p.life) >>> 0));
       p.weapon = primary;
     }
+  }
+
+  /** Whether a living operator is near `at`, or can see it. */
+  private watched(at: Point): boolean {
+    for (const o of this.players.values()) {
+      if (o.team !== 'operator' || o.dead) continue;
+      const d = Math.hypot(o.x - at.x, o.y - at.y, o.z - at.z);
+      if (d < RESPAWN_CLEAR) return true;
+      if (d < RESPAWN_SIGHT && this.world.hasLineOfSight(o.x, o.y + EYE_HEIGHT, o.z, at.x, at.y + EYE_HEIGHT, at.z)) return true;
+    }
+    return false;
   }
 
   /** Tell the guards near `from` where it saw an enemy. */
