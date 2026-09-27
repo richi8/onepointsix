@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:single": "tsc && vite build --mode single",
     "preview": "vite preview",
     "typecheck": "tsc && tsc -p e2e",
     "sim": "node src/server/headless.ts",

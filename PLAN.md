@@ -1065,6 +1065,22 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   https://richi8.github.io/onepointsix/. It served the latest pushed build (chunk 10's bundle
   hash) and the assets, and a `?world=4242&mode=pve&by=Tester&score=1234` link opened island
   #4242 in PvE with the challenge shown. Pages gzips `.hdr` and `.glb` and caches for 10 minutes.
+- **The single-file build is checked by hand only** (single file). `npm run build:single` makes
+  `dist-single/onepointsix.html`, the whole game in one 8.3 MB page that plays when opened from
+  disk: one inline script, workers and `public/` packed in base64 and served to `fetch()` and
+  `new Worker` by a small shim in the page. It was checked by opening it from `file://` in headless
+  Chromium, Firefox and WebKit (loaded, textured, a run started). No Playwright test covers it,
+  since the suite runs on the dev server. The shim covers only `fetch()` and `Worker`, so a new
+  loader that uses `XMLHttpRequest`, an `<img src>` or a module worker with imports would break it.
+- **Share links from the single file point at the player's own disk** (single file). The link is
+  built from the page's address, a `file://` path that nobody else can open.
+- **The single file keeps its data with every other page opened from disk** (single file).
+  Browsers key a `file://` page's storage loosely (Chrome shares one store across all of them), so
+  the leaderboard, stats and replays sit alongside other local pages' data, and moving or renaming
+  the file may lose them. Not checked per browser.
+- **The single file starts slower and holds both sound formats** (single file). It parses 8.3 MB
+  of HTML before the loading bar moves, which isn't counted by the bar (the scripts are left out of
+  its sizes), and it carries the Ogg and the M4A sounds though a browser plays only one.
 
 ### Day, night and weather
 - **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
