@@ -83,6 +83,8 @@ export const CARRY_DRAIN = 1;
 
 // Combat
 export const MAX_HP = 100;
+/** A guard's full health: two rifle rounds to the body. */
+export const GUARD_HP = 50;
 /** Seconds after spawning during which a player takes no damage. */
 export const SPAWN_PROTECTION = 1.5;
 export const HEADSHOT_MUL = 2.5;

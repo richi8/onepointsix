@@ -20,6 +20,7 @@ import {
   GRENADE_RADIUS,
   GRENADES,
   GUARD_HEAD_SHARE,
+  GUARD_HP,
   GUARD_RESPAWN,
   INTEL_TIME,
   MAX_CMDS_PER_TICK,
@@ -899,6 +900,7 @@ export class GameServer {
     }
     const carry = p.run ? lootMass(p.run.items) : 0;
     Object.assign(p, spawnState(post.x, post.y, post.z), { yaw: post.yaw, pitch: 0, carry, life: p.life + 1 });
+    if (p.team === 'guard') p.hp = GUARD_HP;
     p.respawn = 0;
     p.protection = p.plan ? 0 : SPAWN_PROTECTION;
     p.queue = [];

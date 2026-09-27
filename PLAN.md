@@ -1661,6 +1661,15 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   noisy (runs that should come out equal differ by up to 20%), and bots die charging guards, so
   it waits on people playing to say whether it's enough. A limit on how many guards may shoot at
   one person at once was tried and dropped at the user's request.
+  **Changed further** (30): guards have 50 health (`GUARD_HP`) instead of 100, so two rifle
+  rounds to the body drop one instead of four. Bots now read health as a share of their full
+  health (wounded below 60%, ducking into cover when shot at below 70%), so guards don't turn
+  timid at half the health. In the bot playtest (6 islands × 20 min) operators kill 181–186
+  guards an hour by day instead of 127 and 129 instead of 77 at night in rain, guards kill
+  126–146 operators an hour instead of 147–153, and operator bot extraction barely moves (3–5%
+  by day, 9% at night in rain): since the extraction fee, what kills bots is the longer search,
+  not the guards. For a person, who picks their fights, it should matter far more; not yet
+  played.
 - **Most of the listed tuning wasn't changed** (12): guard count, bot skill numbers, weapon damage
   and recoil, extraction timings and loot values. In the bot playtest the rifle and bolt-action
   came out even (about 210 and 190 points per run), as did light and heavy carrying, so there was

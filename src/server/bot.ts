@@ -9,6 +9,7 @@ import {
   EXTRACT_FEE,
   EXTRACT_RADIUS,
   EYE_HEIGHT,
+  GUARD_HP,
   MAX_HP,
   RUN_TIME,
   WALK_SPEED,
@@ -111,6 +112,11 @@ export interface BotContext {
   carried?(a: Agent): number;
 }
 
+/** Someone's health as a share of their full health; guards have less than operators. */
+function health(a: Agent | undefined): number {
+  return a ? a.hp / (a.team === 'guard' ? GUARD_HP : MAX_HP) : 1;
+}
+
 /**
  * Where the beam of `a`'s flashlight lands on the ground or a wall, pulled a
  * little back toward them, or null if it reaches nothing close enough to light.
@@ -181,8 +187,10 @@ const BOUNTY_SPOT = 0.7;
 const BOUNTY_LOUD = 1.6;
 /** Operators pick fights with the bounty this much farther out. */
 const BOUNTY_REACH = 1.5;
-/** Hunters count anyone with less health than this as wounded. */
-const WOUNDED = 60;
+/** Hunters count anyone with less than this share of their full health as wounded. */
+const WOUNDED = 0.6;
+/** Shot at with less than this share of its full health, a bot ducks into cover. */
+const HURT = 0.7;
 /** An operator shot by a guard gives up on crates this close to it. */
 const GUARDED_CRATE = 100;
 /** Operators would rather not get out within this many metres of an outpost; one that close counts as this much farther. */
@@ -370,8 +378,8 @@ export class Bot {
   private readonly bagsTried = new Set<number>();
   /** Server time its run started: its first think. */
   private born = -1;
-  /** Health as of the last think: badly hurt, it gives up on hunting and camping. */
-  private hp = MAX_HP;
+  /** Share of its full health as of the last think: badly hurt, it gives up on hunting and camping. */
+  private health = 1;
   /** Crates it means to search whatever it finds; those after them only until it can pay for extraction. */
   private planned: number;
   /** Whether it carries enough to pay for extraction. */
@@ -499,7 +507,7 @@ export class Bot {
   think(ctx: BotContext, self: Agent, dt: number): void {
     this.now = ctx.time;
     if (this.born < 0) this.born = ctx.time;
-    this.hp = self.hp;
+    this.health = health(self);
     this.paid = (ctx.carried?.(self) ?? Infinity) >= EXTRACT_FEE;
     if (this.isRoutine(this.state)) this.anchor = { x: self.x, y: self.y, z: self.z };
     this.perceive(ctx, self, dt);
@@ -665,7 +673,7 @@ export class Bot {
       const empty = self.mag[self.weapon] === 0 && self.reserve[self.weapon] > 0 && d > 10;
       // Operators always break off from guards once hurt: there are more where that one came from.
       const duck = this.slipsAway(ctx, id) || this.rand() < this.skill.coverChance;
-      const wantCover = (empty || (hurt && self.hp < 70 && duck)) && now - this.lastCover > COVER_COOLDOWN;
+      const wantCover = (empty || (hurt && health(self) < HURT && duck)) && now - this.lastCover > COVER_COOLDOWN;
       if (wantCover && this.takeCover(ctx, self, c)) return;
       this.enter('engage');
       return;
@@ -696,7 +704,7 @@ export class Bot {
 
     // Someone else's fight, or the bounty called nearby: go and see who's left. Not once heading out or hurt.
     if ((this.isRoutine(this.state) && this.state !== 'extract') || this.state === 'stalk') {
-      const lure = self.hp >= WOUNDED ? this.lured(ctx, self) : null;
+      const lure = health(self) >= WOUNDED ? this.lured(ctx, self) : null;
       if (lure) {
         this.stalk(ctx, self, lure);
         return;
@@ -718,7 +726,7 @@ export class Bot {
     if (!this.temper) return 0;
     const a = ctx.agent(id);
     if (!a) return 0;
-    return (this.isBounty(ctx, id) && !this.temper.shy ? 20 : 0) + (this.personality === 'hunter' ? (MAX_HP - a.hp) * 0.4 : 0);
+    return (this.isBounty(ctx, id) && !this.temper.shy ? 20 : 0) + (this.personality === 'hunter' ? (1 - health(a)) * 40 : 0);
   }
 
   /**
@@ -1279,7 +1287,7 @@ export class Bot {
     let range = EFFECTIVE_RANGE[this.primary] * (this.temper?.fightRange ?? 1);
     if (this.isBounty(ctx, id)) range *= BOUNTY_REACH;
     // A hunter goes after the wounded from farther.
-    else if (this.personality === 'hunter' && (ctx.agent(id)?.hp ?? MAX_HP) < WOUNDED) range *= BOUNTY_REACH;
+    else if (this.personality === 'hunter' && health(ctx.agent(id)) < WOUNDED) range *= BOUNTY_REACH;
     return d <= range;
   }
 
@@ -1308,10 +1316,10 @@ export class Bot {
     const run = this.born < 0 ? 0 : this.now - this.born;
     // Badly hurt or short of time, it leaves what it hasn't searched yet, unless it can't yet pay to get out.
     if (this.step < this.loot.length && !this.paid) return 'loot';
-    if (this.step < this.planned && this.hp >= WOUNDED && run < RUN_TIME - LEAVE_BY) return 'loot';
+    if (this.step < this.planned && this.health >= WOUNDED && run < RUN_TIME - LEAVE_BY) return 'loot';
     // Hunters and campers stay on a while once done looting, but leave in time.
     const t = this.temper;
-    if (t && run < Math.min(t.linger, RUN_TIME - LEAVE_BY) && this.hp >= WOUNDED) {
+    if (t && run < Math.min(t.linger, RUN_TIME - LEAVE_BY) && this.health >= WOUNDED) {
       if (this.personality === 'hunter') return 'hunt';
       if (this.personality === 'camper' && !this.campDone) return 'camp';
     }

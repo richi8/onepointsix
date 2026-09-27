@@ -3,7 +3,7 @@ import { beamSpot, Bot, hostile, type Agent, type BotContext, type Role } from '
 import { NavGrid } from '../src/server/nav.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
-import { GUARD_RESPAWN, OPERATOR_REFILL, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { DEFAULT_CONDITIONS, sensesOf, type Senses } from '../src/shared/conditions.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
@@ -273,6 +273,8 @@ describe('guards', () => {
     const after = server.bots().find((b) => b.id === sentry.id)!;
     expect(after.state.dead).toBe(false);
     expect(after.bot).not.toBe(sentry.bot);
+    expect(after.state.hp).toBe(GUARD_HP);
+    expect(sentry.state.hp).toBe(GUARD_HP);
   });
 });
 
