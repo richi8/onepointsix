@@ -102,13 +102,16 @@ export const WET_GLSL = /* glsl */ `
     f = f * f * (3.0 - 2.0 * f);
     return mix(mix(wetHash(i), wetHash(i + vec2(1.0, 0.0)), f.x), mix(wetHash(i + vec2(0.0, 1.0)), wetHash(i + vec2(1.0, 1.0)), f.x), f.y);
   }
-  // How wet a point facing n is, and how much of a puddle it holds, into wet.x and wet.y.
-  vec2 wetAt(vec3 p, vec3 n) {
-    if (wetness <= 0.0) return vec2(0.0);
+  // How wet a point facing n is, how much of a puddle it holds, and how glossy
+  // its film of water is, into wet.x, wet.y and wet.z.
+  vec3 wetAt(vec3 p, vec3 n) {
+    if (wetness <= 0.0) return vec3(0.0);
     float w = wetness * (1.0 - underRoof(p)) * mix(0.45, 1.0, clamp(n.y, 0.0, 1.0));
     float patches = wetNoise(p.xz * 0.35) * 0.65 + wetNoise(p.xz * 1.3) * 0.35;
     float puddle = w * smoothstep(0.995, 0.9995, n.y) * smoothstep(0.6, 0.68, patches);
-    return vec2(w, puddle);
+    // Water pools a little in the hollows, so the sheen comes and goes in patches.
+    float film = w * smoothstep(0.45, 0.7, patches) * smoothstep(0.95, 0.99, n.y);
+    return vec3(w, puddle, film);
   }
 `;
 
@@ -121,10 +124,12 @@ export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: st
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', `#include <common>\n${ROOF_GLSL}\n${WET_GLSL}`)
     .replace('#include <roughnessmap_fragment>', /* glsl */ `#include <roughnessmap_fragment>
-      vec2 wet = wetAt(${pos}, ${normal});
+      vec3 wet = wetAt(${pos}, ${normal});
       ${puddles ? '' : 'wet.y = 0.0;'}
-      diffuseColor.rgb *= 1.0 - 0.35 * wet.x - 0.25 * wet.y;
-      roughnessFactor = mix(mix(roughnessFactor, 0.4, wet.x), 0.03, wet.y);`)
+      // Soaking deepens a colour as well as darkening it.
+      diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.5 * wet.x)) * (1.0 - 0.15 * wet.x - 0.25 * wet.y);
+      // Soaked soil and grass stay mostly matte; only a thin film on the flat catches the sky.
+      roughnessFactor = mix(mix(mix(roughnessFactor, 0.9, wet.x), 0.78, wet.z), 0.03, wet.y);`)
     // A puddle lies flat, whatever the ground's bumps.
     .replace('#include <lights_fragment_begin>', /* glsl */ `
       normal = normalize(mix(normal, (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz, wet.y));

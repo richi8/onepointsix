@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Wet ground',
+    notes: [
+      'In the rain, the ground no longer shines like polished metal. Soaked earth turns darker and richer, with only a faint sheen on the flattest spots; puddles still mirror the sky.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Frame rate and replay shots',
     notes: [
       'The key hints in the top left corner now start with your frame rate.',
