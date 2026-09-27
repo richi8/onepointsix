@@ -15,7 +15,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     title: 'Pickups cost, contracts pay',
     notes: [
       'Guards have half the health they had: two rounds from the rifle to the body drop one.',
-      'Getting off the island now costs $5,000, paid from the loot you carry. Until you carry that much you can’t call a pickup or leave from a beach; your pack shows how close you are.',
+      'Getting off the island now costs $2,000, paid from the loot you carry. Until you carry that much you can’t call a pickup or leave from a beach; your pack shows how close you are.',
       'Contracts pay five times as much: $7,500 for the intel, $6,000 for a supply cache and $12,500 for a commander.',
       'Other operators know about the fee too, so they stay out looting longer.',
       'Your run stats now remember how far off your killer was and how many enemies had been hitting you, for the stats you export.',

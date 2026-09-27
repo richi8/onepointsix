@@ -200,7 +200,7 @@ export const DOOR_REACH = 1.9;
 export const CONTRACTS: [number, number] = [1, 2];
 export const CONTRACT_REWARD = { intel: 7500, cache: 6000, commander: 12500 } as const;
 /** What a pickup costs, paid from the loot carried: less than this and you can't get out. */
-export const EXTRACT_FEE = 5000;
+export const EXTRACT_FEE = 2000;
 /** Seconds back that someone who hit you counts as one of those who killed you, for the run log. */
 export const SHOOTERS_WINDOW = 5;
 /** Seconds of holding Interact to grab the intel. */

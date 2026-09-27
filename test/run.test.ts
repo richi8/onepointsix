@@ -195,7 +195,7 @@ describe('a run', () => {
   it('does not extract, nor call a pickup, carrying less than the fee', () => {
     const server = runsServer();
     const h = human(server);
-    body(server, h.id).run.items = [GOLD];
+    body(server, h.id).run.items = [WATCH];
     const walk = server.extracts.points[0];
     Object.assign(walk, { open: true, next: Infinity });
     place(server, h.id, walk.x, walk.z);

@@ -1752,6 +1752,11 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   from before don't pay the fee, so they're 5,000 higher than the same run would score now. The
   dev shortcut that ends a run as extracted skips the check, so the loot's part of a score is
   never below zero.
+  **Lowered** (30) to 2,000 after a second tester's log: both of their extractions (on the
+  build before the fee) carried under 5,000 (4,900 and 3,250), and none of their 7 runs on the
+  current build got out. In the bot playtest operator bots now extract from 9% of runs by day
+  (3% at 5,000, 19% before the fee) and 15% at night in rain (9%, 21%), with extracted runs of
+  2:19 and 2:16. The HUD texts above follow the constant.
 
 ## Future
 - **Multiplayer**
