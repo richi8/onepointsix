@@ -69,7 +69,8 @@ export class RivalHud {
       const at = this.project(b.x, y, b.z, camera);
       if (!at) continue;
       const el = (this.tags.children[n++] as HTMLElement | undefined) ?? this.tags.appendChild(document.createElement('div'));
-      const text = money(b.value);
+      // A dead operator bot's bag says what kind it was.
+      const text = b.kind ? `${b.kind} · ${money(b.value)}` : money(b.value);
       if (el.textContent !== text) el.textContent = text;
       el.hidden = false;
       el.style.transform = `translate(${at.x}px, ${at.y}px)`;

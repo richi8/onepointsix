@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Know your rivals',
+    notes: [
+      'Killed by another operator, you’re told what kind of rival they were, a rat, hunter, camper or looter, and what that kind does: in the death cam, as you fall and on the results.',
+      'Once an operator dies, the kill feed says what kind they were, and so does the tag on the bag they leave.',
+      'Other operators get out more often. They break off from guards shooting at them from far off rather than trading shots, give up crates a guard has them pinned at, head out once badly hurt, and would rather leave by an extraction point away from the outposts.',
+      'Stats on the menu sums up every run you’ve played in this browser: how often you get out, how long runs last, what kills you. Export your runs to send them as a file.',
+      'Sharing a link opens your system’s share sheet where there is one, with your score to beat in the message. Elsewhere it’s copied as before.',
+      'Old PvE scores, no longer shown anywhere, are cleared from your browser.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Replays you can keep',
     notes: [
       'Your last 5 runs are kept in your browser. Open Replays on the menu to watch one again or save it as a file, even days later.',

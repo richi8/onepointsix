@@ -5,6 +5,7 @@
 
 import type { ByteReader, ByteWriter } from './bytes.ts';
 import type { Conditions } from './conditions.ts';
+import type { Personality } from './personality.ts';
 import type { ClientMsg, InputCmd, Mode } from './protocol.ts';
 
 /** How the game was set up; plain data, the same as the server's options. */
@@ -13,7 +14,8 @@ export interface LogOptions {
   guards?: boolean;
   conditions?: Conditions;
   operators?: number;
-  personality?: 'rat' | 'hunter' | 'camper' | 'looter';
+  personality?: Personality;
+  thorough?: boolean;
 }
 
 /** Something a human did: joined, sent a message (never a ping or pause), or dropped out. */

@@ -1,6 +1,7 @@
 import { BAG_TIME, CRATE_RESTOCK, INTERACT_REACH } from '../shared/constants.ts';
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { lootCrates, lootValue, rollItems, sortForTaking } from '../shared/loot.ts';
+import type { Personality } from '../shared/personality.ts';
 import type { BagSnap } from '../shared/protocol.ts';
 import type { World } from '../shared/world.ts';
 
@@ -25,6 +26,8 @@ export interface Container {
   panel: number;
   /** A crate that's been smashed, until it's rebuilt. */
   broken: boolean;
+  /** A bag left by the body of an operator bot of this kind. */
+  personality?: Personality;
 }
 
 const BAG_SIZE = 0.6;
@@ -135,13 +138,17 @@ export class Containers {
     return item;
   }
 
-  /** Leave items on the ground at (x, y, z), in a bag already there or a new one. */
-  drop(x: number, y: number, z: number, items: number[], now: number): void {
+  /**
+   * Leave items on the ground at (x, y, z), in a bag already there or a new
+   * one. `personality` is the operator bot whose body left them, if one did.
+   */
+  drop(x: number, y: number, z: number, items: number[], now: number, personality?: Personality): void {
     if (!items.length) return;
     for (const c of this.all.values()) {
       if (c.kind !== 'bag' || Math.hypot((c.minX + c.maxX) / 2 - x, (c.minZ + c.maxZ) / 2 - z) > BAG_MERGE || Math.abs(c.minY - y) > 1) continue;
       c.items = sortForTaking([...c.items, ...items]);
       c.until = now + BAG_TIME;
+      c.personality ??= personality;
       return;
     }
     const h = BAG_SIZE / 2;
@@ -149,6 +156,7 @@ export class Containers {
     this.all.set(id, {
       id, kind: 'bag', minX: x - h, minY: y, minZ: z - h, maxX: x + h, maxY: y + BAG_HEIGHT, maxZ: z + h,
       rich: false, items: sortForTaking([...items]), searched: true, until: now + BAG_TIME, panel: -1, broken: false,
+      ...(personality ? { personality } : {}),
     });
   }
 
@@ -167,7 +175,10 @@ export class Containers {
   bags(): BagSnap[] {
     const out: BagSnap[] = [];
     for (const c of this.all.values()) {
-      if (c.kind === 'bag') out.push({ id: c.id, x: (c.minX + c.maxX) / 2, y: c.minY, z: (c.minZ + c.maxZ) / 2, value: lootValue(c.items) });
+      if (c.kind !== 'bag') continue;
+      const b: BagSnap = { id: c.id, x: (c.minX + c.maxX) / 2, y: c.minY, z: (c.minZ + c.maxZ) / 2, value: lootValue(c.items) };
+      if (c.personality) b.kind = c.personality;
+      out.push(b);
     }
     return out;
   }

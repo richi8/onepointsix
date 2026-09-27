@@ -442,6 +442,13 @@ canvas.fade-in {
   margin: 0 6px;
 }
 
+.killfeed em.kind {
+  margin-left: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .killfeed .bounty em,
 .killfeed em.bounty {
   color: #ffb04a;
@@ -1088,6 +1095,95 @@ canvas.fade-in {
   background: rgb(255 255 255 / 0.2);
 }
 
+/* The run log, summed up. */
+.stats .note,
+.stats .empty {
+  margin: 0 0 12px;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.stats .tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.stats .tiles div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  background: rgb(255 255 255 / 0.06);
+  border-radius: 4px;
+}
+
+.stats .tiles b {
+  font-size: 22px;
+}
+
+.stats .tiles span {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.stats dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.stats dt {
+  opacity: 0.65;
+}
+
+.stats dd {
+  margin: 0;
+  text-align: right;
+}
+
+.stats h3 {
+  margin: 14px 0 0;
+  font-size: 14px;
+}
+
+.stats ul {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.stats .summary {
+  margin-bottom: 16px;
+}
+
+.stats button.export {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1b1b1b;
+  background: #e8c35a;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.stats button.export:hover {
+  background: #f2d27a;
+}
+
+.stats button.export:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ------------------------------------------------------------------ run */
 
 .clock {
@@ -1423,6 +1519,13 @@ canvas.fade-in {
   margin: 4px 0 16px;
   font-size: 14px;
   opacity: 0.8;
+}
+
+.results .rival {
+  margin: -10px 0 16px;
+  font-size: 13px;
+  font-style: italic;
+  opacity: 0.65;
 }
 
 .results .score {

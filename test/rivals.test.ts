@@ -223,6 +223,98 @@ describe('bags', () => {
   });
 });
 
+describe('telling what kind of rival it was', () => {
+  it('names a dead operator bot’s kind in the kill, on its bag, and to whoever it killed', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 3, personality: 'hunter' });
+    const sent: ServerMsg[] = [];
+    const id = server.connect((m) => sent.push(m));
+    server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'offline' });
+    const events = () => sent.flatMap((m) => (m.t === 'events' ? m.events : []));
+    server.step();
+
+    // One rival dies carrying gold: its kind is in the feed's kill and on the bag it leaves.
+    server.receive(id, { t: 'dev', cmd: { act: 'give', items: [GOLD], rival: true } });
+    server.receive(id, { t: 'dev', cmd: { act: 'kill' } });
+    server.step();
+    const kill = events().find((e) => e.k === 'kill');
+    expect(kill).toMatchObject({ killer: id, victimKind: 'hunter' });
+    const snap = [...sent].reverse().find((m) => m.t === 'snapshot');
+    expect(snap?.t === 'snapshot' && snap.bags).toEqual([expect.objectContaining({ kind: 'hunter', value: lootValue([GOLD]) })]);
+
+    // The other kills us: we're told what it was as the run ends, and in the death cam.
+    server.receive(id, { t: 'dev', cmd: { act: 'end', outcome: 'killed' } });
+    for (let t = 0; t < SERVER_TICK_RATE * 3; t++) server.step();
+    const end = events().find((e) => e.k === 'runEnd');
+    expect(end).toMatchObject({ outcome: 'killed', death: { by: 'operator', kind: 'hunter' } });
+    // Our own kill isn't told as a rival's kind: we're no bot.
+    expect(events().filter((e) => e.k === 'kill').at(-1)).not.toHaveProperty('victimKind');
+    expect(events().find((e) => e.k === 'deathcam')).toMatchObject({ kind: 'hunter' });
+  });
+
+  it('keeps a bag’s kind when more is dropped into it, and names none for loot from a crate', () => {
+    const c = new Containers(world, mulberry32(1));
+    c.drop(0, 0, 0, [GOLD], 0);
+    expect(c.bags()[0]).not.toHaveProperty('kind');
+    c.drop(0.5, 0, 0, [GOLD], 1, 'rat');
+    c.drop(0.2, 0, 0, [GOLD], 2, 'looter');
+    expect(c.bags()).toEqual([expect.objectContaining({ kind: 'rat', value: lootValue([GOLD, GOLD, GOLD]) })]);
+  });
+});
+
+describe('operators and guards', () => {
+  it('get away from a guard shooting from far off, and fight back up close', () => {
+    const at = openSpot(150, 3);
+    const self = agent(1, 'operator', at.x, at.z);
+    const fight = (d: number) => {
+      const guard = agent(2, 'guard', at.x, at.z - d);
+      const bot = operator('looter');
+      const ctx = context([self, guard]);
+      bot.hurt(guard, 0);
+      think(bot, ctx, self, 1);
+      return bot.state;
+    };
+    expect(fight(30)).toBe('engage');
+    expect(fight(90)).not.toBe('engage');
+  });
+
+  it('give up crates a guard that shot them watches over, and once badly hurt, the rest', () => {
+    const at = openSpot(150, 3);
+    const self = agent(1, 'operator', at.x, at.z);
+    const guard = agent(2, 'guard', at.x + 200, at.z);
+    const near = { x: guard.x - 40, y: 0, z: guard.z };
+    const far = { x: at.x - 40, y: 0, z: at.z };
+    const bot = operator('looter', [near, far]);
+    bot.hurt(guard, 0);
+    think(bot, context([self]), self, 0.2, 1);
+    // On to the crate out of the guard's way.
+    expect(bot.state).toBe('loot');
+    expect(bot.lootLeft()).toBe(1);
+    // Badly hurt in a fight, it heads out once the fight is over.
+    const hurt = operator('looter', [{ x: at.x, y: 0, z: at.z + 150 }]);
+    const wounded = { ...self, hp: 40 };
+    const close = agent(3, 'guard', at.x, at.z - 30);
+    const ctx = context([wounded, close]);
+    hurt.hurt(close, 0);
+    think(hurt, ctx, wounded, 1);
+    expect(['engage', 'cover']).toContain(hurt.state);
+    close.dead = true;
+    think(hurt, ctx, wounded, 20, 1);
+    expect(hurt.state).toBe('extract');
+    expect(hurt.lootLeft()).toBe(1);
+  });
+
+  it('loot like a person when thorough, keeping to every crate planned', () => {
+    const rand = mulberry32(7);
+    for (let i = 0; i < 10; i++) {
+      const plan = planOperator(world, nav, rand, [], new Set(), undefined, true);
+      if (plan.role.kind !== 'operator') throw new Error('not an operator');
+      expect(plan.role.thorough).toBe(true);
+      expect(plan.role.loot.length).toBeGreaterThanOrEqual(5);
+      expect(plan.role.greed).toBeGreaterThanOrEqual(30);
+    }
+  });
+});
+
 describe('the bounty', () => {
   it('goes to the operator carrying the most, is called every so often, and is gone once they die', () => {
     const server = new GameServer(DEFAULT_WORLD.seed, { operators: 3, personality: 'rat' });

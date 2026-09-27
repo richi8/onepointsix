@@ -34,14 +34,18 @@ test("a rival with the bounty is marked; killing them shows in the feed, and the
   await expect(mark).toBeVisible();
   await expect(mark).toHaveText(new RegExp(`^${name} · \\$8,000 · \\d+ m$`));
 
+  // Brought back in front, as it may have wandered off meanwhile, so its bag lies close by.
+  await dev(page, { act: 'rival' });
   await dev(page, { act: 'kill' });
   const row = page.locator('#killfeed div.you', { hasText: name }).filter({ has: page.locator('em.bounty') });
   await expect(row).toHaveCount(1);
   await expect(line).toBeHidden();
 
-  // Their loot lies in a bag where they fell.
+  // Their loot lies in a bag where they fell, which says, as the feed does, what kind of rival they were.
   await page.waitForFunction(() => window.game.conn!.bags.some((b) => b.value === 8000));
   const bag = await page.evaluate(() => window.game.conn!.bags.find((b) => b.value === 8000)!);
+  expect(['rat', 'hunter', 'camper', 'looter']).toContain(bag.kind);
+  await expect(row.locator('em.kind')).toHaveText(bag.kind!);
   await face(page, bag.x, bag.z);
-  await expect(page.locator('#tags div', { hasText: '$8,000' })).toBeVisible();
+  await expect(page.locator('#tags div', { hasText: '$8,000' })).toHaveText(`${bag.kind} · $8,000`);
 });

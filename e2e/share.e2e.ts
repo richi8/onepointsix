@@ -46,3 +46,42 @@ test('where copying is refused, the link is shown to copy by hand', async ({ pag
   expect(dialog.message).toBe('Copy this link:');
   expect(dialog.value).toMatch(/\?world=\d+&mode=/);
 });
+
+test('where there is a share sheet, the link goes through it with your best to beat', async ({ page }) => {
+  await copyLinks(page);
+  await page.addInitScript(() => {
+    window.shared = [];
+    Object.defineProperty(navigator, 'share', {
+      value: async (data: ShareData) => void window.shared.push(data),
+    });
+  });
+  await seedBoard(page, DEFAULT_WORLD.seed, 'offline', [{ name: 'Ana', score: 9100, date: '2026-09-20' }]);
+  await open(page);
+  await page.click('#modes [data-mode=offline]');
+  await page.click('#share-island');
+  await expect.poll(() => page.evaluate(() => window.shared.length)).toBe(1);
+  const [data] = await page.evaluate(() => window.shared);
+  expect(data.text).toBe('Beat my 9,100 on this island.');
+  expect(parseShareLink(new URL(data.url!).search)).toMatchObject({ mode: 'offline', challenge: { name: 'Ana', score: 9100 } });
+  // Shared, not copied as well.
+  expect(await page.evaluate(() => window.copied)).toEqual([]);
+});
+
+test('closing the share sheet without sharing does nothing more', async ({ page }) => {
+  await copyLinks(page);
+  await page.addInitScript(() => {
+    window.shared = [];
+    Object.defineProperty(navigator, 'share', {
+      value: async (data: ShareData) => {
+        window.shared.push(data);
+        throw new DOMException('Share canceled', 'AbortError');
+      },
+    });
+  });
+  await open(page);
+  await page.click('#share-island');
+  await expect.poll(() => page.evaluate(() => window.shared.length)).toBe(1);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => window.copied)).toEqual([]);
+  await expect(page.locator('#toast')).toBeHidden();
+});

@@ -110,6 +110,8 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
 - Operator bot personalities (chunk 18): the rat, hunter, camper and looter, each with its own
   numbers in `src/server/personality.ts`
 - The bounty (chunk 18): the operator carrying the most loot is called out to everyone
+- A bot's kind is told once it dies (the feed, its bag) or kills you (the death cam, the results)
+  (chunk 29)
 
 ### Shareable worlds and leaderboards
 - The world config (seed, time of day and weather) is encoded in the URL.
@@ -211,7 +213,7 @@ human pass comes last so people play the finished result.
 | 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Done** (checked by unit tests and a browser test, not by ear: nobody has listened to the new recordings, reverbs or corners; the round path uses a sound grid of its own rather than the nav grid, which ignores doors) |
 | 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Done** (by bot playtests: 15% of operator bot runs extract by day and 17% at night in rain, against 13% in chunk 18 and 12% just before; bots take a bush for 37% of their cover and 35% of their waits; fights joined are guessed 12 m off the shooter on average. Nobody has played against it) |
 | 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Done** (a 42 s test run's file is 38% of chunk 17's; the game run again matches every body to the centimetre in unit tests and in the browser tests of each engine, and a file from Chromium ran again exactly in Firefox and WebKit; nobody has watched a replay by hand) |
-| 29 | **Rivals and results** | A dead operator's personality shown on the results screen, in the feed after they die and on their bag; operator bot extraction back near chunk 12's 19% without undoing the personalities; a stats page on the menu that reads the run log, with export to a file; the playtest counts unfinished runs, measures how often drop-in falls back to anywhere, and has a bot mode that searches like a human so run length can be read; the share button opens the system share sheet where there is one; PvE's old board removed from storage | You can tell who killed you and what kind of rival they were, and anyone can send their run stats as a file | **Not started** |
+| 29 | **Rivals and results** | A dead operator's personality shown on the results screen, in the feed after they die and on their bag; operator bot extraction back near chunk 12's 19% without undoing the personalities; a stats page on the menu that reads the run log, with export to a file; the playtest counts unfinished runs, measures how often drop-in falls back to anywhere, and has a bot mode that searches like a human so run length can be read; the share button opens the system share sheet where there is one; PvE's old board removed from storage | You can tell who killed you and what kind of rival they were, and anyone can send their run stats as a file | **Done** (operator bot extraction came back only part of the way: 16% of runs by day over 24 islands, from 14%, and 18% at night in rain, from 16%; the stats page, share sheet and personalities were checked by browser tests, nobody has played with them) |
 | 30 | **Human pass** | The chunks that need people and hardware this machine can't give: several full runs by other people (using chunk 29's stats export), a listening pass on the mix, reverb and ambience, a mid-range laptop for the 60 fps and 5 s load targets, Firefox and Safari by hand, and tuning from what they show (guards, weapons, extraction timings, loot, night, buildings, how far operator bots engage) | The Playtest and tuning goals from chunk 12 are met with human data, and every item in Known Issues is Resolved, Moot or listed below as left for later | **Not started** |
 
 Known Issues that Phase 3 leaves alone:
@@ -1044,12 +1046,19 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   that Offline never takes a second human.
 - **PvE scores were left behind** (modes change). Offline has 7 bot operators where PvE had none,
   so its scores don't compare, and PvE's board is still in storage but never shown.
+  **Resolved** (29): every `board:<seed>:pve` key is removed from localStorage as the page loads.
+  Mixed's boards stay, since Online still reads them.
 - **Names aren't filtered** (10). Locally only you and the bots see yours, but multiplayer will
   need filtering and length checks on the server.
 - **"New island" only picks seeds up to 999,999** (10), to keep the numbers short. Typed
   `?world=` values still reach every seed.
 - **The share button copies the link, and doesn't open the system share sheet** (10). Where the
   clipboard is blocked it falls back to a `prompt()` with the link.
+  **Resolved** (29): where the browser has `navigator.share` (Safari, Chrome on macOS and
+  Windows) the link goes through the share sheet with a line such as "Beat my 9,100 on this
+  island."; closing the sheet does nothing more, and any other failure falls back to copying.
+  Firefox has no share sheet and copies as before. Only tested with a stubbed share sheet, since
+  headless browsers can't show a real one.
 - **GitHub Pages hosting isn't verified from here** (10). The deploy workflow has existed since
   chunk 0, but nobody has checked that Pages is enabled and that the live site's links work.
   **Resolved** (11): checked with a headless browser against
@@ -1317,12 +1326,31 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 ### Rivals
 - **You can't tell a bot's personality except by how it plays** (18). Names, the kill feed and
   the results screen don't say whether it was a rat, hunter, camper or looter.
+  **Resolved** (29): an operator bot's kind is told once it's dead or has killed you. The kill
+  event names the victim's kind (a small tag in the feed row), its bag carries it (the tag reads
+  "rat · $1,200"), and the run's end and the death cam name the killer's: the banner, the death
+  notice and the results say "Killed by Viper, a hunter", with a line on what hunters do. The
+  run log's cause of death names the kind too ("hunter, Assault rifle").
 - **Operator bots get out less often** (18). In a 30-minute, 6-island bot playtest 13% of their
   runs extract, down from 20% before the personalities: rats 20%, looters 14%, campers 11%,
   hunters 7%. Hunters and campers stay on the island longer by design (up to 4 and 5 minutes into
   the run, or until below 60 health), and guards still do most of the killing. It was tuned from
   hunters at 0%: they now watch fights from 40 m off, 90 m if guards are in it, and 135 m from the
   middle of an outpost, and drop out of hunting when hurt.
+  **Resolved in part** (29): operator bots now fight guards only within 40 m, or 60 m when shot
+  at, and otherwise get away rather than trade shots with a sentry or patrol far off (guards had
+  done two thirds of the killing, most of it at 50–100 m). One shot by a guard gives up the crates
+  within 100 m of it; one below 60 health goes on to extract rather than to its next crate once a
+  fight is over; one that doesn't raid leaves crates within 60 m of an outpost alone; one looking
+  for a way out counts an extraction point within 150 m of an outpost as 150 m farther. Looting
+  also stops with 150 s of the clock left, as hunting and camping did. The personalities' own
+  numbers were left alone (shorter lingering for hunters and campers was tried and didn't help).
+  Over 24 islands × 30 minutes by day, 16% of operator bot runs extract, from 14% just before
+  (rats 25%, looters 18%, campers 10.5%, hunters 9.5%, from 23%, 14.5%, 10% and 7%); over 12
+  islands at night in rain, 18% from 16%. Chunk 12's 19% wasn't reached: operators killing each
+  other (about 105 an hour of game) didn't change, and guards still do three fifths of the
+  killing. Between runs of 12 islands the rate moves by a point or two, so smaller changes were
+  measured on seeds 1–12 and 13–24 both.
 - **The kill feed was already there** (18). It came with the run loop; this chunk only marks the
   bounty being killed, and adds a row when someone takes the bounty.
 - **Bots know more than they should** (18). They know what every bag within 50 m holds without
@@ -1370,6 +1398,14 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   row, with no marker of your own), then give a rival more, find its marker by looking where it
   was called, kill it (a feed row marked bounty) and read its bag's value off the tag, all with a
   real game in each engine.
+- **Everyone is told a dead bot's kind** (29): the kill event goes to everyone, and a bag's kind
+  is in every snapshot, so snapshots grow a little more. Only the one killed is told their
+  killer's kind (in how their run ended and the death cam). A human's body and bag name no kind.
+- **The kinds are told in words only** (29): a small tag in the feed, a word on the bag's tag and
+  one fixed sentence per kind on the results. There's no icon or colour for each.
+- **Replays from before chunk 29 have no kinds** (29). They still play, with plain bag tags and
+  feed rows. The bots' new rules change the simulation, so a replay kept from before this update
+  shows everyone exactly only until the game first plays out differently, then its frames.
 
 ### Licensing
 - **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but
@@ -1516,6 +1552,19 @@ marked **Resolved** with the chunk or commit that fixed them and how.
   pictures, the reflection, the swaying, the underwater wobble and muffling and the bushes'
   colour were checked by screenshots (and one dump of the baked pictures) only, and the shader
   that stands things on far tiles only by how its pictures look.
+- **Chunk 29's tests** (29): unit tests cover the kinds in the kill, on bags (and bags merged
+  into), in the run's end and the death cam; operator bots fighting a guard close by but not one
+  far off, giving up crates near a guard that shot them and heading out once badly hurt; the
+  thorough plan; the run log's cause naming a kind; and PvE's boards being cleared. Browser tests
+  in each engine read the kind off the death cam banner, the results, a kill row and a bag's tag,
+  open Stats empty and after a run and export it, share through a stubbed share sheet (and close
+  it), and check PvE's boards are gone after loading. A replay test had compared frames recorded
+  after the replay's end, where a far body's last sample can only be held; the bots' new moves
+  made one of those 3.8 m off, so it now stops at the replay's end. The bounty test failed once
+  in a full run in Chromium: the rival had wandered off before it was killed and its bag's tag
+  didn't show; it's now brought back in front just before. Tried with 6 workers instead of 4,
+  several run and rivals tests failed because guards killed the player before the test's
+  shortcuts arrived; at 4 they all passed twice over.
 
 ### Playtest and tuning
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
@@ -1524,13 +1573,28 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **The run log stays in one browser** (12). There's no backend, and since the F4 panel was
   removed there's no way in the game to see or copy it; it's only in localStorage (`runlog`). It
   keeps the last 200 runs.
+  **Resolved in part** (29): Stats on the menu sums the log up (runs, how they ended, length,
+  score, contracts, causes of death, extraction points, the latest 10) and exports it as
+  `onepointsix-runs-<date>.json` (format `onepointsix-runs`, version 1, with the build), for
+  playtesters to send. It still stays in one browser, and nothing reads the files back yet: they
+  have to be summed by hand or with a script.
 - **Bot runs can't check run length** (12). An operator bot searches only 1–3 crates and leaves,
   so even its extracted runs last about 1:20. The bot playtest (`npm run playtest`) is good for
   comparing ways of playing and how often operators meet, not for how long a human run lasts.
+  **Resolved in part** (29): `npm run playtest -- 30 12 1 --thorough` has one operator bot at a
+  time loot 6–10 crates and carry 30–40 kg, as a person tends to, and keep to every crate it
+  planned. Such bots die within a minute like the rest, so they can't be killed: guards' rounds
+  hit them for nothing and they don't notice (else they'd stand fighting a guard they can't see
+  forever), and they're given ammo when out. Over 12 islands their 46 runs lasted 5:56 at the
+  median, 6:09 for the 87% that got out; the other 13% ran out the clock stuck in a fight. So a
+  run that isn't cut short by death lands inside 3–10 minutes, but it's a bot's route and fights,
+  not a person's.
 - **Operator bots still die in most runs** (12). Over 6 islands × 30 min, 19% of their runs
   extract (up from 8%), 81% are killed, and guards do about two thirds of the killing, mostly
   sentries and outpost guards at 40–120 m. Making guards weaker helped bots but would also make
   PvE easier for humans, so guards were left alone until humans have played.
+  Still true after chunk 29 (see Rivals): 84% of their runs end in death by day, 82% at night in
+  rain.
 - **Most of the listed tuning wasn't changed** (12): guard count, bot skill numbers, weapon damage
   and recoil, extraction timings and loot values. In the bot playtest the rifle and bolt-action
   came out even (about 210 and 190 points per run), as did light and heavy carrying, so there was
@@ -1542,11 +1606,18 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Operator bots now leave far-off enemies alone** (12). They fight guards only within 40 m, and
   other operators only within their gun's effective range, unless shot at in the last 10 s. That
   applies to human players too, so a bot you spot at long range won't open fire first.
+  Since chunk 29 being shot at no longer makes a guard fair game at any range: past 60 m an
+  operator bot gets away from it instead, even while it keeps hitting them. Nobody has watched
+  whether that looks like fleeing or like ignoring the shots.
 - **The bot playtest leaves out runs still going when it stops** (12), so long runs are slightly
   undercounted. Bots get no contracts, so "contracts done" is always 0% there.
+  **Resolved in part** (29): it now counts them: about 4% of runs in a 30-minute game (21% in the
+  thorough mode, whose runs are long and few). They're still left out of the summary.
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops
   in at any land point, possibly next to an outpost. How often that happens wasn't measured.
+  **Resolved** (29): measured by the playtest (`dropIns` in `server/population.ts`): 2–3% of
+  drop-ins in a full game of 8 operators, so it was left as it is.
 - **The run log panel has no automated tests** (12). The records, summary and storage are tested;
   the F4 panel was only checked by typecheck. Resolved: the F4 panel (and the F3 net panel with
   its fake-lag sliders) were removed.
@@ -1567,6 +1638,12 @@ marked **Resolved** with the chunk or commit that fixed them and how.
 - **Bots now path onto low obstacles** (23). The nav grid treats anything up to 0.52 m above a
   cell's floor as something to step onto rather than walk round, so a hut's raised floor doesn't
   block its doorway. Small rocks and the first step of a stair count too.
+- **The thorough playtest isn't a person** (29). Its bots can't be killed, play alone, don't
+  notice being shot and never run dry, so it reads how long a full search and its fights take,
+  not how often a person survives one. 13% of its runs still end stuck in a fight at 10:00.
+- **The stats export hasn't had a real file sent yet** (29). Its format may need more (the
+  browser, the screen, the frame rate) once chunk 30's playtesters use it; there's no way to
+  clear the log from the page either.
 
 ## Future
 - **Multiplayer**

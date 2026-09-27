@@ -55,7 +55,7 @@ export type Role =
   // Plays a run: search the crate at each loot spot, taking what it can carry
   // up to `greed` kg, then leave at the nearest open extraction point. Its
   // personality decides what else it does along the way.
-  | { kind: 'operator'; loot: LootSpot[]; greed: number; personality?: Personality };
+  | { kind: 'operator'; loot: LootSpot[]; greed: number; personality?: Personality; thorough?: boolean };
 
 export interface LootSpot extends Point {
   /** What to look at while searching, such as the crate. */
@@ -158,11 +158,10 @@ const STEPS_WALK = 9;
  */
 const OPERATOR_CURIOSITY = 25;
 const GUARD_CURIOSITY = 110;
-/**
- * Operators leave guards alone beyond this range unless the guard has shot at
- * them lately: a fight at an outpost brings the whole outpost down on them.
- */
+/** Operators leave guards alone beyond this range: a fight at an outpost brings the whole outpost down on them. */
 const OPERATOR_GUARD_RANGE = 40;
+/** Operators shot at by a guard shoot back out to this far; farther off they get away instead. */
+const GUARD_FIGHT_BACK = 60;
 /** Seconds a shooter stays a threat to be fought back. */
 const THREAT_TIME = 10;
 /** Operators going about their run walk rather than sprint this close to an outpost, and sneak closer in. */
@@ -177,6 +176,10 @@ const BOUNTY_LOUD = 1.6;
 const BOUNTY_REACH = 1.5;
 /** Hunters count anyone with less health than this as wounded. */
 const WOUNDED = 60;
+/** An operator shot by a guard gives up on crates this close to it. */
+const GUARDED_CRATE = 100;
+/** Operators would rather not get out within this many metres of an outpost; one that close counts as this much farther. */
+const GUARDED_EXIT = 150;
 /** Metres off a fight's gunfire is guessed to be, per metre away it's heard from. */
 const FIGHT_GUESS = 0.12;
 /** Seconds gunfire is remembered for telling where a fight is, and how far apart two sides' shots can be to be one fight. */
@@ -396,6 +399,11 @@ export class Bot {
     this.state = this.routine();
   }
 
+  /** Crates an operator still means to search. */
+  lootLeft(): number {
+    return this.loot.length - this.step;
+  }
+
   /** What this bot currently knows about another agent: 0 unaware to 1 spotted. */
   awareness(id: number): number {
     return this.contacts.get(id)?.level ?? 0;
@@ -460,6 +468,10 @@ export class Bot {
     c.threatAt = now;
     this.hurtAt = now;
     this.hurtHandled = false;
+    // Shot by a guard on the way: crates it watches over aren't worth it, unless searching them all.
+    if (attacker.team === 'guard' && this.role.kind === 'operator' && !this.role.thorough) {
+      while (this.step < this.loot.length && Math.hypot(this.loot[this.step].x - attacker.x, this.loot[this.step].z - attacker.z) < GUARDED_CRATE) this.step++;
+    }
   }
 
   /** Whether a round from (ox, oy, oz) along (dx, dy, dz) for `t` metres passed close to `self`. */
@@ -819,8 +831,9 @@ export class Bot {
       case 'loot': {
         if (role.kind !== 'operator') break;
         const spot = this.loot[this.step];
-        if (!spot) {
-          this.enter('extract');
+        // Done, or short of time.
+        if (!spot || now - this.born >= RUN_TIME - LEAVE_BY) {
+          this.enter(this.routine());
           break;
         }
         const d = Math.hypot(spot.x - self.x, spot.z - self.z);
@@ -1047,6 +1060,8 @@ export class Bot {
       // Top up between fights; guards also restock.
       if (self.mag[self.weapon] < WEAPONS[self.weapon].magSize * 0.6) this.reloadWanted = true;
       if (this.state === 'patrol' && self.team === 'guard') self.reserve = spawnWeapons().reserve;
+      // So do thorough operators, which can't die and so never run out of fights.
+      if (role.kind === 'operator' && role.thorough && self.reserve[this.primary] === 0) self.reserve = spawnWeapons().reserve;
       if (this.weapon !== this.primary && self.mag[this.primary] + self.reserve[this.primary] > 0) this.weapon = this.primary;
     }
   }
@@ -1192,7 +1207,9 @@ export class Bot {
     ctx.extracts.forEach((e, i) => {
       if (this.unreachable.has(i)) return;
       // Prefer open ones by counting shut ones as much farther away; stick with the current one a little.
-      const d = Math.hypot(e.x - self.x, e.z - self.z) + (e.open ? 0 : 400) - (i === this.exit ? 20 : 0);
+      // Those in sight of an outpost count as farther too.
+      const guarded = (ctx.world.nearestOutpost(e.x, e.z)?.dist ?? Infinity) < GUARDED_EXIT ? GUARDED_EXIT : 0;
+      const d = Math.hypot(e.x - self.x, e.z - self.z) + (e.open ? 0 : 400) + guarded - (i === this.exit ? 20 : 0);
       if (d < bestD) (best = i), (bestD = d);
     });
     if (best !== this.exit && current) {
@@ -1227,20 +1244,23 @@ export class Bot {
   }
 
   /**
-   * Whether to fight a spotted enemy. Guards always do. Operators fight back
-   * when shot at, and otherwise only pick fights they can win quickly: other
-   * operators within their gun's range, and guards up close.
+   * Whether to fight a spotted enemy. Guards always do. Operators fight guards
+   * only up close, a little farther when shot at, and get away from the rest;
+   * other operators they fight back when shot at, and otherwise only within
+   * their gun's range.
    */
   private picksFight(ctx: BotContext, self: Agent, id: number, c: Contact, now: number): boolean {
-    if (this.role.kind !== 'operator' || now - c.threatAt < THREAT_TIME) return true;
-    let range = OPERATOR_GUARD_RANGE;
-    if (ctx.agent(id)?.team !== 'guard') {
-      range = EFFECTIVE_RANGE[this.primary] * (this.temper?.fightRange ?? 1);
-      if (this.isBounty(ctx, id)) range *= BOUNTY_REACH;
-      // A hunter goes after the wounded from farther.
-      else if (this.personality === 'hunter' && (ctx.agent(id)?.hp ?? MAX_HP) < WOUNDED) range *= BOUNTY_REACH;
-    }
-    return Math.hypot(c.x - self.x, c.z - self.z) <= range;
+    if (this.role.kind !== 'operator') return true;
+    const d = Math.hypot(c.x - self.x, c.z - self.z);
+    const threat = now - c.threatAt < THREAT_TIME;
+    // A guard shooting from far off is got away from, not fought.
+    if (ctx.agent(id)?.team === 'guard') return d <= (threat ? GUARD_FIGHT_BACK : OPERATOR_GUARD_RANGE);
+    if (threat) return true;
+    let range = EFFECTIVE_RANGE[this.primary] * (this.temper?.fightRange ?? 1);
+    if (this.isBounty(ctx, id)) range *= BOUNTY_REACH;
+    // A hunter goes after the wounded from farther.
+    else if (this.personality === 'hunter' && (ctx.agent(id)?.hp ?? MAX_HP) < WOUNDED) range *= BOUNTY_REACH;
+    return d <= range;
   }
 
   /** An operator facing a guard, or a shy one facing anyone: it would rather get away than win. */
@@ -1265,10 +1285,11 @@ export class Bot {
 
   private routine(): BotState {
     if (this.role.kind !== 'operator') return 'patrol';
-    if (this.step < this.loot.length) return 'loot';
+    const run = this.born < 0 ? 0 : this.now - this.born;
+    // Badly hurt or short of time, it leaves what it hasn't searched yet.
+    if (this.step < this.loot.length && this.hp >= WOUNDED && run < RUN_TIME - LEAVE_BY) return 'loot';
     // Hunters and campers stay on a while once done looting, but leave in time.
     const t = this.temper;
-    const run = this.born < 0 ? 0 : this.now - this.born;
     if (t && run < Math.min(t.linger, RUN_TIME - LEAVE_BY) && this.hp >= WOUNDED) {
       if (this.personality === 'hunter') return 'hunt';
       if (this.personality === 'camper' && !this.campDone) return 'camp';

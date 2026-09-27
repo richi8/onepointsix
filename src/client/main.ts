@@ -27,7 +27,7 @@ import { Flashlights } from './flashlights.ts';
 import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
-import { Leaderboard, localStore } from './leaderboard.ts';
+import { dropOldBoards, Leaderboard, localStore } from './leaderboard.ts';
 import type { Rendered } from './prediction.ts';
 import { Resolution } from './resolution.ts';
 import { treeFade } from './trees.ts';
@@ -37,6 +37,7 @@ import type { Replay } from './replay.ts';
 import type { ReplayBar, ReplayCamera } from './replaybar.ts';
 import { decodeReplay, encodeReplay, RunRecorder, type ReplayData } from './replayfile.ts';
 import { browserId, keepReplay, keptReplay, keptReplays, type KeptReplay } from './replaystore.ts';
+import { exportRuns, renderStats } from './stats.ts';
 import { RivalHud } from './rivalhud.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
@@ -235,6 +236,7 @@ const menu = document.getElementById('menu')!;
 const paused = document.getElementById('paused')!;
 const playButton = document.getElementById('play') as HTMLButtonElement;
 const store = localStore();
+dropOldBoards(store);
 const board = new Leaderboard(store);
 const runLog = new RunLog(store);
 function showIsland(): void {
@@ -273,9 +275,21 @@ function toast(text: string): void {
   toastTimer = window.setTimeout(() => (toastEl.hidden = true), 2500);
 }
 
-/** Copy a link to this page with `query`, or failing that, show it to copy by hand. */
-async function copyLink(query: string): Promise<void> {
+/**
+ * Share a link to this page with `query`: through the system's share sheet
+ * where there is one, else copied, or failing that, shown to copy by hand.
+ */
+async function shareLink(query: string, text: string): Promise<void> {
   const url = new URL(query, location.href).href;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'onepointsix', text, url });
+      return;
+    } catch (err) {
+      // Closed without sharing, and that's all; anything else falls back to copying.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+    }
+  }
   try {
     await navigator.clipboard.writeText(url);
     toast('Link copied. Send it to a friend.');
@@ -294,7 +308,12 @@ function shareIsland(): void {
   const best = board.best(config.seed, mode);
   // The best score goes out in the conditions it was set in.
   const at = best?.time && best.weather ? { ...config, time: best.time, weather: best.weather } : config;
-  void copyLink(shareQuery(at, mode, best ?? undefined));
+  void shareLink(shareQuery(at, mode, best ?? undefined), challengeText(best));
+}
+
+/** What goes with a shared link: the score to beat on it, if any. */
+function challengeText(score: { score: number } | null | undefined): string {
+  return score ? `Beat my ${score.score.toLocaleString('en-US')} on this island.` : 'Play this island with me.';
 }
 
 document.getElementById('share-island')!.onclick = shareIsland;
@@ -641,6 +660,7 @@ let showLastResults: (() => void) | null = null;
 function endRun(e: RunEnd): void {
   if (!conn) return;
   conn.over = true;
+  hud.killerKind = e.death?.kind ?? null;
   sfx.runEnd(e.outcome === 'extracted');
   runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
   const standing: string[] = [];
@@ -658,7 +678,7 @@ function endRun(e: RunEnd): void {
   shareButton.onclick = () => {
     const score = e.score > 0 ? { name: playerName(), score: e.score } : best ?? undefined;
     const at = e.score <= 0 && best?.time && best.weather ? { ...config, time: best.time, weather: best.weather } : config;
-    void copyLink(shareQuery(at, mode, score));
+    void shareLink(shareQuery(at, mode, score), challengeText(score));
   };
   showLastResults = () => {
     (document.getElementById('replay') as HTMLButtonElement).hidden = !killedBy;
@@ -704,7 +724,8 @@ function playDeathcam(): void {
   // The killer's health, ammo and hits.
   hudEl.hidden = false;
   hudEl.classList.add('watching');
-  deathcamEl.querySelector('.banner span')!.textContent = ownDeath ? 'Killed by your own grenade' : `Killed by ${deathcam.name}`;
+  const kind = killedBy.e.kind ? `, a ${killedBy.e.kind}` : '';
+  deathcamEl.querySelector('.banner span')!.textContent = ownDeath ? 'Killed by your own grenade' : `Killed by ${deathcam.name}${kind}`;
   deathcamEl.hidden = false;
 }
 
@@ -784,7 +805,7 @@ function replayTitle(r: ReplayData): string {
   const when = conditionsLabel(r.world) || 'Day';
   const e = r.end;
   const how = e.outcome === 'extracted' ? `Extracted · ${e.score.toLocaleString('en-US')}`
-    : e.outcome === 'killed' ? `Killed${e.killer ? ` by ${e.killer}` : ''}` : 'Missing in action';
+    : e.outcome === 'killed' ? `Killed${e.killer ? ` by ${e.killer}${e.death?.kind ? `, a ${e.death.kind}` : ''}` : ''}` : 'Missing in action';
   return `${r.name} · ${island} · ${when} · ${how}`;
 }
 
@@ -865,6 +886,7 @@ function afterSeek(): void {
   bodies.forget();
   for (const e of replay.killsBefore()) bodies.killed(e);
   hud.reset();
+  hud.killerKind = replay.data.end.death?.kind ?? null;
   // The feed and hit numbers as they stood then.
   for (const { ago, e } of replay.recent(FEED_REBUILD)) feedEvent(e, ago);
   deadFor = 0;
@@ -1057,6 +1079,34 @@ replayFile.onchange = () => {
   if (file) void openReplayFile(file);
 };
 
+// ------------------------------------------------------------------ stats
+
+// The run log, summed up, and a file of it to send.
+const statsEl = document.getElementById('stats')!;
+
+function showStats(open: boolean): void {
+  statsEl.hidden = !open;
+  if (!open) {
+    (document.getElementById('stats-open') as HTMLButtonElement).focus();
+    return;
+  }
+  renderStats(statsEl, runLog.records());
+  (statsEl.querySelector('.export') as HTMLButtonElement).onclick = () => {
+    exportRuns(runLog.records(), BUILD);
+    toast('Runs exported. Send the file to the developer.');
+  };
+  (document.getElementById('stats-close') as HTMLButtonElement).focus();
+}
+
+document.getElementById('stats-open')!.onclick = () => showStats(true);
+document.getElementById('stats-close')!.onclick = () => showStats(false);
+statsEl.onclick = (e) => {
+  if (e.target === statsEl) showStats(false);
+};
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && !statsEl.hidden) showStats(false);
+});
+
 // A replay dropped on the menu opens too.
 const dropEl = document.getElementById('drop')!;
 const canDrop = (e: DragEvent) => !menu.hidden && !conn && !replay && !!e.dataTransfer?.types.includes('Files');
@@ -1205,7 +1255,7 @@ playButton.onclick = play;
 window.addEventListener('keydown', (e) => {
   // Enter plays from anywhere on the menu but its other buttons.
   const active = document.activeElement;
-  if (e.code === 'Enter' && !conn && news.hidden && replaysEl.hidden && (!(active instanceof HTMLButtonElement) || active === playButton)) play();
+  if (e.code === 'Enter' && !conn && news.hidden && replaysEl.hidden && statsEl.hidden && (!(active instanceof HTMLButtonElement) || active === playButton)) play();
 });
 playButton.focus();
 

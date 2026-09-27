@@ -117,6 +117,8 @@ describe('replays', () => {
     let compared = 0;
     let filled = 0;
     frames.times.forEach((time, i) => {
+      // Recording goes on a little past the replay's end, where a far body's last sample can only be held.
+      if (time > data.to) return;
       const sent = run.snapshots.find((m) => Math.abs(m.tick * SERVER_DT - time) < 1e-6)!;
       const kept = frames.at(i).players;
       expect(kept.map((p) => p.id).sort()).toEqual(sent.players.map((p) => p.id).sort());

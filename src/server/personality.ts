@@ -3,9 +3,9 @@
 // depending on who they are. They carry over unchanged as fill bots once
 // other players can join.
 
-export type Personality = 'rat' | 'hunter' | 'camper' | 'looter';
+import type { Personality } from '../shared/personality.ts';
 
-export const PERSONALITIES: readonly Personality[] = ['rat', 'hunter', 'camper', 'looter'];
+export { PERSONALITIES, type Personality } from '../shared/personality.ts';
 
 export interface Temper {
   /** Crates it means to search, fewest and most, and the kg it's willing to carry. */

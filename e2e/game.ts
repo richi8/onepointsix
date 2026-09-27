@@ -31,7 +31,7 @@ interface Game {
     lastTick: number;
     transport: { send(msg: { t: string }): void; sent?: string[] };
     bounty: { id: number; name: string; x: number; z: number } | null;
-    bags: { x: number; z: number; value?: number }[];
+    bags: { x: number; z: number; value?: number; kind?: string }[];
     predictor: { state: { x: number; z: number } };
   } | null;
   replay: { playing: boolean; time: number; speed: number; exactNow: boolean } | null;
@@ -47,6 +47,8 @@ declare global {
     game: Game;
     /** Links the page copied, with the clipboard stubbed by copyLinks. */
     copied: string[];
+    /** What the page handed a stubbed share sheet. */
+    shared: ShareData[];
   }
 }
 
@@ -95,6 +97,8 @@ export async function face(page: Page, x: number, z: number): Promise<void> {
 export async function copyLinks(page: Page, refuse = false): Promise<void> {
   await page.addInitScript((refuse) => {
     window.copied = [];
+    // No share sheet, so the link is copied, as in Firefox.
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
     Object.defineProperty(navigator, 'clipboard', {
       value: {
         writeText: async (text: string) => {

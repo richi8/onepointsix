@@ -5,7 +5,7 @@ import { BOLT, RIFLE } from '../shared/weapons.ts';
 import { watchtower, type Outpost, type Point, type World } from '../shared/world.ts';
 import type { LootSpot, Post, Role } from './bot.ts';
 import type { NavGrid } from './nav.ts';
-import { PERSONALITIES, TEMPERS, type Personality } from './personality.ts';
+import { PERSONALITIES, TEMPERS, type Personality, type Temper } from './personality.ts';
 import type { Difficulty } from './skill.ts';
 
 // Who is on the island besides the players, and what each of them is for:
@@ -107,11 +107,15 @@ export function planGuards(world: World, nav: NavGrid, rand: () => number, night
   return plans;
 }
 
+/** Drop-ins picked, and those that found no spot clear of outposts and players and went anywhere, for the playtest. */
+export const dropIns = { picked: 0, anywhere: 0 };
+
 /**
  * Where an operator drops in: dry land away from outposts and from `avoid`,
  * the players to keep clear of.
  */
 export function insertionPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[]): Point {
+  dropIns.picked++;
   for (let i = 0; i < 60; i++) {
     const p = world.randomLandPoint(rand);
     const far = (q: Point, r: number) => Math.hypot(q.x - p.x, q.z - p.z) >= r;
@@ -119,24 +123,36 @@ export function insertionPoint(world: World, nav: NavGrid, rand: () => number, a
     if (!world.outposts.every((o) => far(o, INSERT_FROM_OUTPOSTS)) || !avoid.every((a) => far(a, INSERT_FROM_PLAYERS))) continue;
     return p;
   }
+  dropIns.anywhere++;
   return world.randomLandPoint(rand);
 }
+
+/** Operator bots who don't raid the outposts leave crates this close to one alone. */
+const NEAR_OUTPOST = 60;
+
+/** How a thorough operator bot loots, the way a person tends to: many crates and a heavy pack. */
+const THOROUGH: Pick<Temper, 'stops' | 'greed'> = { stops: [6, 10], greed: [30, 40] };
 
 /**
  * A fresh operator bot: where it drops in and the crates it will search on
  * the way. It picks an open extraction point when it's done. `avoid` are
- * players to keep clear of; `taken` are callsigns already in use.
+ * players to keep clear of; `taken` are callsigns already in use. A
+ * `thorough` one loots like a person rather than by its personality, and
+ * searches every crate it planned.
  */
 export function planOperator(
-  world: World, nav: NavGrid, rand: () => number, avoid: Point[], taken: Set<string>, personality?: Personality,
+  world: World, nav: NavGrid, rand: () => number, avoid: Point[], taken: Set<string>, personality?: Personality, thorough = false,
 ): BotPlan {
   const spawn = insertionPoint(world, nav, rand, avoid);
   personality ??= PERSONALITIES[Math.floor(rand() * PERSONALITIES.length)];
-  const temper = TEMPERS[personality];
+  const temper = thorough ? { ...TEMPERS[personality], ...THOROUGH } : TEMPERS[personality];
 
   // How much it's willing to carry, kg. Raiders also go for the outposts' crates.
   const greed = temper.greed[0] + rand() * (temper.greed[1] - temper.greed[0]);
-  const crates = lootCrates(world).filter((c) => !c.rich || temper.raids).map((c) => c.box);
+  // Those who don't raid keep clear of crates in sight of an outpost's walls too.
+  const crates = lootCrates(world)
+    .filter((c) => temper.raids || (!c.rich && (world.nearestOutpost((c.box.minX + c.box.maxX) / 2, (c.box.minZ + c.box.maxZ) / 2)?.dist ?? Infinity) >= NEAR_OUTPOST))
+    .map((c) => c.box);
   const loot: LootSpot[] = [];
   const [fewest, most] = temper.stops;
   const stops = fewest + Math.floor(rand() * (most - fewest + 1));
@@ -164,7 +180,7 @@ export function planOperator(
   const skill: Difficulty = r < 0.2 ? 'easy' : r < 0.75 ? 'normal' : 'hard';
   const primary = skill !== 'easy' && rand() < 0.2 ? BOLT : RIFLE;
   const yaw = loot[0] ? yawToward(spawn.x, spawn.z, loot[0].x, loot[0].z) : rand() * Math.PI * 2;
-  return { name, role: { kind: 'operator', loot, greed, personality }, skill, primary, spawn: { ...spawn, yaw } };
+  return { name, role: { kind: 'operator', loot, greed, personality, ...(thorough ? { thorough } : {}) }, skill, primary, spawn: { ...spawn, yaw } };
 }
 
 /**

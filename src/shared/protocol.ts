@@ -4,6 +4,7 @@
 
 import type { GameLog } from './gamelog.ts';
 import type { Zone } from './hitbox.ts';
+import type { Personality } from './personality.ts';
 import type { PlayerState } from './sim.ts';
 import type { TapeClip } from './tape.ts';
 import type { WorldConfig } from './worldconfig.ts';
@@ -101,6 +102,15 @@ export interface CoverState {
   open: number[];
 }
 
+/** How someone died: by whom (their side, or themselves), with what weapon, and whether in the head. */
+export interface Death {
+  by: Team | 'self';
+  weapon: number;
+  head: boolean;
+  /** The killer was an operator bot of this kind. */
+  kind?: Personality;
+}
+
 /** Something that happened during a server tick, sent reliably to whoever should hear. */
 export type GameEvent =
   // To the shooter: their round hit `target` for `damage` at (x, y, z).
@@ -112,6 +122,8 @@ export type GameEvent =
       k: 'kill'; killer: number; victim: number; killerName: string; victimName: string; weapon: number; head: boolean;
       /** The victim carried the bounty. */
       bounty?: boolean;
+      /** The victim was an operator bot of this kind, told now that it's dead. */
+      victimKind?: Personality;
       /**
        * Where the victim stood (feet), faced and how crouched, where the killing
        * round or blast struck, and the way it travelled, all to the centimetre.
@@ -144,12 +156,13 @@ export type GameEvent =
       killer: string;
       /** Extraction point got out at, or -1. */
       extract: number;
-      /** How they died, if killed: by whom (their side, or themselves), with what weapon, and whether in the head. */
-      death: { by: Team | 'self'; weapon: number; head: boolean } | null;
+      /** How they died, if killed. */
+      death: Death | null;
     }
   // To a player killed by someone else, a moment after: their killer's inputs
   // around the kill at server time `time`, to replay from the killer's eyes.
-  | { k: 'deathcam'; killer: number; name: string; time: number; clip: TapeClip }
+  // `kind` is the killer's, if an operator bot.
+  | { k: 'deathcam'; killer: number; name: string; time: number; clip: TapeClip; kind?: Personality }
   // To the player as their run ends: their own inputs for all of it, to replay the run, and
   // the game's log so far to run all of it again, unless the game is too old for that.
   | { k: 'tape'; clip: TapeClip; log?: GameLog }
@@ -254,6 +267,8 @@ export interface BagSnap {
   z: number;
   /** What the loot in it is worth; missing in replays from before it was sent. */
   value?: number;
+  /** Left by the body of an operator bot of this kind. */
+  kind?: Personality;
 }
 
 /** The bounty: who carries the most loot, and roughly where they were last called. */

@@ -111,6 +111,7 @@
       <div class="menu-foot">
         <button type="button" class="news-button" id="news-open">What's new<span class="dot" hidden></span></button>
         <button type="button" class="news-button" id="replay-open">Replays</button>
+        <button type="button" class="news-button" id="stats-open">Stats</button>
         <input type="file" id="replay-file" accept=".replay,application/gzip,application/json" hidden />
       </div>
       <a class="support" href="https://buymeacoffee.com/richi8" target="_blank" rel="noopener"><span aria-hidden="true">☕</span>Buy me a coffee</a>
@@ -135,6 +136,30 @@
           <ol class="kept"></ol>
           <p class="empty">No runs kept yet. Play one and its replay waits here.</p>
           <button type="button" class="secondary" id="replay-file-open">Open a replay file</button>
+        </div>
+      </div>
+    </div>
+    <div class="news stats" id="stats" hidden role="dialog" aria-modal="true" aria-labelledby="stats-title">
+      <div class="card">
+        <header>
+          <h2 id="stats-title">Your runs</h2>
+          <button type="button" id="stats-close" aria-label="Close">×</button>
+        </header>
+        <div class="entries">
+          <p class="note"></p>
+          <p class="empty">No runs yet. Play one and how it went shows up here.</p>
+          <div class="summary">
+            <div class="tiles"></div>
+            <dl></dl>
+            <h3>Killed by</h3>
+            <ul class="causes"></ul>
+            <h3>Got out at</h3>
+            <ul class="exits"></ul>
+            <h3>Latest runs</h3>
+            <ul class="recent"></ul>
+          </div>
+          <p class="note">Export your runs to send them to the developer. The file holds only these numbers.</p>
+          <button type="button" class="export">Export runs</button>
         </div>
       </div>
     </div>
@@ -212,6 +237,7 @@
       <div class="card">
         <h2></h2>
         <p class="why"></p>
+        <p class="rival" hidden></p>
         <div class="score"><span></span><small>score</small></div>
         <p class="standing"></p>
         <dl></dl>

@@ -78,8 +78,27 @@ function key(seed: number, mode: Mode): string {
   return `board:${seed >>> 0}:${mode}`;
 }
 
+/**
+ * Clear out the boards of modes no longer played: PvE's, left in storage
+ * since it became Offline, whose scores don't compare. Returns how many went.
+ */
+export function dropOldBoards(store: Pick<Storage, 'length' | 'key' | 'removeItem'> | null): number {
+  if (!store) return 0;
+  try {
+    const old: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const k = store.key(i);
+      if (k && /^board:\d+:pve$/.test(k)) old.push(k);
+    }
+    for (const k of old) store.removeItem(k);
+    return old.length;
+  } catch {
+    return 0;
+  }
+}
+
 /** localStorage, or null where the browser blocks it. */
-export function localStore(): KeyValue | null {
+export function localStore(): Storage | null {
   try {
     return window.localStorage;
   } catch {

@@ -1,5 +1,5 @@
 import { conditionsLabel } from './conditions.ts';
-import type { GameEvent, Mode, Team } from './protocol.ts';
+import type { Death, GameEvent, Mode } from './protocol.ts';
 import { weaponName } from './weapons.ts';
 import type { WorldConfig } from './worldconfig.ts';
 
@@ -29,7 +29,7 @@ export interface RunRecord {
   contractsDone: number;
   /** Where they got out, by extraction point name, or ''. */
   extract: string;
-  /** What killed them, such as "guard, Assault rifle, head", or ''. */
+  /** What killed them, such as "guard, Assault rifle, head" or "hunter, Bolt-action rifle" for an operator bot, or ''. */
   cause: string;
 }
 
@@ -55,8 +55,8 @@ export function runRecord(
   };
 }
 
-function causeOf(d: { by: Team | 'self'; weapon: number; head: boolean }): string {
-  return [d.by, weaponName(d.weapon), ...(d.head ? ['head'] : [])].join(', ');
+function causeOf(d: Death): string {
+  return [d.kind ?? d.by, weaponName(d.weapon), ...(d.head ? ['head'] : [])].join(', ');
 }
 
 export interface RunSummary {

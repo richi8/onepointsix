@@ -42,7 +42,7 @@ import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
 import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loot.ts';
 import type {
-  Action, BagSnap, BountyView, ClientMsg, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
+  Action, BagSnap, BountyView, ClientMsg, Death, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
 import type { GameLog, LogEntry, Logged } from '../shared/gamelog.ts';
 import { mulberry32 } from '../shared/rng.ts';
@@ -99,7 +99,7 @@ interface Run {
   /** Who killed them, once dead. */
   killer: string;
   /** How they died, once dead. */
-  death: { by: Team | 'self'; weapon: number; head: boolean } | null;
+  death: Death | null;
   /** Objectives paid on extraction; only humans get them. */
   contracts: Contract[];
 }
@@ -156,6 +156,11 @@ export interface ServerOptions {
   operators?: number;
   /** Every operator bot plays this way, for tests (default a personality at random for each). */
   personality?: Personality;
+  /**
+   * Operator bots loot as thoroughly as a person and can't be killed, so the
+   * playtest can read how long a run lasts that isn't cut short by death.
+   */
+  thorough?: boolean;
 }
 
 /**
@@ -382,6 +387,13 @@ export class GameServer {
   /** Bots in the game, for tests and debugging. */
   bots(): { id: number; name: string; team: Team; bot: Bot; state: PlayerState }[] {
     return [...this.players.values()].filter((p) => p.bot).map((p) => ({ id: p.id, name: p.name, team: p.team, bot: p.bot!, state: p }));
+  }
+
+  /** Operator bots partway through a run. */
+  runsGoing(): number {
+    let n = 0;
+    for (const p of this.players.values()) if (p.plan && p.run && !p.dead) n++;
+    return n;
   }
 
   /** Humans in the game. */
@@ -665,7 +677,7 @@ export class GameServer {
     this.onRunEnd?.(end, p.plan);
     this.dismiss(run);
     if (outcome === 'extracted') this.broadcast({ k: 'extract', id: p.id, name: p.name, value });
-    if (outcome === 'killed') this.containers.drop(p.x, p.y, p.z, run.items, this.time);
+    if (outcome === 'killed') this.containers.drop(p.x, p.y, p.z, run.items, this.time, kindOf(p));
     run.items = [];
     p.carry = 0;
     if (outcome !== 'killed') this.leave(p);
@@ -700,7 +712,8 @@ export class GameServer {
     const { killer, time } = p.deathcam!;
     p.deathcam = null;
     const clip = killer.tape.clip(time - DEATHCAM_BEFORE);
-    if (clip) p.events.push({ k: 'deathcam', killer: killer.id, name: killer.name, time, clip });
+    const kind = kindOf(killer);
+    if (clip) p.events.push({ k: 'deathcam', killer: killer.id, name: killer.name, time, clip, ...(kind ? { kind } : {}) });
   }
 
   // -------------------------------------------------------------- bounty
@@ -826,7 +839,7 @@ export class GameServer {
   private addOperatorBot(): void {
     const others = [...this.players.values()].filter((p) => p.team === 'operator' && !p.dead);
     const taken = new Set(others.map((p) => p.name));
-    this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken, this.personality), 'operator');
+    this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken, this.personality, this.options.thorough), 'operator');
   }
 
   /** Players and bots taking operator slots. */
@@ -1044,13 +1057,15 @@ export class GameServer {
     victim: Player, attacker: Player, amount: number, zone: Zone, weapon: number, x: number, y: number, z: number,
     from: { x: number; y: number; z: number } = { x: attacker.x, y: attacker.y + EYE_HEIGHT, z: attacker.z },
   ): void {
-    if (victim.protection > 0) amount = 0;
+    // Thorough operator bots, for the playtest, are never hurt, and don't notice being shot.
+    const unhurt = !!this.options.thorough && !!victim.plan && victim.team === 'operator';
+    if (victim.protection > 0 || unhurt) amount = 0;
     amount = Math.min(amount, victim.hp);
     victim.hp -= amount;
     const killed = victim.hp <= 0;
     attacker.events.push({ k: 'hit', target: victim.id, zone, damage: amount, killed, x, y, z });
     victim.events.push({ k: 'hurt', damage: amount, x: from.x, z: from.z });
-    if (attacker !== victim) victim.bot?.hurt(attacker, this.time);
+    if (attacker !== victim && !unhurt) victim.bot?.hurt(attacker, this.time);
     if (!killed) return;
     victim.dead = true;
     victim.respawn = victim.team === 'guard' && !victim.plan?.temporary ? GUARD_RESPAWN : BODY_TIME;
@@ -1059,9 +1074,10 @@ export class GameServer {
       if (victim.team === 'operator') attacker.run.kills++;
       else if (victim.team === 'guard') attacker.run.guardKills++;
     }
+    const victimKind = kindOf(victim);
     this.broadcast({
       k: 'kill', killer: attacker.id, victim: victim.id, killerName: attacker.name, victimName: victim.name,
-      weapon, head: zone === 'head', bounty: victim.id === this.bounty?.id,
+      weapon, head: zone === 'head', bounty: victim.id === this.bounty?.id, ...(victimKind ? { victimKind } : {}),
       ...deathPose(victim, x, y, z, from),
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
@@ -1069,7 +1085,8 @@ export class GameServer {
     if (!victim.plan) victim.deathcam = { killer: attacker, time: this.time };
     if (victim.run) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
-      victim.run.death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head' };
+      const kind = attacker === victim ? undefined : kindOf(attacker);
+      victim.run.death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head', ...(kind ? { kind } : {}) };
       this.endRun(victim, 'killed');
     }
   }
@@ -1108,6 +1125,11 @@ export class GameServer {
       };
     });
   }
+}
+
+/** An operator bot's personality, or undefined for anyone else. */
+function kindOf(p: Player): Personality | undefined {
+  return p.plan?.role.kind === 'operator' ? p.plan.role.personality : undefined;
 }
 
 function newRun(start: number): Run {

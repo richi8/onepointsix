@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MAX_HP } from '../shared/constants.ts';
 import { wrapAngle } from '../shared/geom.ts';
 import type { Zone } from '../shared/hitbox.ts';
+import type { Personality } from '../shared/personality.ts';
 import type { GameEvent } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { BOLT, WEAPONS, weaponName } from '../shared/weapons.ts';
@@ -64,6 +65,8 @@ export class Hud {
   private marker = 0;
   private hurt = 0;
   private killer = '';
+  /** What kind of operator bot killed you, told as the run ends. */
+  killerKind: Personality | null = null;
 
   constructor() {
     const slotsRoot = $('ammo').querySelector('.slots')!;
@@ -134,7 +137,7 @@ export class Hud {
     this.stamina.classList.toggle('winded', s.winded);
 
     this.death.hidden = !s.dead || !deathNotice;
-    if (s.dead) this.deathText.textContent = this.killer ? `by ${this.killer}` : '';
+    if (s.dead) this.deathText.textContent = this.killer ? `by ${this.killer}${this.killerKind ? `, a ${this.killerKind}` : ''}` : '';
   }
 
   /** The server confirmed one of our rounds hit, `ago` seconds back (when a replay rebuilds what was showing). */
@@ -178,6 +181,13 @@ export class Hud {
     const how = document.createElement('em');
     how.textContent = `${weaponName(e.weapon)}${e.head ? ' · headshot' : ''}`;
     row.append(how, victim);
+    // An operator bot's kind is known once it's dead.
+    if (e.victimKind) {
+      const kind = document.createElement('em');
+      kind.className = 'kind';
+      kind.textContent = e.victimKind;
+      row.append(kind);
+    }
     if (e.bounty) {
       const b = document.createElement('em');
       b.className = 'bounty';
@@ -238,6 +248,7 @@ export class Hud {
   reset(): void {
     this.death.hidden = true;
     this.killer = '';
+    this.killerKind = null;
     this.feed.replaceChildren();
     this.rows.length = 0;
     for (const n of this.numbers) n.el.remove();

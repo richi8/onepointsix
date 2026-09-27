@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CALL_TIME, CARRY_HEAVY, EXTRACT_TIME, KILL_SCORE_GUARD, KILL_SCORE_OPERATOR } from '../shared/constants.ts';
 import { extractKind, extractName, ITEMS, lootMass, lootValue, runScore } from '../shared/loot.ts';
+import { PERSONALITY_NOTES } from '../shared/personality.ts';
 import type { ContractView, ExtractView, GameEvent, RunView } from '../shared/protocol.ts';
 import type { World } from '../shared/world.ts';
 import { bearing } from './hud.ts';
@@ -200,9 +201,10 @@ export class RunHud {
   /** The run is over: show how it went, and `standing` below the score, such as a place on the leaderboard. */
   showResults(e: RunEnd, standing = ''): void {
     const title = { extracted: 'Extracted', killed: 'Killed in action', mia: 'Missing in action' }[e.outcome];
+    const kind = e.death?.kind;
     const why = {
       extracted: 'You made it off the island.',
-      killed: e.killer ? `Killed by ${e.killer}. Your loot stays with your body.` : 'You died. Your loot stays with your body.',
+      killed: e.killer ? `Killed by ${e.killer}${kind ? `, a ${kind}` : ''}. Your loot stays with your body.` : 'You died. Your loot stays with your body.',
       mia: 'The run clock ran out. Nobody came for you.',
     }[e.outcome];
     const out = e.outcome === 'extracted';
@@ -222,6 +224,10 @@ export class RunHud {
     r.classList.toggle('good', out);
     r.querySelector('h2')!.textContent = title;
     r.querySelector('.why')!.textContent = why;
+    // What kind of rival it was, now that it can be told.
+    const rival = r.querySelector('.rival') as HTMLElement;
+    rival.textContent = kind ? PERSONALITY_NOTES[kind] : '';
+    rival.hidden = !kind;
     r.querySelector('.score span')!.textContent = e.score.toLocaleString('en-US');
     const stand = r.querySelector('.standing') as HTMLElement;
     stand.textContent = standing;

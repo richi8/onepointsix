@@ -55,8 +55,10 @@ test.describe('death cam', () => {
     await expect(page.locator('#death')).toBeVisible();
     const deathcam = page.locator('#deathcam');
     await expect(deathcam).toBeVisible();
-    const killer = (await deathcam.locator('.banner span').textContent())!.replace(/^Killed by /, '');
-    expect(killer).not.toBe('');
+    // The killer is the nearest operator bot, and the banner says what kind.
+    const banner = (await deathcam.locator('.banner span').textContent())!;
+    const [, killer, kind] = banner.match(/^Killed by (.+), a (rat|hunter|camper|looter)$/) ?? [];
+    expect(killer).toBeTruthy();
     await expect(page.locator('#hud')).toHaveClass(/watching/);
     await expect(page.locator('#hud')).toBeVisible();
     await expect(page.locator('#health')).toBeVisible();
@@ -68,7 +70,9 @@ test.describe('death cam', () => {
     await expect(deathcam).toBeHidden();
     const results = page.locator('#results');
     await expect(results.locator('h2')).toHaveText('Killed in action');
-    await expect(results.locator('.why')).toHaveText(`Killed by ${killer}. Your loot stays with your body.`);
+    await expect(results.locator('.why')).toHaveText(`Killed by ${killer}, a ${kind}. Your loot stays with your body.`);
+    // What that kind of rival does.
+    await expect(results.locator('.rival')).toHaveText(new RegExp(`^${kind[0].toUpperCase()}${kind.slice(1)}s `));
     await expect(page.locator('#replay')).toBeVisible();
 
     await page.click('#replay');

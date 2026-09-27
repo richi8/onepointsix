@@ -29,6 +29,9 @@ describe('run records', () => {
     const r = runRecord(end({ outcome: 'killed', score: 0, extract: -1, death: { by: 'guard', weapon: 0, head: true } }), DEFAULT_WORLD, 'online', names);
     expect(r).toMatchObject({ extract: '', cause: 'guard, Assault rifle, head' });
     expect(runRecord(end({ outcome: 'killed', death: { by: 'self', weapon: GRENADE, head: false } }), DEFAULT_WORLD, 'online', names).cause).toBe('self, Grenade');
+    // An operator bot is named by its kind.
+    expect(runRecord(end({ outcome: 'killed', death: { by: 'operator', weapon: 0, head: false, kind: 'camper' } }), DEFAULT_WORLD, 'online', names).cause)
+      .toBe('camper, Assault rifle');
   });
 
   it('counts contracts done', () => {

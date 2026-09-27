@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_SIZE, Leaderboard, type KeyValue } from '../src/client/leaderboard.ts';
+import { BOARD_SIZE, dropOldBoards, Leaderboard, type KeyValue } from '../src/client/leaderboard.ts';
 
 function memory(): KeyValue & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -60,5 +60,23 @@ describe('leaderboard', () => {
     expect(board.best(1, 'offline')).toBeNull();
     board.add(1, 'online', run(9));
     expect(board.entries(1, 'online').map((e) => e.score)).toEqual([9, 5]);
+  });
+});
+
+describe('old boards', () => {
+  it("clears PvE's boards out of storage and leaves the rest", () => {
+    const data = new Map([
+      ['board:42:pve', '[]'], ['board:7:pve', '[]'], ['board:42:offline', '[1]'], ['board:42:mixed', '[2]'], ['name', 'Ana'],
+    ]);
+    const store = {
+      get length() {
+        return data.size;
+      },
+      key: (i: number) => [...data.keys()][i] ?? null,
+      removeItem: (k: string) => void data.delete(k),
+    };
+    expect(dropOldBoards(store)).toBe(2);
+    expect([...data.keys()]).toEqual(['board:42:offline', 'board:42:mixed', 'name']);
+    expect(dropOldBoards(null)).toBe(0);
   });
 });
