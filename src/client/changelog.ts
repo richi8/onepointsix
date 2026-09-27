@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-27',
+    title: 'Frame rate and replay shots',
+    notes: [
+      'The key hints in the top left corner now start with your frame rate.',
+      'Watching a replay with the free camera, the player’s shots now come from their gun, not from the camera, and sound from where they fired.',
+    ],
+  },
+  {
+    date: '2026-09-27',
     title: 'Know your rivals',
     notes: [
       'Killed by another operator, you’re told what kind of rival they were, a rat, hunter, camper or looter, and what that kind does: in the death cam, as you fall and on the results.',

@@ -299,6 +299,11 @@ canvas.fade-in {
   opacity: 0.8;
 }
 
+.hint .fps {
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
 .crosshair {
   position: absolute;
   left: 50%;

@@ -1280,9 +1280,16 @@ function showRound(struck: Struck, dx: number, dy: number, dz: number, quiet: bo
  * for the server to confirm.
  */
 function ownShot(shot: Shot, players: readonly PlayerSnap[]): void {
-  viewModel.fire(shot.weapon);
-  sfx.shot(shot.weapon, undefined, shot.quiet);
   const { ox, oy, oz, dx, dy, dz } = shot;
+  // A replay's free camera sees the player's body fire, not their gun in view.
+  const body = replay && replayCam === 'free' ? replay.id : null;
+  if (body === null) {
+    viewModel.fire(shot.weapon);
+    sfx.shot(shot.weapon, undefined, shot.quiet);
+  } else {
+    bodies.fire(body, shot.quiet);
+    sfx.shot(shot.weapon, { x: ox, y: oy, z: oz }, shot.quiet);
+  }
   const range = WEAPONS[shot.weapon].range;
   // Glass breaks and lets the round on, so the impact is past it.
   let t = world.raycast(ox, oy, oz, dx, dy, dz, range, true);
@@ -1293,7 +1300,11 @@ function ownShot(shot: Shot, players: readonly PlayerSnap[]): void {
     const hit = rayBody(p, ox, oy, oz, dx, dy, dz, t);
     if (hit && hit.t < t) (t = hit.t), (struck = 'body');
   }
-  from.copy(viewModel.muzzleOffset()).applyQuaternion(camera.quaternion).add(camera.position);
+  if (body === null) from.copy(viewModel.muzzleOffset()).applyQuaternion(camera.quaternion).add(camera.position);
+  else {
+    const muzzle = bodies.muzzle(body, from);
+    if (!muzzle || muzzle.distanceToSquared(to.set(ox, oy, oz)) > 9) from.set(ox + dx * MUZZLE_REACH, oy - 0.1, oz + dz * MUZZLE_REACH);
+  }
   to.set(ox + dx * t, oy + dy * t, oz + dz * t);
   showRound(struck, dx, dy, dz, shot.quiet);
 }
@@ -1640,9 +1651,20 @@ if (import.meta.env.DEV) {
   });
 }
 
+/** The frame rate in the corner, counted over half a second. */
+const fpsEl = document.getElementById('fps')!;
+let fpsFrames = 0;
+let fpsSince = 0;
+
 renderer.setAnimationLoop(() => {
   const now = performance.now() / 1000;
   if (Number.isNaN(still)) resolution.update(now - last);
+  fpsFrames++;
+  if (now - fpsSince >= 0.5) {
+    fpsEl.textContent = `${Math.round(fpsFrames / (now - fpsSince))} fps`;
+    fpsFrames = 0;
+    fpsSince = now;
+  }
   const dt = Math.min(now - last, 0.1);
   last = now;
 
