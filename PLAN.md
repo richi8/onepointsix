@@ -238,11 +238,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 [KNOWN_ISSUES_HISTORY.md](KNOWN_ISSUES_HISTORY.md).
 
 ### Look and animation
-- **Distant bodies animate at 12 Hz and skip hand IK** (9), beyond 90 m. It's cheaper, but
-  scoped players may notice the stutter.
-  **Resolved in part** (21): they animate at 20 Hz, each on its own turn rather than all in the
-  same frame, which cost 3 ms every few frames for 24 bodies. The benchmark's new far case poses
-  24 bodies 100–400 m off in 0.7 ms a frame (median). They still skip hand and leg IK.
 - **One soldier model for every side, told apart only by tint** (9). Commanders look like any
   other guard. Since chunk 11 only the uniform is recoloured, not the whole body.
   **Resolved in part** (13): it's still one model, but the sides now differ in kit as well as
@@ -359,10 +354,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **The crouch-walk is a slow sneak played fast** (21). The library's clip moves at 0.57 m/s and
   crouched bodies move at up to 2.4 m/s, so its strides are lengthened up to 1.8× and it plays up to
   3× faster. At full crouch speed the legs may look hurried.
-- **Retargeted legs rely on the leg IK** (21). The library's legs are shorter for their hips than
-  the soldier's, so its shins, turned the same way, leave the ankle about 10 cm from where the feet
-  are placed. Within 90 m the legs reach the feet every frame. Beyond 90 m there's no leg IK, so a
-  crouching or landing body's shins and feet don't quite meet.
 - **Feet don't follow the ground** (21, from 9). A planted foot is held where it landed, but at
   the height the clip gives it above the body's own height. On a slope or a step the feet float
   or sink a little.
@@ -373,9 +364,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   don't move with the hands; a fresh magazine is a box in the hand and the old one never drops.
   The bolt-action always thumbs in three rounds, however many it needs. The points on the guns
   were marked by eye on side views, not snapped to the geometry.
-- **The head leaves its hitbox for a moment on landing** (21). Moving the body up or down to
-  put the head at eye height is eased and limited to 30 cm, so the landing's deep dip shows.
-  Deep in a crouch the upper body leans back a little to bring the head over the feet.
 - **The first-person arms are about twice as long in the upper arm** (21). Only the forearms and
   hands show, so it can't be seen, but the elbows sit where no real elbow would. Watched only in
   still pictures.
@@ -398,22 +386,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   half over to wrap the right), so its skin wrung into a thin strip. While aiming the pistol the left
   forearm now rolls with the hand, leaving the wrist at most 23° of twist; the hand stays exactly
   where it was. The right hand (46°) is left as it was.
-- **The soldier download grew by 78 kB** (21), 33 kB gzipped, to 599 kB: the new clips' keys
-  aren't compressed (meshopt only quantizes the meshes), though they're sampled at 20 per second
-  and resampling drops the keys a straight line would give.
-- **Chunk 21's cost** (21): on an M3 Pro in Chromium, posing 24 near bodies takes 2.4 ms a frame
-  (median) against 2.5 ms for chunk 20's code on the same machine under the same load, measured
-  back to back. The new clips, foot holds and head matching cost more, and the rig's helpers were
-  made cheaper to pay for them: they read bones' world matrices as they stand instead of
-  rebuilding them up the whole chain on each call, and the head is matched with one turn at the
-  waist, worked out from how the head moves per radian, instead of two probing turns each way.
-  In the browser tests' benchmark, posing them took 2.2 ms in Chromium (2.4 in the kept
-  baseline), 2 ms in Firefox (was 3) and 2 ms in WebKit (was 2). Whole frames came out slower than
-  the baseline in Chromium (13.7 against 10.6 ms) and WebKit, but so did the empty frame with no
-  bodies at all (4.5 against 3.1 ms), so the machine was busier than when the baseline was kept;
-  it wasn't replaced.
-- **Working the bolt fills a corner of the screen** (21). In first person the right hand comes
-  back to the bolt near the eye, and the forearm covers the bottom right while it does.
 - **Bots never go upstairs** (23). The nav grid is one layer over the ground, so a two-storey
   building's upper floor and stairs don't exist for bots: they path about the ground floor under
   it and never climb to the lookout, and a player up there is only shot at through the windows.
@@ -428,10 +400,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Doors swing only on screen** (23). The leaf's collider jumps between shut and open at once;
   its picture swings over 0.35 s. Pressing F waits for the server, so a door opens a round trip
   after the press.
-- **Glass is simple** (23): a flat, faintly tinted pane with no reflection or dirt, the same whether
-  looked at or through. Bots see through it exactly as through air, grenades bounce off it rather
-  than breaking it (the blast does), and it shatters into the same flying chunks as a wall, in a
-  pale colour.
 - **The light volume is rough** (23). Cells about 0.5 m across leave a little light leaking at the
   foot of walls; only sky light is counted (no light bounced off the floor, no colour), and only
   what the building itself hides: hills, trees and other buildings outside don't darken a room.
@@ -442,34 +410,18 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Bodies take shadows only near buildings** (23), within 1.5 m of one, as receiving them
   everywhere cost 1–3 ms a frame with 24 near bodies. Out in the open, a soldier in a tree's or a
   wall's shadow is lit as before.
-- **Fewer huts than planned** (23): nine were planned, but most islands have room for two to six
-  on ground flat enough (0.4 m of fall under the whole hut and a metre round it).
-- **Impostors are baked from the side** (24): the eight pictures are taken level with the tree,
-  so from high up (the menu, a hilltop) an impostor still shows its side, and it's lit as that
-  side, not as the crown seen from above. The branch cards are baked with their normals pointing
-  out of the crown on both faces, where the full tree flips them toward the camera, so up close
-  an impostor is a little smoother and brighter than the tree it replaces. The dither is fixed
-  to the screen, so a tree mid-fade may look grainy in motion; nobody has watched it move.
 - **The reflection is partial** (24): it holds the terrain, trees, props, rocks, flags and the sky,
   not bodies, bags, grass, bushes, debris, rain, effects or the sea itself, so a soldier wading
   has no reflection. It's a third of the screen's resolution and redrawn every frame the camera
   is above water, whether or not any sea is in view, reusing the last frame's shadow maps. The
   ripples bend it by a fixed share of the screen, whatever the distance. The glass in windows
   still reflects nothing.
-- **The waves near the camera changed** (24): with the new swell the sea rises and falls up to
-  0.3 m instead of 0.21 m, and the shortest wave (3.7 m) now shows only in the lighting, not the
-  surface, where it aliased at the grid's 2 m spacing. `waveHeight`, which decides when the camera
-  is under water, still adds every wave in full, so near the surface it can be a few centimetres
-  off what's drawn.
 
 ### Sound
 - **Nobody has listened to the new sound** (14). This machine has no way to hear it. The
   recordings were chosen by title, description, rating and waveform, the cuts were placed from
   loudness envelopes, and the levels were set by rendering each sound offline in headless Chrome
   and measuring its peak and RMS. Mix, reverb amount and ambience levels need a listening pass.
-- **The recordings are Freesound's previews** (14), 128 kbps MP3, not the original files, which
-  need a Freesound account or API key to download. They're re-encoded once more to 64 kbps AAC.
-  Since chunk 20 that's Opus at 40 kbps (AAC where Opus won't decode), still unheard.
 - **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,
   the rifle and pistol reloads are mixes of other recordings, the bolt-action's shot is a .405
   Winchester lever-action, and concrete footsteps reuse the stone ones played 10% faster. Every
@@ -505,27 +457,12 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   for. Loading locally took no longer (1.22 s against 1.26 s), but on a slow connection it adds
   to the wait. Moving the ambience to the late bank would halve it, at the cost of the ambience
   fading in a moment after Play.
-- **The AAC fallback is ffmpeg's own encoder** (20), not Apple's: 1.43 MB for the two banks
-  against the old file's 1.30 MB at the same 64 kbps, and likely a little worse. It's only for
-  browsers that can't decode Opus. Playwright's WebKit decodes Ogg Opus, so the fallback was
-  tested by blocking the Opus files; which real Safari versions need it wasn't checked.
-- **The sounds are decoded at 48 kHz before audio is unlocked** (20), in an
-  OfflineAudioContext, so a device running at 44.1 kHz resamples them as they play.
 - **Sound round corners is worked out on a flat grid** (26). The grid is at ground level, so
   upstairs, on a roof or up a watchtower, routes are worked out as if on the ground below; the
   legs are checked in 3D, so a wrong route is dropped rather than heard, but a right one upstairs
   can be missed. Sound can't go round through an open window, only straight through its gap, and
   goes round only within 48 m; past that it's straight through or over. The losses per material
   and per bend were picked, not measured or heard.
-- **The new recordings are unheard** (26), like the rest: picked by title, description and
-  loudness envelope. They added 42 kB to the Opus banks (early 700 to 728 kB, late 84 to 99 kB)
-  and 96 kB to the AAC ones.
-- **The battle bed places far fights only roughly** (26): by the nearest of 8 compass points,
-  all through the same filter, and with no difference between a fight 160 m and 400 m off beyond
-  its level and dullness.
-- **Under water is only muffled** (24): everything heard goes through one low-pass filter (450 Hz)
-  and drops to 60% while the camera is under the surface. There's no underwater ambience, and
-  nothing was listened to: the cut-off was picked, not tuned by ear.
 
 ### Performance and loading
 - **Adaptive resolution is untested on slow hardware** (9) and could flip back and forth.
@@ -539,36 +476,9 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   at 3.3 s, then held there at 15.5 ms a frame; a browser test fails if it doesn't settle under
   20 ms within four changes. Only Chromium runs it, and the slowness is simulated, not real
   hardware (chunk 30).
-- **The total JavaScript loaded at start barely changed** (11): about 740 kB minified (200 kB
-  gzipped), now in four chunks that load in parallel. Splitting keeps three.js cached across
-  game updates, but it doesn't shrink the download.
-  **Resolved in part** (20): measured on the production build, the JavaScript and wasm fetched
-  before the menu shows fell from 1,550 kB to 1,227 kB (544 kB to 396 kB gzipped), almost all of
-  it the smaller transcoder. The JavaScript alone barely moved (1,023 kB to 1,015 kB): the entry
-  chunk is 197 kB instead of 212 kB, but the ground cover and impostors, split off, still load
-  while the loading screen is up. Only the death cam and replay viewer wait until after it.
 - **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
   production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred). The new build isn't on
   the live site until it's pushed.
-- **The game's entry chunk grew to 141 kB** (13), from 120 kB, with the body posing and the
-  first-person arms. The soldier model grew by 4.5 kB for the death clip.
-- **The entry chunk grew again, to 172 kB** (15), with the terrain tiles, water, ground cover,
-  impostors and cascades. It all ships in the entry chunk rather than loading lazily.
-  **Resolved in part** (20): it had reached 212 kB by chunk 19. The ground cover (9 kB), the
-  impostors (3 kB) and the death cam with the replay viewer (6 kB) are chunks of their own now,
-  and the entry is 197 kB. The terrain, water and cascades stay in it.
-- **The lazy chunks mostly still load at start** (20). The ground cover and impostors are
-  wanted as soon as the island shows, so they load alongside the assets while the loading screen
-  is up; splitting them off shrinks the entry chunk but not the start. Only the death cam and
-  replay viewer (6 kB) wait, until the menu is up. If one fails to load, a replay or death cam
-  says so (or goes straight to the results) and can be tried again.
-- **The committed transcoder is a binary** (20), built with Emscripten 4.0.10 in Docker. When
-  three.js updates KTX2Loader, its calls must still match the wrapper of Basis 1.50; only the
-  browser test that loads the textures would notice. A phone GPU with PVRTC but not ETC (old
-  iPhones) now gets plain RGBA, four times the memory; the game is desktop only.
-- **The fade-in stands the view still** (20). While the textures go on and their shaders
-  compile, the picture of the last flat-coloured frame covers a game that keeps going, so a
-  player moving then sees a still frame for that long (a few hundred milliseconds here).
 - **A click on the run dashboard within about a second of Esc resumes late** (dashboard retry
   commit). Chrome refuses to re-lock the mouse that soon, so the click keeps retrying for up to
   2 s and the game resumes once it's let through. Untested: headless Chrome never grants pointer
@@ -582,42 +492,8 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   there, but a key pressed by a test doesn't free it the way Esc does, so Chrome's hold itself
   still hasn't been seen by a test; the messages were checked in WebKit, which refuses every
   lock, with the time since Esc faked.
-- **Chunk 24's cost** (24): the machine was noisy during this chunk: chunk 23's own code measured
-  a Chromium empty frame of 5.6 to 8.8 ms in the same session, against its kept 3.1. Run side
-  by side, this chunk's empty frame came out 1 to 2 ms slower (7.1 to 10.2 ms), most of it the
-  reflection pass, a second drawing of the island at a ninth of the pixels with about 30 draw
-  calls; the browser tests' report gave 6.8 ms empty and 11.7 ms with 24 bodies (Firefox 8 and
-  16, WebKit 5 and 12), under the 16.7 ms budget. The full trees dissolve between 110 and 140 m
-  because a first try at 150 to 180 m drew full trees in twice the tiles, in the main pass, both
-  moving cascades and the reflection (137 draw calls against 87); now it's 89, the two more being
-  the sea's new ring. Triangles rose from 428k to 499k, mostly that ring, drawn twice (its two
-  sides). The kept baseline wasn't replaced.
-- **Chunk 23's cost** (23): with the light volume in the shader of every lit surface, the
-  browser tests' benchmark came out as before in all three engines once materials looked only at
-  the four nearest buildings (Chromium 3.3–3.7 ms empty, 10.9–11.4 ms with 24 bodies; the kept
-  baseline is 3.1 and 10.6). Looking at all sixteen cost 2.6 ms in Chromium's empty frame, and
-  bodies taking shadows everywhere cost 1–3 ms. Chromium's empty frame also comes out at 7–8 ms
-  about one run in three, with this chunk's code and with chunk 22's alike, so that's the machine.
-- **Sight through grass costs about twice as much** (27): about 10 µs a sight line in one part of
-  the island, against 4.5 µs before, as each tuft near the low stretches of the line is checked.
-  Grass cells are kept for sight up to 3,000 (under a third of the island) and then all let go at
-  once, to be scattered again as needed. The frame benchmark showed no change beyond its noise.
-- **Pebbles are tied to the grass** (27). They carry on from the grass's random numbers, so the
-  client runs the generator through the grass's draws for each cell to leave them where they were.
-  A change to how grass is scattered moves the pebbles too.
 
 ### Sharing and leaderboards
-- **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
-  query parameters, so anyone can edit them. They're a friendly challenge, not a record.
-- **Leaderboards only hold your own runs, in one browser** (10). They're lost when site data is
-  cleared, and they don't follow you to another device.
-- **Online and Offline play the same until there is a multiplayer server** (modes change). Both
-  run in the local Worker, so nobody can join an Online game yet. The only difference today is
-  that Offline never takes a second human.
-- **Names aren't filtered** (10). Locally only you and the bots see yours, but multiplayer will
-  need filtering and length checks on the server.
-- **"New island" only picks seeds up to 999,999** (10), to keep the numbers short. Typed
-  `?world=` values still reach every seed.
 - **The single-file build is checked by hand only** (single file). `npm run build:single` makes
   `dist-single/onepointsix.html`, the whole game in one 8.3 MB page that plays when opened from
   disk: one inline script, workers and `public/` packed in base64 and served to `fetch()` and
@@ -625,15 +501,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Chromium, Firefox and WebKit (loaded, textured, a run started). No Playwright test covers it,
   since the suite runs on the dev server. The shim covers only `fetch()` and `Worker`, so a new
   loader that uses `XMLHttpRequest`, an `<img src>` or a module worker with imports would break it.
-- **Share links from the single file point at the player's own disk** (single file). The link is
-  built from the page's address, a `file://` path that nobody else can open.
-- **The single file keeps its data with every other page opened from disk** (single file).
-  Browsers key a `file://` page's storage loosely (Chrome shares one store across all of them), so
-  the leaderboard, stats and replays sit alongside other local pages' data, and moving or renaming
-  the file may lose them. Not checked per browser.
-- **The single file starts slower and holds both sound formats** (single file). It parses 8.3 MB
-  of HTML before the loading bar moves, which isn't counted by the bar (the scripts are left out of
-  its sizes), and it carries the Ogg and the M4A sounds though a browser plays only one.
 
 ### Day, night and weather
 - **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
@@ -646,28 +513,10 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (25): the four nearest now do. With 24 soldiers close up, all lit, in rain
   at night, the benchmark frame costs about 0.5 ms more than the same crowd by day (M3 Pro, a
   noisy run: both about 14 ms with the machine loaded). Past four, still beams and glares only.
-- **Fog is plain distance fog** (16), the same everywhere, with no banks drifting or thicker
-  patches in hollows.
-  **Resolved in part** (25): three.js's fog chunks are replaced by a version adding low mist that
-  thins with height above the sea and stands deeper in noise-shaped banks, with no uniforms of its
-  own (its amount follows the fog's reach). The banks stand still: drifting would need a time
-  uniform in every fogged material. "Hollows" means low ground, not ground lower than its
-  surroundings.
-- **Conditions aren't checked by the server** (16) beyond parsing the link. Every combination is a
-  separate game in the directory, so in multiplayer nine conditions per island would split the
-  players unless the server picks them.
-- **Night scores beat day scores** (16). Night crates hold an extra item and more valuables,
-  and the leaderboards are shared across conditions, so the best scores on a board will tend to
-  be night runs.
-  **Resolved in part** (25): each score on the board now shows the conditions it was set in
-  (kept with new scores; older ones show none), and sharing your best sends it in its conditions.
-  The boards stay shared, with no night adjustment, as decided.
 - **The look was tuned by screenshots only** (16), on an M3 Pro through headless Chrome. The cost
   of up to 24 beams and glares, three spotlights and the rain on a mid-range laptop wasn't
   measured. The lighting presets, rain, flashlights and menu pickers have no automated tests; the
   config, link, bot senses, night guards and loot do.
-- **The sounds grew to 1.3 MB** (16) with the rain and cricket loops, still downloaded behind the
-  menu (see Sound).
 - **Night tuning comes from bots only** (16). In a bot playtest (4 islands × 15 min each),
   operator bots got out of 18% of runs on a clear day, 22% in rain, 26% in fog, 12% on a clear
   night, 19% on a rainy night and 24% on a foggy night. So night is the hardest and fog the
@@ -679,16 +528,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   they do dry. Puddles are painted by noise on near-flat ground, not where water would gather,
   and don't ripple. The roof map reaches 32 m round the camera; beyond it everything is wet, so
   a far building's floor seen through a door would be too.
-- **Splashes are placed on the CPU** (25), 3,000 a second within 22 m, each a ground-height query.
-  Cheap on an M3 Pro; not measured on slower machines.
-- **Lightning is client-side and random** (25): each viewer sees their own strikes, replays don't
-  keep them, and bots ignore flashes and thunder.
-- **The thunder** (25) is one recording (a 9 s cut) played slower and duller for far strikes. It
-  added 37 kB to the late Opus bank and 73 kB to the AAC one.
-- **The mist is only in the picture** (25): bots' sight in fog is still the one flat multiple, so
-  low ground hides you from the player's eye more than from a bot's.
-- **Beam spotting** (25) uses the holder's aim, while the drawn beam follows the gun, which dips
-  while sprinting or reloading; a bot may notice a patch the picture puts a little elsewhere.
 - **Outpost lamps cast no shadows** (lamps, after chunk 29). Two or three lamps on poles stand
   against each outpost's walls, lit at dusk and night, but only the four nearest the camera
   really light the world (handed from lamp to lamp as you move, fading over 20 m first; gone past
@@ -702,9 +541,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Crouching helps only as much as by day. Operator bots don't avoid lamplight, and nobody shoots
   lamps out on purpose; only the player's and stray rounds or blasts do. A shot lamp comes back with the
   other broken panels. Checked by unit tests and screenshots only; nobody has played it.
-- **The replay test's floor was lowered** (lamps): with the poles in the world, the test run's
-  player is shot 24 s in rather than lasting the 40 s, so fewer ticks are compared (16,905 rather
-  than 38,467); the check now asks for 9,000.
 - **Grass is still crossed cards** (natural grass, after chunk 29). Tufts now take the ground's
   colour at their roots (the terrain's textures, blended by its weights, from a small mip in the
   vertex shader), lean their normals out so a tuft shades like a clump, glow when the sun or a lamp
@@ -715,14 +551,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   thickened by mip level at 0.2 rather than 0.3, which keeps its tops ragged), a little less than
   the sight model's cover. Checked by screenshots only; the frame cost wasn't measured apart from
   the benchmark still passing.
-
-### Death cam
-- **Only the killer is replayed from inputs** (10). Everyone else is drawn from the snapshots the
-  victim's client received, so they're a little behind, and bots out of sight may pop in.
-- **Death cam clips are big** (10): about 6 s of commands and keyframes as plain JSON, some tens
-  of kB per death. That's fine through the Worker, but multiplayer should pack it.
-- **Every player's inputs are taped all the time** (10), including guards far from anyone, just
-  in case they kill someone. It's cheap, but it isn't free.
 
 ### Replays
 - **Replays are tied to the game's version** (17). A change to the simulation, the weapons or
@@ -747,70 +575,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (28): in Offline the local host holds the game still while you watch (a
   `pause` message the host handles, not the game, so it isn't logged). Online games go on, since
   other players could be in them.
-- **Look angles are rounded** (17). Commands carry yaw and pitch in whole 0.00001 rad steps, so
-  the replay stores them as small whole numbers and still replays exactly. It's far below a
-  pixel, but it is a change to what the server simulates. Since chunk 28 the tick a command was
-  sampled at (for rewinding shots) is rounded to a thousandth of a tick as well, for the game log.
-- **The server keeps a human's whole run** (17): every command and a key every 0.5 s, about
-  36,000 commands for ten minutes. Fine locally; a multiplayer server should keep it packed.
-- **Replays from before chunk 23 can't be watched** (23). The buildings changed, so the replay
-  format's version went up to 2 and older files are refused as from another version. The door
-  state in them is rebuilt like broken panels, from the doors open at the start and every door
-  event since.
-- **Replays from before chunk 28 can't be watched** (28). Version 3 files are packed bytes, not
-  JSON; older ones are refused as from another version.
-- **Running the game again takes a while for an old game** (28). The worker runs it from the
-  game's start, about 0.3 ms a tick, so a run that began 10 minutes into a game is exact only
-  after some 6 s; until then, and anywhere the check fails, the frames are shown. A game that ran
-  more than 15 minutes (`RERUN_HISTORY`) before the run started sends no log at all, so its replay
-  is frames only. Play again in the same game makes each later run's log longer.
-- **The log carries every human's inputs** (28). Locally that's only you, but a multiplayer
-  server would hand one player everyone's inputs from the game's start; it should run replays
-  itself or send only what's needed.
-- **Nothing after the run's end is logged** (28): the log goes with the tape at the end, so
-  anything from the next 2.2 s of replay (a new run joined at once in the same game) makes the run
-  again differ, and the replay finishes on frames. A dead player's look after the end isn't logged
-  either; only their own body turns, and it's drawn from the tape.
-- **Engines were compared on one short run only** (28). A 6 s run saved in Chromium ran again
-  exactly in Chromium, Firefox and WebKit, every tick checked. A long run with many shots and
-  deaths might still come out differently where engines work out `Math.sin` and friends
-  differently; the check would then fall back to the frames from that moment.
-- **The exact track is held in memory** (28): every tick of everyone as 32-bit floats, about 23 MB
-  for a ten-minute run.
-- **Far bodies are coarser in the fallback** (28): kept 2 a second beyond 80 m and filled in
-  between, so they glide where the game run again isn't in use.
 - **Opening another island doesn't free everything** (28): the tree impostors' baked pictures and
   a few other GPU buffers stay until the page closes, so many switches in one session use more
   memory.
-- **Replay files carry a browser id** (28): a random 16-digit hex id, the same for every replay
-  from one browser, so replays can be told to come from one person, though not who.
 
 ### Rivals
-- **Operator bots get out less often** (18). In a 30-minute, 6-island bot playtest 13% of their
-  runs extract, down from 20% before the personalities: rats 20%, looters 14%, campers 11%,
-  hunters 7%. Hunters and campers stay on the island longer by design (up to 4 and 5 minutes into
-  the run, or until below 60 health), and guards still do most of the killing. It was tuned from
-  hunters at 0%: they now watch fights from 40 m off, 90 m if guards are in it, and 135 m from the
-  middle of an outpost, and drop out of hunting when hurt.
-  **Resolved in part** (29): operator bots now fight guards only within 40 m, or 60 m when shot
-  at, and otherwise get away rather than trade shots with a sentry or patrol far off (guards had
-  done two thirds of the killing, most of it at 50–100 m). One shot by a guard gives up the crates
-  within 100 m of it; one below 60 health goes on to extract rather than to its next crate once a
-  fight is over; one that doesn't raid leaves crates within 60 m of an outpost alone; one looking
-  for a way out counts an extraction point within 150 m of an outpost as 150 m farther. Looting
-  also stops with 150 s of the clock left, as hunting and camping did. The personalities' own
-  numbers were left alone (shorter lingering for hunters and campers was tried and didn't help).
-  Over 24 islands × 30 minutes by day, 16% of operator bot runs extract, from 14% just before
-  (rats 25%, looters 18%, campers 10.5%, hunters 9.5%, from 23%, 14.5%, 10% and 7%); over 12
-  islands at night in rain, 18% from 16%. Chunk 12's 19% wasn't reached: operators killing each
-  other (about 105 an hour of game) didn't change, and guards still do three fifths of the
-  killing. Between runs of 12 islands the rate moves by a point or two, so smaller changes were
-  measured on seeds 1–12 and 13–24 both.
-- **The kill feed was already there** (18). It came with the run loop; this chunk only marks the
-  bounty being killed, and adds a row when someone takes the bounty.
-- **Killing the bounty pays nothing extra** (18). The reward is their loot, left in their bag. The
-  bounty goes to whoever carries the most (at least $3,000), keeps to its carrier on a tie, and is
-  called every 20 s within 15 m of where they are. It shows in the HUD for 8 s after each call.
 - **Campers may wait where they can't see the extraction point** (18). A spot that can see into it
   from a crouch is preferred, but if none of 16 tries finds one, any dry spot 25–45 m off will do.
   **Resolved in part** (27): a camper first looks for a big bush 25 m out to the range that sees
@@ -818,23 +587,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   20 s, 10 m farther out each time up to 85 m, and swapped for a spot that sees. In the day
   playtest 19% of first camps were blind and 22 of those 50 later moved to one that could see; the
   rest ran out of range or time. Campers still settle for a blind spot while they look.
-- **Bots know who fired which shots** (27). A bot joining a fight guesses where the shots came
-  from, but still tells two shooters apart exactly and knows whether guards are in the fight.
-- **A new fill bot learns who the bounty is only at the next call** (27), up to 20 s later, while
-  a player sees the name at once. Guards no longer spot or hear the bounty any sooner than anyone.
-- **Bots remember a bag's value as they last saw it** (27). If someone takes loot from it after,
-  the bot comes for what was there, and finds out on searching it.
-- **A grenade whose thrower has left counts as the victim's own** (27), as it did before for the
-  score, so its death cam is through the victim's eyes, headed "Killed by your own grenade".
-- **Snapshots are bigger** (18): each carries the bounty, and each bag its value.
-- **Everyone is told a dead bot's kind** (29): the kill event goes to everyone, and a bag's kind
-  is in every snapshot, so snapshots grow a little more. Only the one killed is told their
-  killer's kind (in how their run ended and the death cam). A human's body and bag name no kind.
-- **The kinds are told in words only** (29): a small tag in the feed, a word on the bag's tag and
-  one fixed sentence per kind on the results. There's no icon or colour for each.
-- **Replays from before chunk 29 have no kinds** (29). They still play, with plain bag tags and
-  feed rows. The bots' new rules change the simulation, so a replay kept from before this update
-  shows everyone exactly only until the game first plays out differently, then its frames.
 
 ### Code and testing
 - **The client's rendering, animation and audio have no automated tests** (9). They were checked
@@ -849,14 +601,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   cover, impostors, cascades, indoor light by day and night) and of the pose viewer's soldiers,
   and decode the sound bank in all three engines to check each shot starts on time. The
   animation is still only checked in still pictures, and still nobody has listened to the audio.
-- **Gun fitting uses hand-measured fractions** (9) in `src/client/guns.ts`, so a new model needs
-  measuring again.
-- **Snapshots are bigger** (13): each player carries five more fields (motion, action and its
-  progress, suppressor, commander). That's fine through the Worker, but multiplayer should pack
-  them.
-- **Two tests had leaned on the old outpost layout** (15): the guard test put the intruder at a
-  fixed spot, which now sits between two containers, and the mantle test picked a crate that now
-  has another stacked on it. They now pick a spot the sentry can see, and an unstacked crate.
 - **The browser tests don't run in CI** (19). The deploy workflow still runs only Vitest. The
   tests want a GPU to draw the game at speed; on Linux Chromium is told to use OpenGL
   (`--use-angle=gl`), which hasn't been tried, and neither have Firefox and WebKit on Linux.
@@ -865,23 +609,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   (which reports each as a failure once), so they only catch changes on the machine that made
   them. A change to fewer than 1% of the pixels passes. Firefox and WebKit draw the same spots in
   no comparison, only in the UI tests.
-- **The dev shortcut is a new client message** (19): `{ t: 'dev', cmd }` ends your run, gives
-  you or the nearest operator bot loot, brings that bot 8 m in front of you or has you kill it.
-  Only the Worker host of a development build passes it on; a multiplayer server must drop it.
-- **The benchmark reports and doesn't judge** (19). `dev/bench.html` times each frame until the
-  GPU is done with it (a one-pixel read), so it's one frame's whole cost, not the throughput of
-  frames overlapping. Firefox and WebKit round timers to 1 ms. The report shows each number
-  next to the one kept in `e2e/bench-baseline.json` (an M3 Pro, chunk 19), but nothing fails on a
-  slower frame. It runs last, alone, as the teardown of the setup project, so running a single
-  engine's tests runs it too, unless `--no-deps` is given.
-- **The committed textures weren't remade by the new script** (20). The KTX2 files are still the
-  ones `sips` scaled; the script now scales with ffmpeg's Lanczos, and its textures differ a
-  little: 0.1 to 0.5 dB lower on colour, slightly better normals. The next run of the script
-  replaces them.
-- **The texture comparison mixes in the resize** (20). The originals are scaled by the
-  browser's own resize, not the one the textures were made with, so part of the measured error
-  is that difference. The comparison needs the originals in `node_modules/.cache`, so it's
-  skipped on a fresh checkout until `scripts/fetch-assets.mjs` has run.
 - **The scripts' CI job hasn't run on GitHub yet** (20). `.github/workflows/scripts.yml` runs
   both scripts on Ubuntu when they or their lists change, and the unit tests on what they make.
   It was run as-is in a Linux x86-64 container (about 8 minutes under emulation), not on GitHub,
@@ -892,39 +619,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Chromium frame from 3.1 to 10.6 ms (Firefox 7 to 16, WebKit 4 to 11). Posing them is only 2.4 ms
   of it: the rest is drawing, about 43 draw calls each with their shadows (1,113 against 86) and
   1.1 million triangles against 0.42 million. Worth merging a soldier's meshes in chunk 21.
-- **The ground cover's first fill takes about 21 ms** (19), when every cell in range is scattered
-  at once. Crossing into a new cell after that takes about 1 ms (1.7 ms at the 95th percentile in
-  Chromium), and into cells seen before about the same, so the copying costs as much as the
-  scattering.
-- **Chunk 23's tests** (23): unit tests cover the plans, huts, doors (pairs, swinging, facing,
-  walking through open and not shut), glass (stops rounds and bodies, not sight; breaks at a
-  touch), roofs falling only when nothing holds them, the stairs, the upper storey, bots reaching
-  every crate from outside, and on the server F opening and shutting a door, a body holding it,
-  a late joiner told the open doors, a guard opening a door on its way and a round breaking a
-  pane. The cover tests had to pick their test wall more carefully and blow a wider hole, as the
-  new buildings sit behind walls that used to have room. The light volume, the door swing, the
-  glass and the door prompt were checked by screenshots only: the indoor spot moved into the
-  two-storey building and an upstairs spot was added.
-- **Chunk 24's tests** (24): unit tests pin the cascade patch to three.js's lighting chunk and
-  check the far tiles' heights and level picks against the terrain's own meshes and three.js's
-  LOD. The browser tests add screenshots from the sea at 200, 400 and 600 m and of a tree line
-  fading into impostors, and the adaptive-resolution check on a slowed GPU. The impostors' baked
-  pictures, the reflection, the swaying, the underwater wobble and muffling and the bushes'
-  colour were checked by screenshots (and one dump of the baked pictures) only, and the shader
-  that stands things on far tiles only by how its pictures look.
-- **Chunk 29's tests** (29): unit tests cover the kinds in the kill, on bags (and bags merged
-  into), in the run's end and the death cam; operator bots fighting a guard close by but not one
-  far off, giving up crates near a guard that shot them and heading out once badly hurt; the
-  thorough plan; the run log's cause naming a kind; and PvE's boards being cleared. Browser tests
-  in each engine read the kind off the death cam banner, the results, a kill row and a bag's tag,
-  open Stats empty and after a run and export it, share through a stubbed share sheet (and close
-  it), and check PvE's boards are gone after loading. A replay test had compared frames recorded
-  after the replay's end, where a far body's last sample can only be held; the bots' new moves
-  made one of those 3.8 m off, so it now stops at the replay's end. The bounty test failed once
-  in a full run in Chromium: the rival had wandered off before it was killed and its bag's tag
-  didn't show; it's now brought back in front just before. Tried with 6 workers instead of 4,
-  several run and rivals tests failed because guards killed the player before the test's
-  shortcuts arrived; at 4 they all passed twice over.
 
 ### Playtest and tuning
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
@@ -987,19 +681,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   came out even (about 210 and 190 points per run), as did light and heavy carrying, so there was
   nothing to fix there without human data. Only the operator cap and operator bot behaviour were
   tuned.
-- **The buildings haven't been tuned for** (15). In a 10-minute, 6-island bot playtest, operator
-  bots got out of 19% of runs, against 18% before the buildings. The bolt-action's rate fell from
-  22% to 11%, but on only about 70 runs each.
-- **Operator bots now leave far-off enemies alone** (12). They fight guards only within 40 m, and
-  other operators only within their gun's effective range, unless shot at in the last 10 s. That
-  applies to human players too, so a bot you spot at long range won't open fire first.
-  Since chunk 29 being shot at no longer makes a guard fair game at any range: past 60 m an
-  operator bot gets away from it instead, even while it keeps hitting them. Nobody has watched
-  whether that looks like fleeing or like ignoring the shots.
-- **The bot playtest leaves out runs still going when it stops** (12), so long runs are slightly
-  undercounted. Bots get no contracts, so "contracts done" is always 0% there.
-  **Resolved in part** (29): it now counts them: about 4% of runs in a 30-minute game (21% in the
-  thorough mode, whose runs are long and few). They're still left out of the summary.
 - **The new buildings were tried by bots only** (23). Two bot playtests of 6 islands × 20 minutes
   each, before and after, came out the same: operator bots got out of 12% of runs before and
   12.5% after (13% → 11% on seeds 1–6, 11% → 14% on seeds 7–12), with the same kill rates. Over
@@ -1013,9 +694,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   that hide in bushes, and whether they're too hard to find there is untested.
 - **Bots don't sneak through grass or bushes** (27). They hide in bushes only to take cover or to
   wait, never pick a route through cover, and rats don't hide on hearing a fight nearby.
-- **Bots now path onto low obstacles** (23). The nav grid treats anything up to 0.52 m above a
-  cell's floor as something to step onto rather than walk round, so a hut's raised floor doesn't
-  block its doorway. Small rocks and the first step of a stair count too.
 - **The thorough playtest isn't a person** (29). Its bots can't be killed, play alone, don't
   notice being shot and never run dry, so it reads how long a full search and its fights take,
   not how often a person survives one. 13% of its runs still end stuck in a fight at 10:00.
@@ -1059,6 +737,12 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   - Real matchmaking: the first instance that isn't full, or a new one, for each world
   - Bot fill that shrinks as humans join
   - Anonymous identity, basic anti-cheat, deployment
+  - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
+    leaderboards kept by the server instead of in links and one browser; Online taking other
+    players; names filtered and length-checked; conditions picked by the server so players don't
+    split nine ways; snapshots, death cam clips and each human's kept run packed; death cams drawn
+    from everyone's inputs, taped only near someone, and no player sent another's inputs; the dev
+    message dropped
 - **Transport upgrade:** WebTransport or WebRTC DataChannels (UDP-like), server-side visibility
   culling, server leaderboards
 - **Replay links:** shareable through the server instead of as files (chunk 17 covers local

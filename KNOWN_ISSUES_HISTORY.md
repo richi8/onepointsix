@@ -696,6 +696,9 @@ notes the chunk it came from.
   busy the replay could reach its end before the test pressed Space to pause it, which starts
   an ended replay again instead. **Resolved** (20): the test pauses only if it's still playing,
   and waits for the paused state.
+- **Gun fitting uses hand-measured fractions** (9) in `src/client/guns.ts`, so a new model needs
+  measuring again.
+  **Resolved** (21): the hands go to points marked on each gun model (Grip, Support, Muzzle, Sight, Magazine, Bolt; see `src/client/guns.ts`).
 
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
@@ -715,3 +718,430 @@ notes the chunk it came from.
   50 m of its post (`RESPAWN_CLEAR`) or can see it from within 150 m (`RESPAWN_SIGHT`), and
   looks again every 3 s. A unit test stands someone on a tower. An operator bot camping near an
   outpost holds its guards off too; in the bot playtest nothing changed beyond the noise.
+
+## Dropped
+
+Open issues taken off the plan on 2026-09-28 as not worth pursuing: records of what was measured
+rather than problems, things accepted or decided, nitpicks nobody would notice in play, and
+duplicates. Those that only matter to a multiplayer server are marked **Moved to Future**.
+
+### Look and animation
+- **Distant bodies animate at 12 Hz and skip hand IK** (9), beyond 90 m. It's cheaper, but
+  scoped players may notice the stutter.
+  **Resolved in part** (21): they animate at 20 Hz, each on its own turn rather than all in the
+  same frame, which cost 3 ms every few frames for 24 bodies. The benchmark's new far case poses
+  24 bodies 100–400 m off in 0.7 ms a frame (median). They still skip hand and leg IK.
+  **Dropped** (2026-09-28): 20 Hz is enough; the missing IK beyond 90 m can't be seen.
+- **Retargeted legs rely on the leg IK** (21). The library's legs are shorter for their hips than
+  the soldier's, so its shins, turned the same way, leave the ankle about 10 cm from where the feet
+  are placed. Within 90 m the legs reach the feet every frame. Beyond 90 m there's no leg IK, so a
+  crouching or landing body's shins and feet don't quite meet.
+  **Dropped** (2026-09-28): only beyond 90 m, where it can't be seen.
+- **The head leaves its hitbox for a moment on landing** (21). Moving the body up or down to
+  put the head at eye height is eased and limited to 30 cm, so the landing's deep dip shows.
+  Deep in a crouch the upper body leans back a little to bring the head over the feet.
+  **Dropped** (2026-09-28): a brief dip of a few centimetres, not worth the work.
+- **The soldier download grew by 78 kB** (21), 33 kB gzipped, to 599 kB: the new clips' keys
+  aren't compressed (meshopt only quantizes the meshes), though they're sampled at 20 per second
+  and resampling drops the keys a straight line would give.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **Chunk 21's cost** (21): on an M3 Pro in Chromium, posing 24 near bodies takes 2.4 ms a frame
+  (median) against 2.5 ms for chunk 20's code on the same machine under the same load, measured
+  back to back. The new clips, foot holds and head matching cost more, and the rig's helpers were
+  made cheaper to pay for them: they read bones' world matrices as they stand instead of
+  rebuilding them up the whole chain on each call, and the head is matched with one turn at the
+  waist, worked out from how the head moves per radian, instead of two probing turns each way.
+  In the browser tests' benchmark, posing them took 2.2 ms in Chromium (2.4 in the kept
+  baseline), 2 ms in Firefox (was 3) and 2 ms in WebKit (was 2). Whole frames came out slower than
+  the baseline in Chromium (13.7 against 10.6 ms) and WebKit, but so did the empty frame with no
+  bodies at all (4.5 against 3.1 ms), so the machine was busier than when the baseline was kept;
+  it wasn't replaced.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **Working the bolt fills a corner of the screen** (21). In first person the right hand comes
+  back to the bolt near the eye, and the forearm covers the bottom right while it does.
+  **Dropped** (2026-09-28): a real bolt-action does the same.
+- **Glass is simple** (23): a flat, faintly tinted pane with no reflection or dirt, the same whether
+  looked at or through. Bots see through it exactly as through air, grenades bounce off it rather
+  than breaking it (the blast does), and it shatters into the same flying chunks as a wall, in a
+  pale colour.
+  **Dropped** (2026-09-28): good enough for panes that break at a touch.
+- **Fewer huts than planned** (23): nine were planned, but most islands have room for two to six
+  on ground flat enough (0.4 m of fall under the whole hut and a metre round it).
+  **Dropped** (2026-09-28): islands without room for more are fine as they are.
+- **Impostors are baked from the side** (24): the eight pictures are taken level with the tree,
+  so from high up (the menu, a hilltop) an impostor still shows its side, and it's lit as that
+  side, not as the crown seen from above. The branch cards are baked with their normals pointing
+  out of the crown on both faces, where the full tree flips them toward the camera, so up close
+  an impostor is a little smoother and brighter than the tree it replaces. The dither is fixed
+  to the screen, so a tree mid-fade may look grainy in motion; nobody has watched it move.
+  **Dropped** (2026-09-28): only noticeable from high up, and the far trees look right in play.
+- **The waves near the camera changed** (24): with the new swell the sea rises and falls up to
+  0.3 m instead of 0.21 m, and the shortest wave (3.7 m) now shows only in the lighting, not the
+  surface, where it aliased at the grid's 2 m spacing. `waveHeight`, which decides when the camera
+  is under water, still adds every wave in full, so near the surface it can be a few centimetres
+  off what's drawn.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+
+### Sound
+- **The recordings are Freesound's previews** (14), 128 kbps MP3, not the original files, which
+  need a Freesound account or API key to download. They're re-encoded once more to 64 kbps AAC.
+  Since chunk 20 that's Opus at 40 kbps (AAC where Opus won't decode), still unheard.
+  **Dropped** (2026-09-28): the original files were decided against (see Decisions).
+- **The AAC fallback is ffmpeg's own encoder** (20), not Apple's: 1.43 MB for the two banks
+  against the old file's 1.30 MB at the same 64 kbps, and likely a little worse. It's only for
+  browsers that can't decode Opus. Playwright's WebKit decodes Ogg Opus, so the fallback was
+  tested by blocking the Opus files; which real Safari versions need it wasn't checked.
+  **Dropped** (2026-09-28): only for browsers without Opus; not worth an Apple encoder.
+- **The sounds are decoded at 48 kHz before audio is unlocked** (20), in an
+  OfflineAudioContext, so a device running at 44.1 kHz resamples them as they play.
+  **Dropped** (2026-09-28): resampling while playing costs nothing noticeable.
+- **The new recordings are unheard** (26), like the rest: picked by title, description and
+  loudness envelope. They added 42 kB to the Opus banks (early 700 to 728 kB, late 84 to 99 kB)
+  and 96 kB to the AAC ones.
+  **Dropped** (2026-09-28): the same as "Nobody has listened to the new sound".
+- **The battle bed places far fights only roughly** (26): by the nearest of 8 compass points,
+  all through the same filter, and with no difference between a fight 160 m and 400 m off beyond
+  its level and dullness.
+  **Dropped** (2026-09-28): far fights are a background bed; rough is enough.
+- **Under water is only muffled** (24): everything heard goes through one low-pass filter (450 Hz)
+  and drops to 60% while the camera is under the surface. There's no underwater ambience, and
+  nothing was listened to: the cut-off was picked, not tuned by ear.
+  **Dropped** (2026-09-28): being under water is rare and brief.
+
+### Performance and loading
+- **The total JavaScript loaded at start barely changed** (11): about 740 kB minified (200 kB
+  gzipped), now in four chunks that load in parallel. Splitting keeps three.js cached across
+  game updates, but it doesn't shrink the download.
+  **Resolved in part** (20): measured on the production build, the JavaScript and wasm fetched
+  before the menu shows fell from 1,550 kB to 1,227 kB (544 kB to 396 kB gzipped), almost all of
+  it the smaller transcoder. The JavaScript alone barely moved (1,023 kB to 1,015 kB): the entry
+  chunk is 197 kB instead of 212 kB, but the ground cover and impostors, split off, still load
+  while the loading screen is up. Only the death cam and replay viewer wait until after it.
+  **Dropped** (2026-09-28): measured and cut in chunk 20; the load target itself stays open.
+- **The game's entry chunk grew to 141 kB** (13), from 120 kB, with the body posing and the
+  first-person arms. The soldier model grew by 4.5 kB for the death clip.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **The entry chunk grew again, to 172 kB** (15), with the terrain tiles, water, ground cover,
+  impostors and cascades. It all ships in the entry chunk rather than loading lazily.
+  **Resolved in part** (20): it had reached 212 kB by chunk 19. The ground cover (9 kB), the
+  impostors (3 kB) and the death cam with the replay viewer (6 kB) are chunks of their own now,
+  and the entry is 197 kB. The terrain, water and cascades stay in it.
+  **Dropped** (2026-09-28): split as far as is useful in chunk 20.
+- **The lazy chunks mostly still load at start** (20). The ground cover and impostors are
+  wanted as soon as the island shows, so they load alongside the assets while the loading screen
+  is up; splitting them off shrinks the entry chunk but not the start. Only the death cam and
+  replay viewer (6 kB) wait, until the menu is up. If one fails to load, a replay or death cam
+  says so (or goes straight to the results) and can be tried again.
+  **Dropped** (2026-09-28): they're needed as soon as the island shows.
+- **The committed transcoder is a binary** (20), built with Emscripten 4.0.10 in Docker. When
+  three.js updates KTX2Loader, its calls must still match the wrapper of Basis 1.50; only the
+  browser test that loads the textures would notice. A phone GPU with PVRTC but not ETC (old
+  iPhones) now gets plain RGBA, four times the memory; the game is desktop only.
+  **Dropped** (2026-09-28): accepted; the texture browser test catches a mismatch.
+- **The fade-in stands the view still** (20). While the textures go on and their shaders
+  compile, the picture of the last flat-coloured frame covers a game that keeps going, so a
+  player moving then sees a still frame for that long (a few hundred milliseconds here).
+  **Dropped** (2026-09-28): a few hundred milliseconds once, at the start.
+- **Chunk 24's cost** (24): the machine was noisy during this chunk: chunk 23's own code measured
+  a Chromium empty frame of 5.6 to 8.8 ms in the same session, against its kept 3.1. Run side
+  by side, this chunk's empty frame came out 1 to 2 ms slower (7.1 to 10.2 ms), most of it the
+  reflection pass, a second drawing of the island at a ninth of the pixels with about 30 draw
+  calls; the browser tests' report gave 6.8 ms empty and 11.7 ms with 24 bodies (Firefox 8 and
+  16, WebKit 5 and 12), under the 16.7 ms budget. The full trees dissolve between 110 and 140 m
+  because a first try at 150 to 180 m drew full trees in twice the tiles, in the main pass, both
+  moving cascades and the reflection (137 draw calls against 87); now it's 89, the two more being
+  the sea's new ring. Triangles rose from 428k to 499k, mostly that ring, drawn twice (its two
+  sides). The kept baseline wasn't replaced.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **Chunk 23's cost** (23): with the light volume in the shader of every lit surface, the
+  browser tests' benchmark came out as before in all three engines once materials looked only at
+  the four nearest buildings (Chromium 3.3–3.7 ms empty, 10.9–11.4 ms with 24 bodies; the kept
+  baseline is 3.1 and 10.6). Looking at all sixteen cost 2.6 ms in Chromium's empty frame, and
+  bodies taking shadows everywhere cost 1–3 ms. Chromium's empty frame also comes out at 7–8 ms
+  about one run in three, with this chunk's code and with chunk 22's alike, so that's the machine.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **Sight through grass costs about twice as much** (27): about 10 µs a sight line in one part of
+  the island, against 4.5 µs before, as each tuft near the low stretches of the line is checked.
+  Grass cells are kept for sight up to 3,000 (under a third of the island) and then all let go at
+  once, to be scattered again as needed. The frame benchmark showed no change beyond its noise.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix; no frame cost showed.
+- **Pebbles are tied to the grass** (27). They carry on from the grass's random numbers, so the
+  client runs the generator through the grass's draws for each cell to leave them where they were.
+  A change to how grass is scattered moves the pebbles too.
+  **Dropped** (2026-09-28): a note on the code, not a problem.
+
+### Sharing and leaderboards
+- **Scores in links can be faked** (10). With no backend, a link's `by` and `score` are plain
+  query parameters, so anyone can edit them. They're a friendly challenge, not a record.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Leaderboards only hold your own runs, in one browser** (10). They're lost when site data is
+  cleared, and they don't follow you to another device.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Online and Offline play the same until there is a multiplayer server** (modes change). Both
+  run in the local Worker, so nobody can join an Online game yet. The only difference today is
+  that Offline never takes a second human.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Names aren't filtered** (10). Locally only you and the bots see yours, but multiplayer will
+  need filtering and length checks on the server.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **"New island" only picks seeds up to 999,999** (10), to keep the numbers short. Typed
+  `?world=` values still reach every seed.
+  **Dropped** (2026-09-28): accepted (Phase 3).
+- **Share links from the single file point at the player's own disk** (single file). The link is
+  built from the page's address, a `file://` path that nobody else can open.
+  **Dropped** (2026-09-28): expected of a page opened from disk.
+- **The single file keeps its data with every other page opened from disk** (single file).
+  Browsers key a `file://` page's storage loosely (Chrome shares one store across all of them), so
+  the leaderboard, stats and replays sit alongside other local pages' data, and moving or renaming
+  the file may lose them. Not checked per browser.
+  **Dropped** (2026-09-28): expected of a page opened from disk.
+- **The single file starts slower and holds both sound formats** (single file). It parses 8.3 MB
+  of HTML before the loading bar moves, which isn't counted by the bar (the scripts are left out of
+  its sizes), and it carries the Ogg and the M4A sounds though a browser plays only one.
+  **Dropped** (2026-09-28): accepted for the single file.
+
+### Day, night and weather
+- **Fog is plain distance fog** (16), the same everywhere, with no banks drifting or thicker
+  patches in hollows.
+  **Resolved in part** (25): three.js's fog chunks are replaced by a version adding low mist that
+  thins with height above the sea and stands deeper in noise-shaped banks, with no uniforms of its
+  own (its amount follows the fog's reach). The banks stand still: drifting would need a time
+  uniform in every fogged material. "Hollows" means low ground, not ground lower than its
+  surroundings.
+  **Dropped** (2026-09-28): the still banks are enough.
+- **Conditions aren't checked by the server** (16) beyond parsing the link. Every combination is a
+  separate game in the directory, so in multiplayer nine conditions per island would split the
+  players unless the server picks them.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Night scores beat day scores** (16). Night crates hold an extra item and more valuables,
+  and the leaderboards are shared across conditions, so the best scores on a board will tend to
+  be night runs.
+  **Resolved in part** (25): each score on the board now shows the conditions it was set in
+  (kept with new scores; older ones show none), and sharing your best sends it in its conditions.
+  The boards stay shared, with no night adjustment, as decided.
+  **Dropped** (2026-09-28): conditions are shown by each score, and no night adjustment was decided (see Decisions).
+- **The sounds grew to 1.3 MB** (16) with the rain and cricket loops, still downloaded behind the
+  menu (see Sound).
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **Splashes are placed on the CPU** (25), 3,000 a second within 22 m, each a ground-height query.
+  Cheap on an M3 Pro; not measured on slower machines.
+  **Dropped** (2026-09-28): cheap; the mid-range laptop pass would show it if not.
+- **Lightning is client-side and random** (25): each viewer sees their own strikes, replays don't
+  keep them, and bots ignore flashes and thunder.
+  **Dropped** (2026-09-28): cosmetic; nothing depends on it.
+- **The thunder** (25) is one recording (a 9 s cut) played slower and duller for far strikes. It
+  added 37 kB to the late Opus bank and 73 kB to the AAC one.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **The mist is only in the picture** (25): bots' sight in fog is still the one flat multiple, so
+  low ground hides you from the player's eye more than from a bot's.
+  **Dropped** (2026-09-28): a small difference between what the eye and a bot see.
+- **Beam spotting** (25) uses the holder's aim, while the drawn beam follows the gun, which dips
+  while sprinting or reloading; a bot may notice a patch the picture puts a little elsewhere.
+  **Dropped** (2026-09-28): the difference is a small dip of the gun.
+- **The replay test's floor was lowered** (lamps): with the poles in the world, the test run's
+  player is shot 24 s in rather than lasting the 40 s, so fewer ticks are compared (16,905 rather
+  than 38,467); the check now asks for 9,000.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+
+### Death cam
+- **Only the killer is replayed from inputs** (10). Everyone else is drawn from the snapshots the
+  victim's client received, so they're a little behind, and bots out of sight may pop in.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Death cam clips are big** (10): about 6 s of commands and keyframes as plain JSON, some tens
+  of kB per death. That's fine through the Worker, but multiplayer should pack it.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Every player's inputs are taped all the time** (10), including guards far from anyone, just
+  in case they kill someone. It's cheap, but it isn't free.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+
+### Replays
+- **Look angles are rounded** (17). Commands carry yaw and pitch in whole 0.00001 rad steps, so
+  the replay stores them as small whole numbers and still replays exactly. It's far below a
+  pixel, but it is a change to what the server simulates. Since chunk 28 the tick a command was
+  sampled at (for rewinding shots) is rounded to a thousandth of a tick as well, for the game log.
+  **Dropped** (2026-09-28): accepted (Phase 3).
+- **The server keeps a human's whole run** (17): every command and a key every 0.5 s, about
+  36,000 commands for ten minutes. Fine locally; a multiplayer server should keep it packed.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Replays from before chunk 23 can't be watched** (23). The buildings changed, so the replay
+  format's version went up to 2 and older files are refused as from another version. The door
+  state in them is rebuilt like broken panels, from the doors open at the start and every door
+  event since.
+  **Dropped** (2026-09-28): expected: the replay format's version guards against it.
+- **Replays from before chunk 28 can't be watched** (28). Version 3 files are packed bytes, not
+  JSON; older ones are refused as from another version.
+  **Dropped** (2026-09-28): expected: the replay format's version guards against it.
+- **Running the game again takes a while for an old game** (28). The worker runs it from the
+  game's start, about 0.3 ms a tick, so a run that began 10 minutes into a game is exact only
+  after some 6 s; until then, and anywhere the check fails, the frames are shown. A game that ran
+  more than 15 minutes (`RERUN_HISTORY`) before the run started sends no log at all, so its replay
+  is frames only. Play again in the same game makes each later run's log longer.
+  **Dropped** (2026-09-28): the frames fall back until it's ready.
+- **The log carries every human's inputs** (28). Locally that's only you, but a multiplayer
+  server would hand one player everyone's inputs from the game's start; it should run replays
+  itself or send only what's needed.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Nothing after the run's end is logged** (28): the log goes with the tape at the end, so
+  anything from the next 2.2 s of replay (a new run joined at once in the same game) makes the run
+  again differ, and the replay finishes on frames. A dead player's look after the end isn't logged
+  either; only their own body turns, and it's drawn from the tape.
+  **Dropped** (2026-09-28): the replay finishes on frames, which is fine.
+- **Engines were compared on one short run only** (28). A 6 s run saved in Chromium ran again
+  exactly in Chromium, Firefox and WebKit, every tick checked. A long run with many shots and
+  deaths might still come out differently where engines work out `Math.sin` and friends
+  differently; the check would then fall back to the frames from that moment.
+  **Dropped** (2026-09-28): any difference falls back to the frames.
+- **The exact track is held in memory** (28): every tick of everyone as 32-bit floats, about 23 MB
+  for a ten-minute run.
+  **Dropped** (2026-09-28): 23 MB for ten minutes is fine.
+- **Far bodies are coarser in the fallback** (28): kept 2 a second beyond 80 m and filled in
+  between, so they glide where the game run again isn't in use.
+  **Dropped** (2026-09-28): only in the fallback, and only beyond 80 m.
+- **Replay files carry a browser id** (28): a random 16-digit hex id, the same for every replay
+  from one browser, so replays can be told to come from one person, though not who.
+  **Dropped** (2026-09-28): accepted: it names no one.
+
+### Rivals
+- **Operator bots get out less often** (18). In a 30-minute, 6-island bot playtest 13% of their
+  runs extract, down from 20% before the personalities: rats 20%, looters 14%, campers 11%,
+  hunters 7%. Hunters and campers stay on the island longer by design (up to 4 and 5 minutes into
+  the run, or until below 60 health), and guards still do most of the killing. It was tuned from
+  hunters at 0%: they now watch fights from 40 m off, 90 m if guards are in it, and 135 m from the
+  middle of an outpost, and drop out of hunting when hurt.
+  **Resolved in part** (29): operator bots now fight guards only within 40 m, or 60 m when shot
+  at, and otherwise get away rather than trade shots with a sentry or patrol far off (guards had
+  done two thirds of the killing, most of it at 50–100 m). One shot by a guard gives up the crates
+  within 100 m of it; one below 60 health goes on to extract rather than to its next crate once a
+  fight is over; one that doesn't raid leaves crates within 60 m of an outpost alone; one looking
+  for a way out counts an extraction point within 150 m of an outpost as 150 m farther. Looting
+  also stops with 150 s of the clock left, as hunting and camping did. The personalities' own
+  numbers were left alone (shorter lingering for hunters and campers was tried and didn't help).
+  Over 24 islands × 30 minutes by day, 16% of operator bot runs extract, from 14% just before
+  (rats 25%, looters 18%, campers 10.5%, hunters 9.5%, from 23%, 14.5%, 10% and 7%); over 12
+  islands at night in rain, 18% from 16%. Chunk 12's 19% wasn't reached: operators killing each
+  other (about 105 an hour of game) didn't change, and guards still do three fifths of the
+  killing. Between runs of 12 islands the rate moves by a point or two, so smaller changes were
+  measured on seeds 1–12 and 13–24 both.
+  **Dropped** (2026-09-28): covered by "Operator bots still die in most runs".
+- **The kill feed was already there** (18). It came with the run loop; this chunk only marks the
+  bounty being killed, and adds a row when someone takes the bounty.
+  **Dropped** (2026-09-28): accepted (Phase 3).
+- **Killing the bounty pays nothing extra** (18). The reward is their loot, left in their bag. The
+  bounty goes to whoever carries the most (at least $3,000), keeps to its carrier on a tie, and is
+  called every 20 s within 15 m of where they are. It shows in the HUD for 8 s after each call.
+  **Dropped** (2026-09-28): a bounty bonus was decided against (see Decisions).
+- **Bots know who fired which shots** (27). A bot joining a fight guesses where the shots came
+  from, but still tells two shooters apart exactly and knows whether guards are in the fight.
+  **Dropped** (2026-09-28): a small advantage nobody will notice.
+- **A new fill bot learns who the bounty is only at the next call** (27), up to 20 s later, while
+  a player sees the name at once. Guards no longer spot or hear the bounty any sooner than anyone.
+  **Dropped** (2026-09-28): at most 20 s, and rarely matters.
+- **Bots remember a bag's value as they last saw it** (27). If someone takes loot from it after,
+  the bot comes for what was there, and finds out on searching it.
+  **Dropped** (2026-09-28): that's how a person would too.
+- **A grenade whose thrower has left counts as the victim's own** (27), as it did before for the
+  score, so its death cam is through the victim's eyes, headed "Killed by your own grenade".
+  **Dropped** (2026-09-28): accepted: rare, and the score is right.
+- **Snapshots are bigger** (18): each carries the bounty, and each bag its value.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Everyone is told a dead bot's kind** (29): the kill event goes to everyone, and a bag's kind
+  is in every snapshot, so snapshots grow a little more. Only the one killed is told their
+  killer's kind (in how their run ended and the death cam). A human's body and bag name no kind.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **The kinds are told in words only** (29): a small tag in the feed, a word on the bag's tag and
+  one fixed sentence per kind on the results. There's no icon or colour for each.
+  **Dropped** (2026-09-28): words are enough.
+- **Replays from before chunk 29 have no kinds** (29). They still play, with plain bag tags and
+  feed rows. The bots' new rules change the simulation, so a replay kept from before this update
+  shows everyone exactly only until the game first plays out differently, then its frames.
+  **Dropped** (2026-09-28): expected of older replays.
+
+### Code and testing
+- **Snapshots are bigger** (13): each player carries five more fields (motion, action and its
+  progress, suppressor, commander). That's fine through the Worker, but multiplayer should pack
+  them.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **Two tests had leaned on the old outpost layout** (15): the guard test put the intruder at a
+  fixed spot, which now sits between two containers, and the mantle test picked a crate that now
+  has another stacked on it. They now pick a spot the sentry can see, and an unstacked crate.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **The dev shortcut is a new client message** (19): `{ t: 'dev', cmd }` ends your run, gives
+  you or the nearest operator bot loot, brings that bot 8 m in front of you or has you kill it.
+  Only the Worker host of a development build passes it on; a multiplayer server must drop it.
+  **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+- **The benchmark reports and doesn't judge** (19). `dev/bench.html` times each frame until the
+  GPU is done with it (a one-pixel read), so it's one frame's whole cost, not the throughput of
+  frames overlapping. Firefox and WebKit round timers to 1 ms. The report shows each number
+  next to the one kept in `e2e/bench-baseline.json` (an M3 Pro, chunk 19), but nothing fails on a
+  slower frame. It runs last, alone, as the teardown of the setup project, so running a single
+  engine's tests runs it too, unless `--no-deps` is given.
+  **Dropped** (2026-09-28): accepted: frame times are too noisy to fail on.
+- **The committed textures weren't remade by the new script** (20). The KTX2 files are still the
+  ones `sips` scaled; the script now scales with ffmpeg's Lanczos, and its textures differ a
+  little: 0.1 to 0.5 dB lower on colour, slightly better normals. The next run of the script
+  replaces them.
+  **Dropped** (2026-09-28): the next run of the script replaces them.
+- **The texture comparison mixes in the resize** (20). The originals are scaled by the
+  browser's own resize, not the one the textures were made with, so part of the measured error
+  is that difference. The comparison needs the originals in `node_modules/.cache`, so it's
+  skipped on a fresh checkout until `scripts/fetch-assets.mjs` has run.
+  **Dropped** (2026-09-28): accepted as part of the measured error.
+- **The ground cover's first fill takes about 21 ms** (19), when every cell in range is scattered
+  at once. Crossing into a new cell after that takes about 1 ms (1.7 ms at the 95th percentile in
+  Chromium), and into cells seen before about the same, so the copying costs as much as the
+  scattering.
+  **Dropped** (2026-09-28): once, at the start.
+- **Chunk 23's tests** (23): unit tests cover the plans, huts, doors (pairs, swinging, facing,
+  walking through open and not shut), glass (stops rounds and bodies, not sight; breaks at a
+  touch), roofs falling only when nothing holds them, the stairs, the upper storey, bots reaching
+  every crate from outside, and on the server F opening and shutting a door, a body holding it,
+  a late joiner told the open doors, a guard opening a door on its way and a round breaking a
+  pane. The cover tests had to pick their test wall more carefully and blow a wider hole, as the
+  new buildings sit behind walls that used to have room. The light volume, the door swing, the
+  glass and the door prompt were checked by screenshots only: the indoor spot moved into the
+  two-storey building and an upstairs spot was added.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **Chunk 24's tests** (24): unit tests pin the cascade patch to three.js's lighting chunk and
+  check the far tiles' heights and level picks against the terrain's own meshes and three.js's
+  LOD. The browser tests add screenshots from the sea at 200, 400 and 600 m and of a tree line
+  fading into impostors, and the adaptive-resolution check on a slowed GPU. The impostors' baked
+  pictures, the reflection, the swaying, the underwater wobble and muffling and the bushes'
+  colour were checked by screenshots (and one dump of the baked pictures) only, and the shader
+  that stands things on far tiles only by how its pictures look.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+- **Chunk 29's tests** (29): unit tests cover the kinds in the kill, on bags (and bags merged
+  into), in the run's end and the death cam; operator bots fighting a guard close by but not one
+  far off, giving up crates near a guard that shot them and heading out once badly hurt; the
+  thorough plan; the run log's cause naming a kind; and PvE's boards being cleared. Browser tests
+  in each engine read the kind off the death cam banner, the results, a kill row and a bag's tag,
+  open Stats empty and after a run and export it, share through a stubbed share sheet (and close
+  it), and check PvE's boards are gone after loading. A replay test had compared frames recorded
+  after the replay's end, where a far body's last sample can only be held; the bots' new moves
+  made one of those 3.8 m off, so it now stops at the replay's end. The bounty test failed once
+  in a full run in Chromium: the rival had wandered off before it was killed and its bag's tag
+  didn't show; it's now brought back in front just before. Tried with 6 workers instead of 4,
+  several run and rivals tests failed because guards killed the player before the test's
+  shortcuts arrived; at 4 they all passed twice over.
+  **Dropped** (2026-09-28): a record of what was measured or changed, not a problem to fix.
+
+### Playtest and tuning
+- **The buildings haven't been tuned for** (15). In a 10-minute, 6-island bot playtest, operator
+  bots got out of 19% of runs, against 18% before the buildings. The bolt-action's rate fell from
+  22% to 11%, but on only about 70 runs each.
+  **Dropped** (2026-09-28): the same as "The new buildings were tried by bots only".
+- **Operator bots now leave far-off enemies alone** (12). They fight guards only within 40 m, and
+  other operators only within their gun's effective range, unless shot at in the last 10 s. That
+  applies to human players too, so a bot you spot at long range won't open fire first.
+  Since chunk 29 being shot at no longer makes a guard fair game at any range: past 60 m an
+  operator bot gets away from it instead, even while it keeps hitting them. Nobody has watched
+  whether that looks like fleeing or like ignoring the shots.
+  **Dropped** (2026-09-28): a note on how bots behave, not a problem.
+- **The bot playtest leaves out runs still going when it stops** (12), so long runs are slightly
+  undercounted. Bots get no contracts, so "contracts done" is always 0% there.
+  **Resolved in part** (29): it now counts them: about 4% of runs in a 30-minute game (21% in the
+  thorough mode, whose runs are long and few). They're still left out of the summary.
+  **Dropped** (2026-09-28): they're counted now, and few.
+- **Bots now path onto low obstacles** (23). The nav grid treats anything up to 0.52 m above a
+  cell's floor as something to step onto rather than walk round, so a hut's raised floor doesn't
+  block its doorway. Small rocks and the first step of a stair count too.
+  **Dropped** (2026-09-28): a note on how bots behave, not a problem.
