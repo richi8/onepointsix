@@ -40,16 +40,16 @@ export interface Snapshot {
 }
 
 /** Events worth showing again in a death cam: rounds, explosions, and panels breaking and being rebuilt. */
-export type ReplayEvent = Extract<GameEvent, { k: 'shot' } | { k: 'boom' } | { k: 'break' } | { k: 'repair' }>;
+export type RecordedEvent = Extract<GameEvent, { k: 'shot' } | { k: 'boom' } | { k: 'break' } | { k: 'repair' }>;
 
-function isReplayEvent(e: GameEvent): e is ReplayEvent {
+function isRecordedEvent(e: GameEvent): e is RecordedEvent {
   return e.k === 'shot' || e.k === 'boom' || e.k === 'break' || e.k === 'repair' || e.k === 'door';
 }
 
 /** The last few seconds as this client saw them, everyone included, for the death cam. */
 export interface Recording {
   snapshots: Snapshot[];
-  events: { time: number; e: ReplayEvent }[];
+  events: { time: number; e: RecordedEvent }[];
 }
 
 /**
@@ -197,7 +197,7 @@ export class Connection {
         break;
       case 'events':
         for (const e of msg.events) {
-          if (isReplayEvent(e)) this.recording.events.push({ time: msg.tick * SERVER_DT, e });
+          if (isRecordedEvent(e)) this.recording.events.push({ time: msg.tick * SERVER_DT, e });
           if (e.k === 'break') for (const i of e.panels) this.broken.add(i);
           if (e.k === 'repair') for (const i of e.panels) this.broken.delete(i);
           if (e.k === 'door') for (const i of e.doors) (e.open ? this.open.add(i) : this.open.delete(i));

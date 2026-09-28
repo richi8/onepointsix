@@ -20,7 +20,7 @@ import { Bodies, strideLength } from './bodies.ts';
 import { BUILD } from './build.ts';
 import { CHANGELOG } from './changelog.ts';
 import { ContractProps } from './contractprops.ts';
-import { Connection, WorkerTransport, type Recording, type ReplayEvent } from './connection.ts';
+import { Connection, WorkerTransport, type Recording, type RecordedEvent } from './connection.ts';
 import type { Deathcam, DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
 import { Flashlights } from './flashlights.ts';
@@ -1240,7 +1240,7 @@ renderer.setAnimationLoop(() => {
   const cam = deathcam;
   // Bodies move on the time shown: slowed round the kill in a death cam.
   const before = cam?.time ?? 0;
-  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: ReplayEvent) => onEvent(e, true), (kill) => ownDeath || hud.mark(false, kill));
+  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: RecordedEvent) => onEvent(e, true), (kill) => ownDeath || hud.mark(false, kill));
   const bodyDt = cam ? Math.max(cam.time - before, 0) : dt;
   hud.age(bodyDt);
   const players = cam ? cam.others() : (conn?.interpolated() ?? []);

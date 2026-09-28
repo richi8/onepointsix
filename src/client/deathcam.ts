@@ -4,7 +4,7 @@ import type { PlayerState } from '../shared/sim.ts';
 import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
-import { grenadesAt, playersAt, type Recording, type ReplayEvent } from './connection.ts';
+import { grenadesAt, playersAt, type Recording, type RecordedEvent } from './connection.ts';
 
 export type DeathcamEvent = Extract<GameEvent, { k: 'deathcam' }>;
 
@@ -59,7 +59,7 @@ export class Deathcam {
    * people's shots, blasts and breaking panels to `onEvent`, and the killer's
    * hits to `onMark`, `kill` set for the one that killed.
    */
-  update(dt: number, onFx: (fx: WeaponFx) => void, onEvent: (e: ReplayEvent) => void, onMark: (kill: boolean) => void): void {
+  update(dt: number, onFx: (fx: WeaponFx) => void, onEvent: (e: RecordedEvent) => void, onMark: (kill: boolean) => void): void {
     const near = this.time > this.kill - SLOW_BEFORE && this.time < this.kill + SLOW_AFTER;
     const before = this.time;
     this.time = Math.min(this.time + dt * (near ? SLOW_RATE : 1), this.end);
