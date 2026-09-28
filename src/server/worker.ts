@@ -18,12 +18,6 @@ let current: { game: GameServer; id: number } | null = null;
 
 self.onmessage = (e: MessageEvent<ClientMsg>) => {
   const msg = e.data;
-  if (msg.t === 'pause') {
-    if (current) directory.pause(current.game, msg.on);
-    return;
-  }
-  // Leaving or starting another run lets a game held still go on.
-  if (current && (msg.t === 'hello' || msg.t === 'leave')) directory.pause(current.game, false);
   if (msg.t === 'hello') {
     // Each hello is a quick join for a new run; leave the last game first.
     if (current) current.game.disconnect(current.id);

@@ -20,8 +20,8 @@ test.describe('results', () => {
     expect(score).toBeGreaterThanOrEqual(lootValue([GOLD, GOLD]) - EXTRACT_FEE);
     await expect(results.locator('.standing')).toHaveText('New best on this island!');
     await expect(results.locator('.items')).toHaveText('Gold bar ×2');
-    for (const id of ['again', 'to-menu', 'share-run', 'watch-run', 'save-run']) await expect(page.locator(`#${id}`)).toBeVisible();
-    await expect(page.locator('#replay')).toBeHidden();
+    for (const id of ['again', 'to-menu', 'share-run']) await expect(page.locator(`#${id}`)).toBeVisible();
+    await expect(page.locator('#watch-deathcam')).toBeHidden();
 
     await expect(page.locator('#share-run')).toHaveText('Challenge a friend');
     await page.click('#share-run');
@@ -74,9 +74,9 @@ test.describe('death cam', () => {
     await expect(results.locator('.why')).toHaveText(`Killed by ${killer}, a ${kind}. Your loot stays with your body.`);
     // What that kind of rival does.
     await expect(results.locator('.rival')).toHaveText(new RegExp(`^${kind[0].toUpperCase()}${kind.slice(1)}s `));
-    await expect(page.locator('#replay')).toBeVisible();
+    await expect(page.locator('#watch-deathcam')).toBeVisible();
 
-    await page.click('#replay');
+    await page.click('#watch-deathcam');
     await expect(deathcam).toBeVisible();
     await expect(results).toBeHidden();
     await page.keyboard.press('Space');

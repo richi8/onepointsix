@@ -30,7 +30,6 @@ describe('dev shortcuts', () => {
     server.receive(id, { t: 'dev', cmd: { act: 'end', outcome: 'extracted' } });
     server.step();
     expect(events().find((e) => e.k === 'runEnd')).toMatchObject({ outcome: 'extracted', value: lootValue([GOLD]) });
-    expect(events().some((e) => e.k === 'tape')).toBe(true);
   });
 
   it('end a run killed by the nearest operator bot, with a death cam after', () => {

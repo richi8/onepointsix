@@ -82,8 +82,6 @@ const BED_VOICES = 10;
 const BED_BEARINGS = 8;
 const BED_OUT = 100;
 const BED_CUTOFF = 2500;
-/** A replay jumping plays on what would still be sounding from this many seconds before. */
-export const REBUILD = 3;
 /** Sounds quieter than this aren't played. */
 const MIN_GAIN = 0.005;
 /** Seconds between updates of the ambience and the room's ring. */
@@ -182,7 +180,7 @@ export class Sfx {
   private bed: GainNode[] = [];
   private bedPanners: PannerNode[] = [];
   private bedPool: VoicePool<BedVoice> | null = null;
-  /** Your own sounds playing, to cut off when a replay jumps. */
+  /** Your own sounds playing, to cut off when the island changes. */
   private readonly own = new Set<AudioBufferSourceNode>();
   private noise: AudioBuffer | null = null;
   /** Each recording's variations, once their bank is decoded. */
@@ -199,17 +197,6 @@ export class Sfx {
   /** How closed in the listener is, 0 to 1, and the space round them. */
   private enclosed = 0;
   private around = OPEN;
-  /**
-   * How fast time runs for what's heard: a replay's speed. Sound takes that
-   * much less time to arrive, and footsteps, doors and far shots are thinned
-   * to match, so 4× doesn't pile four times the sounds on top of each other.
-   */
-  pace = 1;
-  /**
-   * Seconds ago the sounds now being played happened, while a replay that
-   * jumped plays on what would still be sounding: they start part way through.
-   */
-  ago = 0;
   /** When the birds last took fright, on the audio clock. */
   private scaredAt = -Infinity;
   /** Where the listener is, for how far sounds are. */
@@ -434,7 +421,6 @@ export class Sfx {
     const straight = this.distance(at);
     if (quiet && straight / SUPPRESSED_REACH > 400) return;
     const bed = !quiet && straight > BED_RANGE;
-    if (bed && !this.thinned()) return;
     const h = bed ? this.far(at) : this.hear(at);
     const d = h.d;
     const occ = h.occ;
@@ -515,7 +501,7 @@ export class Sfx {
 
   /** A door swinging open or banging shut. */
   door(open: boolean, at: At): void {
-    if (this.distance(at) > DOOR_RANGE || !this.thinned()) return;
+    if (this.distance(at) > DOOR_RANGE) return;
     const h = this.hear(at);
     const d = Math.min(h.d, DOOR_RANGE);
     const falloff = 1 - d / DOOR_RANGE;
@@ -528,7 +514,7 @@ export class Sfx {
    * steps are soft. Bodies too far off make no sound at all.
    */
   step(surface: Surface, speed: number, crouched: boolean, at?: At): void {
-    if (!this.thinned() || (at && this.distance(at) > STEP_RANGE)) return;
+    if (at && this.distance(at) > STEP_RANGE) return;
     const v = STEPS[surface];
     const pace = Math.min(0.35 + speed / 8, 1.3) * (crouched ? 0.35 : 1);
     if (!at) {
@@ -597,11 +583,6 @@ export class Sfx {
     return hear(this.world, null, this.ear, at);
   }
 
-  /** Whether a sound that's thinned at a replay's speed plays this time: always at normal speed, one in four at 4×. */
-  private thinned(): boolean {
-    return this.pace <= 1 || Math.random() < 1 / this.pace;
-  }
-
   /**
    * The world changed round (x0, z0)–(x1, z1), such as cover breaking: the
    * ways round walls are looked at again there. Without a box, everywhere.
@@ -616,7 +597,7 @@ export class Sfx {
     for (const id of ids) this.field.door(id);
   }
 
-  /** Cut off everything playing and waiting to play, as when a replay jumps. The ambience goes on. */
+  /** Cut off everything playing and waiting to play, as when the island changes. The ambience goes on. */
   hush(): void {
     for (const src of this.own) stop(src);
     this.own.clear();
@@ -654,7 +635,7 @@ export class Sfx {
   /**
    * Play one of the recordings, picking among its variations at random: out
    * in the world at `at` on a pooled voice, on the distant-battle bed, or in
-   * your head. While a replay plays on after jumping, it starts `ago` seconds in.
+   * your head.
    */
   private play(name: string, o: PlayOptions = {}): void {
     const variants = this.clips[name];
@@ -663,12 +644,8 @@ export class Sfx {
     const { buffer, start, duration } = variants[Math.floor(Math.random() * variants.length)];
     const rate = o.rate ?? 1;
     const now = ctx.currentTime;
-    let t = now + (o.delay ?? 0) / this.pace - this.ago;
-    // Already under way: into the clip by as much as it's late.
-    const late = Math.max(now - t, 0) * rate;
-    if (late >= duration) return;
-    t = Math.max(t, now);
-    const length = (duration - late) / rate;
+    const t = now + (o.delay ?? 0);
+    const length = duration / rate;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
     src.playbackRate.value = rate;
@@ -713,7 +690,7 @@ export class Sfx {
     }
     set(gain.gain, level);
     src.connect(gain);
-    src.start(t, start + late, duration - late);
+    src.start(t, start, duration);
   }
 
   /** Wind, the sea, birds or crickets and rain, looping from the moment the recordings are in. */

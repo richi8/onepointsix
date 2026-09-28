@@ -182,7 +182,7 @@ function singleFile(): Plugin {
 
 /**
  * A hash of the simulation's code, the shared and server sources: the build a
- * replay was played on, since a change there can make it play back differently.
+ * run was played on, as the stats export records it.
  */
 function simulationHash(): string {
   const hash = createHash('sha256');

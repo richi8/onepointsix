@@ -10,8 +10,6 @@ import type { LagTransport, Transport } from '../shared/transport.ts';
 import type { World } from '../shared/world.ts';
 import type { WorldConfig } from '../shared/worldconfig.ts';
 import { Predictor } from './prediction.ts';
-import { quantizeLook, quantizeView } from '../shared/gamelog.ts';
-import type { RunRecorder } from './replayfile.ts';
 
 /** How many unacknowledged commands ride along with each input packet. */
 const REDUNDANT_CMDS = 8;
@@ -48,7 +46,7 @@ function isReplayEvent(e: GameEvent): e is ReplayEvent {
   return e.k === 'shot' || e.k === 'boom' || e.k === 'break' || e.k === 'repair' || e.k === 'door';
 }
 
-/** The last few seconds as this client saw them, everyone included, for replays. */
+/** The last few seconds as this client saw them, everyone included, for the death cam. */
 export interface Recording {
   snapshots: Snapshot[];
   events: { time: number; e: ReplayEvent }[];
@@ -72,7 +70,7 @@ export class Connection {
   bounty: BountyView | null = null;
   /** Set once the run has ended: no more commands are sent. */
   over = false;
-  /** Panels down right now, as the server says; what the world shows can differ while a replay plays. */
+  /** Panels down right now, as the server says; what the world shows can differ while a death cam plays. */
   readonly broken = new Set<number>();
   /** Door leaves open right now. */
   readonly open = new Set<number>();
@@ -81,8 +79,6 @@ export class Connection {
   get cover(): CoverState {
     return { broken: [...this.broken], open: [...this.open] };
   }
-  /** Records the whole run for its replay, if set. */
-  recorder: RunRecorder | null = null;
   /** Round-trip time in ms, smoothed. */
   rtt = 0;
   lastTick = 0;
@@ -131,8 +127,7 @@ export class Connection {
   /** Queue one CMD_DT step of input and send it with its unacked predecessors. */
   sendCmd(buttons: number, yaw: number, pitch: number, weapon: number): void {
     if (!this.connected || this.over) return;
-    // Whole look steps, so a replay stores them small and still plays back exactly.
-    const cmd = { seq: ++this.seq, buttons, yaw: quantizeLook(yaw), pitch: quantizeLook(pitch), weapon, view: quantizeView(this.renderTime() / SERVER_DT) };
+    const cmd = { seq: ++this.seq, buttons, yaw, pitch, weapon, view: this.renderTime() / SERVER_DT };
     this.unacked.push(cmd);
     this.predictor.predict(cmd, (fx) => this.onFx?.(fx));
     if (this.unacked.length > MAX_UNACKED) this.unacked.shift();
@@ -185,7 +180,6 @@ export class Connection {
         this.clock = msg.tick * SERVER_DT;
         for (const i of msg.broken) this.broken.add(i);
         for (const i of msg.open) this.open.add(i);
-        this.recorder?.welcome(msg.id, this.cover);
         this.onWelcome?.(this.cover);
         break;
       case 'pong': {
@@ -199,7 +193,6 @@ export class Connection {
           this.extracts = msg.extracts;
           this.bags = msg.bags;
           this.bounty = msg.bounty;
-          this.recorder?.snapshot(msg.tick * SERVER_DT, msg.players, msg.grenades, msg.run, msg.extracts, msg.bags, msg.bounty);
         }
         break;
       case 'events':
@@ -208,7 +201,6 @@ export class Connection {
           if (e.k === 'break') for (const i of e.panels) this.broken.add(i);
           if (e.k === 'repair') for (const i of e.panels) this.broken.delete(i);
           if (e.k === 'door') for (const i of e.doors) (e.open ? this.open.add(i) : this.open.delete(i));
-          this.recorder?.event(msg.tick * SERVER_DT, e);
         }
         this.trimRecording(msg.tick * SERVER_DT);
         this.onEvents?.(msg.events);

@@ -34,7 +34,6 @@ interface Game {
     bags: { x: number; z: number; value?: number; kind?: string }[];
     predictor: { state: { x: number; z: number } };
   } | null;
-  replay: { playing: boolean; time: number; speed: number; exactNow: boolean } | null;
   deathcam: object | null;
   sfx: Sfx;
   world: unknown;

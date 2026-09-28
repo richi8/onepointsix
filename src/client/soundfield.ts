@@ -100,7 +100,7 @@ export class SoundField {
     }
   }
 
-  /** Everything may have changed, as after a replay jumps: survey afresh. */
+  /** Everything may have changed, as after a death cam: survey afresh. */
   reset(): void {
     this.cells.fill(UNKNOWN);
     this.tiles.fill(0);

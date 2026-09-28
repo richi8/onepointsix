@@ -1048,6 +1048,35 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
 - **Replay files carry a browser id** (28): a random 16-digit hex id, the same for every replay
   from one browser, so replays can be told to come from one person, though not who.
   **Dropped** (2026-09-28): accepted: it names no one.
+- **Replays are tied to the game's version** (17). A change to the simulation, the weapons or
+  the island generator makes an older replay play back differently; the player would walk
+  through a moved wall. A replay from another version only gets a warning, and versions are told
+  apart by the date of the newest "What's new" entry, so two updates on one day look the same.
+  The file format has its own version, and a replay in another format is refused.
+  **Resolved in part** (28): the build is a hash of the simulation's code (`src/shared` and
+  `src/server`, see `vite.config.ts`), so only a change there warns. The game run again stops at
+  the first tick that differs from the file and falls back to the frames, so others are never
+  drawn wrong; the player's own tape can still drift on another build.
+  **Dropped** (2026-09-28): replays were removed (see Decisions in the plan).
+- **Seeking starts the scene afresh** (17): the kill feed, hit numbers and the death notice are
+  cleared, tracers and debris already flying stay, and the dead fall again from standing. What
+  happened before the new moment isn't rebuilt, only the panels.
+  **Resolved in part** (22): the dead no longer fall again. The kill events before the new moment
+  are handed to the bodies, and a body first seen dead falls to rest at once, exactly where it
+  fell in play. Bodies also move on the replay's time: faster at 2× and 4×, still while paused, and
+  slowed round the kill in the death cam.
+  **Dropped** (2026-09-28): replays were removed (see Decisions in the plan).
+- **The live game goes on unseen behind a replay** (17). Watching your run from the results
+  keeps the connection; live events are dropped but for keeping the books, and the panels are set
+  back to how they stand now when the replay closes.
+  **Resolved in part** (28): in Offline the local host holds the game still while you watch (a
+  `pause` message the host handles, not the game, so it isn't logged). Online games go on, since
+  other players could be in them.
+  **Dropped** (2026-09-28): replays were removed (see Decisions in the plan).
+- **Opening another island doesn't free everything** (28): the tree impostors' baked pictures and
+  a few other GPU buffers stay until the page closes, so many switches in one session use more
+  memory.
+  **Dropped** (2026-09-28): replays were removed (see Decisions in the plan).
 
 ### Rivals
 - **Operator bots get out less often** (18). In a 30-minute, 6-island bot playtest 13% of their

@@ -20,8 +20,6 @@ interface Entry {
   server: GameServer;
   /** Seconds it has had no humans. */
   idle: number;
-  /** Held still, as while its player watches their replay. */
-  paused: boolean;
 }
 
 /**
@@ -38,26 +36,14 @@ export class Directory {
     if (found) return found.server;
     const { time, weather } = world;
     const server = new GameServer(world.seed, { ...options, conditions: { time, weather } });
-    this.games.push({ world: { seed: server.seed, time, weather }, mode, server, idle: 0, paused: false });
+    this.games.push({ world: { seed: server.seed, time, weather }, mode, server, idle: 0 });
     return server;
   }
 
-  /** Hold an Offline game still, or let it go on; nobody else plays in one, so nobody waits. */
-  pause(server: GameServer, on: boolean): void {
-    const g = this.games.find((g) => g.server === server);
-    if (g) g.paused = on && g.mode === 'offline';
-  }
-
-  /** Whether a game is held still. */
-  paused(server: GameServer): boolean {
-    return !!this.games.find((g) => g.server === server)?.paused;
-  }
-
-  /** Step every game once, but those held still, and close those that have stood empty too long. */
+  /** Step every game once, and close those that have stood empty too long. */
   step(): void {
     for (let i = this.games.length - 1; i >= 0; i--) {
       const g = this.games[i];
-      if (g.paused) continue;
       g.server.step();
       g.idle = g.server.humans() > 0 ? 0 : g.idle + SERVER_DT;
       if (g.idle > IDLE_TIME) this.games.splice(i, 1);

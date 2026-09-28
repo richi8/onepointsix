@@ -5,11 +5,10 @@ import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
 import type { World } from '../shared/world.ts';
 import { grenadesAt, playersAt, type Recording, type ReplayEvent } from './connection.ts';
-import { coverBefore } from './replay.ts';
 
 export type DeathcamEvent = Extract<GameEvent, { k: 'deathcam' }>;
 
-/** Around the kill the replay slows to this speed... */
+/** Around the kill the death cam slows to this speed... */
 const SLOW_RATE = 0.35;
 /** ...from this many seconds before it to this many after. */
 const SLOW_BEFORE = 0.3;
@@ -68,7 +67,7 @@ export class Deathcam {
     const events = this.recording.events;
     while (this.nextEvent < events.length && events[this.nextEvent].time <= this.time) {
       const { e, time } = events[this.nextEvent++];
-      // The killer's rounds come from the replay itself; only whether they hit is taken.
+      // The killer's rounds come from the death cam itself; only whether they hit is taken.
       if (e.k !== 'shot' || e.id !== this.killer) onEvent(e);
       else if (e.struck === 'body' && time < this.kill) onMark(false);
     }
@@ -98,4 +97,20 @@ export class Deathcam {
   grenades(): GrenadeSnap[] {
     return grenadesAt(this.recording.snapshots, this.time);
   }
+}
+
+/**
+ * The cover at `from`, rebuilt from how it stands now by undoing the breaks,
+ * rebuilds and doors used since, latest first.
+ */
+function coverBefore(now: CoverState, events: readonly { time: number; e: GameEvent }[], from: number): CoverState {
+  const down = new Set(now.broken);
+  const open = new Set(now.open);
+  for (let i = events.length - 1; i >= 0 && events[i].time > from; i--) {
+    const e = events[i].e;
+    if (e.k === 'break') for (const p of e.panels) down.delete(p);
+    if (e.k === 'repair') for (const p of e.panels) down.add(p);
+    if (e.k === 'door') for (const d of e.doors) (e.open ? open.delete(d) : open.add(d));
+  }
+  return { broken: [...down], open: [...open] };
 }

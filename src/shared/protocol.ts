@@ -2,7 +2,6 @@
 // Worker; later it is a WebSocket. Everything here must survive structured
 // cloning and JSON, so only plain data.
 
-import type { GameLog } from './gamelog.ts';
 import type { Zone } from './hitbox.ts';
 import type { Personality } from './personality.ts';
 import type { PlayerState } from './sim.ts';
@@ -131,7 +130,7 @@ export type GameEvent =
       /**
        * Where the victim stood (feet), faced and how crouched, where the killing
        * round or blast struck, and the way it travelled, all to the centimetre.
-       * Bodies fall from these alone, so a replay falls the same.
+       * Bodies fall from these alone, so a death cam falls the same.
        */
       pose: [x: number, y: number, z: number, yaw: number, duck: number];
       at: [x: number, y: number, z: number];
@@ -169,9 +168,6 @@ export type GameEvent =
   // around the kill at server time `time`, to replay from the killer's eyes.
   // `kind` is the killer's, if an operator bot.
   | { k: 'deathcam'; killer: number; name: string; time: number; clip: TapeClip; kind?: Personality }
-  // To the player as their run ends: their own inputs for all of it, to replay the run, and
-  // the game's log so far to run all of it again, unless the game is too old for that.
-  | { k: 'tape'; clip: TapeClip; log?: GameLog }
   // To the player: one of their contracts, by index, was done or failed.
   | { k: 'contract'; index: number; state: 'done' | 'failed' }
   // To everyone: panels broke, knocked from around (x, y, z).
@@ -201,9 +197,6 @@ export type ClientMsg =
   // Carries the last few unacknowledged commands so a lost packet costs nothing.
   | { t: 'input'; cmds: InputCmd[] }
   | { t: 'ping'; time: number }
-  // Offline only: hold the game still, as while its player watches their replay. The local host
-  // does this, not the game, so it isn't one of the things the game logs.
-  | { t: 'pause'; on: boolean }
   // A test or the console changing the run on the spot. Only the local host in a
   // development build passes it on; a real server must drop it.
   | { t: 'dev'; cmd: DevCmd };
@@ -271,7 +264,7 @@ export interface BagSnap {
   x: number;
   y: number;
   z: number;
-  /** What the loot in it is worth; missing in replays from before it was sent. */
+  /** What the loot in it is worth. */
   value?: number;
   /** Left by the body of an operator bot of this kind. */
   kind?: Personality;

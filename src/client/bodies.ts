@@ -84,7 +84,7 @@ const ARM_SPAN = 0.8;
 const HANDOFF = 0.35;
 /**
  * How long a body seen dead waits for the kill event that says how it fell,
- * which a replay's frames can show a moment late, before falling without it.
+ * which can come a moment after the snapshot, before falling without it.
  */
 const DEATH_WAIT = 0.25;
 /** How long a dropped gun takes to leave the hands' last place for where it really falls. */
@@ -330,7 +330,7 @@ export class Bodies {
   private rags: Verlet[] = [];
   /**
    * How each body was last killed, kept until it's seen alive again, so one
-   * first drawn dead (after seeking a replay, or leaving a death cam) lies
+   * first drawn dead (after leaving a death cam) lies
    * where it fell.
    */
   private readonly deaths = new Map<number, Death>();
@@ -423,8 +423,6 @@ export class Bodies {
 
   /** Someone was killed: they fall from where the event says, pushed the way the round went. */
   killed(e: Death & { victim: number }): void {
-    // Replays saved before bodies fell as ragdolls have none of it: they fall as if unseen.
-    if (!e.pose) return;
     const death = { pose: e.pose, at: e.at, dir: e.dir, weapon: e.weapon, head: e.head };
     this.deaths.set(e.victim, death);
     const f = this.figures.get(e.victim);
@@ -761,7 +759,7 @@ export class Bodies {
    * It just died: pick which way it falls. Away from the killing round if it
    * can, and otherwise the way with the most room, pushed back off a wall if
    * even that is too short. All from the kill event (or, without one, the
-   * snapshot rounded as a replay keeps it), so a replay picks the same. The
+   * snapshot rounded to the centimetre), so a death cam picks the same. The
    * gun drops from its hands.
    */
   private fall(f: Figure, p: PlayerSnap): void {
@@ -867,7 +865,7 @@ export class Bodies {
     f.rigSteps = -1;
   }
 
-  /** First seen dead, as after seeking a replay: already lying where it came to rest. */
+  /** First seen dead, as after a death cam: already lying where it came to rest. */
   private settle(f: Figure): void {
     f.deadFor = HANDOFF;
     this.goLimp(f);
@@ -1286,7 +1284,7 @@ function hump(t: number, a: number, b: number): number {
   return smoothstep(a, a + w, t) * (1 - smoothstep(b - w, b, t));
 }
 
-/** Rounded to the centimetre, as replays keep positions. */
+/** Rounded to the centimetre, as kill events give positions. */
 function cm(v: number): number {
   return Math.round(v * 100) / 100 + 0;
 }

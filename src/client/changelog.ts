@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-09-28',
+    title: 'Replays removed',
+    notes: [
+      'Replays are gone: the results no longer offer Watch replay or Save replay, the menu has no Replays list, and replay files can’t be opened. Replays kept in your browser are cleared.',
+      'The death cam stays: you still see how you died through your killer’s eyes, and can watch it again from the results.',
+    ],
+  },
+  {
     date: '2026-09-27',
     title: 'Pickups cost, contracts pay',
     notes: [

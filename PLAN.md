@@ -119,9 +119,10 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
   first, on the server once there is multiplayer.
 - A share button on the results screen.
 
-### Replays (cheap because the simulation is deterministic)
-- The simulation runs on inputs, so a run can be recorded as its inputs.
-- Death cam first, then whole runs saved as replay files (chunk 17); shareable replay links later.
+### Death cam (cheap because the simulation is deterministic)
+- The simulation runs on inputs, so the killer's last seconds can be sent as their inputs and
+  played back exactly through their eyes.
+- Whole-run replays (chunks 17 and 28) were removed: see Decisions.
 
 ## Technical Architecture
 
@@ -148,7 +149,7 @@ src/
 5. **A world is its config.** Only the seed and settings travel over the network; every peer
    generates the same world.
 6. **Fixed-timestep, deterministic simulation.** This makes prediction, lag compensation and
-   replays possible.
+   the death cam possible.
 
 ### Assets
 - Poly Haven for PBR textures and HDRIs, Quaternius for animated characters and guns, glTF for
@@ -190,7 +191,7 @@ the Known Issues named in its scope.
 | 14 | **Sound** | Recorded CC0 samples replace synthesized ones (a new source, e.g. Freesound CC0, checked per file); occlusion and simple reverb from walls and buildings; ambient wind, sea, birds and distant fighting; footstep surfaces read from the painted terrain; a sliding scrape; pooled panner nodes | With eyes closed you can tell the direction, distance and whether a wall is in between | **Done** |
 | 15 | **World detail** | Buildings with doors, windows and simple interiors built from breakable panels; ground cover (grass, bushes, small rocks) near the player; tree LOD, impostors and sway; water with waves, shoreline foam and an underwater effect; debris textured like its panel; cascaded shadows; terrain LOD; adaptive resolution checked on slow hardware | Outposts can be fought through room by room, and the island looks alive at 60 fps on a mid-range laptop | **Done** (60 fps checked on an M3 Pro only, and slow hardware only simulated) |
 | 16 | **Day/night and weather** | Time of day and weather become part of the world config (and so the link); lighting, sky and fog follow them; night brings more and tougher guards but better loot; flashlights (visible to bots, so a noise-like trade-off); rain and fog shorten sight and mask noise in bot perception; leaderboards stay universal, one per island and mode whatever the conditions (changed from "per condition" at the user's request) | The same island plays differently at noon, at night and in fog, and a link reproduces the exact conditions | **Done** |
-| 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | **Done** (the Save and Watch buttons after a real run were checked in the browser with a simulated run end only) |
+| 17 | **Full-run replays** | Record the whole run as inputs plus periodic keyframes (extending the death cam tape); keep cover-state history so replays show panels breaking at the right time; a replay viewer with scrubbing, speed control and a free camera; export and import a compact replay file (no backend, so it's shared as a file); a HUD in the death cam | You finish a run, save the replay, send the file, and a friend watches it exactly as it happened | **Done** (the Save and Watch buttons after a real run were checked in the browser with a simulated run end only); **removed** later (see Decisions) |
 | 18 | **Rivals** | Operator bot personalities: the *rat* (sneaks, loots, avoids fights), the *hunter* (follows gunfire to find wounded operators), the *camper* (waits near extraction points) and the *looter* (goes for high-value crates); third-partying, so operators are drawn to fights between others; a bounty on the operator carrying the most value, who is marked or heard more easily; a kill feed; bags left by bodies show their value before you open them. Personalities carry over as fill bots in future multiplayer | In Mixed mode, meeting another operator plays out differently depending on who they are, and a big haul makes you feel hunted | **Done** (checked by bot playtests and a headless screenshot with a faked bounty; nobody has played against the personalities yet) |
 
 ### Phase 3: clearing the Known Issues (still local only)
@@ -212,7 +213,7 @@ human pass comes last so people play the finished result.
 | 25 | **Night and weather II** | A shadow for your own flashlight; more flashlights lighting the world within the budget (checked with the chunk 19 benchmark); a torch model on each gun, the beam from it, and the killer's flashlight in the death cam; bots notice a beam where it lands, not only its holder; rain stops under roofs (a roof height map) and gains splashes, wet surfaces, puddles, thunder and thicker streaks; fog banks and thicker fog in hollows; rain dulls far sound for the player as well as for bots; a night sky for night reflections; leaderboards show each score's conditions next to it (they stay universal, with no night adjustment); sound downloads kept small (see chunk 20) | A night run in rain looks and sounds wet, only outdoors, and a beam over a wall gives its holder away | **Done** (checked by screenshots, the benchmark and unit tests; nobody has played a stormy night; fog banks stand still rather than drift; a bot test covers a beam seen with its holder behind the bot, not literally over a wall) |
 | 26 | **Sound II** | Occlusion that goes round corners and through doorways (a path over the nav grid), counts thickness and lets a tree trunk muffle less than a building; reverb per space (a room, a walled yard, the open) instead of one room; the sea placed by the nearest stretch of water, not an average; far fights mixed into one distant-battle bed so they stop filling the voice pool; better recordings where the current ones stand in (a real suppressed shot per gun, a bolt-action shot and reload, concrete footsteps), still CC0 Freesound previews fetched without a key; replay sound rebuilt when seeking, and thinned at 4× | A shot round a corner sounds round the corner, and a long far firefight never cuts off a nearby footstep | **Done** (checked by unit tests and a browser test, not by ear: nobody has listened to the new recordings, reverbs or corners; the round path uses a sound grid of its own rather than the nav grid, which ignores doors) |
 | 27 | **Bot senses and stealth** | Grass hides by the tufts actually placed, so a lone tuft hides a little and a gap in a field doesn't; bots look for bushes to hide in; bots know a bag's value only after seeing it, and a bot joining a fight goes for a guess round where the shots came from; bots get the bounty's advantage only once told of it; bag tags are hidden by bushes and grass too; campers keep trying for a spot that can see the extraction point; a self-kill with a grenade gets a death cam (no prone stance, as decided) | A bot playtest shows bots hiding in bushes and searching for shooters instead of walking straight to them, with extraction rates within 5 points of chunk 18's | **Done** (by bot playtests: 15% of operator bot runs extract by day and 17% at night in rain, against 13% in chunk 18 and 12% just before; bots take a bush for 37% of their cover and 35% of their waits; fights joined are guessed 12 m off the shooter on average. Nobody has played against it) |
-| 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Done** (a 42 s test run's file is 38% of chunk 17's; the game run again matches every body to the centimetre in unit tests and in the browser tests of each engine, and a file from Chromium ran again exactly in Firefox and WebKit; nobody has watched a replay by hand) |
+| 28 | **Replays II** | Replays as the seed plus every input, where the simulation allows it, so everyone is replayed exactly, with frames as the fallback; smaller files (binary, compressed with `CompressionStream`, far bodies at a lower rate); the last few replays kept in the browser (IndexedDB) with a list on the menu; the version is the build's hash, not the newest changelog date; another island opens without a reload; the free camera stops at walls, rocks and trees; seeking rebuilds the kill feed, bodies already lying and the hit numbers; the feed names the player when a friend watches, and fades by replay time; Offline pauses the live game while its replay is watched; the bounty added to the replay format's version | A replay saved yesterday can be picked from the menu and watched, with every body exactly where it was, in a file half the size of chunk 17's | **Done** (a 42 s test run's file is 38% of chunk 17's; the game run again matches every body to the centimetre in unit tests and in the browser tests of each engine, and a file from Chromium ran again exactly in Firefox and WebKit; nobody has watched a replay by hand); **removed**: replays were dropped (see Decisions) |
 | 29 | **Rivals and results** | A dead operator's personality shown on the results screen, in the feed after they die and on their bag; operator bot extraction back near chunk 12's 19% without undoing the personalities; a stats page on the menu that reads the run log, with export to a file; the playtest counts unfinished runs, measures how often drop-in falls back to anywhere, and has a bot mode that searches like a human so run length can be read; the share button opens the system share sheet where there is one; PvE's old board removed from storage | You can tell who killed you and what kind of rival they were, and anyone can send their run stats as a file | **Done** (operator bot extraction came back only part of the way: 16% of runs by day over 24 islands, from 14%, and 18% at night in rain, from 16%; the stats page, share sheet and personalities were checked by browser tests, nobody has played with them) |
 | 30 | **Human pass** | The chunks that need people and hardware this machine can't give: several full runs by other people (using chunk 29's stats export), a listening pass on the mix, reverb and ambience, a mid-range laptop for the 60 fps and 5 s load targets, Firefox and Safari by hand, and tuning from what they show (guards, weapons, extraction timings, loot, night, buildings, how far operator bots engage) | The Playtest and tuning goals from chunk 12 are met with human data, and every item in Known Issues is Resolved, Moot or listed below as left for later | **Started**: the developer's own run log read, guards softened, contracts paid 5×, an extraction fee, the death record in the export; Safari checked by hand and looks good; Firefox by hand, other people's runs, the listening pass and a mid-range laptop still to come |
 
@@ -274,12 +275,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   the world. Elbows bend either way, fingers keep the grip of a body that died out of sight, and
   the feet only follow the shins. A grenade doesn't move bodies already down, though a panel
   breaking next to one wakes it to fall further. Two bodies landing on each other at the same
-  moment can come out a little differently in a replay, as their steps needn't line up. Falls
+  moment can come out a little differently in a death cam, as their steps needn't line up. Falls
   match only within one browser engine: the engines' `Math` functions can differ in the last
-  digit, and a fall magnifies it (as the rest of a replay would). Replays saved before chunk 22
-  have no fall data in their kill events and fall as if unseen. Operators' bodies still go after
-  5 s, so most never come to rest in view. It was checked with pose viewer screenshots, unit tests
-  and the replay test; nobody has watched it in play.
+  digit, and a fall magnifies it. Operators' bodies still go after 5 s, so most never come to rest
+  in view. It was checked with pose viewer screenshots, unit tests and a browser test; nobody has
+  watched it in play.
 - **The new stances are poses, not animations** (13). A slide, jump, fall and climb each hold a
   single pose of the legs, and a crouch-walk is the walk clip squashed. A hop shorter than about
   0.1 s barely shows. The source model has no clips for any of them.
@@ -535,33 +535,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   the sight model's cover. Checked by screenshots only; the frame cost wasn't measured apart from
   the benchmark still passing.
 
-### Replays
-- **Replays are tied to the game's version** (17). A change to the simulation, the weapons or
-  the island generator makes an older replay play back differently; the player would walk
-  through a moved wall. A replay from another version only gets a warning, and versions are told
-  apart by the date of the newest "What's new" entry, so two updates on one day look the same.
-  The file format has its own version, and a replay in another format is refused.
-  **Resolved in part** (28): the build is a hash of the simulation's code (`src/shared` and
-  `src/server`, see `vite.config.ts`), so only a change there warns. The game run again stops at
-  the first tick that differs from the file and falls back to the frames, so others are never
-  drawn wrong; the player's own tape can still drift on another build.
-- **Seeking starts the scene afresh** (17): the kill feed, hit numbers and the death notice are
-  cleared, tracers and debris already flying stay, and the dead fall again from standing. What
-  happened before the new moment isn't rebuilt, only the panels.
-  **Resolved in part** (22): the dead no longer fall again. The kill events before the new moment
-  are handed to the bodies, and a body first seen dead falls to rest at once, exactly where it
-  fell in play. Bodies also move on the replay's time: faster at 2× and 4×, still while paused, and
-  slowed round the kill in the death cam.
-- **The live game goes on unseen behind a replay** (17). Watching your run from the results
-  keeps the connection; live events are dropped but for keeping the books, and the panels are set
-  back to how they stand now when the replay closes.
-  **Resolved in part** (28): in Offline the local host holds the game still while you watch (a
-  `pause` message the host handles, not the game, so it isn't logged). Online games go on, since
-  other players could be in them.
-- **Opening another island doesn't free everything** (28): the tree impostors' baked pictures and
-  a few other GPU buffers stay until the page closes, so many switches in one session use more
-  memory.
-
 ### Rivals
 - **Campers may wait where they can't see the extraction point** (18). A spot that can see into it
   from a crouch is preferred, but if none of 16 tries finds one, any dry spot 25–45 m off will do.
@@ -698,13 +671,13 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
     leaderboards kept by the server instead of in links and one browser; every run's stats sent to
     the server; Online taking other players; names filtered and length-checked; conditions picked by
-    the server so players don't split nine ways; snapshots, death cam clips and each human's kept
-    run packed; death cams drawn from everyone's inputs, taped only near someone, and no player sent
-    another's inputs; the dev message dropped
+    the server so players don't split nine ways; snapshots and death cam clips packed; death cams
+    drawn from everyone's inputs, taped only near someone, and no player sent another's inputs; the
+    dev message dropped
 - **Transport upgrade:** WebTransport or WebRTC DataChannels (UDP-like), server-side visibility
   culling, server leaderboards
-- **Replay links:** shareable through the server instead of as files (chunk 17 covers local
-  replays)
+- **Replays** could come back from a multiplayer server, recorded there (whole-run
+  replays were built locally in chunks 17 and 28 and removed; see Decisions)
 - Global leaderboards and seasonal featured islands
 - **A more realistic soldier model** to replace Quaternius's stylized one (after Phase 3)
 
@@ -733,8 +706,8 @@ extraction stays as hard as it is.
     time goes on the race board.
   - Calling extraction without 3 items shows a message saying why ("2/3 race items") and what
     the race needs.
-  - Replays already cover proof, as files. The replay viewer and death cam draw the race panel
-    and its splits.
+  - Proof waits on the server; until then race times are as trustworthy as scores in links. The
+    death cam draws the race panel and its splits.
 
 ## Decisions
 - **No slide:** removed after chunk 14 at the user's request. Crouching while sprinting just
@@ -771,8 +744,14 @@ extraction stays as hard as it is.
   reviewed in chunks 0 and 1.
 - **Loading** (20): the loading screen waits for the early sounds (your own guns and steps, and
   the ambience) as well as the textures and models, so a run is never silent at the start. The
-  rest of the sound, the death cam and the replay viewer load behind the menu. Sounds are Opus,
+  rest of the sound and the death cam load behind the menu. Sounds are Opus,
   with AAC for browsers that can't decode it; textures go through our own ETC1S-only transcoder.
+- **Replays removed** (2026-09-28): whole-run replays (chunks 17 and 28: files, a list kept in
+  the browser, a viewer with scrubbing and a free camera, and the game run again exactly from its
+  log) were dropped. They were a lot of code to keep working: every change to the simulation had
+  to keep the re-run exact, tests broke over unrelated changes, and making old replays play on a
+  new build would have needed the old simulation kept around. Players mostly want to see how
+  they died, which the death cam still shows. Replays may come back from a multiplayer server.
 - **The sky light stays as tuned** (20): measured, it's 24% brighter than the original sky
   would give, but the lighting was tuned by eye on it, so it wasn't scaled down to match.
 - **Testing:** Vitest for the shared simulation (determinism, movement, collision), and from

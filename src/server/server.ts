@@ -31,7 +31,6 @@ import {
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
   RESPONSE_SQUAD,
-  RERUN_HISTORY,
   RESPAWN_CLEAR,
   RESPAWN_RETRY,
   RESPAWN_SIGHT,
@@ -51,11 +50,10 @@ import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loo
 import type {
   Action, BagSnap, BountyView, ClientMsg, Death, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
-import type { GameLog, LogEntry, Logged } from '../shared/gamelog.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
 import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
-import { Tape, TAPE_TIME } from '../shared/tape.ts';
+import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
 import { leafRect, World, type Box, type Point } from '../shared/world.ts';
@@ -221,13 +219,12 @@ export class GameServer {
   private readonly history: { tick: number; poses: PoseRecord[] }[] = [];
   private nextId = 1;
   private nextGrenade = 1;
-  /** How it was set up, and everything its humans did since, to run it again for a replay. */
+  /** How it was set up. */
   private readonly options: ServerOptions;
-  private readonly logged: LogEntry[] = [];
 
   constructor(seed: number, options: ServerOptions = {}) {
     this.seed = seed >>> 0;
-    this.options = JSON.parse(JSON.stringify(options));
+    this.options = options;
     this.mode = options.mode ?? 'offline';
     this.conditions = options.conditions ?? DEFAULT_CONDITIONS;
     const night = isNight(this.conditions);
@@ -291,9 +288,6 @@ export class GameServer {
 
   connect(send: (msg: ServerMsg) => void): number {
     const p = this.add('player', 'operator', send);
-    this.note(p.id, { t: 'join' });
-    // A human's whole run is kept, for its replay.
-    p.tape = new Tape(RUN_TIME + TAPE_TIME);
     p.run = newRun(this.time);
     this.spawn(p);
     this.assignContracts(p);
@@ -312,27 +306,12 @@ export class GameServer {
   disconnect(id: number): void {
     const p = this.players.get(id);
     if (!p) return;
-    this.note(id, { t: 'drop' });
     this.leave(p);
-  }
-
-  /**
-   * The game so far as its setup and everything its humans did, enough to
-   * run it again exactly (see rerun.ts).
-   */
-  log(): GameLog {
-    return { seed: this.seed, options: JSON.parse(JSON.stringify(this.options)), entries: this.logged.map((e) => ({ ...e })) };
-  }
-
-  private note(id: number, msg: Logged): void {
-    this.logged.push({ tick: this.tick, id, msg });
   }
 
   receive(id: number, msg: ClientMsg): void {
     const p = this.players.get(id);
     if (!p) return;
-    if (msg.t === 'pause') return;
-    if (msg.t !== 'ping' && msg.t !== 'input') this.note(id, msg);
     switch (msg.t) {
       case 'hello':
         p.joined = true;
@@ -347,15 +326,11 @@ export class GameServer {
         break;
       case 'input': {
         if (!p.joined) break;
-        // Only the commands taken are logged; a resend of one already had changes nothing.
-        const taken: InputCmd[] = [];
         for (const cmd of msg.cmds) {
           if (cmd.seq <= p.lastRecv) continue;
           p.lastRecv = cmd.seq;
           p.queue.push(cmd);
-          taken.push(cmd);
         }
-        if (taken.length) this.note(id, { t: 'input', cmds: taken });
         if (p.queue.length > MAX_QUEUED_CMDS) p.queue.splice(0, p.queue.length - MAX_QUEUED_CMDS);
         break;
       }
@@ -697,13 +672,6 @@ export class GameServer {
       death: outcome === 'killed' ? run.death : null, taken: { ...run.taken },
     };
     p.events.push(end);
-    if (!p.plan) {
-      // The run's replay: key how it ended first, such as the death.
-      p.tape.sync(p);
-      const clip = p.tape.clip(run.start);
-      // The game's log goes with it, unless the game ran too long before this run to run again from the start.
-      if (clip) p.events.push(run.start <= RERUN_HISTORY ? { k: 'tape', clip, log: this.log() } : { k: 'tape', clip });
-    }
     this.onRunEnd?.(end, p.plan);
     this.dismiss(run);
     if (outcome === 'extracted') this.broadcast({ k: 'extract', id: p.id, name: p.name, value });
@@ -1219,12 +1187,12 @@ function snapOf(p: Player): PlayerSnap {
 /**
  * What a kill event says about the fall: where the victim stood, where the
  * killing round or blast struck and the way it went, rounded to the
- * centimetre as replays keep them, so everyone's bodies fall alike.
+ * centimetre, so everyone's bodies fall alike.
  */
 function deathPose(
   victim: Player, x: number, y: number, z: number, from: { x: number; y: number; z: number },
 ): Pick<Extract<GameEvent, { k: 'kill' }>, 'pose' | 'at' | 'dir'> {
-  // Plus zero, as a replay file has no -0 (and atan2 tells them apart).
+  // Plus zero, so -0 never reaches atan2, which tells them apart.
   const cm = (v: number) => Math.round(v * 100) / 100 + 0;
   let dx = x - from.x;
   let dy = y - from.y;

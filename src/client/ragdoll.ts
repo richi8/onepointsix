@@ -3,7 +3,7 @@
 // clip partway through and falls, rolls and slides on its own: onto the
 // ground, off walls, props, fences and trees, and onto other dead bodies. It
 // steps at a fixed rate counted from its start, from nothing but the kill
-// event and the world, so a replay or death cam falls exactly the same way
+// event and the world, so a death cam falls exactly the same way
 // whatever the frame rate. Plain numbers only, so the server's tests can run it.
 
 /** Seconds per step. */

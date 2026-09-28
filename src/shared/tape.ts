@@ -5,7 +5,7 @@ import { applyCmd, copyState, copyStateInto, sameState, type PlayerState } from 
 import type { WeaponFx } from './weapons.ts';
 import type { World } from './world.ts';
 
-/** Seconds of a player's recent past a tape keeps, unless told to keep more. */
+/** Seconds of a player's recent past a tape keeps. */
 export const TAPE_TIME = 7;
 /** Seconds between the full states a tape stores; the commands in between rebuild the rest. */
 const KEY_EVERY = 0.5;
@@ -47,21 +47,15 @@ export interface TapeClip {
 /**
  * Records a player as inputs: a full state every KEY_EVERY seconds and
  * whenever the server changed them outside their commands, and each command
- * simulated since, for the last `keep` seconds.
+ * simulated since, for the last TAPE_TIME seconds.
  */
 export class Tape {
   private readonly keys: TapeKey[] = [];
   private readonly cmds: TapedCmd[] = [];
-  private readonly keep: number;
   private tickCmds = 0;
   private tickStart = -1;
   /** The player as of the last command or key recorded, to tell what the server changed since. */
   private after: PlayerState | null = null;
-
-  /** `keep` is how many seconds of the past to hold on to. */
-  constructor(keep = TAPE_TIME) {
-    this.keep = keep;
-  }
 
   /** Call at the start of each server tick, before the player's commands, with the time it starts from. */
   beginTick(p: PlayerState, time: number): void {
@@ -70,7 +64,7 @@ export class Tape {
     const last = this.keys[this.keys.length - 1];
     if (!last || time - last.at >= KEY_EVERY - EPS) this.key(p, time, false);
     else this.sync(p);
-    const old = time - this.keep;
+    const old = time - TAPE_TIME;
     // Keep one key at or before the oldest time kept, so all of it can be rebuilt.
     while (this.keys.length > 1 && this.keys[1].at <= old) this.keys.shift();
     while (this.cmds.length && this.cmds[0].at < this.keys[0].at + EPS) this.cmds.shift();

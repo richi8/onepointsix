@@ -293,7 +293,7 @@ export function blocksSprint(buttons: number): boolean {
  * Advance a player's weapon by one command: switching, aiming, reloading,
  * firing and recoil. Like movement it must be deterministic, since the client
  * predicts it. `eye` gives the shot origin; `onFx` hears about shots and
- * other moments worth showing, and is left out when replaying.
+ * other moments worth showing, and is left out when replaying commands.
  */
 export function stepWeapon(
   p: PlayerState,

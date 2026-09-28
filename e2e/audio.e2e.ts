@@ -60,24 +60,14 @@ test('a far firefight goes to the distant-battle bed and leaves the voices for n
     sfx.update(game.camera, 0);
     const e = game.camera.matrixWorld.elements;
     const ear = { x: e[12], y: e[13], z: e[14] };
-    const pools = sfx as unknown as { pool: { busy(t: number): number }; bedPool: { busy(t: number): number }; hush(): void };
+    const pools = sfx as unknown as { pool: { busy(t: number): number }; bedPool: { busy(t: number): number } };
     for (let i = 0; i < 60; i++) sfx.shot(0, { x: ear.x + 250, y: ear.y, z: ear.z + i });
     const far = { voices: pools.pool.busy(0), bed: pools.bedPool.busy(0) };
     sfx.step('grass', 5, false, { x: ear.x + 3, y: ear.y, z: ear.z });
     const near = pools.pool.busy(0);
-    // After a replay jumps: a blast 300 m off happened 0.5 s ago, so it's still on its way; one 6 s ago has died away.
-    pools.hush();
-    sfx.ago = 6;
-    sfx.boom({ x: ear.x + 300, y: ear.y, z: ear.z });
-    const over = pools.bedPool.busy(0);
-    sfx.ago = 0.5;
-    sfx.boom({ x: ear.x + 300, y: ear.y, z: ear.z });
-    const coming = pools.bedPool.busy(0);
-    return { ...far, near, over, coming };
+    return { ...far, near };
   });
   expect(heard.voices).toBe(0);
   expect(heard.bed).toBe(10);
   expect(heard.near).toBe(1);
-  expect(heard.over).toBe(0);
-  expect(heard.coming).toBe(1);
 });
