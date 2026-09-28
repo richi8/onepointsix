@@ -337,6 +337,11 @@ notes the chunk it came from.
   recordings.
   **Resolved** (26): a door opening (a latch and swing) and a wooden door slamming, and a pane
   of glass smashed by a rock, all CC0 recordings.
+- **Nobody has listened to the new sound** (14). This machine has no way to hear it. The
+  recordings were chosen by title, description, rating and waveform, the cuts were placed from
+  loudness envelopes, and the levels were set by rendering each sound offline in headless Chrome
+  and measuring its peak and RMS. Mix, reverb amount and ambience levels need a listening pass.
+  **Resolved** (30): the user has listened to it in play and it's fine.
 
 ### Performance and loading
 - **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat
@@ -426,6 +431,20 @@ notes the chunk it came from.
   first time a cell was needed, avoiding colliders as they stood then, so a cell first needed
   after a wall fell could differ between the server and a client. **Resolved** (27): they're
   scattered against the world as built (`World.clearAsBuilt`).
+- **A click on the run dashboard within about a second of Esc resumes late** (dashboard retry
+  commit). Chrome refuses to re-lock the mouse that soon, so the click keeps retrying for up to
+  2 s and the game resumes once it's let through. Untested: headless Chrome never grants pointer
+  lock, and whether a retry still counts as the click's gesture depends on the browser.
+  Still untested after chunk 19: none of the three test browsers grants the lock headless.
+  **Resolved in part** (20): while it retries, the card says why ("Your browser holds the mouse
+  for a moment after Esc…", or "Taking the mouse back…" long after Esc), and if the browser
+  still refuses, "Your browser didn't give the mouse back. Click again to resume." A lock request
+  a browser never answers now counts as refused after 1 s instead of hanging. Chromium and
+  Firefox do grant the lock on a test's real click (see Code and testing), so resuming is tested
+  there, but a key pressed by a test doesn't free it the way Esc does, so Chrome's hold itself
+  still hasn't been seen by a test; the messages were checked in WebKit, which refuses every
+  lock, with the time since Esc faked.
+  **Resolved** (30): the messages in chunk 20 cover it, and resuming works in play.
 
 ### Sharing and leaderboards
 - **A link without a mode is taken as Mixed** (10), so an old `?world=` link with a score in it
@@ -718,6 +737,35 @@ notes the chunk it came from.
   50 m of its post (`RESPAWN_CLEAR`) or can see it from within 150 m (`RESPAWN_SIGHT`), and
   looks again every 3 s. A unit test stands someone on a tower. An operator bot camping near an
   outpost holds its guards off too; in the bot playtest nothing changed beyond the noise.
+- **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
+  the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
+  far comes from bots.
+  **Resolved** (30): other people have played it and sent run logs.
+- **The run log stays in one browser** (12). There's no backend, and since the F4 panel was
+  removed there's no way in the game to see or copy it; it's only in localStorage (`runlog`). It
+  keeps the last 200 runs.
+  **Resolved in part** (29): Stats on the menu sums the log up (runs, how they ended, length,
+  score, contracts, causes of death, extraction points, the latest 10) and exports it as
+  `onepointsix-runs-<date>.json` (format `onepointsix-runs`, version 1, with the build), for
+  playtesters to send. It still stays in one browser, and nothing reads the files back yet: they
+  have to be summed by hand or with a script.
+  **Moved to Future** (30): not an issue for the local build; with multiplayer every run can send its stats to the server.
+- **The stats export hasn't had a real file sent yet** (29). Its format may need more (the
+  browser, the screen, the frame rate) once chunk 30's playtesters use it; there's no way to
+  clear the log from the page either.
+  **Resolved in part** (30): the developer sent the first file (84 runs, see "Guards were too
+  deadly for a person"). Every run now records the damage taken from guards and from other
+  operators, and a death at someone else's hands how far off the killer was and how many guards
+  and operators had hit them in the last 5 s (`SHOOTERS_WINDOW`); the export is version 2, and the
+  playtest's summary prints the killer's median distance and the guard counts. Practice runs
+  aren't marked (the user decided against it), and the browser, screen and frame rate still
+  aren't recorded. Nothing reads the files back yet.
+  **Resolved** (30): real files have been sent (the developer's and a second tester's).
+- **Nobody did contracts** (30). In the first human run log 1 of 168 contracts offered was done:
+  they're risky (in and around the outposts) and paid 1,200–2,500, less than a crate or two.
+  **Changed** (30): rewards are 5× as much (intel 7,500, cache 6,000, commander 12,500). Not yet
+  played with; bots still get no contracts.
+  **Resolved** (30): contracts pay 5× as much; the user considers it done.
 
 ## Dropped
 

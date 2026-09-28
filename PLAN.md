@@ -418,10 +418,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   still reflects nothing.
 
 ### Sound
-- **Nobody has listened to the new sound** (14). This machine has no way to hear it. The
-  recordings were chosen by title, description, rating and waveform, the cuts were placed from
-  loudness envelopes, and the levels were set by rendering each sound offline in headless Chrome
-  and measuring its peak and RMS. Mix, reverb amount and ambience levels need a listening pass.
 - **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,
   the rifle and pistol reloads are mixes of other recordings, the bolt-action's shot is a .405
   Winchester lever-action, and concrete footsteps reuse the stone ones played 10% faster. Every
@@ -479,19 +475,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
   production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred). The new build isn't on
   the live site until it's pushed.
-- **A click on the run dashboard within about a second of Esc resumes late** (dashboard retry
-  commit). Chrome refuses to re-lock the mouse that soon, so the click keeps retrying for up to
-  2 s and the game resumes once it's let through. Untested: headless Chrome never grants pointer
-  lock, and whether a retry still counts as the click's gesture depends on the browser.
-  Still untested after chunk 19: none of the three test browsers grants the lock headless.
-  **Resolved in part** (20): while it retries, the card says why ("Your browser holds the mouse
-  for a moment after Esc…", or "Taking the mouse back…" long after Esc), and if the browser
-  still refuses, "Your browser didn't give the mouse back. Click again to resume." A lock request
-  a browser never answers now counts as refused after 1 s instead of hanging. Chromium and
-  Firefox do grant the lock on a test's real click (see Code and testing), so resuming is tested
-  there, but a key pressed by a test doesn't free it the way Esc does, so Chrome's hold itself
-  still hasn't been seen by a test; the messages were checked in WebKit, which refuses every
-  lock, with the time since Esc faked.
 
 ### Sharing and leaderboards
 - **The single-file build is checked by hand only** (single file). `npm run build:single` makes
@@ -621,17 +604,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   1.1 million triangles against 0.42 million. Worth merging a soldier's meshes in chunk 21.
 
 ### Playtest and tuning
-- **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
-  the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
-  far comes from bots.
-- **The run log stays in one browser** (12). There's no backend, and since the F4 panel was
-  removed there's no way in the game to see or copy it; it's only in localStorage (`runlog`). It
-  keeps the last 200 runs.
-  **Resolved in part** (29): Stats on the menu sums the log up (runs, how they ended, length,
-  score, contracts, causes of death, extraction points, the latest 10) and exports it as
-  `onepointsix-runs-<date>.json` (format `onepointsix-runs`, version 1, with the build), for
-  playtesters to send. It still stays in one browser, and nothing reads the files back yet: they
-  have to be summed by hand or with a script.
 - **Bot runs can't check run length** (12). An operator bot searches only 1–3 crates and leaves,
   so even its extracted runs last about 1:20. The bot playtest (`npm run playtest`) is good for
   comparing ways of playing and how often operators meet, not for how long a human run lasts.
@@ -697,20 +669,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **The thorough playtest isn't a person** (29). Its bots can't be killed, play alone, don't
   notice being shot and never run dry, so it reads how long a full search and its fights take,
   not how often a person survives one. 13% of its runs still end stuck in a fight at 10:00.
-- **The stats export hasn't had a real file sent yet** (29). Its format may need more (the
-  browser, the screen, the frame rate) once chunk 30's playtesters use it; there's no way to
-  clear the log from the page either.
-  **Resolved in part** (30): the developer sent the first file (84 runs, see "Guards were too
-  deadly for a person"). Every run now records the damage taken from guards and from other
-  operators, and a death at someone else's hands how far off the killer was and how many guards
-  and operators had hit them in the last 5 s (`SHOOTERS_WINDOW`); the export is version 2, and the
-  playtest's summary prints the killer's median distance and the guard counts. Practice runs
-  aren't marked (the user decided against it), and the browser, screen and frame rate still
-  aren't recorded. Nothing reads the files back yet.
-- **Nobody did contracts** (30). In the first human run log 1 of 168 contracts offered was done:
-  they're risky (in and around the outposts) and paid 1,200–2,500, less than a crate or two.
-  **Changed** (30): rewards are 5× as much (intel 7,500, cache 6,000, commander 12,500). Not yet
-  played with; bots still get no contracts.
 - **Extracted runs were short** (30): 2:30 at the median in the first human run log, below
   the 3–10 minute goal; getting in and out with a couple of crates paid.
   **Changed** (30): a pickup now costs 5,000 (`EXTRACT_FEE`), paid from the loot on
@@ -738,8 +696,8 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   - Bot fill that shrinks as humans join
   - Anonymous identity, basic anti-cheat, deployment
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
-    leaderboards kept by the server instead of in links and one browser; Online taking other
-    players; names filtered and length-checked; conditions picked by the server so players don't
+    leaderboards kept by the server instead of in links and one browser; every run's stats sent
+    to the server; Online taking other players; names filtered and length-checked; conditions picked by the server so players don't
     split nine ways; snapshots, death cam clips and each human's kept run packed; death cams drawn
     from everyone's inputs, taped only near someone, and no player sent another's inputs; the dev
     message dropped
