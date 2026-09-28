@@ -696,11 +696,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   - Bot fill that shrinks as humans join
   - Anonymous identity, basic anti-cheat, deployment
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
-    leaderboards kept by the server instead of in links and one browser; every run's stats sent
-    to the server; Online taking other players; names filtered and length-checked; conditions picked by the server so players don't
-    split nine ways; snapshots, death cam clips and each human's kept run packed; death cams drawn
-    from everyone's inputs, taped only near someone, and no player sent another's inputs; the dev
-    message dropped
+    leaderboards kept by the server instead of in links and one browser; every run's stats sent to
+    the server; Online taking other players; names filtered and length-checked; conditions picked by
+    the server so players don't split nine ways; snapshots, death cam clips and each human's kept
+    run packed; death cams drawn from everyone's inputs, taped only near someone, and no player sent
+    another's inputs; the dev message dropped
 - **Transport upgrade:** WebTransport or WebRTC DataChannels (UDP-like), server-side visibility
   culling, server leaderboards
 - **Replay links:** shareable through the server instead of as files (chunk 17 covers local
