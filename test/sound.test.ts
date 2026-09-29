@@ -259,11 +259,10 @@ describe('sound banks', () => {
     }
   });
 
-  it('come as Opus first, then AAC', () => {
-    expect(list.formats.map((f) => f.ext)).toEqual(['ogg', 'm4a']);
-    // Opus's pre-skip of 312 samples at 48 kHz, and ffmpeg's AAC priming of 1024 at 44.1 kHz.
+  it('come as Opus', () => {
+    expect(list.formats.map((f) => f.ext)).toEqual(['ogg']);
+    // Opus's pre-skip of 312 samples at 48 kHz.
     expect(list.formats[0].priming).toBeCloseTo(312 / 48000, 4);
-    expect(list.formats[1].priming).toBeCloseTo(1024 / 44100, 4);
   });
 
   it('move the clips past the priming only where the browser left it in', () => {

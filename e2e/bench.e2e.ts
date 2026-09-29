@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { chromium, expect, firefox, test, webkit, type BrowserType } from '@playwright/test';
+import { chromium, expect, test, type BrowserType } from '@playwright/test';
 
-// The frame-cost report (see dev/bench.ts), in each engine in turn, after all
+// The frame-cost report (see dev/bench.ts), in Chromium, after all
 // the other tests. It prints the numbers next to those in bench-baseline.json,
 // the last ones kept on purpose, and fails only if the page does. To keep a
 // run's numbers as the new baseline: BENCH_BASELINE=1 npm run test:browser.
@@ -11,8 +11,6 @@ import { chromium, expect, firefox, test, webkit, type BrowserType } from '@play
 const BASELINE = new URL('./bench-baseline.json', import.meta.url);
 const ENGINES: [string, BrowserType, string[]][] = [
   ['chromium', chromium, process.platform === 'darwin' ? ['--use-angle=metal'] : ['--use-angle=gl']],
-  ['firefox', firefox, []],
-  ['webkit', webkit, []],
 ];
 
 type Stats = { median: number; p95: number; max: number };

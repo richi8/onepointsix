@@ -12,7 +12,7 @@ const START_FILES = [
   'assets/soldier.glb', 'assets/guns/rifle.glb', 'assets/guns/pistol.glb', 'assets/guns/bolt.glb',
   'assets/sounds.json', 'assets/sounds-early.ogg',
 ];
-const ALTERNATIVES = ['assets/sounds-early.m4a'];
+const ALTERNATIVES: string[] = [];
 /** Modules the game imports lazily, but at once, while the loading screen is up. */
 const START_MODULES = ['src/client/assets.ts', 'src/client/groundcover.ts', 'src/client/impostors.ts'];
 

@@ -1,7 +1,7 @@
 // Downloads the game's CC0 sounds from Freesound (see src/client/soundlist.ts),
 // cuts them, and packs them into two files, the early sounds and the late
-// ones (see EARLY), each as Opus and as AAC for browsers without Opus:
-// public/assets/sounds-early.ogg and so on, with where each sound sits in
+// ones (see EARLY), each as Opus: public/assets/sounds-early.ogg and
+// sounds-late.ogg, with where each sound sits in
 // public/assets/sounds.json. The results are committed, so this only needs
 // running again to change them. Needs ffmpeg with libopus (see tools.mjs), on
 // macOS or Linux.
@@ -21,14 +21,13 @@ const GAP = 0.05;
 /** Seconds a loop's end fades over its start. */
 const CROSSFADE = 2;
 /**
- * How each bank is encoded. Opus at 40 kbps is about half the AAC; AAC is
- * for browsers that can't decode Opus. Each file says how much silence the
- * encoder put in front (Opus's pre-skip, AAC's priming in the edit list),
- * which not every browser trims; the game checks (see bankLead).
+ * How each bank is encoded: Opus at 40 kbps, which every browser the game
+ * runs in decodes (Safari from macOS 15.4). The file says how much silence
+ * the encoder put in front (Opus's pre-skip), which not every browser trims;
+ * the game checks (see bankLead).
  */
 const FORMATS = [
   { ext: 'ogg', type: 'audio/ogg; codecs=opus', args: ['-c:a', 'libopus', '-b:a', '40k', '-application', 'audio'], priming: opusPreSkip },
-  { ext: 'm4a', type: 'audio/mp4; codecs="mp4a.40.2"', args: ['-c:a', 'aac', '-b:a', '64k'], priming: aacPriming },
 ];
 
 /** A recording's preview as mono samples, checked to be CC0 on its page first. */
@@ -154,18 +153,6 @@ function opusPreSkip(file) {
   const at = file.indexOf('OpusHead');
   if (at < 0) throw new Error('No OpusHead');
   return file.readUInt16LE(at + 10) / 48000;
-}
-
-/** Seconds an MP4's AAC track starts late: the first edit's media time, over the track's time scale. */
-function aacPriming(file) {
-  const mdhd = file.indexOf('mdhd');
-  const elst = file.indexOf('elst');
-  if (mdhd < 0 || elst < 0) throw new Error('No edit list');
-  const v1 = file[mdhd + 4] === 1;
-  const scale = file.readUInt32BE(mdhd + (v1 ? 24 : 16));
-  const e1 = file[elst + 4] === 1;
-  const time = e1 ? Number(file.readBigInt64BE(elst + 20)) : file.readInt32BE(elst + 16);
-  return time / scale;
 }
 
 mkdirSync(CACHE, { recursive: true });

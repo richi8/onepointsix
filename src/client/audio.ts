@@ -13,7 +13,7 @@ import { VoicePool } from './voices.ts';
 
 // Recorded CC0 sounds (see soundlist.ts), packed in two files: the ones
 // wanted from a run's first moment load behind the loading bar, the rest
-// behind the menu, each as Opus or, where that won't decode, AAC. Sounds out
+// behind the menu, each as Opus. Sounds out
 // in the world are placed in 3D around the listener, who hears with the
 // camera: they pan, dull and fade with distance, arrive late from far off,
 // and come through, over or round what's in between (see hearing.ts). Each

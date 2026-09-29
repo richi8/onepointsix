@@ -2,9 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Browser tests (`npm run test:browser`): the real game on the Vite dev server,
 // whose development build has the hooks the tests use (window.game, game.dev,
-// ?cam= and ?still=). The UI tests run in all three engines. The screenshot
-// comparisons run in Chromium only, and the frame-cost benchmark runs last, on
-// its own, in each engine in turn.
+// ?cam= and ?still=). Chromium only for now: Firefox and Safari come back
+// before release (see Decisions in PLAN.md). The frame-cost benchmark runs
+// last, on its own.
 
 const PORT = 5188;
 // Headless Chromium draws WebGL in software unless told to use the GPU.
@@ -38,8 +38,6 @@ export default defineConfig({
       testIgnore: ['setup.e2e.ts', 'bench.e2e.ts'],
       use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: { args: gpu } },
     },
-    { name: 'firefox', dependencies: ['setup'], testIgnore: ['setup.e2e.ts', 'bench.e2e.ts', 'visual.e2e.ts'], use: devices['Desktop Firefox'] },
-    { name: 'webkit', dependencies: ['setup'], testIgnore: ['setup.e2e.ts', 'bench.e2e.ts', 'visual.e2e.ts'], use: devices['Desktop Safari'] },
     // After everything else, so nothing else is drawing meanwhile.
     { name: 'bench', testMatch: 'bench.e2e.ts', fullyParallel: false },
   ],

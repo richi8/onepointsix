@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-09-29',
+    title: 'Chrome first',
+    notes: [
+      'The game is made and tested in Chrome for now; Firefox and Safari will be checked again before release.',
+      'Sounds now come in one format only, so Safari needs macOS 15.4 or later to play them.',
+    ],
+  },
+  {
     date: '2026-09-28',
     title: 'Replays removed',
     notes: [

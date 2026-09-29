@@ -106,25 +106,26 @@ test.describe('death cam', () => {
 });
 
 test.describe('resuming', () => {
-  // Chromium and Firefox grant the pointer lock on a real click, but a key
-  // pressed by the test doesn't free it, so Chrome's hold after Esc can't be
-  // brought about. WebKit refuses every lock, which stands in for it.
-  test('a click takes the mouse back, or says why it can’t', async ({ page, browserName }) => {
+  // Chromium grants the pointer lock on a real click, but a key pressed by the
+  // test doesn't free it, so Chrome's hold after Esc can't be brought about: a
+  // refusing requestPointerLock stands in for it.
+  test('a click takes the mouse back, or says why it can’t', async ({ page }) => {
     await open(page);
     await play(page);
     const card = page.locator('#paused');
     const note = card.locator('.resume');
-    if (browserName !== 'webkit') {
-      await expect(card).toBeHidden();
-      await page.evaluate(() => document.exitPointerLock());
-      await expect(card).toBeVisible();
-      await expect(note).toHaveText('Click anywhere to resume');
-      await card.locator('.score').click();
-      await expect(card).toBeHidden();
-      return;
-    }
+    await expect(card).toBeHidden();
+    await page.evaluate(() => document.exitPointerLock());
     await expect(card).toBeVisible();
     await expect(note).toHaveText('Click anywhere to resume');
+    await card.locator('.score').click();
+    await expect(card).toBeHidden();
+
+    await page.evaluate(() => {
+      document.exitPointerLock();
+      HTMLElement.prototype.requestPointerLock = () => Promise.reject(new DOMException('held', 'SecurityError'));
+    });
+    await expect(card).toBeVisible();
     // As if Esc had freed it a moment ago.
     await page.evaluate(() => (window.game.input.freedAt = performance.now()));
     await card.locator('.score').click();

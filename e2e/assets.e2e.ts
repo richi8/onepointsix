@@ -31,8 +31,7 @@ interface Report {
   };
 }
 
-test('the packed assets against the originals', async ({ page, browserName }) => {
-  test.skip(browserName !== 'chromium', 'measured in Chromium');
+test('the packed assets against the originals', async ({ page }) => {
   test.skip(!existsSync(ORIGINALS), 'no originals: run node scripts/fetch-assets.mjs');
   await page.goto('./dev/assets.html');
   await page.waitForFunction(() => document.title === 'done', null, { timeout: 90_000 });
