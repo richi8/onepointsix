@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-29',
+    title: 'Guns held properly',
+    notes: [
+      'Soldiers hold their pistol with both hands round the grip, rather than reaching for it just short of it.',
+      'A rifle’s stock rests against the front of the shoulder instead of passing through the chest. Soldiers with a long gun hold it further forward, their left hand nearer the magazine.',
+      'Crouching soldiers keep a natural hunch, sitting back on their heels, instead of arching their back with their head hanging forward. Standing soldiers no longer lean back.',
+    ],
+  },
+  {
+    date: '2026-09-29',
     title: 'The range is back',
     notes: [
       'Pick Range on the menu to try things out round the island’s first outpost. Soldiers there go through every move over and over: walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, shooting and reloading each gun, throwing grenades, shining a light, climbing the watchtower, climbing onto a crate and going through a door.',

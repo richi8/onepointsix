@@ -104,6 +104,8 @@ const HEAD_FIX = 0.3;
 /** How far the hips move to bring the head over the feet, and how far off the hitbox's middle the head may be left. */
 const HIPS_SHIFT = 0.12;
 const HEAD_SLACK = 0.04;
+/** How far the whole body, feet and all, may move back or forward to bring the head over its middle first. */
+const ROOT_SHIFT = 0.3;
 /** How far the hips move out with a full lean; the upper body rolls the rest of the way. */
 const LEAN_HIPS = 0.14;
 /** Length of a suppressor on the barrel, as in first person. */
@@ -178,6 +180,14 @@ interface GunShape extends GunPoints {
   muzzle: THREE.Vector3;
   /** Where its flashlight sits. */
   torch: THREE.Vector3;
+  /** How far behind the grip its back end is, in metres: the butt of a stock. */
+  butt: number;
+}
+
+/** How far behind the grip a gun's geometry reaches. */
+function buttOf(geometry: THREE.BufferGeometry): number {
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  return Math.max(geometry.boundingBox!.max.z, 0);
 }
 
 /**
@@ -187,14 +197,14 @@ interface GunShape extends GunPoints {
  */
 function gunLooks(
   frame: Part[], mag: Part[], action: Part[], weapon: number, muzzle: THREE.Vector3, support: THREE.Vector3,
-): Pick<GunShape, 'looks' | 'frames' | 'mag' | 'action' | 'torch'> {
+): Pick<GunShape, 'looks' | 'frames' | 'mag' | 'action' | 'torch' | 'butt'> {
   const torch = torchMount(weapon, muzzle, support);
   const bare = [...frame, torchPart(torch)];
   const can = part(CAN_GEO.clone().translate(muzzle.x, muzzle.y, muzzle.z - CAN_LENGTH / 2), CAN, 0.6, 0.3);
   const moving = [...mag, ...action];
   const looks: GunShape['looks'] = [mergeParts([...bare, ...moving]), mergeParts([...bare, ...moving, can])];
   return {
-    torch, looks,
+    torch, looks, butt: buttOf(looks[0]),
     frames: moving.length ? [mergeParts(bare), mergeParts([...bare, can])] : looks,
     mag: mag.length ? mergeParts(mag) : null,
     action: action.length ? mergeParts(action) : null,
@@ -1335,6 +1345,13 @@ export class Bodies {
   ): void {
     const spine = s.bones.spine;
     const origin = f.group.position;
+    // First the whole body, feet and all, steps back or forward under the head, as a crouch sits back on its heels,
+    // so the back isn't arched to fetch it; climbing keeps its lean.
+    if (near) {
+      const ahead = this.headAt(s, V_TMP3).sub(origin).dot(forward);
+      const back = clamp(-ahead, -ROOT_SHIFT, ROOT_SHIFT) * (1 - f.mantle);
+      if (Math.abs(back) > 1e-3) moveWorld(s.bones.root, V_TMP2.copy(forward).multiplyScalar(back));
+    }
     const head = this.headAt(s, V_TMP3);
     const arm = V_TMP5.copy(head).sub(V_TMP2.setFromMatrixPosition(spine.matrixWorld));
     // How far the head moves along `dir` for each radian turned about `axis` at the waist.
@@ -1539,10 +1556,12 @@ export class Bodies {
     // The bolt-action and pistol tip toward the left hand to reload; the rifle rolls its magazine out.
     const tip = reload * (p.weapon === BOLT ? 0.4 : pistol ? 0.5 : 0.7);
 
-    // The sight line runs just under the eye, the pistol held out at arm's length.
+    // The sight line runs just under the eye, a long gun's butt against the front of the shoulder, the pistol held
+    // out at arm's length.
+    const gun = GUNS[f.weapon];
     f.gun.position.set(shoulder.x - 0.1, shoulder.y + 0.06 - low * 0.12, shoulder.z);
     f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip, 'YXZ');
-    f.gun.translateZ((pistol ? -0.5 : -0.12) + kick * 0.04);
+    f.gun.translateZ((pistol ? -0.5 : -(gun.butt + SHOULDER_POCKET)) + kick * 0.04);
     f.gun.translateX(pistol ? -0.08 : 0);
     if (!near) {
       this.showParts(f, AT_REST);
@@ -1551,9 +1570,21 @@ export class Bodies {
     }
 
     f.gun.updateMatrixWorld(true);
-    const gun = GUNS[f.weapon];
-    const gunRight = V_TMP6.set(1, 0, 0).transformDirection(f.gun.matrixWorld);
     const gunForward = V_TMP7.set(0, 0, -1).transformDirection(f.gun.matrixWorld);
+    const armReach = (s.arm + s.forearm) * ARM_STRETCH;
+    if (pistol) {
+      // Arm's length is the arms': drawn in until both wrists, just behind the grip, are within it.
+      for (let i = 0; i < 2; i++) {
+        const wrist = toGrip(f.gun, gun.grip, gunForward, V_TMP6);
+        const over = Math.max(
+          b.rArm.getWorldPosition(V_TMP11).distanceTo(wrist), b.lArm.getWorldPosition(V_TMP11).distanceTo(wrist),
+        ) - armReach;
+        if (over <= 0) break;
+        f.gun.translateZ(Math.min(over * 1.2, 0.3));
+        f.gun.updateMatrixWorld(true);
+      }
+    }
+    const gunRight = V_TMP6.set(1, 0, 0).transformDirection(f.gun.matrixWorld);
     const gunUp = V_TMP8.crossVectors(gunRight, gunForward);
     const gunBack = V_TMP10.copy(gunForward).negate();
     const toWorld = (v: THREE.Vector3): THREE.Vector3 => f.gun.localToWorld(v);
@@ -1641,6 +1672,19 @@ export class Bodies {
       thumb = V_TMP4.copy(right);
     }
     wristFor('L', target, along, thumb, wrist);
+    if (target === support && !pistol) {
+      // A fore-end beyond the left arm's reach is held nearer the magazine well, no further back than it.
+      let slid = 0;
+      const most = Math.max(gun.magazine.z - gun.support.z, 0);
+      for (let i = 0; i < 3 && slid < most; i++) {
+        const over = b.lArm.getWorldPosition(V_TMP11).distanceTo(wrist) - armReach;
+        if (over <= 0) break;
+        const back = Math.min(over * 1.2, most - slid);
+        slid += back;
+        wrist.addScaledVector(gunBack, back);
+      }
+      if (slid > 0) target = support.clone().addScaledVector(gunBack, slid);
+    }
     pole.copy(right).multiplyScalar(-0.6).addScaledVector(up, -0.8).add(wrist);
     reach(b.lArm, b.lForeArm, b.lHand, wrist, pole, s.arm, s.forearm);
     orientHand(s.hands[0], along, thumb);
@@ -1701,6 +1745,18 @@ const CLIMB_OVER = 0.25;
 
 /** How long a hit's flinch lasts. */
 const REACT_TIME = 0.6;
+
+/** How far in front of the shoulder joint a long gun's butt sits, in its pocket. */
+const SHOULDER_POCKET = 0.07;
+/** How much of an arm's full length the hands reach to, so the elbows stay a little bent. */
+const ARM_STRETCH = 0.96;
+/** How far behind the grip the wrist of the hand round it is, near enough. */
+const GRIP_TO_WRIST = 0.06;
+
+/** Near enough where the wrist of a hand round `grip` is, in the world, for how far the arms must reach. */
+function toGrip(gun: THREE.Object3D, grip: THREE.Vector3, forward: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+  return gun.localToWorld(out.copy(grip)).addScaledVector(forward, -GRIP_TO_WRIST);
+}
 
 /**
  * How each gun kicks the body, in WEAPONS order: how much of the model's own
