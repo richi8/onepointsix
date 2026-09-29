@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { NavGrid } from '../src/server/nav.ts';
+import { NavGrid, reached, type Waypoint } from '../src/server/nav.ts';
 import { Btn, CMD_DT } from '../src/shared/constants.ts';
 import { lootCrates } from '../src/shared/loot.ts';
 import { applyCmd, spawnState, type PlayerState } from '../src/shared/sim.ts';
-import { inBuilding, leafRect, watchtower, World, type Box, type Building, type Door } from '../src/shared/world.ts';
+import { inBuilding, leafRect, watchtower, World, type Box, type Building, type Door, type Point } from '../src/shared/world.ts';
 
 const SEEDS = [1, 2, 3, 42, 1234];
 
@@ -30,6 +30,35 @@ function doors(w: World, b: Building): Door[] {
 function walk(w: World, p: PlayerState, dx: number, dz: number, seconds: number): void {
   const yaw = Math.atan2(-dx, -dz);
   for (let i = 0; i < seconds / CMD_DT; i++) applyCmd(w, p, { seq: i, buttons: Btn.Forward, yaw, pitch: 0 }, CMD_DT);
+}
+
+/** Walk a path's waypoints in turn, as a bot steers, for at most `seconds`. */
+function follow(w: World, p: PlayerState, path: Waypoint[], seconds: number): void {
+  const left = [...path];
+  for (let i = 0; i < seconds / CMD_DT && left.length; i++) {
+    const next = left[0];
+    if (left.length > 1 ? reached(next, p.x, p.y, p.z) : Math.hypot(next.x - p.x, next.z - p.z) < 0.2) {
+      left.shift();
+      continue;
+    }
+    applyCmd(w, p, { seq: i, buttons: Btn.Forward, yaw: Math.atan2(-(next.x - p.x), -(next.z - p.z)), pitch: 0 }, CMD_DT);
+  }
+}
+
+/** Where a bot stands to search a crate, as population.ts picks it. */
+function searchSpotOf(w: World, nav: NavGrid, box: Box): Point | null {
+  const cx = (box.minX + box.maxX) / 2;
+  const cz = (box.minZ + box.maxZ) / 2;
+  const reach = Math.max(box.maxX - box.minX, box.maxZ - box.minZ) / 2 + 0.9;
+  const floor = Math.max(box.minY, w.floorHeight(cx, cz));
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const x = cx + Math.sin(a) * reach;
+    const z = cz + Math.cos(a) * reach;
+    const y = w.groundHeight(x, z, floor);
+    if (Math.abs(y - floor) < 0.6 && nav.stands(x, y, z)) return { x, y, z };
+  }
+  return null;
 }
 
 describe('buildings', () => {
@@ -110,6 +139,45 @@ describe('buildings', () => {
         }
       });
     }
+  });
+
+  it('can be climbed by bots: upstairs to the crate there, and up a watchtower', () => {
+    let tall = 0;
+    for (const seed of SEEDS) {
+      const w = new World(seed);
+      const nav = new NavGrid(w);
+      for (const b of w.buildings.filter((h) => h.plan === 'tall')) {
+        tall++;
+        // Doors open, as a bot would open them on the way.
+        w.doors.forEach((_, i) => w.setDoor(i, true));
+        const [c] = crates(w, b).filter((k) => k.box.minY >= b.upper! - 1e-6);
+        expect(c, `seed ${seed}`).toBeDefined();
+        const spot = searchSpotOf(w, nav, c.box);
+        expect(spot, `seed ${seed}`).not.toBeNull();
+        const o = w.outposts[b.outpost];
+        const from = nav.nearestWalkable(o.x, o.z - 30)!;
+        const path = nav.findPath(from.x, from.z, spot!.x, spot!.z, undefined, spot!.y)!;
+        expect(path.at(-1)!.y, `seed ${seed}`).toBeCloseTo(b.upper!, 1);
+        const p = spawnState(from.x, w.groundHeight(from.x, from.z, w.floorHeight(from.x, from.z)), from.z);
+        follow(w, p, path, 40);
+        expect(Math.hypot(p.x - spot!.x, p.z - spot!.z), `seed ${seed}`).toBeLessThan(1);
+        expect(p.y, `seed ${seed}`).toBeCloseTo(b.upper!, 1);
+        // And back down.
+        const down = nav.findPath(p.x, p.z, from.x, from.z, p.y, undefined)!;
+        follow(w, p, down, 40);
+        expect(Math.hypot(p.x - from.x, p.z - from.z), `seed ${seed}`).toBeLessThan(1.5);
+      }
+      w.outposts.forEach((o, i) => {
+        const t = watchtower(o);
+        const from = nav.nearestWalkable(o.x, o.z)!;
+        const up = nav.findPath(from.x, from.z, t.x, t.z, o.y, t.y)!;
+        expect(up.at(-1)!.y, `seed ${seed} tower ${i}`).toBeCloseTo(t.y, 1);
+        const p = spawnState(from.x, w.groundHeight(from.x, from.z, o.y), from.z);
+        follow(w, p, up, 30);
+        expect(p.y, `seed ${seed} tower ${i}`).toBeCloseTo(t.y, 1);
+      });
+    }
+    expect(tall).toBeGreaterThan(0);
   });
 
   it('let a player through an open door but not a shut one, nor a wall', () => {
@@ -256,7 +324,7 @@ describe('buildings', () => {
       for (const b of w.buildings.filter((h) => h.plan === 'tall')) {
         const upper = b.upper!;
         const steps = w.props
-          .filter((p) => p.style === 'wood' && inside(b, p.box, 0) && p.box.maxY > b.floor + 0.1 && p.box.maxY <= upper + 1e-6 && p.box.maxX - p.box.minX < 1.3 && p.box.maxZ - p.box.minZ < 1.3)
+          .filter((p) => p.style === 'wood' && inside(b, p.box, 0) && p.box.maxY > b.floor + 0.1 && p.box.maxY <= upper + 1e-6 && p.box.maxX - p.box.minX < 1.6 && p.box.maxZ - p.box.minZ < 1.6)
           .sort((a, c) => a.box.maxY - c.box.maxY);
         expect(steps).toHaveLength(6);
         const centre = (x: Box) => [(x.minX + x.maxX) / 2, (x.minZ + x.maxZ) / 2];
@@ -271,14 +339,44 @@ describe('buildings', () => {
     }
   });
 
-  it('stand the upper storey on the walls below, until they have all gone', () => {
+  it('stand the upper storey on its floor, which the posts hold up until the last of them goes', () => {
     const w = [1, 2, 3, 42].map((s) => new World(s)).find((x) => x.buildings.some((b) => b.plan === 'tall'))!;
     const b = w.buildings.find((h) => h.plan === 'tall')!;
-    const up = w.panels.findIndex((p) => p.kind === 'wall' && inside(b, p.box, 0) && Math.abs(p.box.minY - b.upper!) < 1e-6 && p.restsOn.length > 0);
-    expect(up).toBeGreaterThanOrEqual(0);
-    const panel = w.panels[up];
-    expect(panel.falls).toBe('all');
-    for (const s of panel.restsOn) w.breakPanel(s);
-    expect(panel.box.gone).toBe(true);
+    const upper = b.upper!;
+    const floor = w.panels.findIndex((p) => p.kind === 'floor' && inside(b, p.box, 0) && p.carries.length > 0);
+    expect(floor).toBeGreaterThanOrEqual(0);
+    const slab = w.panels[floor];
+    expect(slab.falls).toBe('all');
+    expect(slab.restsOn).toHaveLength(4);
+    expect(slab.box.walk).toBe(true);
+    const ids = w.panels.map((p, i) => ({ p, i })).filter(({ p }) => inside(b, p.box));
+    const upstairs = ids.filter(({ p }) => p.box.minY >= upper - 1e-6);
+    const downstairs = ids.filter(({ p, i }) => p.kind === 'wall' && p.box.maxY <= upper + 1e-6 && !slab.restsOn.includes(i));
+    // Upstairs: its walls, posts, table, crate and roof.
+    expect(upstairs.some(({ p }) => p.kind === 'crate')).toBe(true);
+    expect(upstairs.some(({ p }) => p.kind === 'roof')).toBe(true);
+    const [last, ...others] = slab.restsOn;
+    for (const post of others) {
+      w.breakPanel(post);
+      expect(slab.box.gone).toBeFalsy();
+    }
+    const broke = w.breakPanel(last);
+    expect(broke).toContain(floor);
+    for (const { p, i } of upstairs) expect(p.box.gone, `panel ${i} (${p.kind})`).toBe(true);
+    // The ground floor's walls still stand.
+    expect(downstairs.filter(({ p }) => !p.box.gone).length).toBeGreaterThan(10);
+  });
+
+  it('break everywhere: posts, stairs, tables and floors are panels too', () => {
+    for (const seed of SEEDS) {
+      const w = new World(seed);
+      for (const b of w.buildings) {
+        const solid = w.props.filter((p) => inside(b, p.box, 0) && p.style !== 'crate' && p.panel < 0);
+        expect(solid, `seed ${seed} ${b.plan}`).toEqual([]);
+      }
+      // A hut's floor is concrete.
+      const hut = w.buildings.find((h) => h.outpost < 0)!;
+      expect(w.panels.some((p) => p.kind === 'floor' && inside(hut, p.box, 0))).toBe(true);
+    }
   });
 });

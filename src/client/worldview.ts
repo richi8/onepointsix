@@ -16,6 +16,7 @@ import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
 import { REFLECTED, Water } from './water.ts';
+import { Structures } from './structures.ts';
 import { wind } from './wind.ts';
 
 // The island starts out in flat colours and takes on its textures once the
@@ -73,8 +74,6 @@ function luminance(c: THREE.Color): number {
 /** The colour lightning lights the sky, and how much flat light it adds at its brightest. */
 const FLASH_SKY = new THREE.Color(0xc8d2ff);
 const FLASH_HEMI = 1.2;
-/** Seconds a door takes to swing open or shut. */
-const DOOR_SWING = 0.35;
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
 const V_SCALE = new THREE.Vector3();
 
@@ -95,11 +94,13 @@ export class WorldView {
   /** Window glass, see-through and drawn apart from the other props; `glassOf` maps a prop to its instance here, or -1. */
   private readonly glass: THREE.InstancedMesh;
   private readonly glassOf: Int32Array;
-  /** How far each door leaf has swung, from 0 shut to 1 open. */
-  private readonly swing: Float32Array;
+  /** How far each door leaf had swung when last drawn, from 0 shut to 1 open. */
+  private readonly drawn: Float32Array;
   private readonly terrain: Terrain;
   private readonly trees: Trees;
   private readonly rocks: THREE.InstancedMesh;
+  /** The watchtowers and containers, drawn from their parts. */
+  private readonly structures: Structures;
   private readonly water: Water;
   /** The outposts' lamps, lit after dark. */
   private readonly lamps: Lamps;
@@ -114,7 +115,6 @@ export class WorldView {
   private lighting: Lighting;
   private raining: boolean;
   private textured = false;
-  private lastTime = 0;
   /** How much of the sky reaches inside each building. */
   readonly light3d: IndoorLight;
   private previewing = true;
@@ -154,19 +154,22 @@ export class WorldView {
     const props = makeProps(world);
     this.props = props.mesh;
     this.propMatrices = props.matrices;
+    // Towers and containers are drawn from their parts, not as their boxes.
+    this.structures = new Structures(world);
+    for (const i of Structures.replaces(world)) props.mesh.setMatrixAt(i, GONE);
     const glass = makeGlass(world, props.mesh);
     this.glass = glass.mesh;
     this.glassOf = glass.of;
-    this.swing = Float32Array.from(world.doors, (d) => (d.open ? 1 : 0));
-    this.swing.forEach((_, i) => this.placeDoor(i));
+    this.drawn = Float32Array.from(world.doors, (d) => d.swing);
+    this.drawn.forEach((_, i) => this.placeDoor(i));
     this.terrain = new Terrain(world);
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
     this.lamps = new Lamps(world);
     this.lamps.setConditions(this.dark, this.fog.near, this.fog.far);
-    scene.add(this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, extracts.group, this.rain.group);
-    for (const o of [this.sky, this.terrain.group, this.props, this.trees.group, this.rocks, extracts.group, this.lamps.group]) reflected(o);
+    scene.add(this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.structures.group, this.trees.group, this.rocks, extracts.group, this.rain.group);
+    for (const o of [this.sky, this.terrain.group, this.props, this.structures.group, this.trees.group, this.rocks, extracts.group, this.lamps.group]) reflected(o);
   }
 
   /**
@@ -198,7 +201,7 @@ export class WorldView {
   dispose(): void {
     this.disposed = true;
     const scene = this.scene;
-    const parts = [this.sky, this.hemi, this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
+    const parts = [this.sky, this.hemi, this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.structures.group, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
     if (this.cover) parts.push(this.cover.group);
     const materials = new Set<THREE.Material>();
     for (const part of parts) {
@@ -283,7 +286,8 @@ export class WorldView {
     const layers = new Float32Array(this.world.props.length);
     const c = new THREE.Color();
     this.world.props.forEach(({ style, tint }, i) => {
-      layers[i] = PROP_LAYERS[style];
+      // Roofs are corrugated metal only on top: underneath, a plain ceiling.
+      layers[i] = style === 'roof' ? -1 - PROP_LAYERS[style] : PROP_LAYERS[style];
       props.setColorAt(i, c.setHex(pick(PROP_TINTS[style], tint)).multiplyScalar(GAIN[style] ?? 1));
     });
     props.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers, 1));
@@ -293,6 +297,7 @@ export class WorldView {
     old.dispose();
 
     this.trees.applyAssets(assets);
+    this.structures.applyAssets(assets);
     this.cover?.applyAssets(assets);
     this.rocks.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 }, 1, { wet: true }), this.world);
     const rand = mulberry32(this.world.seed + 29);
@@ -306,7 +311,6 @@ export class WorldView {
 
   /** Show panels standing or broken and doors open or shut as the world has them, at once. */
   syncPanels(): void {
-    this.world.doors.forEach((d, i) => (this.swing[i] = d.open ? 1 : 0));
     this.world.panels.forEach((_, i) => this.showPanel(i));
     this.lamps.show();
     this.props.instanceMatrix.needsUpdate = true;
@@ -349,7 +353,8 @@ export class WorldView {
       this.props.setMatrixAt(p.prop, GONE);
       return;
     }
-    const a = (this.swing[id] * Math.PI) / 2;
+    this.drawn[id] = d.swing;
+    const a = (d.swing * Math.PI) / 2;
     const dx = d.shutX * Math.cos(a) + d.openX * Math.sin(a);
     const dz = d.shutZ * Math.cos(a) + d.openZ * Math.sin(a);
     const [x0, z0, x1, z1] = leafRect(d, false);
@@ -408,7 +413,7 @@ export class WorldView {
     this.cover?.update(camera.position);
     this.rain.update(camera.position, time);
     this.lightning(this.rain.flash);
-    this.swingDoors(time);
+    this.swingDoors();
     this.light3d.focus(camera.position);
     this.light3d.update();
   }
@@ -480,21 +485,15 @@ export class WorldView {
     return this.water.under;
   }
 
-  /** Move each swinging door leaf on toward where the world has it. */
-  private swingDoors(time: number): void {
-    const dt = Math.min(Math.max(time - this.lastTime, 0), 0.1);
-    this.lastTime = time;
+  /** Draw each door leaf that has swung since, where the world has it; the world swings them. */
+  private swingDoors(): void {
     let moved = false;
     this.world.doors.forEach((d, i) => {
-      const to = d.open ? 1 : 0;
-      const s = this.swing[i];
-      if (s === to) return;
-      const step = dt / DOOR_SWING;
-      this.swing[i] = Math.abs(to - s) <= step ? to : s + Math.sign(to - s) * step;
+      if (this.drawn[i] === d.swing) return;
       this.placeDoor(i);
       moved = true;
       // Come to rest, the leaf's shadow moves in the island's map too.
-      if (this.swing[i] === to) this.castersChanged = true;
+      if (d.swing === 0 || d.swing === 1) this.castersChanged = true;
     });
     if (moved) this.props.instanceMatrix.needsUpdate = true;
   }

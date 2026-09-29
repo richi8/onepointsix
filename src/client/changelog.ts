@@ -12,6 +12,21 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-29',
+    title: 'Upstairs and through the doors',
+    notes: [
+      'Guards and operators take the stairs: they come up to the upper floor of a two-storey building after you, and climb the watchtowers.',
+      'One of the two crates in a two-storey building is now upstairs.',
+      'Every part of a building can break: the corner posts, the floors, the stairs and the tables. Knock out the four posts of a two-storey building and its whole upper storey comes down.',
+      'Doors swing open the moment you press F, and a door stops you while it swings, not only once it’s shut.',
+      'A door someone is standing in the way of tells you so.',
+      'Bots shut doors behind them now and then, and one running from you may slam a door in your face.',
+      'Guards no longer go to look every time another guard opens a door.',
+      'The watchtowers are built of posts, cross braces, a plank deck, a boarded parapet and proper stairs, and the shipping containers have ribbed steel walls and doors with locking bars.',
+      'The ceilings inside buildings are plain, without the bright stripes across them.',
+    ],
+  },
+  {
+    date: '2026-09-29',
     title: 'Bodies that stay down',
     notes: [
       'Bodies fall against soldiers standing near instead of through them.',

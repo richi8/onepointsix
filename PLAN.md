@@ -246,7 +246,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | 32 | **Cheaper soldiers, full shadows** | Each soldier's meshes merged so it draws in a few calls instead of about 43; the time saved spent on bodies taking shadows everywhere, not only near buildings, and casting them past 60 m; bodies, bags and debris in the sea's reflection, and the reflection skipped when no sea is in view; the island's shadow map following doors, broken walls and swaying crowns; the cascade patch told apart by a flag, not by counting directional lights | The benchmark's 24-body frame is well under chunk 30's, a soldier in a tree's shadow out in the open is shaded, and a wading soldier is reflected | **Done** (24 bodies: 1,151 draw calls to 245 and 14.4–14.9 ms to 10.8–11.2 ms a frame in one session on an M3 Pro, bodies now shaded everywhere; screenshot tests of a soldier in a tree's shade and one wading. The island's map doesn't sway: accepted, see the history) |
 | 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | **Done** (in the pose viewer, with screenshot tests of a climb, hits from the side, a slope and dropped magazines; not watched in play. The climb is keyed by hand, the fast crouch is the run clip played low, and the library's pistol shooting clip wasn't moved over, so each gun's kick is keyed instead. Posing 24 near bodies about 2.5 to 2.8–2.9 ms) |
 | 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | **Done** (by unit tests, pose viewer screenshots of a pile before and after a grenade and of a body against someone standing, and a browser test of a fall in play and in the death cam, bit for bit; not watched in play. Bodies left behind stay 30 s, not only until at rest. Posing 24 living bodies costs the same as before, within a noisy session's spread) |
-| 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | Not started |
+| 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | **Done** (by unit tests: paths walked up to the crate upstairs and back out on every seed with a two-storey building and up every watchtower, a guard going upstairs to a shot heard there, guards shutting doors behind them and an operator slamming one on a chase, four posts bringing an upper storey down whole; a browser test of a door opening at once with 400 ms of lag; screenshots of a watchtower, a container and the plain ceiling. Not watched in play. "Room by room" is a bot looking into what it heard, not a sweep of the rooms. A bot playtest came out as before, 9% of operator bots out by day, and simulated faster, 31 s against 35 s, as boxes now have one shape) |
 | 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | Not started |
 | 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | Not started |
 | 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | Not started |
@@ -281,6 +281,10 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   the columns either side. Corner posts hold up an unbreakable roof, and there's a table and a
   guarded crate in each room. Everything is still built from boxes, and the watchtowers and
   containers are unchanged.
+  **Resolved in part** (35): the watchtowers are drawn from posts, cross braces, a plank deck on
+  joists, a boarded parapet and stairs with treads and risers, and the shipping containers from
+  corner posts, rails, ribbed steel walls and roof and a pair of doors with locking bars (see
+  below for what they collide as). Buildings, crates and walls are still boxes.
 - **Trees are procedural** (9), because Poly Haven's tree models are hundreds of MB each. They
   have no LOD or impostors, and they don't sway.
   **Resolved in part** (15): trees are split into 100 m tiles. Tiles within 170–190 m of the
@@ -350,25 +354,39 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (19): the benchmark times the rebuild at about 1 ms a cell crossed in all
   three engines (see "The ground cover's first fill"), and the screenshots are now compared by
   the tests. The mid-range laptop and watching it move are left for chunk 30.
-- **Building ceilings show shadow acne** (19): the indoor screenshots show streaks across the
-  underside of the roof, dark by day and orange at dusk. Seen only now that a test looks inside.
-  Still there (23): the streaks look like the corrugated metal texture's ridges seen from below,
-  catching the sky's reflection, rather than shadow acne; with the light volume they're dimmer
-  but still bright against a dark room.
-- **Bots never go upstairs** (23). The nav grid is one layer over the ground, so a two-storey
-  building's upper floor and stairs don't exist for bots: they path about the ground floor under
-  it and never climb to the lookout, and a player up there is only shot at through the windows.
-  Loot crates are kept on the ground floor for that reason.
-- **Some of the new buildings can't break** (23): a two-storey building's upper floor, stairs and
-  ground-floor corner posts, and a hut's concrete floor. The upper storey's walls stand on the
-  walls below and fall once everything under them has gone, but its floor stays hanging on the
-  posts.
-- **Bots only ever open doors** (23), and only by walking into them; they never shut one or use
-  a door to block a chase, so an island's doors end up open as bots pass through. A door that
-  someone is standing in the way of just doesn't move, with nothing said to the player.
-- **Doors swing only on screen** (23). The leaf's collider jumps between shut and open at once;
-  its picture swings over 0.35 s. Pressing F waits for the server, so a door opens a round trip
-  after the press.
+- **Bots' floors are only those marked walkable** (35): stairs, a two-storey building's upper
+  floor and a watchtower's platform and stairs. Roofs, container tops, crates and wall tops are no
+  place for a bot, though a player can mantle onto them, and bots never jump or mantle as part of
+  a path. Paths are smoothed only on the ground, so up stairs and across an upper floor a bot
+  walks cell to cell. Links between floor nodes are found by a walk along the line between them
+  that follows the game's rules closely but not exactly (the edge of the tower's bottom step,
+  0.5 m high, isn't counted as an edge). "Clearing a building room by room" is a bot looking into
+  what it heard or last saw, which can be upstairs; nothing makes a bot sweep a building's rooms
+  in turn. Friends' gunfire is looked into where the friend fired from, so guards now run up the
+  watchtower when its sentry shoots.
+- **Door leaves count as open for bots' paths** (35): the nav grid keeps clear of every leaf where
+  it stands open, and walks through where it stands shut, as bots open doors by walking into
+  them. A bot opening a door toward itself is swept back by the leaf, the opener not counting as
+  in the way.
+- **Doors swing on two clocks** (35): the server swings them each tick and each client each frame,
+  so a leaf mid-swing can be a frame apart on the two. A door you swung isn't in the death cam as
+  it swung; the death cam shows doors as they stood at its start. Whether someone stands in the
+  way is judged from where they stood, not from the leaf's thickness, and on your own screen from
+  where you see others, a tenth of a second behind; the server's answer puts it right.
+- **Bots slam doors on a chase only rarely** (35): once in two 20-minute bot playtests of six
+  islands (in 982 doors shut). It needs a bot getting away from someone seen in the last 6 s,
+  within 30 m of the doorway on the side it came from, and a doorway on its way. Nobody has been
+  chased through a door by a person, and a shut door only slows a chaser, who opens it.
+- **The upper floor rests only on its posts** (35): with every wall under it shot out but the
+  posts standing, the upper storey stays up; with the posts gone it falls though the walls stand.
+  The landing beside the stairs falls with the posts too. Someone standing on a floor that falls
+  just drops. A building's ground storey can't be brought down but a panel at a time, and a
+  one-storey building's roof comes down only once everything under it has gone, as before.
+- **Towers and containers collide as the boxes they were** (35): drawn from their parts, they
+  still stop rounds, sight and bodies as solid boxes, so the finger gaps between a parapet's
+  boards, the space between the deck's joists and the underside of the stairs are solid. A
+  container's doors don't open. Every watchtower is the same, and the wood is a little darker
+  than the boxes were.
 - **The light volume is rough** (23). Cells about 0.5 m across leave a little light leaking at the
   foot of walls; only sky light is counted (no light bounced off the floor, no colour), and only
   what the building itself hides: hills, trees and other buildings outside don't darken a room.
@@ -637,6 +655,12 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   12.5% after (13% → 11% on seeds 1–6, 11% → 14% on seeds 7–12), with the same kill rates. Over
   30 minutes of bot games bots opened 10 doors and broke 5 panes; no roof came down. Nothing
   was tuned, as nothing moved. Nobody has fought through the new buildings.
+  Still (35): bots now go upstairs, up the watchtowers and through doors they shut behind them,
+  and guards no longer look into a friend's door or broken panel (only their gunfire). Bot
+  playtests of 6 islands × 20 minutes before and after the chunk: by day operator bots got out of
+  9% of runs both times, with about the same kill rates; at night in rain 15% before and 13%
+  after. The bots spent about 40 bot-minutes upstairs or on a tower in the two hours of day play.
+  Nothing was tuned, and nobody has fought upstairs or up a tower against them.
 - **Bot stealth was tried by bots only** (27). Two 6-island × 30-minute bot playtests, by day and
   at night in rain: operator bots got out of 15% and 17% of runs (12% just before the chunk);
   rats 24% and 36%, hunters 6% and 9%. The playtest now prints how often bots take a bush for

@@ -387,6 +387,64 @@ notes the chunk it came from.
   **Resolved** (33): both halves of each arm are lengthened alike (about 1.5×), so the elbow is
   where a real one would be, and the skin moves by how far along its bone it sits, so the sleeve
   lengthens down to the glove rather than the bare wrist stretching.
+- **Building ceilings show shadow acne** (19): the indoor screenshots show streaks across the
+  underside of the roof, dark by day and orange at dusk. Seen only now that a test looks inside.
+  Still there (23): the streaks look like the corrugated metal texture's ridges seen from below,
+  catching the sky's reflection, rather than shadow acne; with the light volume they're dimmer
+  but still bright against a dark room.
+  **Resolved** (35): it was the texture. A roof's corrugated metal is now only on its top and
+  sides; faces looking down draw the concrete layer, a plain ceiling (a roof's instances carry
+  their layer as -1 - it, which the props' shader reads). The upstairs screenshot, which showed
+  the stripes plainest, now shows a plain ceiling.
+- **Bots never go upstairs** (23). The nav grid is one layer over the ground, so a two-storey
+  building's upper floor and stairs don't exist for bots: they path about the ground floor under
+  it and never climb to the lookout, and a player up there is only shot at through the windows.
+  Loot crates are kept on the ground floor for that reason.
+  **Resolved** (35): the nav grid has floors. Boxes the world marks as walkable (a two-storey
+  building's stairs and upper floor, a watchtower's platform and stairs) give the cells under
+  them up to three more nodes, each at a spot in the cell where a body settles at that floor's
+  height and fits. Whether a body gets from a node to one next door, or to another in its own
+  cell (stairs put two steps in one cell), is found once by walking the line between them as the
+  game would (meeting what's ahead before the feet rise, never dropping more than 1.2 m, never
+  along an edge with a drop of more than a step to either side), and remembered per tile until
+  something near breaks. Paths are searched from the bot's height to the goal's: a height counts
+  as the floor it's at most 0.6 m above or 2.5 m below, so a shot heard from someone's eye
+  upstairs is looked into upstairs. A waypoint on a floor or a step counts as reached only at its
+  height. The stairs are 1.5 m wide now, from 1.2, for a path beside the upper floor's edge. One
+  of a two-storey building's two crates is upstairs. Tested by paths walked by the game's own
+  movement, up to the crate upstairs and back out on every seed with a two-storey building, and
+  up every outpost's watchtower on five seeds; and by a guard going upstairs to look into a shot
+  heard there.
+- **Some of the new buildings can't break** (23): a two-storey building's upper floor, stairs and
+  ground-floor corner posts, and a hut's concrete floor. The upper storey's walls stand on the
+  walls below and fall once everything under them has gone, but its floor stays hanging on the
+  posts.
+  **Resolved** (35): every part of a building is a panel: the posts, the stairs and tables
+  (timber, 200), and the floors (a concrete slab, 1,500, two grenades on it). A two-storey
+  building's upper floor rests on its four ground-floor posts and comes down with the last of
+  them; everything upstairs, the crate and the roof included, stands on it and comes down with
+  it. So four posts bring the upper storey down whole, leaving the ground floor. Tested by a unit
+  test and looked at in a screenshot of a building before and after.
+- **Bots only ever open doors** (23), and only by walking into them; they never shut one or use
+  a door to block a chase, so an island's doors end up open as bots pass through. A door that
+  someone is standing in the way of just doesn't move, with nothing said to the player.
+  **Resolved** (35): once through a doorway and clear of its leaves' sweep, a bot may shut the
+  door behind it, unless a friend is within 5 m of it: a guard six times in ten, an operator a
+  third of the time, going about its routine or looking into something; always when getting away
+  from someone seen in the last 6 s within 30 m of the doorway on the side it came from. Someone
+  who tries a door that would sweep through someone standing in its way is told so ("Someone is in
+  the way of the door."), and their own screen swings it back. A 20-minute bot playtest on six
+  islands shut 264 doors by day and 718 at night in rain; only one was slammed on someone chasing.
+- **Doors swing only on screen** (23). The leaf's collider jumps between shut and open at once;
+  its picture swings over 0.35 s. Pressing F waits for the server, so a door opens a round trip
+  after the press.
+  **Resolved** (35): a leaf's swing is the world's, stepped by the server each tick and by the
+  client each frame, and its collider swings with it: at a slant, it's collided with, shot and
+  seen through as a thin box turned about its hinge. Pressing F on a door swings it on your own
+  screen at once, when F means the door (no crate, bag, intel or pickup in reach, as the server
+  decides) and nobody you can see stands in its way; the server's word confirms it, a "stuck"
+  answer or no answer within 1.5 s swings it back. A browser test with 400 ms of lag each way
+  sees the door swinging at once, and fails without the prediction.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

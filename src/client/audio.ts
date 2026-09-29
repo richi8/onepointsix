@@ -495,7 +495,7 @@ export class Sfx {
     const h = this.hear(at);
     const d = h.d;
     const gain = (kind === 'glass' || kind === 'lamp' ? 0.6 : 0.7) * (HALF_DISTANCE / (HALF_DISTANCE + d)) * (1 - h.occ * 0.5) * this.drowned(d);
-    const clip = kind === 'wall' || kind === 'roof' ? 'crumble' : kind === 'glass' || kind === 'lamp' ? 'glass' : 'splinter';
+    const clip = kind === 'wall' || kind === 'roof' || kind === 'floor' ? 'crumble' : kind === 'glass' || kind === 'lamp' ? 'glass' : 'splinter';
     this.play(clip, { at: h, gain, rate: jitter(0.08), delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, h.occ, d), send: 0.3, space: sourceSpace(this.world, at) });
   }
 

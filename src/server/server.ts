@@ -56,7 +56,7 @@ import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
-import { leafRect, World, type Box, type Point } from '../shared/world.ts';
+import { inBuilding, leafRect, World, type Box, type Point } from '../shared/world.ts';
 import { beamSpot, Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
@@ -383,6 +383,29 @@ export class GameServer {
         rival.protection = 0;
         this.damage(rival, p, rival.hp, 'head', p.weapon, rival.x, rival.y + 1.6, rival.z);
         break;
+      case 'door': {
+        const w = this.world;
+        const o = w.nearestOutpost(p.x, p.z);
+        const b = o && w.buildings.find((h) => h.outpost === w.outposts.indexOf(o.outpost));
+        if (!b) return;
+        // A doorway in from outside: its leaves, and a step out from its middle.
+        for (let i = 0; i < w.doors.length; i++) {
+          const d = w.doors[i];
+          if (d.pair < i || !inBuilding(b, d.x, d.z, 0.01)) continue;
+          const mx = (d.x + w.doors[d.pair].x) / 2;
+          const mz = (d.z + w.doors[d.pair].z) / 2;
+          if (inBuilding(b, mx - d.openX * 2, mz - d.openZ * 2)) continue;
+          for (const leaf of [i, d.pair]) w.setDoor(leaf, false);
+          this.broadcast({ k: 'door', doors: [i, d.pair], open: false, x: mx, y: d.y0, z: mz });
+          p.x = mx - d.openX * 1.5;
+          p.z = mz - d.openZ * 1.5;
+          p.y = w.groundHeight(p.x, p.z, d.y0 + 0.5);
+          p.vx = p.vy = p.vz = 0;
+          p.tape.sync(p);
+          return;
+        }
+        break;
+      }
     }
   }
 
@@ -413,10 +436,13 @@ export class GameServer {
     this.bagList = null;
     this.beams.clear();
     this.lamplit.clear();
+    this.world.stepDoors(SERVER_DT);
     for (const p of this.players.values()) {
       if (p.bot && !p.dead) {
         if ((this.tick + p.id) % THINK_TICKS === 0) p.bot.think(ctx, p, THINK_TICKS * SERVER_DT);
         p.queue.push(...p.bot.commands(ctx, p, p.lastSim));
+        if (p.bot.shut >= 0) this.useDoor(p.bot.shut, false, p);
+        p.bot.shut = -1;
       }
       const n = Math.min(p.queue.length, MAX_CMDS_PER_TICK);
       p.tape.beginTick(p, now - SERVER_DT);
@@ -573,25 +599,23 @@ export class GameServer {
   }
 
   /**
-   * Open or shut a doorway's leaves, unless someone other than `by` stands
-   * where they'd swing to. Everyone sees it and bots near enough hear it.
-   * Returns whether it moved.
+   * Swing a doorway's leaves open or shut, unless someone other than `by`
+   * stands where they'd sweep through; then `by` is told the door is stuck.
+   * Everyone sees it and bots near enough hear it. Returns whether it moved.
    */
   private useDoor(id: number, open: boolean, by: Player): boolean {
     const w = this.world;
     const d = w.doors[id];
     const leaves = [id, d.pair].filter((i) => i >= 0 && !w.panels[w.doors[i].panel].box.gone && w.doors[i].open !== open);
     if (!leaves.length) return false;
-    const r = PLAYER_RADIUS;
     for (const i of leaves) {
-      const leaf = w.doors[i];
-      const [x0, z0, x1, z1] = leafRect(leaf, open);
       for (const p of this.players.values()) {
-        if (p === by || p.dead) continue;
-        if (p.x > x0 - r && p.x < x1 + r && p.z > z0 - r && p.z < z1 + r && p.y < leaf.y1 && p.y + PLAYER_HEIGHT > leaf.y0) return false;
+        if (p === by || p.dead || !w.sweeps(i, open, p.x, p.y, p.z, PLAYER_RADIUS)) continue;
+        by.events.push({ k: 'doorStuck', doors: leaves });
+        return false;
       }
     }
-    for (const i of leaves) w.setDoor(i, open);
+    for (const i of leaves) w.swingDoor(i, open);
     const [x0, z0, x1, z1] = leafRect(d, false);
     const x = d.pair >= 0 ? (d.x + w.doors[d.pair].x) / 2 : (x0 + x1) / 2;
     const z = d.pair >= 0 ? (d.z + w.doors[d.pair].z) / 2 : (z0 + z1) / 2;
@@ -906,14 +930,17 @@ export class GameServer {
 
   /**
    * A sound at (x, y, z) that carries `radius` metres, made by `source`: every
-   * bot within it hears it, or only those `who` picks.
+   * bot within it hears it, or only those `who` picks. A friend's door or
+   * footsteps are nothing to look into, though their gunfire is.
    */
   private noise(x: number, y: number, z: number, radius: number, source: number, who?: (p: Player) => boolean, gunfire = false): void {
     // Rain drowns sounds out.
     radius *= this.ctx.senses.hearing;
     const n: Noise = { x, y, z, radius, source, gunfire };
+    const from = this.players.get(source);
     for (const p of this.players.values()) {
       if (!p.bot || p.dead || (who && !who(p)) || Math.hypot(p.x - x, p.z - z) > radius) continue;
+      if (!gunfire && from && !hostile(p, from)) continue;
       p.bot.hear(p, n, this.time);
     }
   }

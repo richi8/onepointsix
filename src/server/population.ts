@@ -260,17 +260,24 @@ function outpostRoute(world: World, nav: NavGrid, o: Point, rand: () => number):
   return route;
 }
 
-/** A dry spot next to a crate to search it from, looking at its top. */
-function searchSpot(world: World, nav: NavGrid, box: { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number }): LootSpot | null {
+/** A dry spot next to a crate to search it from, looking at its top: on the floor it stands on, if that's upstairs. */
+function searchSpot(world: World, nav: NavGrid, box: { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }): LootSpot | null {
   const cx = (box.minX + box.maxX) / 2;
   const cz = (box.minZ + box.maxZ) / 2;
   const reach = Math.max(box.maxX - box.minX, box.maxZ - box.minZ) / 2 + 0.9;
+  const upstairs = box.minY > world.floorHeight(cx, cz);
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
     const x = cx + Math.sin(a) * reach;
     const z = cz + Math.cos(a) * reach;
+    const look = { x: cx, y: box.maxY, z: cz };
+    if (upstairs) {
+      const y = world.groundHeight(x, z, box.minY);
+      if (Math.abs(y - box.minY) < 0.1 && nav.stands(x, y, z)) return { x, y, z, look };
+      continue;
+    }
     if (!nav.dry(x, z)) continue;
-    return { ...ground(world, x, z), look: { x: cx, y: box.maxY, z: cz } };
+    return { ...ground(world, x, z), look };
   }
   return null;
 }

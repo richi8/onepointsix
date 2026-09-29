@@ -28,8 +28,12 @@ const SPOTS: Record<string, string> = {
   cascades: 'o0,20,9,25,-6,1,6',
   // Inside a two-storey building, lit from its windows: the stairs, crates and glass.
   indoor: '-65.28,18.16,36.55,-60.34,17.56,42.72',
-  // Its upper floor, with the sun through the windows.
+  // Its upper floor, with the sun through the windows and a plain ceiling.
   upstairs: '-65.28,21.16,36.55,-60.34,20.56,42.72',
+  // An outpost's watchtower: posts, braces, the deck, the parapet and the stairs.
+  watchtower: 'o0,3,5.7,2,-6,3.2,-6',
+  // A shipping container's doors, with their locking bars.
+  container: 'o0,-16,1.7,2.5,-8.7,0.7,0.7',
   // At eye height, trees 150 to 180 m off dissolving into their impostors.
   treeline: '60,30,-60,230,22,-160',
   // The island from the sea, 200, 400 and 600 m off its shore: its reflection,

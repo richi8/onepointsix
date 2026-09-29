@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Assets } from './assets.ts';
-import { LAYERS } from '../shared/layers.ts';
+import { Layer, LAYERS } from '../shared/layers.ts';
 import { addIndoor } from './indoorlight.ts';
 import { addWet } from './rain.ts';
 
@@ -43,7 +43,7 @@ export function surfaceMaterial(
     shader.uniforms.surfTint = { value: LAYER_TINT };
     shader.uniforms.surfBump = { value: bump };
     const terrain = mapping.kind === 'terrain';
-    const layer = mapping.kind === 'fixed' ? `${mapping.layer}.0` : 'vSurfLayer';
+    const layer = mapping.kind === 'fixed' ? `${mapping.layer}.0` : 'surfLayer';
 
     shader.vertexShader = patch(shader.vertexShader, [
       ['#include <common>', /* glsl */ `
@@ -94,6 +94,9 @@ export function surfaceMaterial(
         vec4 surfColor = vec4(0.0);
         vec3 surfN = vec3(0.0);
         vec3 wn = normalize(vSurfNormal);
+        ${mapping.kind === 'instanced' ? `
+        // A layer given as -1 - it has a plain ceiling underneath: a roof, seen from inside.
+        float surfLayer = vSurfLayer >= 0.0 ? vSurfLayer : wn.y < -0.5 ? ${Layer.concrete}.0 : -vSurfLayer - 1.0;` : ''}
         ${terrain ? TERRAIN_BLEND : `triplanar(${layer}, 1.0, vSurfPos, wn, surfColor, surfN);`}
         diffuseColor *= vec4(surfColor.rgb, 1.0);`, true],
       ['#include <normal_fragment_maps>', /* glsl */ `

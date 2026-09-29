@@ -78,7 +78,8 @@ export class Containers {
     c.until = Infinity;
     const x = (c.minX + c.maxX) / 2;
     const z = (c.minZ + c.maxZ) / 2;
-    this.drop(x, this.world.groundHeight(x, z, this.world.floorHeight(x, z)), z, c.items, now);
+    // On the floor it stood on, or whatever is left under it if that went too.
+    this.drop(x, this.world.groundHeight(x, z, Math.max(this.world.floorHeight(x, z), c.minY)), z, c.items, now);
     c.items = [];
   }
 
