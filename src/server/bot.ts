@@ -28,6 +28,7 @@ import type { ExtractPoint } from './extracts.ts';
 import { reached, type NavGrid, type Waypoint } from './nav.ts';
 import { TEMPERS, type Personality, type Temper } from './personality.ts';
 import type { Skill } from './skill.ts';
+import type { ActorSpec } from './range.ts';
 
 // A bot is a player without a keyboard. It perceives the world through the
 // same senses for everyone (sight limited by range, view cone, cover, the dark
@@ -60,7 +61,9 @@ export type Role =
   // taking what it can carry up to `greed` kg, and the spots after them too
   // until it can pay for extraction; then leave at the nearest open extraction
   // point. Its personality decides what else it does along the way.
-  | { kind: 'operator'; loot: LootSpot[]; planned: number; greed: number; personality?: Personality; thorough?: boolean };
+  | { kind: 'operator'; loot: LootSpot[]; planned: number; greed: number; personality?: Personality; thorough?: boolean }
+  // Doesn't think: plays one routine over and over on the range.
+  | { kind: 'actor'; spec: ActorSpec };
 
 export interface LootSpot extends Point {
   /** What to look at while searching, such as the crate. */
@@ -1487,7 +1490,7 @@ export class Bot {
   /** A point pulled back to within a guard's leash. */
   private leashed(ctx: BotContext, p: Point): Point {
     const role = this.role;
-    if (role.kind === 'operator') return p;
+    if (role.kind === 'operator' || role.kind === 'actor') return p;
     if (role.kind === 'sentry') return role.post;
     const anchor = role.home ?? this.anchor ?? role.route[0];
     const d = Math.hypot(p.x - anchor.x, p.z - anchor.z);

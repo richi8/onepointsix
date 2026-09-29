@@ -25,7 +25,9 @@ describe('share links', () => {
       expect(parseShareLink(q).challenge).toBeNull();
     }
     expect(parseShareLink('?mode=deathmatch').mode).toBeNull();
-    expect(parseShareLink('?mode=range').mode).toBeNull();
+    expect(parseShareLink('?mode=pve').mode).toBeNull();
+    // The range is back, for trying things out.
+    expect(parseShareLink('?mode=range').mode).toBe('range');
   });
 
   it('reads old Mixed links as Online', () => {

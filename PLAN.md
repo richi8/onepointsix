@@ -34,10 +34,12 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 |---|---|
 | **Online** | 8 operator slots, every one starting as a bot. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
 | **Offline** | Plays the same way as Online, but the other 7 operators are always bots and nobody else joins. |
+| **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate, a door), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
 
 Mixed was renamed Online, and old `mode=mixed` links and scores count as Online. PvE and the
 shooting range were removed after chunk 16: PvE became Offline, which has 7 bot operators, and the
-range with its target dummies is gone. Every game is a run.
+range with its target dummies is gone. The range came back after chunk 35 as a place to watch
+every animation (see `src/server/range.ts`), with actors instead of dummies.
 
 ### World capacity
 

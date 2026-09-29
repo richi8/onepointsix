@@ -61,7 +61,7 @@ const SHAKE_RANGE = 30;
 const SHAKE_DECAY = 5;
 /** Seconds before the loading screen offers to play without waiting for the textures. */
 const SKIP_LOADING_AFTER = 8;
-const MODE_NAMES: Record<Mode, string> = { online: 'Online', offline: 'Offline' };
+const MODE_NAMES: Record<Mode, string> = { online: 'Online', offline: 'Offline', range: 'Range' };
 /** Milliseconds a click on the run dashboard keeps trying to take the mouse back. */
 const RELOCK_RETRY = 2000;
 /** Seconds after Esc that Chrome won't give the mouse back, with some to spare. */
@@ -73,6 +73,7 @@ const NEW_ISLAND_SEEDS = 999_999;
 const MODE_NOTES: Record<Mode, string> = {
   online: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators. Players who join take a bot's place.`,
   offline: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} bot operators. Nobody else joins.`,
+  range: 'Try things out round the first outpost: soldiers going through every move, and nothing can hurt you. No scores.',
 };
 
 const TIME_NOTES: Record<TimeOfDay, string> = {
@@ -714,9 +715,11 @@ function endRun(e: RunEnd): void {
   conn.over = true;
   hud.killerKind = e.death?.kind ?? null;
   sfx.runEnd(e.outcome === 'extracted');
-  runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
+  // The range is for trying things out: nothing there counts.
+  const counts = mode !== 'range';
+  if (counts) runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
   const standing: string[] = [];
-  const place = board.add(config.seed, mode, { name: playerName(), score: e.score, date: today(), time: config.time, weather: config.weather });
+  const place = counts ? board.add(config.seed, mode, { name: playerName(), score: e.score, date: today(), time: config.time, weather: config.weather }) : 0;
   if (place === 1) standing.push('New best on this island!');
   else if (place > 1) standing.push(`#${place} of your runs on this island.`);
   const c = challengeFor(mode);

@@ -64,6 +64,7 @@ import { Cover } from './cover.ts';
 import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
 import { insertionPoint, planCommander, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
+import { ACTOR_RESPAWN, Actor, planRange } from './range.ts';
 import type { Personality } from './personality.ts';
 import { guardSkill, SKILLS } from './skill.ts';
 
@@ -136,9 +137,10 @@ interface Player extends PlayerState {
   protection: number;
   /** Events to send this tick. */
   events: GameEvent[];
-  /** Set for bots: the plan it was made from, and the bot for its current life. */
+  /** Set for bots: the plan it was made from, and the bot for its current life, or on the range the actor. */
   plan: BotPlan | null;
   bot: Bot | null;
+  actor: Actor | null;
   /** Set for operators playing a run. */
   run: Run | null;
   /** Set for a response squad: when it's recalled. */
@@ -175,6 +177,8 @@ export interface ServerOptions {
    * playtest can read how long a run lasts that isn't cut short by death.
    */
   thorough?: boolean;
+  /** The range: actors round outpost 0, players unhurt and their run's clock stopped (see range.ts). */
+  range?: boolean;
 }
 
 /**
@@ -214,6 +218,9 @@ export class GameServer {
   private readonly lamplit = new Map<number, boolean>();
   /** When each operator slot emptied by a bot leaving gets filled again, soonest first. */
   private readonly refills: number[] = [];
+  /** On the range: where players drop in, and the actors' ids, in the order of their specs. */
+  private rangeSpawn: Post | null = null;
+  private readonly actorIds: number[] = [];
   private readonly ctx: BotContext;
   /** Where everyone stood at the end of each recent tick, oldest first, for rewinding shots. */
   private readonly history: { tick: number; poses: PoseRecord[] }[] = [];
@@ -280,6 +287,14 @@ export class GameServer {
       for (const plan of plans) if (plan.follows !== undefined && plan.role.kind === 'guard') plan.role.leader = ids[plan.follows];
     }
     while (this.operatorCount() < this.operatorSlots) this.addOperatorBot();
+    if (options.range) {
+      const { actors, spawn } = planRange(this.world, this.nav);
+      this.rangeSpawn = spawn;
+      for (const spec of actors) {
+        const plan: BotPlan = { name: spec.name, role: { kind: 'actor', spec }, skill: 'normal', primary: spec.weapon, spawn: spec.post, commander: spec.commander };
+        this.actorIds.push(this.addBot(plan, spec.team).id);
+      }
+    }
   }
 
   get time(): number {
@@ -290,7 +305,7 @@ export class GameServer {
     const p = this.add('player', 'operator', send);
     p.run = newRun(this.time);
     this.spawn(p);
-    this.assignContracts(p);
+    if (!this.options.range) this.assignContracts(p);
     // A human takes an operator slot from a bot: the one farthest from anyone.
     while (this.operatorSlots > 0 && this.operatorCount() > this.operatorSlots) {
       const bots = [...this.players.values()].filter((b) => b.team === 'operator' && b.plan);
@@ -438,6 +453,7 @@ export class GameServer {
     this.lamplit.clear();
     this.world.stepDoors(SERVER_DT);
     for (const p of this.players.values()) {
+      if (p.actor && !p.dead) this.act(p, p.actor, now);
       if (p.bot && !p.dead) {
         if ((this.tick + p.id) % THINK_TICKS === 0) p.bot.think(ctx, p, THINK_TICKS * SERVER_DT);
         p.queue.push(...p.bot.commands(ctx, p, p.lastSim));
@@ -459,7 +475,7 @@ export class GameServer {
         p.tape.record(cmd, p);
         p.light = this.ctx.senses.dark && !p.dead && (cmd.buttons & Btn.Light) !== 0;
         if (p.run && !p.dead) this.use(p, cmd.buttons);
-        if (p.bot && !p.dead) this.botDoors(p, cmd.buttons, cmd.yaw);
+        if ((p.bot || p.actor) && !p.dead) this.botDoors(p, cmd.buttons, cmd.yaw);
         p.lastSim = cmd.seq;
       }
       p.queue.splice(0, n);
@@ -491,7 +507,7 @@ export class GameServer {
       // A fallen operator's run is over, as is a response guard's job; a guard is replaced at its
       // post, but not in front of an operator: it waits until nobody is close to the post or sees it.
       if (p.run || p.plan?.temporary) this.leave(p);
-      else if (p.plan && this.watched(p.plan.spawn)) p.respawn = RESPAWN_RETRY;
+      else if (p.plan && !p.actor && this.watched(p.plan.spawn)) p.respawn = RESPAWN_RETRY;
       else this.spawn(p);
     }
     this.stepBounty(now);
@@ -649,6 +665,35 @@ export class GameServer {
     }
   }
 
+  /**
+   * An actor's tick on the range: back on its post at the start of each loop
+   * (a door it goes through shut again), its commands, and a shooter's shot
+   * that missed made good.
+   */
+  private act(p: Player, actor: Actor, now: number): void {
+    const spec = actor.spec;
+    if (actor.due(now)) {
+      Object.assign(p, spawnState(spec.post.x, spec.post.y, spec.post.z), { yaw: spec.post.yaw, pitch: 0, life: p.life + 1, hp: p.hp });
+      p.hp = p.team === 'guard' ? GUARD_HP : MAX_HP;
+      p.weapon = spec.weapon;
+      p.carry = spec.carry ?? 0;
+      p.queue = [];
+      p.tape.sync(p);
+      actor.restart(now);
+      if (spec.door) {
+        for (const i of spec.door) this.world.setDoor(i, false);
+        const d = this.world.doors[spec.door[0]];
+        this.broadcast({ k: 'door', doors: spec.door, open: false, x: d.x, y: d.y0, z: d.z });
+      }
+    }
+    const target = spec.target !== undefined ? this.players.get(this.actorIds[spec.target]) : undefined;
+    p.queue.push(...actor.commands(p, target, now, p.lastSim));
+    if (target && !target.dead && actor.madeGood(now)) {
+      const h = hitboxes(target);
+      this.damage(target, p, target.hp, 'torso', p.weapon, h.torsoX, (h.hipY + h.neckY) / 2, h.torsoZ);
+    }
+  }
+
   /** Someone called in a pickup: guards around hear it, and a response squad sets off toward it. */
   private called(p: Player, index: number): void {
     const at = this.extracts.points[index];
@@ -663,6 +708,8 @@ export class GameServer {
   /** The clock, and standing in an extraction point. */
   private runStep(p: Player, landed: number[]): void {
     const run = p.run!;
+    // On the range the clock stands still.
+    if (this.options.range) run.start = this.time;
     if (this.time - run.start >= RUN_TIME) {
       this.endRun(p, 'mia');
       return;
@@ -841,7 +888,7 @@ export class GameServer {
   private add(name: string, team: Team, send: (msg: ServerMsg) => void): Player {
     const p: Player = {
       ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, queue: [], lastRecv: 0, lastSim: 0,
-      respawn: 0, protection: 0, events: [], plan: null, bot: null, run: null, recall: 0,
+      respawn: 0, protection: 0, events: [], plan: null, bot: null, actor: null, run: null, recall: 0,
       tape: new Tape(), deathcam: null, threw: false, light: false,
     };
     this.players.set(p.id, p);
@@ -852,7 +899,7 @@ export class GameServer {
     const p = this.add(plan.name, team, () => {});
     p.joined = true;
     p.plan = plan;
-    if (team === 'operator') p.run = newRun(this.time);
+    if (team === 'operator' && plan.role.kind !== 'actor') p.run = newRun(this.time);
     this.spawn(p);
     return p;
   }
@@ -885,6 +932,7 @@ export class GameServer {
   private spawn(p: Player): void {
     let post: Post;
     if (p.plan) post = p.plan.spawn;
+    else if (this.rangeSpawn) post = this.rangeSpawn;
     else {
       const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
       const at = insertionPoint(this.world, this.nav, this.spawnRng, others);
@@ -896,7 +944,12 @@ export class GameServer {
     p.respawn = 0;
     p.protection = p.plan ? 0 : SPAWN_PROTECTION;
     p.queue = [];
-    if (p.plan) {
+    if (p.plan?.role.kind === 'actor') {
+      p.actor = new Actor(p.plan.role.spec, this.world);
+      p.actor.restart(this.time);
+      p.weapon = p.plan.primary;
+      p.carry = p.plan.role.spec.carry ?? 0;
+    } else if (p.plan) {
       const { role, skill, primary } = p.plan;
       p.bot = new Bot(role, role.kind === 'operator' ? SKILLS[skill] : guardSkill(SKILLS[skill]), primary, post.yaw, mulberry32((this.seed ^ Math.imul(p.id, 0x9e3779b1) ^ p.life) >>> 0));
       p.weapon = primary;
@@ -1097,7 +1150,8 @@ export class GameServer {
     from: { x: number; y: number; z: number } = { x: attacker.x, y: attacker.y + EYE_HEIGHT, z: attacker.z },
   ): void {
     // Thorough operator bots, for the playtest, are never hurt, and don't notice being shot.
-    const unhurt = !!this.options.thorough && !!victim.plan && victim.team === 'operator';
+    // Nor is anyone on the range, but the actors.
+    const unhurt = (!!this.options.thorough && !!victim.plan && victim.team === 'operator') || (!!this.options.range && !victim.plan);
     if (victim.protection > 0 || unhurt) amount = 0;
     amount = Math.min(amount, victim.hp);
     victim.hp -= amount;
@@ -1111,7 +1165,7 @@ export class GameServer {
     if (attacker !== victim && !unhurt) victim.bot?.hurt(attacker, this.time);
     if (!killed) return;
     victim.dead = true;
-    victim.respawn = victim.team === 'guard' && !victim.plan?.temporary ? GUARD_RESPAWN : BODY_TIME;
+    victim.respawn = victim.actor ? ACTOR_RESPAWN : victim.team === 'guard' && !victim.plan?.temporary ? GUARD_RESPAWN : BODY_TIME;
     victim.vx = victim.vy = victim.vz = 0;
     if (attacker.run && attacker !== victim) {
       if (victim.team === 'operator') attacker.run.kills++;

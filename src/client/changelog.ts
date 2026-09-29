@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-29',
+    title: 'The range is back',
+    notes: [
+      'Pick Range on the menu to try things out round the island’s first outpost. Soldiers there go through every move over and over: walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, shooting and reloading each gun, throwing grenades, shining a light, climbing the watchtower, climbing onto a crate and going through a door.',
+      'Some of them are shot now and then, from the front, from behind, from the side and while running, and a knot of three is blown up by a grenade, so you can watch them fall. They get up again a few seconds later.',
+      'Nothing can hurt you on the range, the clock stands still, and nothing there counts toward your scores.',
+    ],
+  },
+  {
+    date: '2026-09-29',
     title: 'Upstairs and through the doors',
     notes: [
       'Guards and operators take the stairs: they come up to the upper floor of a two-storey building after you, and climb the watchtowers.',
