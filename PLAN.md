@@ -231,6 +231,35 @@ Known Issues that Phase 3 leaves alone:
 - **Decided against**: a prone stance (so grass alone rarely hides a crouched body), a bounty
   bonus, a night score adjustment and the original Freesound files (see Decisions).
 
+### Phase 4: clearing the rest of the Known Issues (still local only, Chrome only)
+
+Chunks 31–40 work through the Known Issues Phase 3 left open. The aim is to resolve them, not
+to add features: the core loop stays as it is, and the game ideas stay in Future. The same rules
+apply: no backend, nothing that breaks the rules that keep multiplayer easy to add later, and
+each chunk marks the Known Issues named in its scope **Resolved** (or **Resolved in part**,
+saying what's left). The game is built and tested in Chrome only for now (see Decisions). The CI
+chunk comes first so every later chunk is checked there, and the human pass comes last.
+
+| # | Chunk | Scope | Done when | Status |
+|---|---|---|---|---|
+| 31 | **Tests in CI** | The browser tests run in CI on Linux in Chromium (`--use-angle=gl`, or software drawing where the GPU can't be had), with screenshots kept per platform; a browser test for the single-file build opened from `file://`; tests for the lighting presets, rain, flashlights and the menu's condition pickers; the scripts' CI job run on GitHub once pushed | Every push runs Vitest and the browser tests, and a broken screenshot or UI fails the build | Not started |
+| 32 | **Cheaper soldiers, full shadows** | Each soldier's meshes merged so it draws in a few calls instead of about 43; the time saved spent on bodies taking shadows everywhere, not only near buildings, and casting them past 60 m; bodies, bags and debris in the sea's reflection, and the reflection skipped when no sea is in view; the island's shadow map following doors, broken walls and swaying crowns; the cascade patch told apart by a flag, not by counting directional lights | The benchmark's 24-body frame is well under chunk 30's, a soldier in a tree's shadow out in the open is shaded, and a wading soldier is reflected | Not started |
+| 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | Not started |
+| 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | Not started |
+| 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | Not started |
+| 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | Not started |
+| 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | Not started |
+| 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | Not started |
+| 39 | **Trees and grass** | Trees from CC0 models, or better generated ones, small enough to download, with impostors baked from them to match; grass that shows blades up close instead of three flat cards, fading to the current tufts farther off; the sight model's cover checked against the new grass; within the benchmark's frame budget | Close up, a tree and a patch of grass look real in a screenshot, and the benchmark holds its frame time | Not started |
+| 40 | **Human pass II** | What needs people and hardware: a mid-range laptop for the 5 s load, 60 fps and the adaptive resolution; runs by other people with the stats export; watching the animation, ragdolls, swaying and waves in play; listening to the recordings, reverbs and corners; fighting through the buildings and against bots hiding in bushes; tuning from what they show (guards, weapons, extraction timings and fee, loot, night) | The Playtest and tuning goals are met with human data, and every Known Issue is Resolved, Moot or listed below as left for later | Not started |
+
+Known Issues that Phase 4 leaves alone:
+- **Waiting on multiplayer or a backend**, **accepted as they are** and **decided against**: as
+  in Phase 3.
+- **Left for a later phase**: a more realistic soldier model ("One soldier model for every side"
+  and "The soldier is stylized"; see Future), and Firefox and Safari (tested again before
+  release).
+
 ## Known Issues
 
 Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
@@ -537,12 +566,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   animation is still only checked in still pictures, and still nobody has listened to the audio.
 - **The browser tests don't run in CI** (19). The deploy workflow still runs only Vitest. The
   tests want a GPU to draw the game at speed; on Linux Chromium is told to use OpenGL
-  (`--use-angle=gl`), which hasn't been tried, and neither have Firefox and WebKit on Linux.
+  (`--use-angle=gl`), which hasn't been tried.
 - **The screenshots come from one machine** (19): Chromium on an M3 Pro through Metal, at
   640 × 360, kept in `e2e/screenshots/darwin/`. Another machine makes its own on its first run
   (which reports each as a failure once), so they only catch changes on the machine that made
-  them. A change to fewer than 1% of the pixels passes. Firefox and WebKit draw the same spots in
-  no comparison, only in the UI tests.
+  them. A change to fewer than 1% of the pixels passes.
 - **The scripts' CI job hasn't run on GitHub yet** (20). `.github/workflows/scripts.yml` runs
   both scripts on Ubuntu when they or their lists change, and the unit tests on what they make.
   It was run as-is in a Linux x86-64 container (about 8 minutes under emulation), not on GitHub,
@@ -694,11 +722,18 @@ extraction stays as hard as it is.
 - **Capacity:** 8 operators (12 until chunk 12's playtest) and about 24 guards per game (tunable constant)
 - **Backend:** none for now; the game is local only. Multiplayer is a future feature.
 - **After the proof of concept:** chunks 11–18 polish and deepen the local game, and chunks
-  19–30 clear the Known Issues. Multiplayer stays in Future and comes after them.
+  19–30 clear the Known Issues, and chunks 31–40 the rest of them. Multiplayer stays in Future
+  and comes after them.
 - **No squads:** operators play free-for-all. Squads were dropped because the game's pitch
   ("beat my score") is a solo challenge, and revive would soften "die = score 0".
-- **Platform:** desktop only (keyboard and mouse) in current Chrome, Firefox and Safari. Target
-  is 60 fps on a mid-range laptop. No touch or mobile support for now.
+- **Platform:** desktop only (keyboard and mouse). Target is 60 fps on a mid-range laptop. No
+  touch or mobile support for now.
+- **Chrome only for now** (2026-09-29): the game is built and tested in Chrome (Chromium in the
+  browser tests); the Firefox and WebKit test runs and benchmarks were dropped, and Firefox and
+  Safari are tested again before release. Their fixes in the code (the pointer lock's answer in
+  Safari, Firefox's late sound start) stay. Sounds come as Opus only, so Safari needs macOS 15.4
+  or later; dropping the AAC copies saved 1.6 MB and took the single-file build from 8.3 to
+  5.9 MB.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
   ambientCG, Quaternius). Chunk 9 also used a Mixamo soldier, which chunk 11 replaced to leave
   no licensing doubts.
@@ -722,8 +757,8 @@ extraction stays as hard as it is.
   reviewed in chunks 0 and 1.
 - **Loading** (20): the loading screen waits for the early sounds (your own guns and steps, and
   the ambience) as well as the textures and models, so a run is never silent at the start. The
-  rest of the sound and the death cam load behind the menu. Sounds are Opus,
-  with AAC for browsers that can't decode it; textures go through our own ETC1S-only transcoder.
+  rest of the sound and the death cam load behind the menu. Sounds are Opus (the AAC copies were
+  dropped with Chrome only); textures go through our own ETC1S-only transcoder.
 - **Replays removed** (2026-09-28): whole-run replays (chunks 17 and 28: files, a list kept in
   the browser, a viewer with scrubbing and a free camera, and the game run again exactly from its
   log) were dropped. They were a lot of code to keep working: every change to the simulation had
@@ -733,5 +768,6 @@ extraction stays as hard as it is.
 - **The sky light stays as tuned** (20): measured, it's 24% brighter than the original sky
   would give, but the lighting was tuned by eye on it, so it wasn't scaled down to match.
 - **Testing:** Vitest for the shared simulation (determinism, movement, collision), and from
-  chunk 19 Playwright for the game in the browser (`npm run test:browser`: Chromium, Firefox and
-  WebKit on the Vite dev server, whose development build has the hooks the tests use).
+  chunk 19 Playwright for the game in the browser (`npm run test:browser`: Chromium on the Vite
+  dev server, whose development build has the hooks the tests use; Firefox and WebKit until
+  2026-09-29).
