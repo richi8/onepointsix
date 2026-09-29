@@ -4,7 +4,7 @@ import { Bodies } from '../src/client/bodies.ts';
 import { ViewModel } from '../src/client/viewmodel.ts';
 import { hitboxes, HEAD_RADIUS } from '../src/shared/hitbox.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
-import { GRENADE } from '../src/shared/weapons.ts';
+import { GRENADE, WEAPONS } from '../src/shared/weapons.ts';
 
 // A dev page for looking at the soldier's poses without playing: a row of
 // bodies, each frozen in one state, or the first-person arms. Run `npm run dev`
@@ -16,16 +16,19 @@ import { GRENADE } from '../src/shared/weapons.ts';
 //
 // `show` lists the states (see snap below); `name:t` sets how far through an
 // action or a death that body is, and `t` sets it for all; `name:t:w` also
-// gives that body weapon w. For land, hit, hithead, shoot and cycle (a
-// bolt-action shot and the bolt worked after it), t is the seconds since. `view` is side,
+// gives that body weapon w. A reload plays up to t, so what it drops falls.
+// For land, hit, hithead, hitleg, shoot and cycle (a bolt-action shot and the
+// bolt worked after it), t is the seconds since. Hits come from yaw `from`
+// (in front by default), `side` metres right of the middle. `view` is side,
 // front, back or fp. Also: `weapon`, `quiet` (suppressor), `aim` (fp), `hb`
 // (hitbox heads), `wall=x` (a wall to fall against), `slope=k` (ground
-// rising k per metre along x), `d` (camera distance), `eye=x,y,z` and
-// `at=x,y,z` (camera by hand) and `nogun` (fp arms alone) and `hit` (a round
-// just landed in the first body's chest). The dead are killed by a round from
-// in front, or from yaw `from`, in the head with `headshot`, or by a grenade
-// with `grenade`; `dead:t` has been dead for 2t seconds. The page sets
-// document.title to "ready" once the frame is drawn, for screenshots.
+// rising k per metre along x), `rounds` (a reload's), `d` (camera distance),
+// `eye=x,y,z` and `at=x,y,z` (camera by hand) and `nogun` (fp arms alone) and
+// `hit` (a round just landed in the first body's chest), `climb:t` (t seconds into a climb onto `ledge`,
+// a ledge that high in front of everyone in the front view). The dead are killed
+// by a round from in front, or from yaw `from`, in the head with `headshot`,
+// or by a grenade with `grenade`; `dead:t` has been dead for 2t seconds. The
+// page sets document.title to "ready" once the frame is drawn, for screenshots.
 
 const q = new URLSearchParams(location.search);
 const view = q.get('view') ?? 'side';
@@ -54,11 +57,21 @@ if (wallX !== null) {
   scene.add(wall);
 }
 const slope = Number(q.get('slope') ?? 0);
+// A ledge `ledge` metres high in front of everyone, facing the front view, for climbs.
+const ledge = Number(q.get('ledge') ?? 1.2);
+const LEDGE_Z = 0.5;
+if (q.has('ledge')) {
+  // From just left of the first body, so a camera off to its left sees the ledge side on.
+  const block = new THREE.Mesh(new THREE.BoxGeometry(30, ledge, 3), new THREE.MeshStandardMaterial({ color: 0x9a8f80 }));
+  block.position.set(14.4, ledge / 2, LEDGE_Z + 1.5);
+  scene.add(block);
+}
 
-const floor = (x: number): number => Math.max(0, x * slope);
+const floor = (x: number): number => x * slope;
 const ground = {
   buildings: [],
-  groundHeight: floor,
+  groundHeight: (x: number, z: number, feetY: number): number =>
+    q.has('ledge') && z > LEDGE_Z && ledge <= feetY + 0.55 ? Math.max(ledge, floor(x)) : floor(x),
   floorHeight: floor,
   // The wall is a box 0.2 thick, 2 high and 4 long.
   sphereOut(x: number, y: number, z: number, r: number, out: { x: number; y: number; z: number }): boolean {
@@ -95,6 +108,8 @@ camera.lookAt(width / 2, 0.8, 0);
 // `eye` and `at` place the camera by hand, as x,y,z.
 if (q.has('eye')) camera.position.fromArray(q.get('eye')!.split(',').map(Number));
 if (q.has('at')) camera.lookAt(new THREE.Vector3().fromArray(q.get('at')!.split(',').map(Number)));
+// Bodies are culled by it before it's first drawn.
+camera.updateMatrixWorld();
 
 /** Each state as a snapshot at time `s` seconds in; movers move along their facing. */
 function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
@@ -119,13 +134,26 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
     case 'run': move(5.5); break;
     case 'crouch': base.duck = 1; break;
     case 'crouchwalk': base.duck = 1; move(2.2); break;
+    case 'sneak': base.duck = 1; move(0.8); break;
     case 'jump': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * -3; break;
     case 'fall': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * 5; break;
     case 'mantle': base.motion = 'mantle'; base.y = 0.3 + (s - end) * 2; break;
+    // Onto the ledge, as the game climbs: straight up to its top, then over onto it; t seconds in.
+    case 'climb': {
+      const into = s - (end - t);
+      if (into < 0) break;
+      const rise = ledge / 5.5;
+      base.y = Math.min(into * 5.5, ledge);
+      base.z += Math.min(Math.max(into - rise, 0) * 4, 0.6);
+      base.motion = into < rise + 0.15 ? 'mantle' : 'ground';
+      break;
+    }
     // Coming down for half a second, landing t seconds ago.
     case 'land': if (s < end - t) (base.motion = 'air'), (base.y = (end - t - s) * 4); break;
     case 'cycle': base.weapon = 2; break;
-    case 'reload': case 'draw': case 'throw': base.act = name; base.actT = t; break;
+    // A reload plays up to t, taking its gun's time, so what it lets go of falls.
+    case 'reload': base.act = name; base.actT = Math.max(t - (end - s) / WEAPONS[base.weapon].reloadTime, 0); if (q.has('rounds')) base.rounds = Number(q.get('rounds')); break;
+    case 'draw': case 'throw': base.act = name; base.actT = t; break;
     case 'lean': base.lean = 1; break;
     case 'leanl': base.lean = -1; break;
     case 'aimup': base.pitch = 0.6; break;
@@ -157,7 +185,7 @@ if (view === 'fp') {
   for (let i = 0; i < 30; i++) {
     viewModel.update(1 / 30, {
       weapon, aim: Number(q.get('aim') ?? 0), reload, draw, speed: 0, onGround: true, sprinting: false,
-      suppressed: q.has('quiet'), throwing: q.get('act') === 'throw' ? t : -1,
+      suppressed: q.has('quiet'), rounds: Number(q.get('rounds') ?? 3), throwing: q.get('act') === 'throw' ? t : -1,
     }, 0, 0);
   }
   if (q.has('nogun')) viewModel.scene.traverse((o) => {
@@ -178,7 +206,15 @@ if (view === 'fp') {
       if (s < at || s - dt >= at) return;
       const p = snaps[i];
       if (name === 'shoot' || name === 'cycle') bodies.fire(p.id, false);
-      if (name === 'hit' || name === 'hithead') bodies.flash(p.id, p.x, p.y + (name === 'hit' ? 1.2 : 1.6), p.z);
+      if (name === 'hit' || name === 'hithead' || name === 'hitleg') {
+        // From `from`, a yaw the round comes from, or in front; `side` moves the point struck to its right.
+        const from = q.has('from') ? Number(q.get('from')) : p.yaw;
+        const side = Number(q.get('side') ?? 0);
+        const x = p.x + Math.cos(p.yaw) * side;
+        const z = p.z - Math.sin(p.yaw) * side;
+        const y = p.y + (name === 'hit' ? 1.2 : name === 'hitleg' ? 0.5 : 1.6);
+        bodies.flash(p.id, x, y, z, new THREE.Vector3(x - Math.sin(from) * 10, y, z - Math.cos(from) * 10));
+      }
     });
     // The dead are shot from in front (or `from`, a yaw the round comes from) just before they're seen dead.
     snaps.forEach((p, i) => {

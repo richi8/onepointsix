@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { LEAN_OFFSET, PLAYER_HEIGHT } from '../shared/constants.ts';
+import { LEAN_OFFSET, MANTLE_REACH, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
@@ -14,7 +14,10 @@ import { FAR_SHADOWS } from './cascades.ts';
 import { dimIndoors } from './indoorlight.ts';
 import { lensOf, lightTorch, makeTorch, mountTorch, torchMount, torchPart, type Torch } from './torch.ts';
 import type { Building } from '../shared/world.ts';
-import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
+import {
+  actionMatrix, AT_REST, BOLT_START, BOLT_TIME, boltHand, type GunPoints, magazineMatrix, type Parts, path, reloadHands, shotParts, SOME_ROUNDS,
+} from './handwork.ts';
+import { Litter } from './litter.ts';
 import { JOINT, RAGDOLL_STEP, Ragdoll, type Solid, Tumbler, type Verlet } from './ragdoll.ts';
 import { RagRig, type Slump, slump } from './ragrig.ts';
 import {
@@ -79,7 +82,21 @@ const TAKEOFF = 0.12;
 const LAND_TIME = 0.8;
 const LAND_AFTER = 0.2;
 /** How much longer than the clip's a crouched stride can get at speed, so the legs don't scurry. */
-const CROUCH_STRIDE = 1.8;
+const CROUCH_STRIDE = 1.3;
+/**
+ * Crouched, the speeds over which the crouch-walk gives way to the run
+ * played low: how much shorter its strides are, how far the hips drop and
+ * the chest bends over.
+ */
+const CROUCH_FAST = [1, 1.7];
+const CROUCH_RUN_STRIDE = 1;
+const CROUCH_RUN_DROP = 0.28;
+const CROUCH_RUN_BEND = 0.45;
+const CROUCH_RUN_BACK = 0.22;
+/** How far a foot reaches up or down to the ground under it, how far the hips drop to a low one, and how far an ankle turns. */
+const FOOT_REACH = 0.35;
+const FOOT_DROP = 0.25;
+const ANKLE_TURN = 0.45;
 /** How long a shot's kick lasts. */
 const KICK_TIME = 0.25;
 /** How far the head may be moved to meet its hitbox, up or down. */
@@ -119,19 +136,13 @@ const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
 /** Every carried gun's: the look is in its vertices. */
 const GUN_MAT = vertexSurfaces(new THREE.MeshStandardMaterial());
-const MAG_MAT = new THREE.MeshStandardMaterial({ color: 0x2c2d2f, roughness: 0.6, metalness: 0.3 });
 const ROUND_MAT = new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 });
-for (const m of [GUN_MAT, MAG_MAT, ROUND_MAT]) dimIndoors(m);
+for (const m of [GUN_MAT, ROUND_MAT]) dimIndoors(m);
 const FLASH_MAT = new THREE.SpriteMaterial({
   map: flashTexture(), color: 0xffc070, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
 });
 const CAN_GEO = new THREE.CylinderGeometry(0.02, 0.02, CAN_LENGTH, 10).rotateX(Math.PI / 2);
-/** What the left hand brings from the belt: a magazine for each gun (none for the bolt-action), or a round. */
-const MAG_GEO = [
-  new THREE.BoxGeometry(0.025, 0.14, 0.06).translate(0, -0.05, 0),
-  new THREE.BoxGeometry(0.02, 0.09, 0.028).translate(0, -0.03, 0),
-  null,
-];
+/** What the bolt-action's left hand brings from the belt, a round at a time. */
 const ROUND_GEO = new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6).rotateX(Math.PI / 2);
 
 /** What a body stands on and falls against, and the buildings it may be inside. */
@@ -145,17 +156,34 @@ export interface Ground extends Solid {
 interface GunShape extends GunPoints {
   /** The gun with its flashlight's body, bare and with the suppressor on. */
   looks: [bare: THREE.BufferGeometry, quiet: THREE.BufferGeometry];
+  /** The same without its moving parts, drawn on their own while they move. */
+  frames: [bare: THREE.BufferGeometry, quiet: THREE.BufferGeometry];
+  mag: THREE.BufferGeometry | null;
+  action: THREE.BufferGeometry | null;
   muzzle: THREE.Vector3;
   /** Where its flashlight sits. */
   torch: THREE.Vector3;
 }
 
-/** A gun's `parts` merged with its flashlight, without and with a suppressor. */
-function gunLooks(parts: Part[], weapon: number, muzzle: THREE.Vector3, support: THREE.Vector3): Pick<GunShape, 'looks' | 'torch'> {
+/**
+ * A gun's frame merged with its flashlight, without and with a suppressor,
+ * with its moving parts (its magazine, and its slide or bolt handle) and
+ * without, and those parts on their own.
+ */
+function gunLooks(
+  frame: Part[], mag: Part[], action: Part[], weapon: number, muzzle: THREE.Vector3, support: THREE.Vector3,
+): Pick<GunShape, 'looks' | 'frames' | 'mag' | 'action' | 'torch'> {
   const torch = torchMount(weapon, muzzle, support);
-  const bare = [...parts, torchPart(torch)];
+  const bare = [...frame, torchPart(torch)];
   const can = part(CAN_GEO.clone().translate(muzzle.x, muzzle.y, muzzle.z - CAN_LENGTH / 2), CAN, 0.6, 0.3);
-  return { torch, looks: [mergeParts(bare), mergeParts([...bare, can])] };
+  const moving = [...mag, ...action];
+  const looks: GunShape['looks'] = [mergeParts([...bare, ...moving]), mergeParts([...bare, ...moving, can])];
+  return {
+    torch, looks,
+    frames: moving.length ? [mergeParts(bare), mergeParts([...bare, can])] : looks,
+    mag: mag.length ? mergeParts(mag) : null,
+    action: action.length ? mergeParts(action) : null,
+  };
 }
 
 /** A stand-in gun of boxes until the models load. */
@@ -168,13 +196,16 @@ function gunShape(weapon: number, length: number, stock: boolean): GunShape {
   if (stock) parts.push(new THREE.BoxGeometry(0.04, 0.08, 0.25).translate(0, 0.02, 0.18));
   const muzzle = new THREE.Vector3(0, 0.06, -length * 0.88);
   const support = new THREE.Vector3(0, 0.02, -length * 0.42);
+  const bolt = new THREE.Vector3(0.03, 0.06, -length * 0.05);
   return {
-    ...gunLooks(parts.map((g) => part(g, GUN, 0.5, 0.4)), weapon, muzzle, support),
+    ...gunLooks(parts.map((g) => part(g, GUN, 0.5, 0.4)), [], [], weapon, muzzle, support),
     muzzle,
     grip: new THREE.Vector3(0, -0.02, 0.02),
     support,
     magazine: new THREE.Vector3(0, -0.05, -length * 0.15),
-    bolt: new THREE.Vector3(0.03, 0.06, -length * 0.05),
+    bolt,
+    pivot: bolt.clone().setX(0),
+    well: new THREE.Vector3(0, -1, 0),
   };
 }
 
@@ -195,6 +226,11 @@ interface Figure {
   /** Holds the gun in hand, whose look is swapped on a weapon change or with the suppressor, and its flash. */
   gun: THREE.Group;
   held: THREE.Mesh;
+  /** The gun's magazine and its slide or bolt handle, drawn on their own only while they move. */
+  magMesh: THREE.Mesh;
+  actionMesh: THREE.Mesh;
+  /** Where the magazine was when last posed up close, to see it let go; null when it wasn't. */
+  lastMag: Parts['mag'] | null;
   torch: Torch;
   flashMesh: THREE.Sprite;
   weapon: number;
@@ -233,19 +269,25 @@ interface Figure {
   /** Poses blended in and out: in the air and climbing. */
   air: number;
   mantle: number;
+  /** The climb under way or last made: where it started, the ledge's top and the hand's hold on it, and how far through. */
+  climb: Climb | null;
   /** How far crouched it was last seen, 0 to 1. */
   duck: number;
   /** Seconds in the air, and since it last landed. */
   airFor: number;
   landedFor: number;
-  /** How much longer its crouched strides are than the clip's. */
+  /** How much longer its crouched strides are than the clip's, and how far it has gone from the crouch-walk to the low run. */
   crouchStride: number;
+  crouchFast: number;
   /** How far its body is moved up or down to put the head on its hitbox, smoothed. */
   headFix: number;
   /** Seconds since it last fired, and since it was last hit, and whether that was in the head. */
   firedFor: number;
   hitFor: number;
   hitHead: boolean;
+  /** Whether it struck below the hips, and the way the round went, in the figure's own space. */
+  hitLow: boolean;
+  hitDir: THREE.Vector3;
   /** Seconds to the next animation update, when far away. */
   wait: number;
   soldier: Soldier | null;
@@ -262,6 +304,8 @@ interface Soldier {
   run: THREE.AnimationAction;
   crouchIdle: THREE.AnimationAction;
   crouchWalk: THREE.AnimationAction;
+  /** The run, played low and bent over with shorter strides, for crouching fast. */
+  crouchRun: THREE.AnimationAction;
   /** Leaving the ground, in the air and landing. */
   jump: THREE.AnimationAction;
   airborne: THREE.AnimationAction;
@@ -273,9 +317,10 @@ interface Soldier {
   reacting: THREE.Object3D[][];
   /** Each foot's hold on the ground, left then right. */
   feet: [Foothold, Foothold];
-  /** A grenade, shown in the throwing hand, and what the left hand brings to a reload. */
+  /** A grenade, shown in the throwing hand, and what the left hand brings to a reload: a magazine or a round. */
   nade: THREE.Object3D;
-  mag: THREE.Mesh;
+  fresh: THREE.Mesh;
+  round: THREE.Mesh;
   /** Whether it wears an operator's pack, kept out of the ground when it lies on it. */
   pack: boolean;
   /**
@@ -299,6 +344,8 @@ interface Soldier {
 interface Foothold {
   at: THREE.Vector3 | null;
   offset: THREE.Vector3;
+  /** How far the ground under it is above the body's own height, smoothed. */
+  rise: number;
   /** Where the clip had the foot last time, to tell a planted foot from a swinging one. */
   last: THREE.Vector3;
 }
@@ -327,6 +374,19 @@ interface Drop {
   offsetTurn: THREE.Quaternion;
 }
 
+/**
+ * A climb onto a ledge: the height it started from, the ledge's top, where
+ * the left hand holds its edge, and how far it has got: `rise` 0 to 1 up to
+ * the top, then `over` seconds on it, moving onto the ledge.
+ */
+interface Climb {
+  from: number;
+  top: number;
+  hold: THREE.Vector3;
+  rise: number;
+  over: number;
+}
+
 /** Called for each footfall of a body, with how fast it was moving. */
 export type StepListener = (x: number, y: number, z: number, speed: number, crouched: boolean) => void;
 
@@ -338,6 +398,8 @@ export class Bodies {
   /** What bodies stand and fall on; another island's when that opens. */
   ground: Ground;
   private readonly figures = new Map<number, Figure>();
+  /** Magazines dropped in reloads, lying where they fell. */
+  readonly litter: Litter;
   private model: GLTF | null = null;
   /** The soldier's merged geometry for each look: operator, guard and commander. */
   private readonly looks = new Map<string, THREE.BufferGeometry>();
@@ -366,17 +428,21 @@ export class Bodies {
   constructor(scene: THREE.Scene, ground: Ground) {
     this.scene = scene;
     this.ground = ground;
+    this.litter = new Litter(scene);
   }
 
   /** Swap the placeholder figures for animated soldiers carrying `guns`, in WEAPONS order. */
   setModel(gltf: GLTF, guns: GLTF[]): void {
     this.model = gltf;
     GUNS = guns.map((g, i) => {
-      const { object, ...points } = fitGun(g, i);
+      const { object, frame, magazinePart, actionPart, ...points } = fitGun(g, i);
       object.updateMatrixWorld(true);
-      const parts: Part[] = [];
-      object.traverse((o) => (o as THREE.Mesh).isMesh && parts.push(partOf(o as THREE.Mesh, o.matrixWorld)));
-      return { ...points, ...gunLooks(parts, i, points.muzzle, points.support) };
+      const parts = (from: THREE.Object3D | null): Part[] => {
+        const out: Part[] = [];
+        from?.traverse((o) => (o as THREE.Mesh).isMesh && out.push(partOf(o as THREE.Mesh, o.matrixWorld)));
+        return out;
+      };
+      return { ...points, ...gunLooks(parts(frame), parts(magazinePart), parts(actionPart), i, points.muzzle, points.support) };
     });
     this.looks.clear();
     const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -393,8 +459,21 @@ export class Bodies {
     for (const id of [...this.figures.keys()]) this.remove(id);
   }
 
+  /**
+   * Drop a magazine of `weapon`'s, placed by `matrix` in the world (from the
+   * gun's space), at `velocity`: as your own reload lets one fall.
+   */
+  dropMagazine(weapon: number, matrix: THREE.Matrix4, velocity: THREE.Vector3): void {
+    const gun = GUNS[weapon];
+    if (!gun.mag) return;
+    const base = gun.magazine;
+    const points = [base.clone(), base.clone().addScaledVector(gun.well, -0.08), base.clone().setZ(base.z - 0.03)];
+    this.litter.drop(gun.mag, GUN_MAT, matrix, points, velocity);
+  }
+
   /** Pose everyone as seen from `camera`; bodies it can't see are skipped. */
   update(players: readonly PlayerSnap[], dt: number, camera?: THREE.Camera): void {
+    this.litter.update(dt, this.ground);
     if (camera) {
       this.camera.setFromMatrixPosition(camera.matrixWorld);
       this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -420,15 +499,24 @@ export class Bodies {
     for (const id of [...this.figures.keys()]) if (!seen.has(id)) this.remove(id);
   }
 
-  /** Flash a body where a round landed, at (x, y, z) in the world, and make it flinch. */
-  flash(id: number, x: number, y: number, z: number): void {
+  /**
+   * Flash a body where a round landed, at (x, y, z) in the world, and make it
+   * flinch away from `from`, where the round came from (or from in front).
+   */
+  flash(id: number, x: number, y: number, z: number, from?: THREE.Vector3): void {
     const f = this.figures.get(id);
     if (!f) return;
     f.flash = FLASH_TIME;
     f.group.updateMatrixWorld(true);
     f.group.worldToLocal(f.hitAt.set(x, y, z));
     f.hitFor = 0;
-    f.hitHead = y > f.lastY + PLAYER_HEIGHT * 0.5 && y > hitboxes({ x: 0, y: f.lastY, z: 0, yaw: 0, duck: f.duck, lean: 0 }).neckY;
+    const box = hitboxes({ x: 0, y: f.lastY, z: 0, yaw: 0, duck: f.duck, lean: 0 });
+    f.hitHead = y > f.lastY + PLAYER_HEIGHT * 0.5 && y > box.neckY;
+    f.hitLow = y < box.hipY;
+    // The way the round went, in the body's own space.
+    if (from) f.hitDir.set(x - from.x, y - from.y, z - from.z).transformDirection(M_A.copy(f.group.matrixWorld).invert());
+    else f.hitDir.set(0, 0, 1);
+    f.hitDir.normalize();
   }
 
   /** A body fired: flash at its muzzle unless suppressed, and take the recoil. */
@@ -450,9 +538,10 @@ export class Bodies {
     if (f) f.death = death;
   }
 
-  /** A new game: nobody's deaths carry over. */
+  /** A new game: nobody's deaths carry over, and the dropped magazines are cleared away. */
   forget(): void {
     this.deaths.clear();
+    this.litter.clear();
   }
 
   /** Something broke near (x, y, z): the dead lying against it may fall further. */
@@ -495,6 +584,13 @@ export class Bodies {
     const gun = new THREE.Group();
     const held = new THREE.Mesh(GUNS[0].looks[0], GUN_MAT);
     gun.add(held);
+    const [magMesh, actionMesh] = [0, 1].map(() => {
+      const m = new THREE.Mesh(undefined, GUN_MAT);
+      m.matrixAutoUpdate = false;
+      m.visible = false;
+      gun.add(m);
+      return m;
+    });
     const torch = makeTorch(null);
     mountTorch(torch, GUNS[0].torch);
     gun.add(torch.object);
@@ -506,11 +602,11 @@ export class Bodies {
     this.scene.add(group);
     const f: Figure = {
       group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
-      gun, held, torch, flashMesh, weapon: 0, quiet: false,
+      gun, held, magMesh, actionMesh, lastMag: null, torch, flashMesh, weapon: 0, quiet: false,
       deadFor: -1, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, ragSteps: 0, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
-      air: 0, mantle: 0, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, headFix: 0, duck: 0,
-      firedFor: 1e3, hitFor: 1e3, hitHead: false, soldier: null, casters: null,
+      air: 0, mantle: 0, climb: null, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, crouchFast: 0, headFix: 0, duck: 0,
+      firedFor: 1e3, hitFor: 1e3, hitHead: false, hitLow: false, hitDir: new THREE.Vector3(0, 0, 1), soldier: null, casters: null,
       // Far off, bodies take turns to be posed rather than all in one frame.
       wait: Math.random() * FAR_UPDATE,
     };
@@ -583,6 +679,10 @@ export class Bodies {
     const run = action('Run');
     const crouchIdle = action('CrouchIdle');
     const crouchWalk = action('CrouchWalk');
+    // Its own copy of the run, so it plays at its own pace and weight.
+    const crouchRun = mixer.clipAction(clip(gltf.animations, 'Run').clone());
+    crouchRun.weight = 0;
+    crouchRun.play();
     const jump = action('JumpStart', true);
     const airborne = action('JumpLoop');
     const land = action('JumpLand', true);
@@ -590,21 +690,25 @@ export class Bodies {
     idle.weight = 1;
     // Start everyone at a different point in their stride, the same each time for the same body.
     const phase = (id * 0.618034) % 1;
-    for (const a of [walk, run, crouchWalk, idle, crouchIdle]) a.time = phase * a.getClip().duration;
+    for (const a of [walk, run, crouchWalk, crouchRun, idle, crouchIdle]) a.time = phase * a.getClip().duration;
 
     const hands: [Hand, Hand] = [findHand(model, 'L'), findHand(model, 'R')];
     const nade = grenadeModel();
     nade.visible = false;
     f.group.add(nade);
-    const mag = new THREE.Mesh(ROUND_GEO, MAG_MAT);
-    mag.visible = false;
-    f.group.add(mag);
+    const fresh = new THREE.Mesh(undefined, GUN_MAT);
+    fresh.matrixAutoUpdate = false;
+    const round = new THREE.Mesh(ROUND_GEO, ROUND_MAT);
+    for (const m of [fresh, round]) {
+      m.visible = false;
+      f.group.add(m);
+    }
     const pack = team === 'operator';
     const animated = Object.values(bones).map((bone) => ({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }));
     const r = this.reactions!;
-    const foothold = (): Foothold => ({ at: null, offset: new THREE.Vector3(), last: new THREE.Vector3() });
+    const foothold = (): Foothold => ({ at: null, offset: new THREE.Vector3(), last: new THREE.Vector3(), rise: 0 });
     return {
-      mixer, idle, walk, run, crouchIdle, crouchWalk, jump, airborne, land, death, bones, hands, nade, mag, pack, animated,
+      mixer, idle, walk, run, crouchIdle, crouchWalk, crouchRun, jump, airborne, land, death, bones, hands, nade, fresh, round, pack, animated,
       reacting: [r.shot, r.hit, r.hitHead].map((reaction) => reaction.bones(model)),
       feet: [foothold(), foothold()],
       arm: span(bones.rArm, bones.rForeArm), forearm: span(bones.rForeArm, bones.rHand),
@@ -658,6 +762,7 @@ export class Bodies {
       f.soldier.land.reset();
     }
     f.airFor = inAir ? f.airFor + dt : 0;
+    this.climbing(f, p, dt);
     f.duck = p.duck;
     f.lastX = p.x;
     f.lastY = p.y;
@@ -737,6 +842,31 @@ export class Bodies {
     f.flashMesh.position.copy(muzzleOf(f));
   }
 
+  /**
+   * Keep track of a climb: when one starts, find the ledge's top ahead (the
+   * snapshots don't say) and where the hand holds its edge, and then how far
+   * up it the body has risen, and how long it has been on top.
+   */
+  private climbing(f: Figure, p: PlayerSnap, dt: number): void {
+    if (p.motion === 'mantle' && !p.dead) {
+      if (!f.climb || f.climb.over > 0 && p.y < f.climb.top - 0.3) {
+        const from = f.lastY;
+        const fx = -Math.sin(p.yaw);
+        const fz = -Math.cos(p.yaw);
+        const x = p.x + fx * CLIMB_REACH;
+        const z = p.z + fz * CLIMB_REACH;
+        let top = this.ground.groundHeight(x, z, from + CLIMB_HIGHEST);
+        if (top < from + 0.2) top = from + 1;
+        // The left hand on the edge, a little to the left.
+        const hold = new THREE.Vector3(x + fz * 0.2 - fx * 0.05, top, z - fx * 0.2 - fz * 0.05);
+        f.climb = { from, top, hold, rise: 0, over: 0 };
+      }
+      const c = f.climb;
+      c.rise = clamp((p.y - c.from) / Math.max(c.top - c.from, 0.1), 0, 1);
+      if (p.y >= c.top - 0.01) c.over += dt;
+    } else if (f.climb && f.mantle < 0.01) f.climb = null;
+  }
+
   /** Whether the shadow a body in `bounds` throws, away from the sun, may fall in view. */
   private shadowInView(bounds: THREE.Sphere): boolean {
     // A standing body's head is 2 m up; its shadow runs from its feet, 2 m over the sun's height, away from it.
@@ -783,6 +913,7 @@ export class Bodies {
 
     // The gun falls from about where the hands held it, facing ahead and rolling out of them (upright, it
     // could land balanced on its edge); it's drawn from where it really was, easing onto its fall.
+    this.showParts(f, AT_REST);
     const gun = GUNS[f.weapon];
     const neck = hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck, lean: 0 }).neckY;
     const start = new THREE.Matrix4().compose(
@@ -945,7 +1076,11 @@ export class Bodies {
     s.walk.weight = alive * ground * (1 - duck) * moving * (1 - running);
     s.run.weight = alive * ground * (1 - duck) * moving * running;
     s.crouchIdle.weight = alive * ground * duck * (1 - moving);
-    s.crouchWalk.weight = alive * ground * duck * moving;
+    // Crouched and fast, the crouch-walk (a slow sneak) gives way to the run, played low.
+    const fast = smoothstep(CROUCH_FAST[0], CROUCH_FAST[1], speed);
+    f.crouchFast = fast;
+    s.crouchWalk.weight = alive * ground * duck * moving * (1 - fast);
+    s.crouchRun.weight = alive * ground * duck * moving * fast;
     s.jump.weight = alive * air * rising;
     s.airborne.weight = alive * air * (1 - rising);
     s.land.weight = alive * landing;
@@ -957,9 +1092,11 @@ export class Bodies {
     const sign = back ? -1 : 1;
     s.walk.timeScale = sign * clamp(speed / this.gait.walk, 0.6, 2);
     s.run.timeScale = sign * clamp(speed / this.gait.run, 0.6, 1.8);
-    // The crouch-walk clip is a slow sneak: faster, its strides lengthen before its pace quickens.
-    f.crouchStride = clamp(speed / (this.gait.crouch * 2.5), 1, CROUCH_STRIDE);
-    s.crouchWalk.timeScale = sign * clamp(speed / (this.gait.crouch * f.crouchStride), 0.6, 3);
+    // The crouch-walk clip is a slow sneak: faster, its strides lengthen a little and its pace quickens,
+    // until the low run takes over, its strides shortened.
+    f.crouchStride = clamp(speed / (this.gait.crouch * 2), 1, CROUCH_STRIDE);
+    s.crouchWalk.timeScale = sign * clamp(speed / (this.gait.crouch * f.crouchStride), 0.6, 2.4);
+    s.crouchRun.timeScale = sign * clamp(speed / (this.gait.run * CROUCH_RUN_STRIDE), 0.5, 1.5);
     for (const a of s.animated) {
       a.bone.position.copy(a.position);
       a.bone.quaternion.copy(a.quaternion);
@@ -971,7 +1108,7 @@ export class Bodies {
     }
     for (const hand of s.hands) curl(hand, dead ? 0.3 : 0.9);
     s.nade.visible = false;
-    s.mag.visible = false;
+    s.fresh.visible = s.round.visible = false;
     f.group.updateMatrixWorld(true);
     if (dead) return;
 
@@ -988,13 +1125,22 @@ export class Bodies {
 
     // Leaning, the hips move out over the feet.
     if (Math.abs(p.lean) > 1e-3) moveWorld(b.body, V_TMP2.copy(right).multiplyScalar(p.lean * LEAN_HIPS));
+    // Running crouched, low and bent over: the head's put on its hitbox below, the legs bend to the feet.
+    const low = f.crouchFast * duck * moving;
+    if (low > 0.01) {
+      // Tipped over at the hips, which go back to keep the head over the feet.
+      rotateWorld(b.body, right, -CROUCH_RUN_BEND * low);
+      moveWorld(b.body, V_TMP2.set(0, -CROUCH_RUN_DROP * low, 0).addScaledVector(forward, -CROUCH_RUN_BACK * low));
+    }
     // Bent forward climbing; aiming, the chest and head follow the pitch.
-    rotateWorld(b.spine, right, -0.45 * f.mantle);
+    const over = f.climb ? Math.sin(Math.PI * clamp(f.climb.rise * 0.7 + smoothstep(0, CLIMB_OVER, f.climb.over) * 0.3, 0, 1)) : 1;
+    rotateWorld(b.spine, right, -lerp(0.2, 0.7, over) * f.mantle);
     rotateWorld(b.spine2, right, p.pitch * 0.5);
     rotateWorld(b.neck, right, p.pitch * 0.35);
     this.headOnHitbox(f, s, p, step, right, forward, near);
-    this.react(f, s);
-    if (near) this.legs(f, s, legYaw, step);
+    this.react(f, s, forward, right);
+    // Far off the legs keep the clips' pose, unless the hips were dropped for a low run.
+    if (near || low > 0.01) this.legs(f, s, legYaw, step);
     this.arms(f, s, p, near, running, right, forward);
   }
 
@@ -1049,41 +1195,84 @@ export class Bodies {
     moveWorld(s.bones.body, V_TMP2.copy(forward).multiplyScalar(shift).addScaledVector(V_UP, f.headFix));
   }
 
-  /** A shot's recoil and a hit's flinch, over the upper body. */
-  private react(f: Figure, s: Soldier): void {
+  /**
+   * A shot's recoil and a hit's flinch, over the upper body. Each gun kicks
+   * its own way: the rifle a short shove at the shoulder, the pistol little
+   * but in the arms (see arms), the bolt-action a heavy one that turns the
+   * right shoulder back. A hit knocks the chest, or the head, the way the
+   * round went, twists the body about the side it struck, and buckles the
+   * knees when it struck the legs; the model's own flinch plays under it.
+   */
+  private react(f: Figure, s: Soldier, forward: THREE.Vector3, right: THREE.Vector3): void {
     const r = this.reactions!;
-    r.shot.apply(s.reacting[0], f.firedFor, 0.8);
-    r[f.hitHead ? 'hitHead' : 'hit'].apply(s.reacting[f.hitHead ? 2 : 1], f.hitFor, 1);
-    if (f.firedFor < r.shot.duration || f.hitFor < r.hit.duration) f.group.updateMatrixWorld(true);
+    const b = s.bones;
+    const kick = SHOT_KICK[f.weapon] ?? SHOT_KICK[0];
+    r.shot.apply(s.reacting[0], f.firedFor, kick.clip);
+    const shove = pulse(f.firedFor, kick.time);
+    if (shove > 0.01) {
+      rotateWorld(b.spine2, right, kick.back * shove);
+      rotateWorld(b.spine2, V_UP, -kick.turn * shove);
+    }
+    if (f.hitFor < REACT_TIME) {
+      r[f.hitHead ? 'hitHead' : 'hit'].apply(s.reacting[f.hitHead ? 2 : 1], f.hitFor, f.hitHead ? 0.4 : 0.6);
+      const k = pulse(f.hitFor, 0.08);
+      const d = V_TMP2.copy(f.hitDir).applyQuaternion(f.group.quaternion);
+      // Toward its back when struck from in front, which bends it back; out to a side, which rolls it that way.
+      const back = -d.dot(forward);
+      const side = d.dot(right);
+      // Struck off its middle, it turns: by the round's push about the spine, from where it struck.
+      const off = V_TMP3.copy(f.hitAt).setY(0).applyQuaternion(f.group.quaternion);
+      const twist = clamp(V_TMP4.crossVectors(off, d).y / 0.15, -1, 1);
+      const bone = f.hitHead ? b.neck : b.spine2;
+      const strength = f.hitHead ? 0.55 : f.hitLow ? 0.15 : 0.3;
+      rotateWorld(bone, right, back * strength * k);
+      rotateWorld(bone, forward, side * strength * 0.8 * k);
+      rotateWorld(b.spine, V_UP, twist * (f.hitLow ? 0.08 : 0.35) * k);
+      if (f.hitLow) moveWorld(b.body, V_TMP4.set(0, -0.1 * k, 0));
+    }
+    if (f.firedFor < r.shot.duration || f.hitFor < REACT_TIME) f.group.updateMatrixWorld(true);
   }
 
   /**
    * Where the feet go. The clips place them; crouched at speed, strides
    * lengthen, and a climb has its own stance. A foot on the ground stays
-   * where it landed until the clip lifts it, so it doesn't slide. The legs
-   * then bend to reach them.
+   * where it landed until the clip lifts it, so it doesn't slide, and it's
+   * lifted or lowered onto the ground under it, turned at the ankle to lie
+   * along a slope. If a foot is then out of reach, the hips drop to it. The
+   * legs then bend to reach them.
    */
   private legs(f: Figure, s: Soldier, legYaw: number, step: number): void {
     const b = s.bones;
     const origin = f.group.position;
     const forward = V_TMP4.set(0, 0, -1).applyQuaternion(f.group.quaternion).applyAxisAngle(V_UP, legYaw);
     const right = V_TMP5.crossVectors(forward, V_UP);
-    const stride = lerp(1, f.crouchStride, f.duck);
+    const stride = lerp(1, lerp(f.crouchStride, CROUCH_RUN_STRIDE, f.crouchFast), f.duck);
     const grounded = f.air < 0.1 && f.mantle < 0.1;
+    // How much the ground under each foot counts: not in the air or climbing.
+    const onGround = (1 - f.air) * (1 - f.mantle);
     const legs = [[b.lUpLeg, b.lLeg, b.lAnkle, b.lFoot], [b.rUpLeg, b.rLeg, b.rAnkle, b.rFoot]] as const;
-    legs.forEach(([thigh, shin, ankle, foot], i) => {
+    const targets = legs.map(([, , , foot], i) => {
       const left = i === 0;
       const at = foot.getWorldPosition(V_TMP3).sub(origin);
       // In the legs' frame: x right, y up, z forward.
       let x = at.dot(right);
       let y = at.dot(V_UP);
       let z = at.dot(forward) * stride;
-      // Climbing, the right knee comes up onto the ledge.
-      const climb = left ? [-0.12, 0.1, -0.12] : [0.12, 0.6, 0.3];
-      x = lerp(x, climb[0], f.mantle);
-      y = lerp(y, climb[1], f.mantle);
-      z = lerp(z, climb[2], f.mantle);
-      const target = V_TMP3.copy(origin).addScaledVector(right, x).addScaledVector(V_UP, y).addScaledVector(forward, z);
+      // Climbing: the right knee comes up onto the ledge while the left foot pushes off below, then follows.
+      if (f.climb && f.mantle > 0.01) {
+        const c = f.climb;
+        const ledge = c.top - origin.y;
+        const ground = c.from - origin.y;
+        const up = smoothstep(0.25, 0.85, c.rise);
+        const after = smoothstep(0, CLIMB_OVER, c.over);
+        const climb = left
+          ? [-0.12, lerp(lerp(ground, ground + 0.25, smoothstep(0.55, 1, c.rise)), 0.05, after), lerp(-0.1, 0, after)]
+          : [0.12, lerp(lerp(0.1, ledge + 0.08, up), 0.02, after), lerp(lerp(0.05, 0.4, up), 0.1, after)];
+        x = lerp(x, climb[0], f.mantle);
+        y = lerp(y, climb[1], f.mantle);
+        z = lerp(z, climb[2], f.mantle);
+      }
+      const target = new THREE.Vector3().copy(origin).addScaledVector(right, x).addScaledVector(V_UP, y).addScaledVector(forward, z);
 
       // Planted: the clip's foot hardly moves over the ground, and it's low.
       const hold = s.feet[i];
@@ -1103,11 +1292,53 @@ export class Bodies {
         hold.offset.multiplyScalar(Math.exp(-15 * step));
       }
       target.add(hold.offset);
+      // Onto the ground under it, which the body's own height was taken over.
+      if (onGround > 0.01) {
+        const rise = this.footRise(target.x, target.z, origin.y);
+        hold.rise += (rise - hold.rise) * (1 - Math.exp(-25 * step));
+        target.y += hold.rise * onGround;
+      }
+      return target;
+    });
+
+    // A foot below the legs' reach brings the hips down to it, on the ground.
+    const length = (s.thigh + s.shin) * 0.97;
+    let drop = 0;
+    legs.forEach(([thigh], i) => {
+      drop = Math.max(drop, thigh.getWorldPosition(V_TMP2).distanceTo(targets[i]) - length);
+    });
+    if (drop > 1e-3 && onGround > 0.5) moveWorld(b.body, V_TMP2.set(0, -Math.min(drop, FOOT_DROP) * onGround, 0));
+
+    legs.forEach(([thigh, shin, ankle, foot], i) => {
+      // Still out of reach, as a climber's trailing foot: as near as the leg goes, so the boot isn't stretched.
+      const target = targets[i];
+      const hip = thigh.getWorldPosition(V_TMP2);
+      const d = hip.distanceTo(target);
+      if (d > length) target.sub(hip).multiplyScalar(length / d).add(hip);
       placeWorld(foot, target);
+      // Along the slope: turned about the level line across it, as far as an ankle goes.
+      if (onGround > 0.01) {
+        const n = this.groundNormal(target.x, target.z, origin.y, V_TMP6);
+        const tilt = Math.min(Math.acos(clamp(n.y, -1, 1)), ANKLE_TURN) * onGround;
+        if (tilt > 0.01) rotateWorld(foot, V_TMP7.crossVectors(V_UP, n).normalize(), tilt);
+      }
       // Knees out front.
       const pole = thigh.getWorldPosition(V_TMP2).addScaledVector(forward, 1);
       reach(thigh, shin, ankle, target, pole, s.thigh, s.shin);
     });
+  }
+
+  /** How far the ground at (x, z) is above `y`, the body's own height, within a step either way. */
+  private footRise(x: number, z: number, y: number): number {
+    return clamp(this.ground.groundHeight(x, z, y + FOOT_REACH) - y, -FOOT_REACH, FOOT_REACH);
+  }
+
+  /** The ground's slope at (x, z), near `y`, from the heights a little way either side. */
+  private groundNormal(x: number, z: number, y: number, out: THREE.Vector3): THREE.Vector3 {
+    const d = 0.12;
+    const dx = this.footRise(x + d, z, y) - this.footRise(x - d, z, y);
+    const dz = this.footRise(x, z + d, y) - this.footRise(x, z - d, y);
+    return out.set(-dx, 2 * d, -dz).normalize();
   }
 
   /**
@@ -1142,7 +1373,11 @@ export class Bodies {
     f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip, 'YXZ');
     f.gun.translateZ((pistol ? -0.5 : -0.12) + kick * 0.04);
     f.gun.translateX(pistol ? -0.08 : 0);
-    if (!near) return;
+    if (!near) {
+      this.showParts(f, AT_REST);
+      f.lastMag = null;
+      return;
+    }
 
     f.gun.updateMatrixWorld(true);
     const gun = GUNS[f.weapon];
@@ -1162,20 +1397,33 @@ export class Bodies {
     let leftAt = support;
     let rightAway = 0;
     let holding: 'magazine' | 'round' | null = null;
+    let parts: Parts = p.act === 'none' ? shotParts(f.weapon, f.firedFor) : AT_REST;
     if (p.act === 'reload') {
       const pouch = body(-0.14, 0.95 - p.duck * 0.45, 0.1);
-      const work = reloadHands(f.weapon, t, gun, toWorld, { left: support, right: grip }, pouch, gunUp, gunBack);
+      const work = reloadHands(f.weapon, t, p.rounds ?? SOME_ROUNDS, gun, toWorld, { left: support, right: grip }, pouch, gunBack);
       leftAt = work.left;
       rightAt = work.right;
       rightAway = work.rightAway;
       holding = work.holding;
+      parts = work.parts;
     } else if (f.weapon === BOLT && p.act === 'none') {
       const c = (f.firedFor - BOLT_START) / BOLT_TIME;
       if (c > 0 && c < 1) {
-        const work = boltHand(c, gun, toWorld, grip, gunUp, gunBack);
+        const work = boltHand(c, gun, toWorld, grip);
         rightAt = work.at;
         rightAway = work.away;
+        parts = work.parts;
       }
+    }
+    this.showParts(f, parts);
+    // The magazine let go of: it falls from where it was, in the gun or in the hand.
+    const was = f.lastMag;
+    f.lastMag = parts.mag;
+    if (parts.mag === 'gone' && was !== null && was !== 'gone' && gun.mag) {
+      const from = was === 'hand' ? this.inHand(f, gun, leftAt, M_B) : M_B.multiplyMatrices(f.gun.matrixWorld, magazineMatrix(gun, was, M_C));
+      const heading = p.yaw + f.heading;
+      const velocity = V_TMP.set(-Math.sin(heading) * f.speed, -0.5, -Math.cos(heading) * f.speed);
+      this.dropMagazine(f.weapon, from, velocity);
     }
 
     // The right hand round the grip, fingers forward round its front, thumb up over it; on the bolt, fingers down over it.
@@ -1216,8 +1464,8 @@ export class Bodies {
       }
       s.nade.visible = t < 0.3;
     } else if (climbing > 0.01) {
-      // Palm down on the ledge, pushing up.
-      target = target.clone().lerp(body(-0.2, 1.05, -0.4), climbing);
+      // Palm down on the ledge's edge, where it took hold, pulling and then pushing up.
+      target = target.clone().lerp(f.climb ? f.climb.hold.clone().setY(f.climb.top + 0.03) : body(-0.2, 1.05, -0.4), climbing);
       along = V_TMP3.copy(forward);
       thumb = V_TMP4.copy(right);
     }
@@ -1227,22 +1475,78 @@ export class Bodies {
     orientHand(s.hands[0], along, thumb);
     curl(s.hands[0], p.act === 'none' || p.act === 'draw' ? closed : 0.8);
 
-    // Whatever the left hand carries sits in its fingers.
-    const carried = s.nade.visible ? s.nade : holding ? s.mag : null;
+    // A fresh magazine sits in the left hand as it would in the gun; a round or a grenade in its fingers.
+    if (holding === 'magazine' && gun.mag) {
+      s.fresh.geometry = gun.mag;
+      s.fresh.matrix.copy(f.group.matrixWorld).invert().multiply(this.inHand(f, gun, target, M_B));
+      s.fresh.matrixWorldNeedsUpdate = true;
+      s.fresh.visible = true;
+    }
+    s.round.visible = holding === 'round';
+    const carried = s.nade.visible ? s.nade : s.round.visible ? s.round : null;
     if (carried) {
-      if (carried === s.mag) {
-        const geometry = holding === 'round' ? ROUND_GEO : MAG_GEO[f.weapon];
-        if (geometry) s.mag.geometry = geometry;
-        s.mag.material = holding === 'round' ? ROUND_MAT : MAG_MAT;
-        s.mag.visible = !!geometry;
-        s.mag.quaternion.copy(f.gun.quaternion).premultiply(Q_A.copy(f.group.quaternion).invert());
-      }
+      if (carried === s.round) s.round.quaternion.copy(f.gun.quaternion).premultiply(Q_A.copy(f.group.quaternion).invert());
       const hand = s.hands[0];
       hand.wrist.updateMatrixWorld(true);
       carried.position.copy(hand.wrist.localToWorld(V_TMP.copy(hand.knuckles).multiplyScalar(0.8)));
       f.group.worldToLocal(carried.position);
     }
   }
+
+  /** Where a magazine held in the left hand at `at` is, as a matrix from the gun's space: its base in the palm, as upright as the gun. */
+  private inHand(f: Figure, gun: GunShape, at: THREE.Vector3, out: THREE.Matrix4): THREE.Matrix4 {
+    out.extractRotation(f.gun.matrixWorld).setPosition(at);
+    return out.multiply(M_C.makeTranslation(-gun.magazine.x, -gun.magazine.y, -gun.magazine.z));
+  }
+
+  /** Draw the gun whole, or its frame with its moving parts where `parts` puts them. */
+  private showParts(f: Figure, parts: Readonly<Parts>): void {
+    const gun = GUNS[f.weapon];
+    const moved = parts.mag !== 0 || parts.back !== 0 || parts.lift !== 0;
+    f.held.geometry = (moved ? gun.frames : gun.looks)[f.quiet ? 1 : 0];
+    f.magMesh.visible = moved && typeof parts.mag === 'number' && !!gun.mag;
+    if (f.magMesh.visible) {
+      f.magMesh.geometry = gun.mag!;
+      magazineMatrix(gun, parts.mag as number, f.magMesh.matrix);
+      f.magMesh.matrixWorldNeedsUpdate = true;
+    }
+    f.actionMesh.visible = moved && !!gun.action;
+    if (f.actionMesh.visible) {
+      f.actionMesh.geometry = gun.action!;
+      actionMatrix(gun, parts, f.actionMesh.matrix);
+      f.actionMesh.matrixWorldNeedsUpdate = true;
+    }
+  }
+}
+
+/**
+ * How far ahead of a climber its hand takes hold of the ledge, the highest
+ * ledge looked for over where it started, and how long it takes to get its
+ * feet on top once it's up.
+ */
+const CLIMB_REACH = PLAYER_RADIUS + MANTLE_REACH;
+const CLIMB_HIGHEST = 1.6;
+const CLIMB_OVER = 0.25;
+
+/** How long a hit's flinch lasts. */
+const REACT_TIME = 0.6;
+
+/**
+ * How each gun kicks the body, in WEAPONS order: how much of the model's own
+ * shooting clip plays, how far the chest is shoved back and the right
+ * shoulder turned back (radians), and how soon the shove peaks.
+ */
+const SHOT_KICK = [
+  { clip: 0.7, back: 0.05, turn: 0.04, time: 0.04 },
+  { clip: 0.3, back: 0.02, turn: 0.01, time: 0.03 },
+  { clip: 1, back: 0.12, turn: 0.14, time: 0.08 },
+];
+
+/** A shove `t` seconds in that peaks at `peak` and then dies away: 0 to 1. */
+function pulse(t: number, peak: number): number {
+  if (t < 0 || t > peak * 8) return 0;
+  const x = t / peak;
+  return x * Math.exp(1 - x);
 }
 
 /** Metres between footfalls at a speed. */
@@ -1416,6 +1720,8 @@ const V_TMP11 = new THREE.Vector3();
 const Q_A = new THREE.Quaternion();
 const Q_B = new THREE.Quaternion();
 const M_A = new THREE.Matrix4();
+const M_B = new THREE.Matrix4();
+const M_C = new THREE.Matrix4();
 const E_A = new THREE.Euler();
 
 /** A star of light with a hot middle, for muzzle flashes seen from any side. */

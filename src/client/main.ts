@@ -183,6 +183,13 @@ function dress(assets: Assets): void {
   bodies.setModel(assets.soldier, assets.guns);
   viewModel.setGuns(assets.guns, assets.environment);
   viewModel.setArms(assets.soldier);
+  // Your own empty magazines fall from where your hands let go of them, into the world.
+  viewModel.onDrop = (weapon, matrix) => {
+    const s = deathcam ? null : conn?.predictor.state;
+    if (!s) return;
+    camera.updateMatrixWorld();
+    bodies.dropMagazine(weapon, matrix.premultiply(camera.matrixWorld), new THREE.Vector3(s.vx, -0.5, s.vz));
+  };
   if (import.meta.env.DEV) Object.assign(window, { assets });
 }
 
@@ -925,7 +932,8 @@ function onEvent(e: GameEvent, replayed = false): void {
     case 'hit':
       feedEvent(e);
       sfx.hit(e.zone === 'head', e.killed);
-      bodies.flash(e.target, e.x, e.y, e.z);
+      // Hits are told to whoever fired, so the round came from where the camera is.
+      bodies.flash(e.target, e.x, e.y, e.z, camera.position);
       break;
     case 'hurt':
       if (me) hud.hurtFrom(e.damage, bearing(me.x, me.z, meYaw, e.x, e.z));
@@ -1184,6 +1192,7 @@ function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt:
     onGround: s.onGround,
     sprinting: sprinting(s),
     suppressed: s.suppressed[s.weapon],
+    rounds: Math.min(w.magSize - s.mag[s.weapon], s.reserve[s.weapon]),
     throwing: throwing && s.draw > 0 ? clamp(1 - s.draw / THROW_TIME, 0, 1) : -1,
   }, lookDx, lookDy);
   viewModel.hidden = s.dead || (s.weapon === BOLT && me.aim > 0.9);

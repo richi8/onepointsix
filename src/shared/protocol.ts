@@ -66,6 +66,8 @@ export interface PlayerSnap {
   /** What the hands are doing, and how far through it, 0 to 1. */
   act: Action;
   actT: number;
+  /** While reloading, how many rounds it loads: the bolt-action's hand makes a trip for each. */
+  rounds?: number;
   /** A commander, the target of a contract. */
   commander: boolean;
   /** Their flashlight is on. */

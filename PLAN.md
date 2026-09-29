@@ -244,7 +244,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 |---|---|---|---|---|
 | 31 | **Local browser tests** | A browser test for the single-file build opened from `file://`; tests for the lighting presets, rain, flashlights and the menu's condition pickers; the benchmark split out of the default run and its adaptive-resolution check shortened. Rescoped from **Tests in CI** after measuring it: CI's runners have no GPU (see Decisions) | `npm run test:browser` covers the single file and every condition, and runs in about a minute | **Done** (62 tests in 54 s on an M3 Pro, down from about 2.4 min; `npm run bench` 57 s, down from about 1.5 min) |
 | 32 | **Cheaper soldiers, full shadows** | Each soldier's meshes merged so it draws in a few calls instead of about 43; the time saved spent on bodies taking shadows everywhere, not only near buildings, and casting them past 60 m; bodies, bags and debris in the sea's reflection, and the reflection skipped when no sea is in view; the island's shadow map following doors, broken walls and swaying crowns; the cascade patch told apart by a flag, not by counting directional lights | The benchmark's 24-body frame is well under chunk 30's, a soldier in a tree's shadow out in the open is shaded, and a wading soldier is reflected | **Done** (24 bodies: 1,151 draw calls to 245 and 14.4–14.9 ms to 10.8–11.2 ms a frame in one session on an M3 Pro, bodies now shaded everywhere; screenshot tests of a soldier in a tree's shade and one wading. The island's map doesn't sway: accepted, see the history) |
-| 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | Not started |
+| 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | **Done** (in the pose viewer, with screenshot tests of a climb, hits from the side, a slope and dropped magazines; not watched in play. The climb is keyed by hand, the fast crouch is the run clip played low, and the library's pistol shooting clip wasn't moved over, so each gun's kick is keyed instead. Posing 24 near bodies about 2.5 to 2.8–2.9 ms) |
 | 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | Not started |
 | 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | Not started |
 | 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | Not started |
@@ -309,19 +309,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   digit, and a fall magnifies it. Operators' bodies still go after 5 s, so most never come to rest
   in view. It was checked with pose viewer screenshots, unit tests and a browser test; nobody has
   watched it in play.
-- **The new stances are poses, not animations** (13). A slide, jump, fall and climb each hold a
-  single pose of the legs, and a crouch-walk is the walk clip squashed. A hop shorter than about
-  0.1 s barely shows. The source model has no clips for any of them.
-  The slide pose went with the slide (after 14).
-  **Resolved in part** (21): crouching, crouch-walking, jumping, falling and landing are clips from
-  Quaternius's CC0 Universal Animation Library, moved onto the soldier by
-  `scripts/retarget.mjs` when the assets are fetched: each bone takes the turn its counterpart
-  makes from its bind pose (both rigs are bound in a T-pose), the hips' movement is scaled by hip
-  height, and the feet follow the library's feet. A jump plays from the moment its feet leave the
-  ground, the in-air loop takes over as the body falls, and after more than 0.2 s in the air a
-  landing plays over the rest for 0.8 s. The soldier's own shooting clip is laid over the spine
-  and head at each shot, and its two hit reactions at each hit: a doubling-up for the body and a
-  snap back for the head. The climb is still a pose: the free set of the library has no climb.
 - **The animation was checked by still screenshots** (13) of chosen moments in the new pose viewer
   (`dev/pose.html`), plus one screenshot of a real game in first person. Nobody has watched it
   moving at full speed in play, and its cost per frame with many bodies near wasn't measured.
@@ -330,6 +317,10 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (19, 21): the benchmark measures it (see "Chunk 21's cost"). The new clips
   were again checked by still screenshots in the pose viewer (now also showing landings, hits,
   shots, the bolt being worked and each gun's reload); nobody has watched them in play.
+  Still (33): the climb, hits from each side, the moving gun parts, dropped magazines and feet on
+  slopes were checked by still screenshots and unit tests, not watched in play; posing 24 near
+  bodies went from about 2.5 to 2.8–2.9 ms in one session on an M3 Pro, the feet asking the
+  ground four more times each.
 - **World detail was checked by screenshots on one machine** (15). Headless Chrome on an M3 Pro
   holds 60 fps (median 16.7 ms, 95th percentile 18.2 ms) at 1280 × 720 in a Mixed game.
   Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A
@@ -343,44 +334,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Still there (23): the streaks look like the corrugated metal texture's ridges seen from below,
   catching the sky's reflection, rather than shadow acne; with the light volume they're dimmer
   but still bright against a dark room.
-- **The climb is still a pose** (21). The free set of Quaternius's animation library has no
-  climbing clip, so a mantle holds the same leg pose, forward bend and hand on the ledge as in
-  chunk 13.
-- **The crouch-walk is a slow sneak played fast** (21). The library's clip moves at 0.57 m/s and
-  crouched bodies move at up to 2.4 m/s, so its strides are lengthened up to 1.8× and it plays up to
-  3× faster. At full crouch speed the legs may look hurried.
-- **Feet don't follow the ground** (21, from 9). A planted foot is held where it landed, but at
-  the height the clip gives it above the body's own height. On a slope or a step the feet float
-  or sink a little.
-- **Reactions don't depend on where the round came from** (21). A hit doubles the body up or snaps
-  the head back, the same from any side. Every gun uses the same shooting clip, only kicking
-  harder for the pistol and bolt-action.
-- **Only the hands reload** (21). Each gun is one mesh, so the bolt handle, slide and magazine
-  don't move with the hands; a fresh magazine is a box in the hand and the old one never drops.
-  The bolt-action always thumbs in three rounds, however many it needs. The points on the guns
-  were marked by eye on side views, not snapped to the geometry.
-- **The first-person arms are about twice as long in the upper arm** (21). Only the forearms and
-  hands show, so it can't be seen, but the elbows sit where no real elbow would. Watched only in
-  still pictures.
-  **Improved** (21, follow-up): aiming the pistol, the arms, long enough for the rifle's fore-end,
-  folded up with their elbows right in front of the eye, and the left hand held the grip like the
-  right one with its thumb sticking out sideways (seen in play). Now a shoulder slides back behind
-  the eye whenever its hand is near, until the arm is nearly straight (90% of its length), and on
-  the pistol the left hand wraps round the right hand's fingers with its thumb forward along the
-  frame, in first and third person. A test picture of the aimed pistol was added.
-  Still wrong in play: the aimed pistol sat 0.42 m from the eye, so the straightened arms passed
-  just under the camera and filled the screen, and the wrists bent up to 70° from their forearms,
-  folding the skin between sleeve and glove into a strip on the left and a block on the right. The
-  aimed pistol is now held 0.6 m out, at arm's length (so it looks smaller on screen, as a real one
-  would), and while aiming it no wrist bends more than 40° from the line from its shoulder to its
-  hand: the hand is turned back toward that line before the wrist is placed, so the palm stays on
-  the grip. The limit eases in with the aim. From the hip, and for the other guns, nothing changed:
-  moving the hip stance out and limiting every wrist too looked worse (the user preferred the
-  previous hip view). Third person has no such limit.
-  Still wrong: the aimed pistol's left wrist was twisted 142° about its forearm (the hand is turned
-  half over to wrap the right), so its skin wrung into a thin strip. While aiming the pistol the left
-  forearm now rolls with the hand, leaving the wrist at most 23° of twist; the hand stays exactly
-  where it was. The right hand (46°) is left as it was.
 - **Bots never go upstairs** (23). The nav grid is one layer over the ground, so a two-storey
   building's upper floor and stairs don't exist for bots: they path about the ground floor under
   it and never climb to the lookout, and a player up there is only shot at through the windows.
@@ -421,6 +374,20 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Bodies posed only for what's in view** (32): a body is posed while it's on screen, while its
   shadow may fall on screen, or while its flashlight is on within 60 m. One seen only in the
   sea's reflection, above the top of the screen, keeps its last pose there.
+- **The climb follows the game's lift, not a person's** (33). The game raises the body straight
+  up to the ledge's top in about 0.2 s and then moves it on, so the hand holding the edge can only
+  reach it early on; after that the arm points down at it, straight, above it. The ledge's top is
+  looked for with the ground's height ahead of the body, which can miss a thin ledge; then it
+  guesses 1 m.
+- **Dropped magazines are only for show** (33). Each player sees only the ones dropped near them
+  and in view (within 90 m), where they saw them fall; they don't land on bodies, go after 90 s,
+  and no more than 40 lie about. The rifle's charging handle doesn't move, and the pistol's
+  magazine body is a plain box inside the grip.
+- **Only the bodies you hit flinch** (33, from 13). Hits are told only to whoever fired, so a body
+  struck by someone else doesn't react on your screen, whichever way the round went.
+- **The low run is the run clip lowered** (33): the hips tipped and dropped over the run's feet,
+  not a crouched run of its own. A foot on a step's edge stands at the step's height, as the
+  ground's height counts anything under a player's width.
 
 ### Sound
 - **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,

@@ -96,6 +96,11 @@ const POSES: Record<string, string> = {
   'firstperson-pistol-aimed': 'view=fp&weapon=1&aim=1',
   reloads: 'show=reload:0.58:0,reload:0.5:1,reload:0.36:2,cycle:0.6&view=front&eye=2.4,1.35,2.2&at=2.4,1.15,0',
   reactions: 'show=stand,hit:0.2,hithead:0.2,shoot:0.08,land:0.12,land:0.35&view=side&d=11',
+  // Chunk 33: struck from the side, a climb onto a ledge, a slope underfoot, and magazines let fall.
+  'hits-side': 'show=hit:0.1,hithead:0.1,hitleg:0.1,shoot:0.09:2&view=front&from=1.57&side=0.15&eye=2.4,1.2,6&at=2.4,1,0',
+  climb: 'show=climb:0.08,climb:0.14,climb:0.2,climb:0.3&view=front&ledge=1.2&eye=-3.4,1.6,1.5&at=2.4,1.1,0.5',
+  slope: 'show=stand,walk,crouch&view=front&slope=0.3&eye=1.6,1.6,6&at=1.6,1.1,0',
+  drops: 'show=reload:0.9:0,reload:0.9:1&view=front&eye=0.8,1.4,2.4&at=0.8,0.4,0.4',
 };
 
 for (const [name, query] of Object.entries(POSES)) {

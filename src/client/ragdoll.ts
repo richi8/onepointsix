@@ -386,15 +386,16 @@ export class Ragdoll extends Verlet {
 
 /**
  * A dropped gun: three balls held rigid, at the grip, the muzzle and under
- * the middle (the magazine), so it comes to rest on its side.
+ * the middle (the magazine), so it comes to rest on its side. Or anything
+ * else small that's dropped, such as a magazine, with balls of its size.
  */
 export class Tumbler extends Verlet {
-  constructor(now: ArrayLike<number>, before: ArrayLike<number>) {
+  /** `radius` about half the thing's thickness, so it lies on the ground: a gun's by default. */
+  constructor(now: ArrayLike<number>, before: ArrayLike<number>, radius = 0.025) {
     super(3);
     this.pos.set(now);
     this.prev.set(before);
-    // About half a gun's thickness, so it lies on the ground.
-    this.radius.fill(0.025);
+    this.radius.fill(radius);
     this.link(0, 1);
     this.link(1, 2);
     this.link(0, 2);

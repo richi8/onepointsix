@@ -295,6 +295,98 @@ notes the chunk it came from.
   **Resolved** (32): bodies take shadows everywhere. With each soldier drawn in two calls instead
   of about 43, the benchmark's 24 bodies came out cheaper than before with it (below); switched
   off again, the frame was no faster, within the run-to-run noise.
+- **The new stances are poses, not animations** (13). A slide, jump, fall and climb each hold a
+  single pose of the legs, and a crouch-walk is the walk clip squashed. A hop shorter than about
+  0.1 s barely shows. The source model has no clips for any of them.
+  The slide pose went with the slide (after 14).
+  **Resolved in part** (21): crouching, crouch-walking, jumping, falling and landing are clips from
+  Quaternius's CC0 Universal Animation Library, moved onto the soldier by
+  `scripts/retarget.mjs` when the assets are fetched: each bone takes the turn its counterpart
+  makes from its bind pose (both rigs are bound in a T-pose), the hips' movement is scaled by hip
+  height, and the feet follow the library's feet. A jump plays from the moment its feet leave the
+  ground, the in-air loop takes over as the body falls, and after more than 0.2 s in the air a
+  landing plays over the rest for 0.8 s. The soldier's own shooting clip is laid over the spine
+  and head at each shot, and its two hit reactions at each hit: a doubling-up for the body and a
+  snap back for the head. The climb is still a pose: the free set of the library has no climb.
+  **Resolved** (33): the climb, the last of them, is keyed by hand (see "The climb is still a
+  pose" below); a hop shorter than about 0.1 s still barely shows, as a jump clip needs longer.
+- **The climb is still a pose** (21). The free set of Quaternius's animation library has no
+  climbing clip, so a mantle holds the same leg pose, forward bend and hand on the ledge as in
+  chunk 13.
+  **Resolved** (33): keyed by hand, by how far up the ledge the body has risen. When a climb
+  starts, the ledge's top is found ahead (the snapshots don't carry it) and the left hand takes hold
+  of its edge, where it stays in the world while the body rises past it; the right knee comes up
+  and the foot onto the top, the left foot pushes off below and follows once on top, and the body
+  bends over the edge and straightens. Checked in the pose viewer against a ledge, and a
+  screenshot test shows four moments of it.
+- **The crouch-walk is a slow sneak played fast** (21). The library's clip moves at 0.57 m/s and
+  crouched bodies move at up to 2.4 m/s, so its strides are lengthened up to 1.8× and it plays up to
+  3× faster. At full crouch speed the legs may look hurried.
+  **Resolved** (33): crouched, the crouch-walk now plays up to about 1 m/s (strides at most 1.3×
+  the clip's, at most 2.4× its pace), and from 1 to 1.7 m/s it gives way to the run clip played low:
+  the hips tip forward 0.45 rad and drop 0.28 m, moving back 0.22 m so the head stays over the feet
+  and on its hitbox, and the legs bend to the run's feet. Far off, the legs are still reached for
+  while it runs low, or the boots would hang below the ground.
+- **Feet don't follow the ground** (21, from 9). A planted foot is held where it landed, but at
+  the height the clip gives it above the body's own height. On a slope or a step the feet float
+  or sink a little.
+  **Resolved** (33): each foot is raised or lowered onto the ground under it (the world's height
+  for a player there, so steps count), within 0.35 m, eased, and turned at the ankle to lie along
+  the slope, up to 0.45 rad. A foot still out of the legs' reach brings the hips down to it, by at
+  most 0.25 m, and one that can't be reached even so (as a climber's) is kept to the leg's length
+  so the boot isn't stretched. A screenshot test stands three bodies on a slope.
+- **Reactions don't depend on where the round came from** (21). A hit doubles the body up or snaps
+  the head back, the same from any side. Every gun uses the same shooting clip, only kicking
+  harder for the pistol and bolt-action.
+  **Resolved** (33): the hit knows where the round came from (hits are only told to whoever
+  fired, so from the camera). The chest, or the head, is knocked the way the round went: bent
+  back from in front, forward from behind, rolled to a side; the body turns about the side
+  struck; a round in the legs drops the hips so the knees buckle. The model's own flinch plays
+  under it, weaker. Each gun kicks its own way: the rifle a short shove at the shoulder, the
+  pistol little in the body (its kick is in the arms), the bolt-action a heavy one that turns the
+  right shoulder back; the pistol's slide jumps back with each shot. The library's pistol shooting
+  clip wasn't moved onto the soldier: that means fetching the assets again.
+- **Only the hands reload** (21). Each gun is one mesh, so the bolt handle, slide and magazine
+  don't move with the hands; a fresh magazine is a box in the hand and the old one never drops.
+  The bolt-action always thumbs in three rounds, however many it needs. The points on the guns
+  were marked by eye on side views, not snapped to the geometry.
+  **Resolved** (33): each gun is split where it loads (guns.ts): the connected pieces inside a box
+  make its magazine (the rifle's and the pistol's base plate, given a body hidden in the grip) and
+  its slide or bolt handle. Normally the gun is still drawn whole, in one call; while a part moves
+  it's drawn as its frame and the parts, two calls more. The rifle's left hand strips the
+  magazine and lets it fall, then seats a full one; the pistol's drops free, a fresh one goes up
+  the grip, and the slide is racked; the bolt-action's handle turns up and draws back with the
+  right hand on it. Dropped magazines fall and tumble as three balls (as a dropped gun does) and
+  lie for 90 s. The bolt-action thumbs in the rounds the reload loads, from the snapshot for
+  others. The points on the guns are snapped onto the geometry near their marks: the muzzle to the
+  middle of the barrel's end, the grip to the middle of the grip, the support to the fore-end's
+  underside, the magazine to the middle of its base and the bolt to its handle's end or the
+  slide's back. A dev page (`dev/guns.html`) shows the pieces and the parts moved.
+- **The first-person arms are about twice as long in the upper arm** (21). Only the forearms and
+  hands show, so it can't be seen, but the elbows sit where no real elbow would. Watched only in
+  still pictures.
+  **Improved** (21, follow-up): aiming the pistol, the arms, long enough for the rifle's fore-end,
+  folded up with their elbows right in front of the eye, and the left hand held the grip like the
+  right one with its thumb sticking out sideways (seen in play). Now a shoulder slides back behind
+  the eye whenever its hand is near, until the arm is nearly straight (90% of its length), and on
+  the pistol the left hand wraps round the right hand's fingers with its thumb forward along the
+  frame, in first and third person. A test picture of the aimed pistol was added.
+  Still wrong in play: the aimed pistol sat 0.42 m from the eye, so the straightened arms passed
+  just under the camera and filled the screen, and the wrists bent up to 70° from their forearms,
+  folding the skin between sleeve and glove into a strip on the left and a block on the right. The
+  aimed pistol is now held 0.6 m out, at arm's length (so it looks smaller on screen, as a real one
+  would), and while aiming it no wrist bends more than 40° from the line from its shoulder to its
+  hand: the hand is turned back toward that line before the wrist is placed, so the palm stays on
+  the grip. The limit eases in with the aim. From the hip, and for the other guns, nothing changed:
+  moving the hip stance out and limiting every wrist too looked worse (the user preferred the
+  previous hip view). Third person has no such limit.
+  Still wrong: the aimed pistol's left wrist was twisted 142° about its forearm (the hand is turned
+  half over to wrap the right), so its skin wrung into a thin strip. While aiming the pistol the left
+  forearm now rolls with the hand, leaving the wrist at most 23° of twist; the hand stays exactly
+  where it was. The right hand (46°) is left as it was.
+  **Resolved** (33): both halves of each arm are lengthened alike (about 1.5×), so the elbow is
+  where a real one would be, and the skin moves by how far along its bone it sits, so the sleeve
+  lengthens down to the glove rather than the bare wrist stretching.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

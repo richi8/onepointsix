@@ -1170,9 +1170,11 @@ function snapOf(p: Player): PlayerSnap {
   const { id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon } = p;
   let act: Action = 'none';
   let actT = 0;
+  let rounds: number | undefined;
   if (p.reload > 0) {
     act = 'reload';
     actT = 1 - p.reload / WEAPONS[weapon].reloadTime;
+    rounds = Math.min(WEAPONS[weapon].magSize - p.mag[weapon], p.reserve[weapon]);
   } else if (p.draw > 0) {
     act = p.threw ? 'throw' : 'draw';
     actT = 1 - p.draw / (p.threw ? THROW_TIME : WEAPONS[weapon].drawTime);
@@ -1181,6 +1183,7 @@ function snapOf(p: Player): PlayerSnap {
     id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon,
     quiet: p.suppressed[weapon], motion: motionOf(p), act, actT: clamp(actT, 0, 1), commander: !!p.plan?.commander,
     light: p.light && !dead,
+    ...(rounds !== undefined && { rounds }),
   };
 }
 

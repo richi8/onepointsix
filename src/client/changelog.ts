@@ -12,6 +12,20 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-29',
+    title: 'Hands on the gun',
+    notes: [
+      'Reloads move the gun’s parts: magazines slide out and fall to the ground, where they lie for a while, fresh ones go in from the hand, the pistol’s slide is racked, and the bolt-action’s bolt is lifted and drawn back.',
+      'The bolt-action’s reload thumbs in as many rounds as it needs, one by one, so topping up one round is quick to watch.',
+      'Your own arms in first person have a more natural elbow, and your sleeves reach your gloves.',
+      'Soldiers stand with their feet on the ground on slopes and steps, and roll their ankles to fit.',
+      'A hit knocks a soldier the way the round went: back from the front, forward from behind, turned from the side, and down at the knees when struck in the legs.',
+      'Each gun kicks the shooter its own way, the bolt-action hardest, and the pistol’s slide jumps with each shot.',
+      'Soldiers sneaking fast run low and bent over instead of scurrying.',
+      'Climbing onto a ledge now shows a hand on the edge and a knee coming up onto it.',
+    ],
+  },
+  {
+    date: '2026-09-29',
     title: 'Soldiers in the shade',
     notes: [
       'Soldiers are cheaper to draw, so crowds and firefights run smoother.',

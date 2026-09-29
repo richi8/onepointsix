@@ -46,7 +46,8 @@ const LIBRARY_CLIPS = {
  * (x along the gun from butt to muzzle, z up): where the palm of each hand
  * closes, the muzzle, the sight line, the magazine's base, and the part the
  * right hand works to reload (the bolt's handle, the rifle's charging handle,
- * the pistol's slide). The game fits the guns by these.
+ * the pistol's slide). The game fits the guns by these, and snaps each onto
+ * the geometry near it (see src/client/guns.ts).
  */
 const GUNS = {
   rifle: {
