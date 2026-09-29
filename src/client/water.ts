@@ -8,8 +8,8 @@ import type { World } from '../shared/world.ts';
 // waves, then flat out to the horizon. They share one material that takes the
 // sea's depth from a height map of the island: shallow water is clear and
 // pale, deep water dark, waves die down toward the shore and foam laps along
-// it. It mirrors the island and sky from a small picture drawn each frame
-// from below the surface, and each wave fades out where it's too fine for the
+// it. It mirrors the island, the sky, bodies, bags and debris from a small
+// picture drawn each frame any sea is in view, from below the surface, and each wave fades out where it's too fine for the
 // vertices or pixels to show, so the far sea doesn't shimmer in rings.
 
 /** Metres across the rolling grid and between its vertices. */
@@ -26,6 +26,9 @@ const FULL_DEPTH = 4;
 const REFLECTION_SCALE = 1 / 3;
 /** Objects drawn in the reflection are in this layer as well as the default one. */
 export const REFLECTED = 1;
+/** Rays across and up the screen that look for the sea. */
+const LOOK_COLUMNS = 16;
+const LOOK_ROWS = 9;
 
 /** Wave trains: direction (x, z), wavelength in metres, height in metres, speed in m/s. The first is a long swell. */
 const WAVES: [number, number, number, number, number][] = [
@@ -74,6 +77,7 @@ export function waveHeight(x: number, z: number, t: number, depth: number): numb
 }
 
 const UNDER_FOG = new THREE.Color(0x1d4450);
+const RAY = new THREE.Vector3();
 const UNDER_NEAR = 0;
 const UNDER_FAR = 22;
 
@@ -138,7 +142,7 @@ export class Water {
 
   reflect(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
     const r = this.reflection;
-    if (this.under || camera.position.y < WATER_LEVEL) {
+    if (this.under || camera.position.y < WATER_LEVEL || !this.seaInView(camera, (scene.fog as THREE.Fog | null)?.far ?? camera.far)) {
       r.on.value = 0;
       return;
     }
@@ -165,6 +169,32 @@ export class Water {
     renderer.shadowMap.autoUpdate = shadows;
     scene.matrixWorldAutoUpdate = autoMatrix;
     r.on.value = 1;
+  }
+
+  /**
+   * Whether any open sea is in view within `far` metres: rays through a grid
+   * across the screen, each marched over the terrain to where it meets the
+   * surface, looking for one that isn't hidden by a hill first and comes down
+   * on water rather than dry ground. Buildings and trees aren't counted, so it
+   * errs toward drawing the reflection.
+   */
+  seaInView(camera: THREE.Camera, far: number): boolean {
+    const eye = camera.position;
+    const w = this.world;
+    for (let i = 0; i < LOOK_COLUMNS; i++) {
+      for (let j = 0; j < LOOK_ROWS; j++) {
+        const ray = RAY.set((i / (LOOK_COLUMNS - 1)) * 2 - 1, (j / (LOOK_ROWS - 1)) * 2 - 1, 0.5).unproject(camera).sub(eye).normalize();
+        if (ray.y > -1e-4) continue;
+        const toSea = (WATER_LEVEL - eye.y) / ray.y;
+        if (toSea > far) continue;
+        let hidden = false;
+        for (let t = Math.min(1, toSea); t < toSea && !hidden; t += Math.max(1, t * 0.04)) {
+          hidden = w.terrainHeight(eye.x + ray.x * t, eye.z + ray.z * t) > eye.y + ray.y * t;
+        }
+        if (!hidden && w.terrainHeight(eye.x + ray.x * toSea, eye.z + ray.z * toSea) < WATER_LEVEL) return true;
+      }
+    }
+    return false;
   }
 
   /** Where the sea stands over (x, z) right now. */

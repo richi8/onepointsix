@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BagSnap } from '../shared/protocol.ts';
+import { REFLECTED } from './water.ts';
 
 // Bags on the ground, left by bodies or dropped: a placeholder duffel until chunk 9.
 
@@ -22,6 +23,7 @@ export class Bags {
       if (!mesh) {
         mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = mesh.receiveShadow = true;
+        mesh.layers.enable(REFLECTED);
         // Each lies at its own angle.
         mesh.rotation.y = (b.id * 2.39996) % (Math.PI * 2);
         this.meshes.set(b.id, mesh);

@@ -5,9 +5,14 @@ import * as THREE from 'three';
 // stands still and is only drawn again when the sun moves. three.js's CSM
 // addon would take over every material's onBeforeCompile and light each
 // cascade separately, so instead the stock lighting chunk is patched once: in
-// a scene with exactly three shadow-casting directional lights, the first
-// lights the scene and the other two only lend their shadow maps, each used
-// wherever the one before it runs out.
+// a scene with exactly three shadow-casting directional lights where the
+// second and third are black, the flag that they give no light and only lend
+// their shadow maps, the first lights the scene with its map, each of the
+// others' used wherever the one before it runs out. Any other scene is lit as
+// three.js lights it.
+
+/** Metres the coarse cascade reaches from the player in play. */
+export const FAR_SHADOWS = 230;
 
 const NEAR_MAP = 2048;
 const FAR_MAP = 2048;
@@ -18,8 +23,13 @@ const BLEND = 0.1;
 /** The start of the directional lights' loop; blank lines may be stripped from the chunk. */
 const LOOP_START = /[ \t]*#pragma unroll_loop_start\s*for \( int i = 0; i < NUM_DIR_LIGHTS; i \+\+ \) \{/;
 
+/** Whether the cascades apply, and after the stock loop, the end of their test. */
+const CASCADES_IF = '#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHTS == 3 && NUM_DIR_LIGHT_SHADOWS == 3 && defined( SHADOWMAP_TYPE_PCF )';
+
 const CASCADED = /* glsl */ `
-	#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHTS == 3 && NUM_DIR_LIGHT_SHADOWS == 3 && defined( SHADOWMAP_TYPE_PCF )
+	${CASCADES_IF}
+
+	if ( sunCascades() ) {
 
 		// Cascades: light 0 is the sun with the near map; lights 1 and 2 are dark
 		// and hold the far map and the island's. Only the maps needed are read.
@@ -47,12 +57,24 @@ const CASCADED = /* glsl */ `
 		}
 		RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
 
-	#else
+	} else {
+
+	#endif
+`;
+
+const CASCADED_END = /* glsl */ `
+	${CASCADES_IF}
+	}
+	#endif
 `;
 
 /** How fully a cascade covers a point, from its shadow coordinate: 1 inside, fading to 0 over its edge. */
 const WEIGHT = /* glsl */ `
-	#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHTS == 3 && NUM_DIR_LIGHT_SHADOWS == 3 && defined( SHADOWMAP_TYPE_PCF )
+	${CASCADES_IF}
+	// The flag: lights 1 and 2 give no light, and are there for their maps.
+	bool sunCascades() {
+		return directionalLights[ 1 ].color == vec3( 0.0 ) && directionalLights[ 2 ].color == vec3( 0.0 );
+	}
 	float cascadeWeight( vec4 coord ) {
 		vec3 uv = coord.xyz / coord.w;
 		float edge = min( min( uv.x, 1.0 - uv.x ), min( uv.y, 1.0 - uv.y ) );
@@ -69,7 +91,12 @@ export function cascadedChunk(chunk: string): string {
   const end = start < 0 ? -1 : chunk.indexOf('#pragma unroll_loop_end', start);
   if (start < 0 || end < 0) throw new Error('three.js lighting chunk changed: cascaded shadows need a new patch');
   const after = end + '#pragma unroll_loop_end'.length;
-  return `${chunk.slice(0, start)}${CASCADED}${chunk.slice(start, after)}\n\t#endif\n${chunk.slice(after)}`;
+  return `${chunk.slice(0, start)}${CASCADED}${chunk.slice(start, after)}${CASCADED_END}${chunk.slice(after)}`;
+}
+
+/** three.js's lighting declarations with the cascades' helpers added. */
+export function cascadedPars(pars: string): string {
+  return `${pars}\n${WEIGHT}`;
 }
 
 let patched = false;
@@ -79,7 +106,7 @@ function patchLighting(): void {
   if (patched) return;
   patched = true;
   THREE.ShaderChunk.lights_fragment_begin = cascadedChunk(THREE.ShaderChunk.lights_fragment_begin);
-  THREE.ShaderChunk.lights_pars_begin = `${THREE.ShaderChunk.lights_pars_begin}\n${WEIGHT}`;
+  THREE.ShaderChunk.lights_pars_begin = cascadedPars(THREE.ShaderChunk.lights_pars_begin);
 }
 
 /** The sun, casting shadows in three cascades: two following a focus point, one over the whole island. */
@@ -99,6 +126,7 @@ export class Sun {
     this.dir.copy(dir);
     this.reach = half * Math.SQRT2;
     this.light = new THREE.DirectionalLight(color, intensity);
+    // Black: the flag that marks them as the sun's cascades.
     this.far = new THREE.DirectionalLight(0x000000, 0);
     this.island = new THREE.DirectionalLight(0x000000, 0);
     for (const [light, size] of [[this.light, NEAR_MAP], [this.far, FAR_MAP], [this.island, ISLAND_MAP]] as const) {

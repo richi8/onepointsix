@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-29',
+    title: 'Soldiers in the shade',
+    notes: [
+      'Soldiers are cheaper to draw, so crowds and firefights run smoother.',
+      'Soldiers now darken in the shade of trees, walls and rocks out in the open, not only in and around buildings, so someone standing under a tree is harder to spot.',
+      'Soldiers cast shadows out to 230 m, up from 60 m, and a soldier just out of view can give themselves away by their shadow.',
+      'The sea mirrors soldiers, bags and debris as well as the island.',
+      'Far-off shadows follow doors as they open and shut.',
+    ],
+  },
+  {
+    date: '2026-09-29',
     title: 'Chrome first',
     notes: [
       'The game is made and tested in Chrome for now; Firefox and Safari will be checked again before release.',

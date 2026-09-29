@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GRAVITY } from '../shared/constants.ts';
 import type { Box } from '../shared/world.ts';
+import { REFLECTED } from './water.ts';
 
 // Effects in the world: tracers, impact marks, puffs, the flash of light a
 // shot throws on its surroundings, explosions and the debris of broken cover.
@@ -119,6 +120,7 @@ export class Effects {
     this.debris.count = 0;
     this.debris.frustumCulled = false;
     this.debris.castShadow = this.debris.receiveShadow = true;
+    this.debris.layers.enable(REFLECTED);
     scene.add(this.debris);
   }
 

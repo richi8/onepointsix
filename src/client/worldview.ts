@@ -395,7 +395,7 @@ export class WorldView {
     this.sky.position.copy(camera.position);
     groundEye.value.copy(camera.position);
     this.sun.update(focus, near, far);
-    // Broken walls leave the island's shadow map now and then, not every time a panel goes.
+    // Broken walls and swung doors reach the island's shadow map now and then, not every time one changes.
     if (this.castersChanged && (time - this.redrawnAt > 2 || time < this.redrawnAt)) {
       this.castersChanged = false;
       this.redrawnAt = time;
@@ -493,6 +493,8 @@ export class WorldView {
       this.swing[i] = Math.abs(to - s) <= step ? to : s + Math.sign(to - s) * step;
       this.placeDoor(i);
       moved = true;
+      // Come to rest, the leaf's shadow moves in the island's map too.
+      if (this.swing[i] === to) this.castersChanged = true;
     });
     if (moved) this.props.instanceMatrix.needsUpdate = true;
   }

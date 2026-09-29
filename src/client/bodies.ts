@@ -1,24 +1,26 @@
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { LEAN_OFFSET, PLAYER_HEIGHT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
 import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
+import { mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
 import { clip, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
+import { FAR_SHADOWS } from './cascades.ts';
 import { dimIndoors } from './indoorlight.ts';
-import { lensOf, lightTorch, makeTorch, mountTorch, torchMaterial, torchMount, type Torch } from './torch.ts';
-import { inBuilding, type Building } from '../shared/world.ts';
+import { lensOf, lightTorch, makeTorch, mountTorch, torchMount, torchPart, type Torch } from './torch.ts';
+import type { Building } from '../shared/world.ts';
 import { BOLT_START, BOLT_TIME, boltHand, type GunPoints, path, reloadHands } from './handwork.ts';
 import { JOINT, RAGDOLL_STEP, Ragdoll, type Solid, Tumbler, type Verlet } from './ragdoll.ts';
 import { RagRig, type Slump, slump } from './ragrig.ts';
 import {
   type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, placeWorld, reach, rotateWorld, span, turnWorld, wristFor,
 } from './rig.ts';
+import { REFLECTED } from './water.ts';
 
 // Everyone else. Once the soldier model has loaded, each body is an animated
 // soldier: it walks, runs and crouch-walks at the pace it moves with its feet
@@ -33,6 +35,10 @@ import {
 // Sides are told apart by colour and kit: operators in grey-blue with a pack,
 // guards in olive with brown webbing, commanders with a red band on the helmet
 // and a radio mast.
+// Each soldier is drawn in two draw calls a pass: its body with its kit as
+// one skinned mesh, and its gun with its flashlight and suppressor (see
+// baked.ts). They take the world's shadows everywhere and cast them as far as
+// the sun's cascades reach, and they're mirrored in the sea.
 
 const FALL_TIME = 0.45;
 const FLASH_TIME = 0.12;
@@ -49,11 +55,22 @@ const COMMANDER_UNIFORM = 0x4f5a34;
 const COMMANDER_GEAR = 0x6b5a3a;
 const UNIFORM_MATERIAL = 'Swat';
 const GEAR_MATERIAL = 'Swat_Black';
+const PACK = 0x3a3d33;
+const RED = 0xa3201b;
+const MAST = 0x1c1c1c;
+const GUN = 0x2a2c2e;
+const CAN = 0x1e2022;
 /** Beyond this, soldiers animate at a lower rate and skip fine posing. */
 const NEAR = 90;
 const FAR_UPDATE = 1 / 20;
-/** Bodies this close are drawn even off screen, for their shadows. */
-const SHADOW_REACH = 60;
+/** Bodies this close cast shadows, drawn off screen too if their shadow may fall in view: as far as the coarse cascade reaches. */
+const SHADOW_REACH = FAR_SHADOWS;
+/** The longest shadow a body is thought to throw, for a sun low in the sky. */
+const SHADOW_LENGTH = 25;
+/** Bodies this close with their flashlight on are posed off screen too, for their beam. */
+const LIGHT_REACH = 60;
+/** Room round a body standing, for culling. */
+const BODY_RADIUS = 1.4;
 /** Where the fog hides everything. */
 const FOG_END = 750;
 /** How far into the jump clip the feet leave the ground, in seconds. */
@@ -100,15 +117,11 @@ const BLAST_LIFT = 1.5;
 
 const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
-const GUN_MAT = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, roughness: 0.5, metalness: 0.4 });
-const CAN_MAT = new THREE.MeshStandardMaterial({ color: 0x1e2022, roughness: 0.6, metalness: 0.3 });
+/** Every carried gun's: the look is in its vertices. */
+const GUN_MAT = vertexSurfaces(new THREE.MeshStandardMaterial());
 const MAG_MAT = new THREE.MeshStandardMaterial({ color: 0x2c2d2f, roughness: 0.6, metalness: 0.3 });
 const ROUND_MAT = new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 });
-const PACK_MAT = new THREE.MeshStandardMaterial({ color: 0x3a3d33, roughness: 0.9 });
-const RED_MAT = new THREE.MeshStandardMaterial({ color: 0xa3201b, roughness: 0.8 });
-const MAST_MAT = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
-const TORCH_MAT = torchMaterial();
-for (const m of [GUN_MAT, CAN_MAT, MAG_MAT, ROUND_MAT, PACK_MAT, RED_MAT, MAST_MAT, TORCH_MAT]) dimIndoors(m);
+for (const m of [GUN_MAT, MAG_MAT, ROUND_MAT]) dimIndoors(m);
 const FLASH_MAT = new THREE.SpriteMaterial({
   map: flashTexture(), color: 0xffc070, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
 });
@@ -130,10 +143,19 @@ export interface Ground extends Solid {
 
 /** A carried gun, barrel along -z with the grip at z = 0, as fitGun makes them, and its marked points. */
 interface GunShape extends GunPoints {
-  make(): THREE.Object3D;
+  /** The gun with its flashlight's body, bare and with the suppressor on. */
+  looks: [bare: THREE.BufferGeometry, quiet: THREE.BufferGeometry];
   muzzle: THREE.Vector3;
   /** Where its flashlight sits. */
   torch: THREE.Vector3;
+}
+
+/** A gun's `parts` merged with its flashlight, without and with a suppressor. */
+function gunLooks(parts: Part[], weapon: number, muzzle: THREE.Vector3, support: THREE.Vector3): Pick<GunShape, 'looks' | 'torch'> {
+  const torch = torchMount(weapon, muzzle, support);
+  const bare = [...parts, torchPart(torch)];
+  const can = part(CAN_GEO.clone().translate(muzzle.x, muzzle.y, muzzle.z - CAN_LENGTH / 2), CAN, 0.6, 0.3);
+  return { torch, looks: [mergeParts(bare), mergeParts([...bare, can])] };
 }
 
 /** A stand-in gun of boxes until the models load. */
@@ -144,13 +166,11 @@ function gunShape(weapon: number, length: number, stock: boolean): GunShape {
     new THREE.BoxGeometry(0.035, 0.1, 0.04).translate(0, -0.02, 0),
   ];
   if (stock) parts.push(new THREE.BoxGeometry(0.04, 0.08, 0.25).translate(0, 0.02, 0.18));
-  const geometry = mergeGeometries(parts);
   const muzzle = new THREE.Vector3(0, 0.06, -length * 0.88);
   const support = new THREE.Vector3(0, 0.02, -length * 0.42);
   return {
-    make: () => new THREE.Mesh(geometry, GUN_MAT),
+    ...gunLooks(parts.map((g) => part(g, GUN, 0.5, 0.4)), weapon, muzzle, support),
     muzzle,
-    torch: torchMount(weapon, muzzle, support),
     grip: new THREE.Vector3(0, -0.02, 0.02),
     support,
     magazine: new THREE.Vector3(0, -0.05, -length * 0.15),
@@ -165,16 +185,16 @@ interface Figure {
   group: THREE.Group;
   /** While too far to cast a visible shadow: the parts that cast one up close. */
   casters: THREE.Object3D[] | null;
-  /** Its meshes take the world's shadows, as they do in and round buildings. */
-  shaded: boolean;
   materials: THREE.MeshStandardMaterial[];
+  /** The soldier's skinned mesh, culled by a sphere round the body, and where it sits in the figure. */
+  body: THREE.SkinnedMesh | null;
+  bodyAt: THREE.Matrix4;
   /** Where the last round landed, in the figure's own space, and how bright its flash is. */
   hit: { value: THREE.Vector4 };
   hitAt: THREE.Vector3;
-  /** Holds the gun in hand, which is swapped on a weapon change, its suppressor and its flash. */
+  /** Holds the gun in hand, whose look is swapped on a weapon change or with the suppressor, and its flash. */
   gun: THREE.Group;
-  held: THREE.Object3D;
-  can: THREE.Mesh;
+  held: THREE.Mesh;
   torch: Torch;
   flashMesh: THREE.Sprite;
   weapon: number;
@@ -256,8 +276,8 @@ interface Soldier {
   /** A grenade, shown in the throwing hand, and what the left hand brings to a reload. */
   nade: THREE.Object3D;
   mag: THREE.Mesh;
-  /** An operator's pack, kept out of the ground when it lies on it. */
-  pack: THREE.Object3D | null;
+  /** Whether it wears an operator's pack, kept out of the ground when it lies on it. */
+  pack: boolean;
   /**
    * The pose the animation last wrote to the bones we adjust. The mixer only
    * writes a bone when its animated value changes, so our adjustments are
@@ -312,11 +332,15 @@ export type StepListener = (x: number, y: number, z: number, speed: number, crou
 
 export class Bodies {
   onStep: StepListener | null = null;
+  /** Toward the sun or moon, for which bodies out of view throw a shadow into it. */
+  readonly sun = new THREE.Vector3(0, 1, 0);
   private readonly scene: THREE.Scene;
   /** What bodies stand and fall on; another island's when that opens. */
   ground: Ground;
   private readonly figures = new Map<number, Figure>();
   private model: GLTF | null = null;
+  /** The soldier's merged geometry for each look: operator, guard and commander. */
+  private readonly looks = new Map<string, THREE.BufferGeometry>();
   /** Scale that makes the model PLAYER_HEIGHT tall. */
   private modelScale = 1;
   /** Which way the death clip falls, as a yaw from facing, and how far the head ends up. */
@@ -349,15 +373,12 @@ export class Bodies {
     this.model = gltf;
     GUNS = guns.map((g, i) => {
       const { object, ...points } = fitGun(g, i);
-      // Their own materials, dimmed indoors: the first-person gun shares the model's.
-      object.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        mesh.material = (mesh.material as THREE.Material).clone();
-        dimIndoors(mesh.material);
-      });
-      return { make: () => object.clone(), ...points, torch: torchMount(i, points.muzzle, points.support) };
+      object.updateMatrixWorld(true);
+      const parts: Part[] = [];
+      object.traverse((o) => (o as THREE.Mesh).isMesh && parts.push(partOf(o as THREE.Mesh, o.matrixWorld)));
+      return { ...points, ...gunLooks(parts, i, points.muzzle, points.support) };
     });
+    this.looks.clear();
     const box = new THREE.Box3().setFromObject(gltf.scene);
     this.modelScale = PLAYER_HEIGHT / (box.max.y - box.min.y);
     this.deathYaw = deathDirection(gltf);
@@ -386,7 +407,7 @@ export class Bodies {
       seen.add(p.id);
       let f = this.figures.get(p.id);
       if (!f) {
-        f = this.create(p.team, p.commander);
+        f = this.create(p.id, p.team, p.commander);
         this.figures.set(p.id, f);
         f.lastX = p.x;
         f.lastY = p.y;
@@ -469,17 +490,12 @@ export class Bodies {
     this.figures.delete(id);
   }
 
-  private create(team: Team, commander: boolean): Figure {
+  private create(id: number, team: Team, commander: boolean): Figure {
     const group = new THREE.Group();
     const gun = new THREE.Group();
-    const held = GUNS[0].make();
-    held.castShadow = true;
+    const held = new THREE.Mesh(GUNS[0].looks[0], GUN_MAT);
     gun.add(held);
-    const can = new THREE.Mesh(CAN_GEO, CAN_MAT);
-    can.castShadow = true;
-    can.visible = false;
-    gun.add(can);
-    const torch = makeTorch(TORCH_MAT);
+    const torch = makeTorch(null);
     mountTorch(torch, GUNS[0].torch);
     gun.add(torch.object);
     const flashMesh = new THREE.Sprite(FLASH_MAT);
@@ -489,22 +505,26 @@ export class Bodies {
     group.add(gun);
     this.scene.add(group);
     const f: Figure = {
-      group, materials: [], hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
-      gun, held, can, torch, flashMesh, weapon: 0, quiet: false,
+      group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
+      gun, held, torch, flashMesh, weapon: 0, quiet: false,
       deadFor: -1, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, ragSteps: 0, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
       air: 0, mantle: 0, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, headFix: 0, duck: 0,
-      firedFor: 1e3, hitFor: 1e3, hitHead: false, soldier: null, casters: null, shaded: false,
+      firedFor: 1e3, hitFor: 1e3, hitHead: false, soldier: null, casters: null,
       // Far off, bodies take turns to be posed rather than all in one frame.
       wait: Math.random() * FAR_UPDATE,
     };
-    placeCan(f);
-    if (this.model) f.soldier = this.soldier(f, team, commander);
+    if (this.model) f.soldier = this.soldier(f, id, team, commander);
     else this.placeholder(f, team);
     for (const m of f.materials) {
       flashWhereHit(m, f.hit);
       dimIndoors(m);
     }
+    group.traverse((o) => {
+      o.layers.enable(REFLECTED);
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && mesh !== torch.lens) mesh.castShadow = mesh.receiveShadow = true;
+    });
     return f;
   }
 
@@ -512,37 +532,41 @@ export class Bodies {
     f.materials = [HEAD, TORSO[team], LEGS[team]].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
     const [head, torso, legs] = [sphere, cylinder, cylinder].map((geo, i) => {
       const mesh = new THREE.Mesh(geo, f.materials[i]);
-      mesh.castShadow = true;
       f.group.add(mesh);
       return mesh;
     });
     Object.assign(f, { head, torso, legs });
   }
 
-  private soldier(f: Figure, team: Team, commander: boolean): Soldier {
+  private soldier(f: Figure, id: number, team: Team, commander: boolean): Soldier {
     const gltf = this.model!;
     const model = SkeletonUtils.clone(gltf.scene);
     model.scale.setScalar(this.modelScale);
-    model.traverse((o) => {
-      const mesh = o as THREE.SkinnedMesh;
-      if (!mesh.isMesh) return;
-      // Each mesh gets its own materials, for the hit flash.
-      const m = (mesh.material as THREE.MeshStandardMaterial).clone();
-      if (m.name === UNIFORM_MATERIAL) m.color.setHex(commander ? COMMANDER_UNIFORM : UNIFORM[team]);
-      if (m.name === GEAR_MATERIAL) m.color.setHex(commander ? COMMANDER_GEAR : GEAR[team]);
-      mesh.material = m;
-      mesh.castShadow = true;
-      // Culled as a whole body instead, in update.
-      mesh.frustumCulled = false;
-      f.materials.push(m);
-    });
     // The model faces +z; bodies face -z.
     const turned = new THREE.Group();
     turned.rotation.y = Math.PI;
     turned.add(model);
     f.group.add(turned);
+    f.group.updateMatrixWorld(true);
 
+    // Its meshes and kit drawn as the first mesh, in its own material for the hit flash.
     const bones = findBones(model);
+    const meshes: THREE.SkinnedMesh[] = [];
+    model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && meshes.push(o as THREE.SkinnedMesh));
+    const key = commander ? 'commander' : team;
+    let geometry = this.looks.get(key);
+    if (!geometry) this.looks.set(key, (geometry = look(meshes, bones, f.group, team, commander)));
+    const body = meshes[0];
+    for (const m of meshes.slice(1)) m.removeFromParent();
+    body.geometry = geometry;
+    const material = vertexSurfaces(new THREE.MeshStandardMaterial());
+    body.material = material;
+    f.materials.push(material);
+    // Culled by a sphere round the body, set as it's posed.
+    body.boundingSphere = new THREE.Sphere();
+    f.body = body;
+    f.bodyAt.copy(f.group.matrixWorld).invert().multiply(body.matrixWorld);
+
     const mixer = new THREE.AnimationMixer(model);
     const action = (name: string, once = false): THREE.AnimationAction => {
       const a = mixer.clipAction(clip(gltf.animations, name));
@@ -564,11 +588,10 @@ export class Bodies {
     const land = action('JumpLand', true);
     const death = action('Death', true);
     idle.weight = 1;
-    // Start everyone at a different point in their stride.
-    const phase = Math.random();
+    // Start everyone at a different point in their stride, the same each time for the same body.
+    const phase = (id * 0.618034) % 1;
     for (const a of [walk, run, crouchWalk, idle, crouchIdle]) a.time = phase * a.getClip().duration;
 
-    f.group.updateMatrixWorld(true);
     const hands: [Hand, Hand] = [findHand(model, 'L'), findHand(model, 'R')];
     const nade = grenadeModel();
     nade.visible = false;
@@ -576,7 +599,7 @@ export class Bodies {
     const mag = new THREE.Mesh(ROUND_GEO, MAG_MAT);
     mag.visible = false;
     f.group.add(mag);
-    const pack = this.kit(f, bones, team, commander);
+    const pack = team === 'operator';
     const animated = Object.values(bones).map((bone) => ({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }));
     const r = this.reactions!;
     const foothold = (): Foothold => ({ at: null, offset: new THREE.Vector3(), last: new THREE.Vector3() });
@@ -589,59 +612,18 @@ export class Bodies {
     };
   }
 
-  /** What sets the sides apart besides colour: a pack on operators, a helmet band and radio mast on commanders. */
-  private kit(f: Figure, bones: Bones, team: Team, commander: boolean): THREE.Object3D | null {
-    // Placed in the figure's space at rest, facing -z, then carried by a bone.
-    const chest = bones.spine2.getWorldPosition(new THREE.Vector3());
-    const head = bones.head.getWorldPosition(new THREE.Vector3());
-    const wear = (mesh: THREE.Mesh, bone: THREE.Object3D): void => {
-      mesh.castShadow = true;
-      f.group.add(mesh);
-      f.group.updateMatrixWorld(true);
-      bone.attach(mesh);
-    };
-    let carried: THREE.Object3D | null = null;
-    if (team === 'operator') {
-      const pack = carried = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.16), PACK_MAT);
-      pack.position.set(chest.x, chest.y - 0.06, chest.z + 0.2);
-      wear(pack, bones.spine2);
-      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10).rotateZ(Math.PI / 2), PACK_MAT);
-      roll.position.set(chest.x, chest.y + 0.17, chest.z + 0.22);
-      wear(roll, bones.spine2);
-    }
-    if (commander) {
-      const band = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.025, 6, 20).rotateX(Math.PI / 2), RED_MAT);
-      band.position.set(head.x, head.y + 0.15, head.z - 0.01);
-      wear(band, bones.head);
-      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.01, 0.7, 5), MAST_MAT);
-      mast.position.set(chest.x - 0.1, chest.y + 0.3, chest.z + 0.2);
-      mast.rotation.z = 0.12;
-      wear(mast, bones.spine2);
-      const radio = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.28, 0.12), MAST_MAT);
-      radio.position.set(chest.x, chest.y - 0.05, chest.z + 0.18);
-      wear(radio, bones.spine2);
-    }
-    return carried;
-  }
-
   private pose(f: Figure, p: PlayerSnap, dt: number): void {
     // Seen dead before the kill event came: a moment on its feet, waiting for it.
     if (p.dead && f.deadFor < 0 && !f.death && !f.fresh && f.soldier && f.unexplained < DEATH_WAIT) {
       f.unexplained += dt;
       p = { ...p, dead: false };
     } else f.unexplained = 0;
-    if (f.weapon !== p.weapon) {
+    if (f.weapon !== p.weapon || f.quiet !== p.quiet) {
       f.weapon = p.weapon;
-      f.gun.remove(f.held);
-      f.held = GUNS[p.weapon].make();
-      f.held.castShadow = true;
-      f.held.traverse((o) => (o as THREE.Mesh).isMesh && (o.receiveShadow = f.shaded));
-      f.gun.add(f.held);
-      placeCan(f);
+      f.quiet = p.quiet;
+      f.held.geometry = GUNS[p.weapon].looks[p.quiet ? 1 : 0];
       mountTorch(f.torch, GUNS[p.weapon].torch);
     }
-    f.quiet = p.quiet;
-    f.can.visible = p.quiet;
     lightTorch(f.torch, p.light && !p.dead);
 
     // How fast and which way it's going, relative to where it faces.
@@ -717,21 +699,15 @@ export class Bodies {
     }
     f.fresh = false;
 
-    // Out of sight and too far to throw a shadow into view, or lost in the fog: not drawn.
-    if (f.rag) this.bounds.center.set(f.rag.bounds.x, f.rag.bounds.y, f.rag.bounds.z);
-    else this.bounds.center.set(p.x, p.y + 0.9, p.z);
-    const distance = this.camera.distanceTo(this.bounds.center);
-    f.group.visible = distance < SHADOW_REACH || (distance < FOG_END && this.frustum.intersectsSphere(this.bounds));
-    // Beyond that, a body's shadow is too small to see but costs a draw in each shadow map.
+    // Out of sight with no shadow or beam of its own in view, or lost in the fog: not drawn.
+    const bounds = this.bounds;
+    if (f.rag) bounds.set(V_TMP.set(f.rag.bounds.x, f.rag.bounds.y, f.rag.bounds.z), Math.max(BODY_RADIUS, f.rag.bounds.r + 0.3));
+    else bounds.set(V_TMP.set(p.x, p.y + 0.9, p.z), BODY_RADIUS);
+    const distance = this.camera.distanceTo(bounds.center);
+    // Beyond the cascades, a body's shadow is too small to see but costs a draw in each shadow map.
     const shadow = distance < SHADOW_REACH;
-    // In or beside a building, shadowed like the world, so a room keeps the sun
-    // off them bar what comes in its windows. Out in the open that costs more
-    // than it shows.
-    const indoors = shadow && this.ground.buildings.some((b) => inBuilding(b, p.x, p.z, 1.5));
-    if (indoors !== f.shaded) {
-      f.shaded = indoors;
-      f.group.traverse((o) => (o as THREE.Mesh).isMesh && (o.receiveShadow = indoors));
-    }
+    f.group.visible = (distance < FOG_END && this.frustum.intersectsSphere(bounds)) ||
+      (shadow && this.shadowInView(bounds)) || (p.light && !p.dead && distance < LIGHT_REACH);
     if (!shadow && !f.casters) {
       f.casters = [];
       f.group.traverse((o) => o.castShadow && f.casters!.push(o));
@@ -742,6 +718,12 @@ export class Bodies {
     }
     if (f.drop) this.placeGun(f);
     if (!f.group.visible) return;
+    if (f.body) {
+      // Each pass culls the body by its sphere, in the skinned mesh's own space.
+      f.group.updateMatrix();
+      const toBody = M_A.multiplyMatrices(f.group.matrix, f.bodyAt).invert();
+      f.body.boundingSphere!.copy(bounds).applyMatrix4(toBody);
+    }
 
     if (f.soldier) this.poseSoldier(f, f.soldier, p, dt);
     else this.posePlaceholder(f, p);
@@ -753,6 +735,15 @@ export class Bodies {
     f.muzzle = Math.max(f.muzzle - dt, 0);
     f.flashMesh.visible = f.muzzle > 0 && !p.dead;
     f.flashMesh.position.copy(muzzleOf(f));
+  }
+
+  /** Whether the shadow a body in `bounds` throws, away from the sun, may fall in view. */
+  private shadowInView(bounds: THREE.Sphere): boolean {
+    // A standing body's head is 2 m up; its shadow runs from its feet, 2 m over the sun's height, away from it.
+    const reach = Math.min(2 / Math.max(this.sun.y, 0.05), SHADOW_LENGTH) / 2;
+    SHADOW_SPHERE.center.copy(bounds.center).addScaledVector(this.sun, -reach);
+    SHADOW_SPHERE.radius = bounds.radius + reach;
+    return this.frustum.intersectsSphere(SHADOW_SPHERE);
   }
 
   /**
@@ -1278,6 +1269,81 @@ function deathDirection(gltf: GLTF): number {
   return Math.atan2(head.x, head.z);
 }
 
+/**
+ * The soldier's `meshes` merged into the first one's geometry, in a side's
+ * colours, with the kit that sets the sides apart besides colour: a pack on
+ * operators, a helmet band and radio mast on commanders. The kit is placed on
+ * the model at rest, standing in `frame` (a figure), each piece skinned
+ * wholly to the bone that carries it.
+ */
+function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, team: Team, commander: boolean): THREE.BufferGeometry {
+  const body = meshes[0];
+  const skeleton = body.skeleton.bones;
+  // A skinned vertex v ends up at bone.matrixWorld * boneInverse * bindMatrix * v; `bind` is the last two.
+  const bind = (m: THREE.SkinnedMesh, j: number): THREE.Matrix4 => m.skeleton.boneInverses[j].clone().multiply(m.bindMatrix);
+  const parts: Part[] = [];
+  for (const m of meshes) {
+    if (m.skeleton.bones.length !== skeleton.length || m.skeleton.bones.some((b, j) => b !== skeleton[j])) {
+      throw new Error('Soldier meshes are skinned to different bones');
+    }
+    // Into the first mesh's space: the same for every bone, or the meshes can't be merged.
+    const into = bind(body, 0).invert().multiply(bind(m, 0));
+    for (let j = 1; j < skeleton.length; j++) {
+      const other = bind(body, j).invert().multiply(bind(m, j));
+      if (other.elements.some((e, i) => Math.abs(e - into.elements[i]) > 1e-4)) throw new Error('Soldier meshes are bound differently');
+    }
+    const p = partOf(m, into);
+    const name = (m.material as THREE.Material).name;
+    if (name === UNIFORM_MATERIAL) p.color.setHex(commander ? COMMANDER_UNIFORM : UNIFORM[team]);
+    if (name === GEAR_MATERIAL) p.color.setHex(commander ? COMMANDER_GEAR : GEAR[team]);
+    const joints = m.geometry.getAttribute('skinIndex');
+    const weights = m.geometry.getAttribute('skinWeight');
+    const index = new Uint16Array(joints.count * 4);
+    const weight = new Float32Array(joints.count * 4);
+    for (let i = 0; i < joints.count; i++) {
+      for (let c = 0; c < 4; c++) {
+        index[i * 4 + c] = joints.getComponent(i, c);
+        weight[i * 4 + c] = weights.getComponent(i, c);
+      }
+    }
+    p.geometry.setAttribute('skinIndex', new THREE.BufferAttribute(index, 4));
+    p.geometry.setAttribute('skinWeight', new THREE.BufferAttribute(weight, 4));
+    parts.push(p);
+  }
+
+  // Kit, placed in the figure's space at rest facing -z, then carried by a bone.
+  const chest = frame.worldToLocal(bones.spine2.getWorldPosition(new THREE.Vector3()));
+  const head = frame.worldToLocal(bones.head.getWorldPosition(new THREE.Vector3()));
+  const wear = (geometry: THREE.BufferGeometry, hex: number, roughness: number, bone: THREE.Object3D, x: number, y: number, z: number, roll = 0): void => {
+    const j = skeleton.indexOf(bone as THREE.Bone);
+    const at = new THREE.Matrix4().compose(
+      new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(V_BACK, roll), new THREE.Vector3(1, 1, 1),
+    ).premultiply(frame.matrixWorld);
+    // Solve bone.matrixWorld * bind * v = at * kit for v.
+    geometry.applyMatrix4(bind(body, j).invert().multiply(bone.matrixWorld.clone().invert()).multiply(at));
+    const n = geometry.getAttribute('position').count;
+    const index = new Uint16Array(n * 4);
+    const weight = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      index[i * 4] = j;
+      weight[i * 4] = 1;
+    }
+    geometry.setAttribute('skinIndex', new THREE.BufferAttribute(index, 4));
+    geometry.setAttribute('skinWeight', new THREE.BufferAttribute(weight, 4));
+    parts.push(part(geometry, hex, roughness));
+  };
+  if (team === 'operator') {
+    wear(new THREE.BoxGeometry(0.3, 0.4, 0.16), PACK, 0.9, bones.spine2, chest.x, chest.y - 0.06, chest.z + 0.2);
+    wear(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10).rotateZ(Math.PI / 2), PACK, 0.9, bones.spine2, chest.x, chest.y + 0.17, chest.z + 0.22);
+  }
+  if (commander) {
+    wear(new THREE.TorusGeometry(0.155, 0.025, 6, 20).rotateX(Math.PI / 2), RED, 0.8, bones.head, head.x, head.y + 0.15, head.z - 0.01);
+    wear(new THREE.CylinderGeometry(0.006, 0.01, 0.7, 5), MAST, 0.6, bones.spine2, chest.x - 0.1, chest.y + 0.3, chest.z + 0.2, 0.12);
+    wear(new THREE.BoxGeometry(0.2, 0.28, 0.12), MAST, 0.6, bones.spine2, chest.x, chest.y - 0.05, chest.z + 0.18);
+  }
+  return mergeParts(parts, ['skinIndex', 'skinWeight']);
+}
+
 /** 0 before `a`, up to 1 by a fifth of the way and down again by `b`: for an action's middle. */
 function hump(t: number, a: number, b: number): number {
   const w = (b - a) * 0.2;
@@ -1306,17 +1372,16 @@ function muzzleOf(f: Figure): THREE.Vector3 {
   return m;
 }
 
-function placeCan(f: Figure): void {
-  f.can.position.copy(GUNS[f.weapon].muzzle);
-  f.can.position.z -= CAN_LENGTH / 2;
-}
 
 /**
  * Light a material up round the point a round landed, fading with distance,
  * rather than all over. `hit` holds the point in the world and the strength.
  */
 function flashWhereHit(m: THREE.MeshStandardMaterial, hit: { value: THREE.Vector4 }): void {
-  m.onBeforeCompile = (shader) => {
+  const before = m.onBeforeCompile;
+  const key = m.customProgramCacheKey.bind(m);
+  m.onBeforeCompile = (shader, renderer) => {
+    before.call(m, shader, renderer);
     shader.uniforms.hitGlow = hit;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vHitPos;')
@@ -1328,10 +1393,12 @@ function flashWhereHit(m: THREE.MeshStandardMaterial, hit: { value: THREE.Vector
         `#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.9, 0.8) * hitGlow.w * 1.5 * smoothstep(${FLASH_REACH.toFixed(2)}, 0.0, distance(vHitPos, hitGlow.xyz));`,
       );
   };
-  m.customProgramCacheKey = () => 'hitflash';
+  m.customProgramCacheKey = () => `${key()}-hitflash`;
 }
 
+const SHADOW_SPHERE = new THREE.Sphere();
 const V_UP = new THREE.Vector3(0, 1, 0);
+const V_BACK = new THREE.Vector3(0, 0, 1);
 const V_RIGHT = new THREE.Vector3();
 const V_FORWARD = new THREE.Vector3();
 const V_MUZZLE = new THREE.Vector3();

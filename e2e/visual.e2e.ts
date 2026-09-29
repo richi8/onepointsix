@@ -70,6 +70,22 @@ for (const [name, query] of Object.entries(CONDITIONS)) {
   });
 }
 
+// Soldiers stood on the island (see ?stand in main.ts): one in a tree's
+// shadow out in the open, shaded, beside one in the sun; one wading, mirrored
+// in the sea.
+const STANDING: Record<string, string> = {
+  'tree-shade': 'cam=-93.5,22.1,110,-99.5,20.9,114.5&stand=-97.6,115.2,0.6;-101.5,112.2,0.6',
+  wading: 'cam=11.5,1.2,320,7.5,0.3,327&stand=8,326,2.5',
+};
+
+for (const [name, query] of Object.entries(STANDING)) {
+  test(`soldiers: ${name}`, async ({ page }) => {
+    const [cam, stand] = query.split('&');
+    await spot(page, cam.slice('cam='.length), `&${stand}`);
+    await expect(page).toHaveScreenshot(`soldiers-${name}.png`);
+  });
+}
+
 const POSES: Record<string, string> = {
   moving: 'show=stand,walk,run,crouch,crouchwalk,jump,fall,mantle&view=side&d=13',
   hands: 'show=reload:0.1,reload:0.4,draw,throw:0.2,lean,leanl,aimup,dead&view=front&d=13',

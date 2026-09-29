@@ -243,7 +243,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 31 | **Local browser tests** | A browser test for the single-file build opened from `file://`; tests for the lighting presets, rain, flashlights and the menu's condition pickers; the benchmark split out of the default run and its adaptive-resolution check shortened. Rescoped from **Tests in CI** after measuring it: CI's runners have no GPU (see Decisions) | `npm run test:browser` covers the single file and every condition, and runs in about a minute | **Done** (62 tests in 54 s on an M3 Pro, down from about 2.4 min; `npm run bench` 57 s, down from about 1.5 min) |
-| 32 | **Cheaper soldiers, full shadows** | Each soldier's meshes merged so it draws in a few calls instead of about 43; the time saved spent on bodies taking shadows everywhere, not only near buildings, and casting them past 60 m; bodies, bags and debris in the sea's reflection, and the reflection skipped when no sea is in view; the island's shadow map following doors, broken walls and swaying crowns; the cascade patch told apart by a flag, not by counting directional lights | The benchmark's 24-body frame is well under chunk 30's, a soldier in a tree's shadow out in the open is shaded, and a wading soldier is reflected | Not started |
+| 32 | **Cheaper soldiers, full shadows** | Each soldier's meshes merged so it draws in a few calls instead of about 43; the time saved spent on bodies taking shadows everywhere, not only near buildings, and casting them past 60 m; bodies, bags and debris in the sea's reflection, and the reflection skipped when no sea is in view; the island's shadow map following doors, broken walls and swaying crowns; the cascade patch told apart by a flag, not by counting directional lights | The benchmark's 24-body frame is well under chunk 30's, a soldier in a tree's shadow out in the open is shaded, and a wading soldier is reflected | **Done** (24 bodies: 1,151 draw calls to 245 and 14.4–14.9 ms to 10.8–11.2 ms a frame in one session on an M3 Pro, bodies now shaded everywhere; screenshot tests of a soldier in a tree's shade and one wading. The island's map doesn't sway: accepted, see the history) |
 | 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | Not started |
 | 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | Not started |
 | 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | Not started |
@@ -330,18 +330,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (19, 21): the benchmark measures it (see "Chunk 21's cost"). The new clips
   were again checked by still screenshots in the pose viewer (now also showing landings, hits,
   shots, the bolt being worked and each gun's reload); nobody has watched them in play.
-- **Shadows end at 230 m** (15), and bodies cast them only within 60 m. The cascade patch changes
-  three.js's lighting chunk for every scene: any scene with exactly two shadow-casting directional
-  lights is taken as cascades. It matches the chunk's text, and fails loudly if a three.js update
-  changes it.
-  **Resolved in part** (24): a third cascade covers the whole island (2048 px over 1,130 m, so
-  about half a metre a texel). It stands still, so it's drawn only when the sun moves, once the
-  textures and impostors are in, and at most every 2 s after walls break, and costs nothing on
-  other frames. Each lit pixel now reads only the maps it needs. A unit test pins the text of
-  three.js's loop the patch replaces, the getShadow call and the uniforms it reads, so a three.js
-  update that changes them fails there. Still open: bodies cast shadows only within 60 m, the
-  island's map doesn't sway or follow doors, and a scene with exactly three shadow-casting
-  directional lights is taken as cascades.
 - **World detail was checked by screenshots on one machine** (15). Headless Chrome on an M3 Pro
   holds 60 fps (median 16.7 ms, 95th percentile 18.2 ms) at 1280 × 720 in a Mixed game.
   Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A
@@ -414,15 +402,25 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   through its doorway, is lit like the outdoors. Floors under the hemisphere light still look
   brighter than the walls round them. The first-person gun reads the cell it's in, eased over a
   quarter of a second. Tuned (30% floor, 2.6 gain) by screenshots only.
-- **Bodies take shadows only near buildings** (23), within 1.5 m of one, as receiving them
-  everywhere cost 1–3 ms a frame with 24 near bodies. Out in the open, a soldier in a tree's or a
-  wall's shadow is lit as before.
 - **The reflection is partial** (24): it holds the terrain, trees, props, rocks, flags and the sky,
   not bodies, bags, grass, bushes, debris, rain, effects or the sea itself, so a soldier wading
   has no reflection. It's a third of the screen's resolution and redrawn every frame the camera
   is above water, whether or not any sea is in view, reusing the last frame's shadow maps. The
   ripples bend it by a fixed share of the screen, whatever the distance. The glass in windows
   still reflects nothing.
+  **Resolved in part** (32): bodies, bags and debris are in it, so a soldier wading is mirrored
+  (faintly, as the sea mirrors little when seen from above), and it's drawn only on frames with
+  some sea in view. Still open: grass, bushes, rain, effects and the sea itself aren't in it; it's
+  a third of the screen's resolution, reuses the last frame's shadow maps, and the ripples bend it
+  by a fixed share of the screen; the glass in windows reflects nothing.
+- **The sea is looked for by 144 rays** (32): a grid of 16 by 9 across the screen, each marched
+  over the terrain to where it meets the surface. Buildings and trees aren't counted, which only
+  errs toward drawing the reflection, but a sliver of sea narrower than the grid's spacing (about
+  80 px at 1280 wide) between hills can be missed, and there the sea shows the sky's picture
+  instead of the island's. It costs about 0.006 ms a frame with no sea in view.
+- **Bodies posed only for what's in view** (32): a body is posed while it's on screen, while its
+  shadow may fall on screen, or while its flashlight is on within 60 m. One seen only in the
+  sea's reflection, above the top of the screen, keeps its last pose there.
 
 ### Sound
 - **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,
@@ -482,6 +480,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
   production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred). The new build isn't on
   the live site until it's pushed.
+- **The benchmark's empty frame is twice its kept baseline** (32): 5–6.8 ms against 3.1, in runs
+  of both the code before chunk 32 and after it in the same session, with the same 95 draw calls
+  and 502k triangles as each other. The baseline in `e2e/bench-baseline.json` is older than the
+  night case and the far frame, so whether a later chunk made the empty frame dearer or the
+  machine was busier wasn't looked into; it wasn't kept as the new baseline.
 
 ### Day, night and weather
 - **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
@@ -588,10 +591,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   batches after it, though nothing chunk 31 changed touches it. At its last step, facing the dead
   rival's bag, no tag with the bag's $8,000 shows within 20 s. The bag may land out of sight, out
   of the tags' reach or behind something; not looked into.
-- **Soldiers are expensive to draw** (19). In the benchmark, 24 soldiers 4 to 25 m off take a
-  Chromium frame from 3.1 to 10.6 ms (Firefox 7 to 16, WebKit 4 to 11). Posing them is only 2.4 ms
-  of it: the rest is drawing, about 43 draw calls each with their shadows (1,113 against 86) and
-  1.1 million triangles against 0.42 million. Worth merging a soldier's meshes in chunk 21.
 
 ### Playtest and tuning
 - **Bot runs can't check run length** (12). An operator bot searches only 1–3 crates and leaves,

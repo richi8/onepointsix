@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { cascadedChunk } from '../src/client/cascades.ts';
+import { cascadedChunk, cascadedPars } from '../src/client/cascades.ts';
 
 // The shadow cascades patch three.js's lighting chunk by its text (see
 // cascades.ts). These pin the text they rely on, so a three.js update that
@@ -30,16 +30,26 @@ describe('shadow cascades', () => {
     expect(lines(chunk)).toContain(LOOP);
   });
 
-  it('keep the stock loop for other scenes, behind the cascades', () => {
+  it('keep the stock loop for other scenes, behind the cascades and their flag', () => {
     const out = cascadedChunk(chunk);
     const cascades = out.indexOf('NUM_DIR_LIGHTS == 3 && NUM_DIR_LIGHT_SHADOWS == 3');
     const stock = out.indexOf('for ( int i = 0; i < NUM_DIR_LIGHTS; i ++ )');
     expect(cascades).toBeGreaterThan(0);
     expect(stock).toBeGreaterThan(cascades);
-    expect(out.slice(cascades, stock)).toContain('#else');
-    expect(out.slice(stock)).toMatch(/#pragma unroll_loop_end\n\t#endif/);
+    // Picked at run time by the flag, the stock loop in the other branch.
+    expect(out.slice(cascades, stock)).toMatch(/if \( sunCascades\(\) \) \{[\s\S]*\} else \{\s*#endif\s*#pragma unroll_loop_start\s*$/);
+    expect(out.slice(stock)).toMatch(/#pragma unroll_loop_end\n\t#if defined\( USE_SHADOWMAP \) && NUM_DIR_LIGHTS == 3[^\n]*\n\t\}\n\t#endif\n/);
     // Everything else is untouched.
-    expect(out.replace(/\n\t#if defined\( USE_SHADOWMAP \) && NUM_DIR_LIGHTS == 3[\s\S]*?#else\n/, '').replace(/(< NUM_DIR_LIGHTS;[\s\S]*?#pragma unroll_loop_end)\n\t#endif\n/, '$1')).toBe(chunk);
+    const unpatched = out
+      .replace(/\n\t#if defined\( USE_SHADOWMAP \) && NUM_DIR_LIGHTS == 3[\s\S]*?\} else \{\s*#endif\n/, '')
+      .replace(/(< NUM_DIR_LIGHTS;[\s\S]*?#pragma unroll_loop_end)\n\t#if[^\n]*\n\t\}\n\t#endif\n/, '$1');
+    expect(unpatched).toBe(chunk);
+  });
+
+  it('tell the cascades apart by the flag on their lights, not by counting them', () => {
+    const pars = cascadedPars('');
+    expect(pars).toContain('bool sunCascades()');
+    expect(pars).toContain('directionalLights[ 1 ].color == vec3( 0.0 ) && directionalLights[ 2 ].color == vec3( 0.0 )');
   });
 
   it('call getShadow and read the uniforms as three.js declares them', () => {

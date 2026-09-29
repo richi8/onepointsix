@@ -18,7 +18,7 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 //   is posed with its arm IK and fingers. Each frame is timed from posing the
 //   bodies to the GPU having drawn it (a one-pixel read waits for it).
 // - The same soldiers 100 to 400 m away, where they're posed less often and
-//   without the fine work, timing only the posing.
+//   without the fine work, those within 230 m casting shadows.
 // - The ground cover's rebuild as the eye crosses its cells: first visits,
 //   which scatter the cells, and a second pass over cells already scattered.
 // - The close-up soldiers again on a rainy night, every one's flashlight on
@@ -71,6 +71,7 @@ let lit = false;
 const assets = await loadAssets(renderer);
 view.applyAssets(assets);
 bodies.setModel(assets.soldier, assets.guns);
+bodies.sun.copy(view.lit.sunDir);
 
 const STATES = ['walk', 'run', 'crouchwalk', 'reload', 'lean', 'aimup', 'throw', 'stand'] as const;
 
@@ -291,7 +292,7 @@ async function frameCost() {
     bodies: N,
     empty: { frame: stats(empty.frame), calls: empty.calls, triangles: empty.triangles },
     crowd: { bodies: stats(crowd.bodies), frame: stats(crowd.frame), calls: crowd.calls, triangles: crowd.triangles },
-    distant: { bodies: stats(distant.bodies) },
+    distant: { bodies: stats(distant.bodies), frame: stats(distant.frame), calls: distant.calls },
     groundCover: { first: stats(cover.first), again: stats(cover.again) },
     night: { frame: stats(night.frame), calls: night.calls, triangles: night.triangles },
   };

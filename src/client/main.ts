@@ -40,14 +40,14 @@ import { Surfaces } from './surface.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { ViewModel } from './viewmodel.ts';
 import { WorldView } from './worldview.ts';
+import { FAR_SHADOWS } from './cascades.ts';
 import './style.css';
 
 const MENU_ORBIT_RADIUS = 360;
 const MENU_ORBIT_SPEED = 0.025;
 const MENU_FOV = 60;
-/** Metres the sharp and the coarse shadows reach from the player, and the sharp ones round the menu's island. */
+/** Metres the sharp shadows reach from the player (the coarse ones reach FAR_SHADOWS), and the sharp ones round the menu's island. */
 const NEAR_SHADOWS = 32;
-const FAR_SHADOWS = 230;
 const MENU_SHADOWS = 140;
 const PLAY_FOV = 75;
 /** How far other players' tracers start in front of their eye, roughly at the muzzle. */
@@ -1098,6 +1098,20 @@ const still = import.meta.env.DEV ? Number(new URLSearchParams(location.search).
 // And the light inside every building is worked out at once, rather than a little each frame.
 if (!Number.isNaN(still)) view.light3d.finishAll();
 
+/**
+ * In development, `?stand=x,z,yaw;x,z,yaw…` stands soldiers on the floor at
+ * those spots while the menu is up (operators, bar every third a guard), for
+ * screenshots of how they're lit, shadowed and reflected.
+ */
+const devStanding: PlayerSnap[] = (import.meta.env.DEV ? new URLSearchParams(location.search).get('stand') ?? '' : '')
+  .split(';').filter(Boolean).map((spot, i) => {
+    const [x, z, yaw = 0] = spot.split(',').map(Number);
+    return {
+      id: 1000 + i, team: i % 3 === 2 ? 'guard' : 'operator', x, y: world.floorHeight(x, z), z, yaw, pitch: 0, duck: 0, lean: 0,
+      dead: false, weapon: 0, quiet: false, motion: 'ground', act: 'none', actT: 0, commander: false, light: false,
+    };
+  });
+
 /** In development, `?torch` lights your own flashlight on the menu camera too, for screenshots of its beam. */
 const devTorch = import.meta.env.DEV && new URLSearchParams(location.search).has('torch');
 
@@ -1246,9 +1260,11 @@ renderer.setAnimationLoop(() => {
   // Bodies move on the time shown: slowed round the kill in a death cam.
   const before = cam?.time ?? 0;
   cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: RecordedEvent) => onEvent(e, true), (kill) => ownDeath || hud.mark(false, kill));
-  const bodyDt = cam ? Math.max(cam.time - before, 0) : dt;
+  // Soldiers stood on the menu's island hold still for screenshots with time stopped.
+  const bodyDt = cam ? Math.max(cam.time - before, 0) : !conn && !Number.isNaN(still) ? 0 : dt;
   hud.age(bodyDt);
-  const players = cam ? cam.others() : (conn?.interpolated() ?? []);
+  const players = cam ? cam.others() : (conn?.interpolated() ?? devStanding);
+  bodies.sun.copy(view.lit.sunDir);
   bodies.update(players, bodyDt, camera);
   bags.update(conn?.bags ?? []);
   grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? []));

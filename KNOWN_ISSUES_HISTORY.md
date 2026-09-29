@@ -267,6 +267,34 @@ notes the chunk it came from.
   chest is still mostly above the grass.
   **Resolved** (2026-09-29): what was left is accepted: grass and bushes don't collide and bullets
   pass through them, and with no prone stance a crouched chest stays mostly above the grass.
+- **Shadows end at 230 m** (15), and bodies cast them only within 60 m. The cascade patch changes
+  three.js's lighting chunk for every scene: any scene with exactly two shadow-casting directional
+  lights is taken as cascades. It matches the chunk's text, and fails loudly if a three.js update
+  changes it.
+  **Resolved in part** (24): a third cascade covers the whole island (2048 px over 1,130 m, so
+  about half a metre a texel). It stands still, so it's drawn only when the sun moves, once the
+  textures and impostors are in, and at most every 2 s after walls break, and costs nothing on
+  other frames. Each lit pixel now reads only the maps it needs. A unit test pins the text of
+  three.js's loop the patch replaces, the getShadow call and the uniforms it reads, so a three.js
+  update that changes them fails there. Still open: bodies cast shadows only within 60 m, the
+  island's map doesn't sway or follow doors, and a scene with exactly three shadow-casting
+  directional lights is taken as cascades.
+  **Resolved** (32): bodies cast shadows as far as the coarse cascade reaches, 230 m, drawn off
+  screen too when their shadow may fall in view (a sphere stretched away from the sun), and each
+  shadow map culls them by a sphere round the body rather than drawing every one in every map.
+  The island's map is drawn again when a door comes to rest, as it is after walls break (at most
+  every 2 s). The patch now looks for a flag, the second and third lights being black (they give
+  no light and only lend their maps), checked when the shader runs; any other scene with three
+  shadow-casting directional lights is lit as three.js lights it, and a unit test pins the flag.
+  Accepted as it is: the island's map doesn't sway with the crowns. It's read only past 230 m,
+  where a crown's top swings about ±0.2 m, under half a texel (0.55 m) and about a pixel on
+  screen, and following it would mean drawing the whole island's map every frame.
+- **Bodies take shadows only near buildings** (23), within 1.5 m of one, as receiving them
+  everywhere cost 1–3 ms a frame with 24 near bodies. Out in the open, a soldier in a tree's or a
+  wall's shadow is lit as before.
+  **Resolved** (32): bodies take shadows everywhere. With each soldier drawn in two calls instead
+  of about 43, the benchmark's 24 bodies came out cheaper than before with it (below); switched
+  off again, the frame was no faster, within the run-to-run noise.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
@@ -754,6 +782,19 @@ notes the chunk it came from.
 - **Gun fitting uses hand-measured fractions** (9) in `src/client/guns.ts`, so a new model needs
   measuring again.
   **Resolved** (21): the hands go to points marked on each gun model (Grip, Support, Muzzle, Sight, Magazine, Bolt; see `src/client/guns.ts`).
+- **Soldiers are expensive to draw** (19). In the benchmark, 24 soldiers 4 to 25 m off take a
+  Chromium frame from 3.1 to 10.6 ms (Firefox 7 to 16, WebKit 4 to 11). Posing them is only 2.4 ms
+  of it: the rest is drawing, about 43 draw calls each with their shadows (1,113 against 86) and
+  1.1 million triangles against 0.42 million. Worth merging a soldier's meshes in chunk 21.
+  **Resolved** (32): each soldier is drawn in two calls a pass. Its four meshes (nine parts) and
+  its kit (pack, bedroll, helmet band, radio and mast) are merged once per look (operator, guard,
+  commander) into one skinned mesh; each part keeps its colour, roughness and metalness in its
+  vertices, read by a patched material. The gun is merged with its flashlight's body and, as a
+  second look, its suppressor. Only the lens (while lit), the muzzle flash, a grenade or magazine
+  in hand add a call. In the benchmark, in one session on an M3 Pro, the 24-body frame went from
+  14.4–14.9 ms to 10.8–11.2 ms and from 1,151 draw calls to 245, now with bodies taking shadows
+  everywhere; the same bodies 100–400 m off from 12.9 to 10.1 ms (461 calls to 163), now casting
+  shadows out to 230 m. The triangles are the same (1.19 million).
 
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
