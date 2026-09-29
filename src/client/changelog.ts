@@ -17,6 +17,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Soldiers hold their pistol with both hands round the grip, rather than reaching for it just short of it.',
       'A rifle’s stock rests against the front of the shoulder instead of passing through the chest. Soldiers with a long gun hold it further forward, their left hand nearer the magazine.',
       'Crouching soldiers keep a natural hunch, sitting back on their heels, instead of arching their back with their head hanging forward. Standing soldiers no longer lean back.',
+      'Soldiers moving crouched keep their feet low, instead of kicking a foot up behind them as high as their hips.',
     ],
   },
   {

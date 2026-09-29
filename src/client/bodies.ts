@@ -93,6 +93,9 @@ const CROUCH_RUN_STRIDE = 1;
 const CROUCH_RUN_DROP = 0.28;
 const CROUCH_RUN_BEND = 0.45;
 const CROUCH_RUN_BACK = 0.22;
+/** How much of the run's foot lift, over a planted foot's height, the low run keeps. */
+const CROUCH_RUN_LIFT = 0.4;
+const FOOT_REST = 0.12;
 /** How far a foot reaches up or down to the ground under it, how far the hips drop to a low one, and how far an ankle turns. */
 const FOOT_REACH = 0.35;
 const FOOT_DROP = 0.25;
@@ -1321,7 +1324,7 @@ export class Bodies {
     this.headOnHitbox(f, s, p, step, right, forward, near);
     this.react(f, s, forward, right);
     // Far off the legs keep the clips' pose, unless the hips were dropped for a low run.
-    if (near || low > 0.01) this.legs(f, s, legYaw, step);
+    if (near || low > 0.01) this.legs(f, s, legYaw, step, low);
     this.arms(f, s, p, near, running, right, forward);
   }
 
@@ -1429,7 +1432,7 @@ export class Bodies {
    * along a slope. If a foot is then out of reach, the hips drop to it. The
    * legs then bend to reach them.
    */
-  private legs(f: Figure, s: Soldier, legYaw: number, step: number): void {
+  private legs(f: Figure, s: Soldier, legYaw: number, step: number, low: number): void {
     const b = s.bones;
     const origin = f.group.position;
     const forward = V_TMP4.set(0, 0, -1).applyQuaternion(f.group.quaternion).applyAxisAngle(V_UP, legYaw);
@@ -1444,7 +1447,9 @@ export class Bodies {
       const at = foot.getWorldPosition(V_TMP3).sub(origin);
       // In the legs' frame: x right, y up, z forward.
       let x = at.dot(right);
+      // Running low, the feet lift less, or the run's kick behind would reach the lowered hips.
       let y = at.dot(V_UP);
+      if (y > FOOT_REST) y = FOOT_REST + (y - FOOT_REST) * lerp(1, CROUCH_RUN_LIFT, low);
       let z = at.dot(forward) * stride;
       // Climbing: the right knee comes up onto the ledge while the left foot pushes off below, then follows.
       if (f.climb && f.mantle > 0.01) {
