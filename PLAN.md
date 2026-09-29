@@ -301,28 +301,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (19, 21): the benchmark measures it (see "Chunk 21's cost"). The new clips
   were again checked by still screenshots in the pose viewer (now also showing landings, hits,
   shots, the bolt being worked and each gun's reload); nobody has watched them in play.
-- **Ground cover is only for looks** (15). Nothing collides with grass, bushes or pebbles, and bots
-  see straight through them, so bushes are kept under 0.9 m and grass under 0.6 m. Near the
-  coast grass can stand on sand, because each tuft reads the paint at the nearest terrain vertex.
-  **Resolved** (15, follow-up): bots can't see through bushes or thick grass. Bushes are
-  scattered in `src/shared/vegetation.ts`, identically on the server and every client, and are now
-  0.5–1.3 m and drawn to 120 m (bot sight reaches 120 m), so crouching behind a big one hides you
-  while standing doesn't. Grass is modelled as a layer up to 0.6 m deep that a sight line loses 55%
-  to per metre through thick grass, so it hides a body only where the line skims the ground near it.
-  A bot sees someone if at least 30% of their chest or head shows; less than full view slows
-  spotting, and an unsuppressed muzzle flash shows through leaves. Still open: grass isn't placed
-  blade by blade for sight, so a lone tuft doesn't hide you and a gap in a field does; nothing
-  collides with them; bullets go straight through; bots don't look for bushes to hide in. With no
-  prone stance, a crouched chest (0.7 m) is above the tallest grass, so grass alone rarely hides
-  anyone.
-  **Resolved in part** (27): grass is now placed tuft by tuft in `shared/vegetation.ts`, the same
-  tufts the client draws, and a sight line loses up to 85% to each tuft it crosses, by how low and
-  how near its middle it passes (thick to half height, thinning to nothing at the top). A lone
-  tuft hides a little and a gap hides nothing. Bots hide in bushes tall enough to cover a crouched
-  head (1.15 m and up): as cover from a threat, and to wait in while camping, hunting or watching
-  a fight. Someone inside a bush sees out of it as if it weren't there. Still open: nothing
-  collides with grass or bushes and bullets pass through them (both accepted), and a crouched
-  chest is still mostly above the grass.
 - **Shadows end at 230 m** (15), and bodies cast them only within 60 m. The cascade patch changes
   three.js's lighting chunk for every scene: any scene with exactly two shadow-casting directional
   lights is taken as cascades. It matches the chunk's text, and fails loudly if a three.js update
