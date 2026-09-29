@@ -59,7 +59,7 @@ export class Deathcam {
    * people's shots, blasts and breaking panels to `onEvent`, and the killer's
    * hits to `onMark`, `kill` set for the one that killed.
    */
-  update(dt: number, onFx: (fx: WeaponFx) => void, onEvent: (e: RecordedEvent) => void, onMark: (kill: boolean) => void): void {
+  update(dt: number, onFx: (fx: WeaponFx) => void, onEvent: (e: RecordedEvent, time: number) => void, onMark: (kill: boolean) => void): void {
     const near = this.time > this.kill - SLOW_BEFORE && this.time < this.kill + SLOW_AFTER;
     const before = this.time;
     this.time = Math.min(this.time + dt * (near ? SLOW_RATE : 1), this.end);
@@ -68,7 +68,7 @@ export class Deathcam {
     while (this.nextEvent < events.length && events[this.nextEvent].time <= this.time) {
       const { e, time } = events[this.nextEvent++];
       // The killer's rounds come from the death cam itself; only whether they hit is taken.
-      if (e.k !== 'shot' || e.id !== this.killer) onEvent(e);
+      if (e.k !== 'shot' || e.id !== this.killer) onEvent(e, time);
       else if (e.struck === 'body' && time < this.kill) onMark(false);
     }
     if (before < this.kill && this.time >= this.kill) onMark(true);
@@ -92,6 +92,11 @@ export class Deathcam {
   /** Everyone but the killer, as this client saw them then. */
   others(): PlayerSnap[] {
     return playersAt(this.recording.snapshots, this.time).filter((p) => p.id !== this.killer);
+  }
+
+  /** Everyone, the killer and whoever died too, as this client saw them at `time`. */
+  everyoneAt(time: number): PlayerSnap[] {
+    return playersAt(this.recording.snapshots, time);
   }
 
   grenades(): GrenadeSnap[] {

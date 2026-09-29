@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JOINT, JOINTS, RAGDOLL_STEP, Ragdoll, type Solid, Tumbler } from '../src/client/ragdoll.ts';
+import { JOINT, JOINTS, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, Tumbler } from '../src/client/ragdoll.ts';
 import { World } from '../src/shared/world.ts';
 import slump from './slump.json' with { type: 'json' };
 
@@ -66,9 +66,9 @@ describe('Ragdoll', () => {
 
   it('keeps its bones their length', () => {
     const rag = body();
-    const before = rag.links.filter((l) => l.stiffness === 1 && !l.min).map((l) => l.length);
+    const before = rag.links.filter((l) => l.stiffness === 1 && !l.min && !l.max).map((l) => l.length);
     rest(rag, solid());
-    rag.links.filter((l) => l.stiffness === 1 && !l.min).forEach((l, k) => expect(rag.distance(l.a, l.b)).toBeCloseTo(before[k], 1));
+    rag.links.filter((l) => l.stiffness === 1 && !l.min && !l.max).forEach((l, k) => expect(rag.distance(l.a, l.b)).toBeCloseTo(before[k], 1));
   });
 
   it('slumps against a wall behind it instead of passing through', () => {
@@ -126,7 +126,125 @@ describe('Ragdoll', () => {
   it('leaves the pack out when there is none', () => {
     expect(body(0, 0, 0, false).n).toBe(JOINTS.length - 1);
   });
+
+  it('never bends a knee or an elbow backward, however it is thrown', () => {
+    for (let k = 0; k < 8; k++) {
+      const rag = body();
+      const a = (k * Math.PI) / 4;
+      for (let i = 0; i < rag.n; i++) rag.push(i, Math.sin(a) * 3, 1, Math.cos(a) * 3);
+      rag.push(JOINT.lHand, -Math.cos(a) * 6, 2, Math.sin(a) * 6);
+      rag.push(JOINT.rAnkle, Math.cos(a) * 6, 2, -Math.sin(a) * 6);
+      const elbows = [0, 1].map((s) => elbowBack(rag, s));
+      while (!rag.asleep) {
+        rag.step(solid(), []);
+        for (const s of [0, 1]) {
+          expect(kneeAhead(rag, s)).toBeGreaterThan(-0.02);
+          expect(elbowBack(rag, s)).toBeGreaterThan(Math.min(elbows[s], 0) - 0.02);
+        }
+      }
+    }
+  });
+
+  it('turns the feet at the ankle, within its range', () => {
+    const rag = body();
+    const start = [0, 1].map((s) => ankleAngle(rag, s));
+    let turned = 0;
+    for (let i = 0; i < rag.n; i++) rag.push(i, 0, 0, 2);
+    while (!rag.asleep) {
+      rag.step(solid(Math.tan(0.3)), []);
+      for (const s of [0, 1]) {
+        const angle = ankleAngle(rag, s);
+        turned = Math.max(turned, Math.abs(angle - start[s]));
+        expect(angle).toBeGreaterThan(Math.min(1.2, start[s]) - 0.1);
+        expect(angle).toBeLessThan(Math.max(2.6, start[s]) + 0.1);
+      }
+    }
+    expect(turned).toBeGreaterThan(0.1);
+  });
+
+  it('falls against someone standing behind it, not through them', () => {
+    const them: Living = { x: 0, z: 0.7, bottom: 0.25, top: 1.45, r: 0.25 };
+    const rag = body();
+    let deepest = -Infinity;
+    while (!rag.asleep) {
+      rag.step(solid(), [], [them]);
+      for (let i = 0; i < rag.n; i++) {
+        const cy = Math.min(Math.max(rag.pos[i * 3 + 1], them.bottom), them.top);
+        const d = Math.hypot(rag.pos[i * 3] - them.x, rag.pos[i * 3 + 1] - cy, rag.pos[i * 3 + 2] - them.z);
+        deepest = Math.max(deepest, them.r + rag.radius[i] - d);
+      }
+    }
+    expect(deepest).toBeLessThan(0.03);
+    // Stopped short of where it would have lain.
+    const free = body();
+    rest(free, solid());
+    expect(joint(rag, JOINT.head)[2]).toBeLessThan(joint(free, JOINT.head)[2] - 0.3);
+  });
+
+  it('lands two bodies on each other the same however the frames fall', () => {
+    const run = (frames: number[]): number[] => {
+      const under = body();
+      const over = body(0.2, 0.5, 0.4);
+      over.start = 7;
+      const falls = [under, over];
+      let due = 0;
+      for (const n of frames) stepAll(falls, (due += n), solid(), falls);
+      return [...under.pos, ...over.pos];
+    };
+    const even = run(Array(300).fill(1));
+    const uneven = run(Array.from({ length: 300 }, (_, i) => [3, 1, 2, 5, 0][i % 5]).slice(0, 110).concat([300 - 242]));
+    expect(uneven).toEqual(even);
+  });
 });
+
+/** Which way the hips face, as ragdoll.ts works it out. */
+function facing(rag: Ragdoll): number[] {
+  const r = sub(joint(rag, JOINT.rHip), joint(rag, JOINT.lHip));
+  const u = sub(joint(rag, JOINT.chest), joint(rag, JOINT.pelvis));
+  return unit([u[1] * r[2] - u[2] * r[1], u[2] * r[0] - u[0] * r[2], u[0] * r[1] - u[1] * r[0]]);
+}
+
+/** How far joint b stands out from the line a to c, along `dir` made square to it. */
+function standsOut(rag: Ragdoll, a: number, b: number, c: number, dir: number[]): number {
+  const line = unit(sub(joint(rag, c), joint(rag, a)));
+  const d = unit(sub(dir, line.map((v) => v * dot(dir, line))));
+  const mid = joint(rag, a).map((v, i) => (v + joint(rag, c)[i]) / 2);
+  return dot(sub(joint(rag, b), mid), d);
+}
+
+function kneeAhead(rag: Ragdoll, side: number): number {
+  const [hip, knee, ankle] = side ? [JOINT.rHip, JOINT.rKnee, JOINT.rAnkle] : [JOINT.lHip, JOINT.lKnee, JOINT.lAnkle];
+  return standsOut(rag, hip, knee, ankle, facing(rag));
+}
+
+function elbowBack(rag: Ragdoll, side: number): number {
+  const [shoulder, elbow, hand] = side ? [JOINT.rShoulder, JOINT.rElbow, JOINT.rHand] : [JOINT.lShoulder, JOINT.lElbow, JOINT.lHand];
+  const up = unit(sub(joint(rag, JOINT.chest), joint(rag, JOINT.pelvis)));
+  const dir = facing(rag).map((v, i) => v + up[i] * 0.5);
+  // Skipped along the arm, as ragdoll.ts does.
+  const line = unit(sub(joint(rag, hand), joint(rag, shoulder)));
+  if (Math.hypot(...sub(dir, line.map((v) => v * dot(dir, line)))) < 0.2) return Infinity;
+  return -standsOut(rag, shoulder, elbow, hand, dir);
+}
+
+/** The angle at the ankle between the shin and the foot. */
+function ankleAngle(rag: Ragdoll, side: number): number {
+  const [knee, ankle, toe] = side ? [JOINT.rKnee, JOINT.rAnkle, JOINT.rToe] : [JOINT.lKnee, JOINT.lAnkle, JOINT.lToe];
+  return Math.acos(dot(unit(sub(joint(rag, knee), joint(rag, ankle))), unit(sub(joint(rag, toe), joint(rag, ankle)))));
+}
+
+function sub(a: number[], b: number[]): number[] {
+  return a.map((v, i) => v - b[i]);
+}
+
+function dot(a: number[], b: number[]): number {
+  return a.reduce((s, v, i) => s + v * b[i], 0);
+}
+
+function unit(a: number[]): number[] {
+  const l = Math.hypot(...a) || 1;
+  return a.map((v) => v / l);
+}
 
 describe('Tumbler', () => {
   it('drops a gun that comes to rest on its side', () => {

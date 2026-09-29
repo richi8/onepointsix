@@ -56,7 +56,7 @@ const MASS: Record<Joint, number> = {
   pack: 1.5,
 };
 
-/** A distance between two balls: held (stiffness 0 to 1), or only kept from getting shorter. */
+/** A distance between two balls: held (stiffness 0 to 1), or only kept from getting shorter or longer. */
 interface Link {
   a: number;
   b: number;
@@ -64,6 +64,17 @@ interface Link {
   stiffness: number;
   /** Only pushes apart. */
   min: boolean;
+  /** Only pulls together. */
+  max?: boolean;
+}
+
+/** Someone alive, as an upright capsule: its feet, the top of its shoulders and its girth. Bodies are pushed off them. */
+export interface Living {
+  x: number;
+  z: number;
+  bottom: number;
+  top: number;
+  r: number;
 }
 
 /** Balls joined by links, stepped on a fixed clock. */
@@ -78,6 +89,11 @@ export class Verlet {
   /** Steps taken, and whether it has come to rest. */
   steps = 0;
   asleep = false;
+  /** The step of the game's clock it starts on, and how many of the clock's steps it has had since, asleep or not. */
+  start = 0;
+  ticks = 0;
+  /** Which body it belongs to: a dropped gun falls clear of its own body. */
+  owner = -1;
   /** A ball round every joint, for skipping far-off bodies quickly. */
   readonly bounds = { x: 0, y: 0, z: 0, r: 0 };
   private still = 0;
@@ -114,8 +130,8 @@ export class Verlet {
     this.still = 0;
   }
 
-  /** One step. `others` are the other bodies it can land on; they aren't moved. */
-  step(solid: Solid, others: readonly Verlet[]): void {
+  /** One step. `others` are the other bodies it can land on, and `living` those it's pushed off; neither is moved. */
+  step(solid: Solid, others: readonly Verlet[], living: readonly Living[] = []): void {
     if (this.asleep) return;
     const { n, pos, prev } = this;
     const g = GRAVITY * RAGDOLL_STEP * RAGDOLL_STEP;
@@ -133,13 +149,15 @@ export class Verlet {
       pos[i + 2] += vz;
     }
     this.measure();
-    const near = others.filter((o) => o !== this && overlaps(this.bounds, o.bounds));
+    const near = others.filter((o) => o !== this && (this.owner < 0 || o.owner !== this.owner) && overlaps(this.bounds, o.bounds));
+    const b = this.bounds;
+    const standing = living.filter((l) => Math.hypot(l.x - b.x, l.z - b.z) < b.r + l.r && b.y - b.r < l.top + l.r && b.y + b.r > l.bottom - l.r);
     this.pushed.fill(0);
     for (let k = 0; k < ITERATIONS; k++) {
       this.solve();
       this.constrain();
       // Collide on the last passes only: the ground has the last word.
-      if (k >= ITERATIONS - 2) this.collide(solid, near);
+      if (k >= ITERATIONS - 2) this.collide(solid, near, standing);
     }
     this.grip();
     this.measure();
@@ -162,7 +180,7 @@ export class Verlet {
       const dy = pos[b + 1] - pos[a + 1];
       const dz = pos[b + 2] - pos[a + 2];
       const d = Math.hypot(dx, dy, dz);
-      if (d < 1e-9 || (l.min && d >= l.length)) continue;
+      if (d < 1e-9 || (l.min && d >= l.length) || (l.max && d <= l.length)) continue;
       const wa = w[l.a];
       const wb = w[l.b];
       const k = ((d - l.length) / (d * (wa + wb))) * l.stiffness;
@@ -175,8 +193,8 @@ export class Verlet {
     }
   }
 
-  /** Out of the ground, colliders and other bodies. */
-  private collide(solid: Solid, near: readonly Verlet[]): void {
+  /** Out of the ground, colliders, other bodies and the living. */
+  private collide(solid: Solid, near: readonly Verlet[], living: readonly Living[]): void {
     const { pos, prev, radius, pushed } = this;
     for (let i = 0; i < this.n; i++) {
       const j = i * 3;
@@ -215,6 +233,21 @@ export class Verlet {
           py += dy * s;
           pz += dz * s;
         }
+      }
+      for (const l of living) {
+        // From the nearest point on the capsule's upright segment.
+        const cy = Math.min(Math.max(y + py, l.bottom), l.top);
+        const dx = x + px - l.x;
+        const dy = y + py - cy;
+        const dz = z + pz - l.z;
+        const min = r + l.r;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= min * min || d2 < 1e-12) continue;
+        const d = Math.sqrt(d2);
+        const s = (min - d) / d;
+        px += dx * s;
+        py += dy * s;
+        pz += dz * s;
       }
       const p = Math.hypot(px, py, pz);
       if (p < 1e-9) continue;
@@ -281,6 +314,37 @@ function overlaps(a: Verlet['bounds'], b: Verlet['bounds']): boolean {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < a.r + b.r;
 }
 
+/** The step of the game's clock that `time`, in seconds, falls in. */
+export function stepOf(time: number): number {
+  return Math.floor(time / RAGDOLL_STEP + 1e-6);
+}
+
+/**
+ * Step every fall in `falls` up to step `due` of the game's clock, all
+ * together: step by step, each fall that has reached it taking it in the
+ * order given, so bodies landing on each other come out the same however the
+ * frames fell. `onStep` comes first at each step (for blasts), and
+ * `crowd` says where the living were then; `bodies` are what the falls land on.
+ */
+export function stepAll(
+  falls: readonly Verlet[], due: number, solid: Solid, bodies: readonly Verlet[],
+  crowd?: (step: number) => readonly Living[], onStep?: (step: number) => void,
+): void {
+  let g = Infinity;
+  for (const v of falls) g = Math.min(g, v.start + v.ticks);
+  for (; g < due; g++) {
+    onStep?.(g);
+    let living: readonly Living[] | null = null;
+    for (const v of falls) {
+      if (v.start + v.ticks !== g) continue;
+      v.ticks++;
+      if (v.asleep) continue;
+      living ??= crowd?.(g) ?? [];
+      v.step(solid, bodies, living);
+    }
+  }
+}
+
 /**
  * A dead body. Starts from the joints' positions now and a moment before
  * (flat x, y, z triples in JOINTS order, the pack's left out when there's
@@ -314,12 +378,21 @@ export class Ragdoll extends Verlet {
     for (const [a, b] of [[lShoulder, lHip], [rShoulder, rHip], [lShoulder, rHip], [rShoulder, lHip], [chest, lHip], [chest, rHip]]) {
       this.link(a, b, 0.25);
     }
-    // The neck nods but doesn't fold; the feet keep their angle to the shins.
+    // The neck nods but doesn't fold.
     this.link(head, lShoulder, 0.5);
     this.link(head, rShoulder, 0.5);
     this.link(head, pelvis, 0.3, true, 0.95);
-    this.link(lKnee, lToe);
-    this.link(rKnee, rToe);
+    // The feet turn at the ankle, from drawn up to pointed, as far as the knee to the toe allows, and ease back
+    // toward how they stood (see constrain for which way they point).
+    for (const [knee, ankle, toe] of [[lKnee, lAnkle, lToe], [rKnee, rAnkle, rToe]]) {
+      const shin = this.distance(knee, ankle);
+      const foot = this.distance(ankle, toe);
+      const across = (angle: number): number => Math.sqrt(shin * shin + foot * foot - 2 * shin * foot * Math.cos(angle));
+      const now = this.distance(knee, toe);
+      this.links.push({ a: knee, b: toe, length: Math.min(across(ANKLE_BENT), now), stiffness: 1, min: true });
+      this.links.push({ a: knee, b: toe, length: Math.max(across(ANKLE_POINTED), now), stiffness: 1, min: false, max: true });
+      this.links.push({ a: knee, b: toe, length: now, stiffness: 0.02, min: false });
+    }
     // Limp legs slowly straighten under their own weight rather than staying as the clip bent them.
     for (const [hip, knee, ankle] of [[lHip, lKnee, lAnkle], [rHip, rKnee, rAnkle]]) {
       this.links.push({ a: hip, b: ankle, length: (this.distance(hip, knee) + this.distance(knee, ankle)) * 0.96, stiffness: 0.004, min: false });
@@ -343,46 +416,156 @@ export class Ragdoll extends Verlet {
     }
     // The pack rides on the chest and shoulders, which hold their shape; tied to the hips too, it would fight the spine.
     if (pack) for (const k of [chest, lShoulder, rShoulder]) this.link(J.pack, k);
+    // How far the hinges are bent now: none is made to straighten further than it starts.
+    const f = this.forward(new Float64Array(3));
+    if (f) {
+      for (const [k, [a, b, c]] of ELBOWS.entries()) {
+        const back = -this.bend(a, b, c, f, ELBOW_UP);
+        if (Number.isFinite(back)) this.elbowFrom[k] = Math.min(ELBOW_BENT, back);
+      }
+      for (const [k, [ankle, toe]] of ANKLES.entries()) this.toeFrom[k] = Math.min(TOE_AHEAD * this.distance(ankle, toe), this.ahead(ankle, toe, f));
+    }
   }
+
+  /** How far each elbow is bent, and each toe ahead of its ankle, when the ragdoll took over, if less than they're kept to. */
+  private readonly elbowFrom = [ELBOW_BENT, ELBOW_BENT];
+  private readonly toeFrom = [0, 0];
 
   distance(a: number, b: number): number {
     const p = this.pos;
     return Math.hypot(p[a * 3] - p[b * 3], p[a * 3 + 1] - p[b * 3 + 1], p[a * 3 + 2] - p[b * 3 + 2]);
   }
 
-  /** Knees only bend forward: each is kept in front of the line from hip to ankle. */
-  protected override constrain(): void {
+  /** Which way the body faces, from the hips across and the spine up, into `out`; null when they line up. */
+  forward(out: Float64Array): Float64Array | null {
     const p = this.pos;
     const at = (i: number, k: number): number => p[i * 3 + k];
-    // The hips' frame: right, up the spine, and forward from the two.
     const rx = at(J.rHip, 0) - at(J.lHip, 0);
     const ry = at(J.rHip, 1) - at(J.lHip, 1);
     const rz = at(J.rHip, 2) - at(J.lHip, 2);
     const ux = at(J.chest, 0) - at(J.pelvis, 0);
     const uy = at(J.chest, 1) - at(J.pelvis, 1);
     const uz = at(J.chest, 2) - at(J.pelvis, 2);
-    let fx = uy * rz - uz * ry;
-    let fy = uz * rx - ux * rz;
-    let fz = ux * ry - uy * rx;
+    const fx = uy * rz - uz * ry;
+    const fy = uz * rx - ux * rz;
+    const fz = ux * ry - uy * rx;
     const fl = Math.hypot(fx, fy, fz);
-    if (fl < 1e-9) return;
-    (fx /= fl), (fy /= fl), (fz /= fl);
+    if (fl < 1e-9) return null;
+    out[0] = fx / fl;
+    out[1] = fy / fl;
+    out[2] = fz / fl;
+    return out;
+  }
+
+  /**
+   * How far the middle joint `b` stands out from the line from `a` to `c`,
+   * along `f` (plus `up` of the way up the spine) made square to that line:
+   * how far a knee is bent forward, or, negated, an elbow back.
+   */
+  private bend(a: number, b: number, c: number, f: ArrayLike<number>, up = 0, dir = DIR): number {
+    const p = this.pos;
+    const lx = p[c * 3] - p[a * 3];
+    const ly = p[c * 3 + 1] - p[a * 3 + 1];
+    const lz = p[c * 3 + 2] - p[a * 3 + 2];
+    const ll = Math.hypot(lx, ly, lz) || 1;
+    let dx = f[0];
+    let dy = f[1];
+    let dz = f[2];
+    if (up) {
+      const ux = p[J.chest * 3] - p[J.pelvis * 3];
+      const uy = p[J.chest * 3 + 1] - p[J.pelvis * 3 + 1];
+      const uz = p[J.chest * 3 + 2] - p[J.pelvis * 3 + 2];
+      const ul = Math.hypot(ux, uy, uz) || 1;
+      (dx += (ux / ul) * up), (dy += (uy / ul) * up), (dz += (uz / ul) * up);
+    }
+    const along = (dx * lx + dy * ly + dz * lz) / (ll * ll);
+    (dx -= lx * along), (dy -= ly * along), (dz -= lz * along);
+    const dl = Math.hypot(dx, dy, dz);
+    // Along the limb, which way it bends is anyone's guess: left alone.
+    if (dl < 0.2) return Infinity;
+    dir[0] = dx / dl;
+    dir[1] = dy / dl;
+    dir[2] = dz / dl;
+    const mx = p[b * 3] - (p[a * 3] + p[c * 3]) / 2;
+    const my = p[b * 3 + 1] - (p[a * 3 + 1] + p[c * 3 + 1]) / 2;
+    const mz = p[b * 3 + 2] - (p[a * 3 + 2] + p[c * 3 + 2]) / 2;
+    return mx * dir[0] + my * dir[1] + mz * dir[2];
+  }
+
+  /** How far the toe is ahead of the ankle, along `f` made square to the shin. */
+  private ahead(ankle: number, toe: number, f: ArrayLike<number>, dir = DIR): number {
+    const knee = ankle === J.lAnkle ? J.lKnee : J.rKnee;
+    const p = this.pos;
+    const sx = p[ankle * 3] - p[knee * 3];
+    const sy = p[ankle * 3 + 1] - p[knee * 3 + 1];
+    const sz = p[ankle * 3 + 2] - p[knee * 3 + 2];
+    const sl2 = sx * sx + sy * sy + sz * sz || 1;
+    const along = (f[0] * sx + f[1] * sy + f[2] * sz) / sl2;
+    let dx = f[0] - sx * along;
+    let dy = f[1] - sy * along;
+    let dz = f[2] - sz * along;
+    const dl = Math.hypot(dx, dy, dz);
+    if (dl < 0.2) return Infinity;
+    (dx /= dl), (dy /= dl), (dz /= dl);
+    dir[0] = dx;
+    dir[1] = dy;
+    dir[2] = dz;
+    return (p[toe * 3] - p[ankle * 3]) * dx + (p[toe * 3 + 1] - p[ankle * 3 + 1]) * dy + (p[toe * 3 + 2] - p[ankle * 3 + 2]) * dz;
+  }
+
+  /** Move joints along DIR by `s` times their shares. */
+  private nudge(s: number, shares: readonly (readonly [number, number])[]): void {
+    const p = this.pos;
+    for (const [i, k] of shares) {
+      p[i * 3] += DIR[0] * s * k;
+      p[i * 3 + 1] += DIR[1] * s * k;
+      p[i * 3 + 2] += DIR[2] * s * k;
+    }
+  }
+
+  /**
+   * The hinges bend one way only: each knee is kept in front of the line from
+   * hip to ankle, each elbow behind the line from shoulder to hand, and each
+   * toe ahead of its ankle.
+   */
+  protected override constrain(): void {
+    const f = this.forward(FORWARD);
+    if (!f) return;
     for (const [hip, knee, ankle] of [[J.lHip, J.lKnee, J.lAnkle], [J.rHip, J.rKnee, J.rAnkle]]) {
-      const mx = at(knee, 0) - (at(hip, 0) + at(ankle, 0)) / 2;
-      const my = at(knee, 1) - (at(hip, 1) + at(ankle, 1)) / 2;
-      const mz = at(knee, 2) - (at(hip, 2) + at(ankle, 2)) / 2;
-      const ahead = mx * fx + my * fy + mz * fz;
-      const want = 0.015;
-      if (ahead >= want) continue;
-      const s = want - ahead;
-      for (const [i, k] of [[knee, 0.5], [hip, -0.25], [ankle, -0.25]] as const) {
-        p[i * 3] += fx * s * k;
-        p[i * 3 + 1] += fy * s * k;
-        p[i * 3 + 2] += fz * s * k;
-      }
+      const ahead = this.bend(hip, knee, ankle, f);
+      if (ahead < KNEE_BENT) this.nudge(KNEE_BENT - ahead, [[knee, 0.6], [ankle, -0.4]]);
+    }
+    for (const [k, [shoulder, elbow, hand]] of ELBOWS.entries()) {
+      const back = -this.bend(shoulder, elbow, hand, f, ELBOW_UP);
+      if (!Number.isFinite(back)) continue;
+      // Once bent the right way, it's kept that way.
+      const want = (this.elbowFrom[k] = Math.min(ELBOW_BENT, Math.max(this.elbowFrom[k], back)));
+      // Behind is along -DIR.
+      if (back < want) this.nudge(-(want - back), [[elbow, 0.5], [shoulder, -0.15], [hand, -0.35]]);
+    }
+    for (const [k, [ankle, toe]] of ANKLES.entries()) {
+      const ahead = this.ahead(ankle, toe, f);
+      if (!Number.isFinite(ahead)) continue;
+      const want = (this.toeFrom[k] = Math.min(TOE_AHEAD * this.distance(ankle, toe), Math.max(this.toeFrom[k], ahead)));
+      if (ahead < want) this.nudge(want - ahead, [[toe, 0.8], [ankle, -0.2]]);
     }
   }
 }
+
+/** How far a knee is kept bent forward, and an elbow back, at the least, in metres. */
+const KNEE_BENT = 0.015;
+const ELBOW_BENT = 0.01;
+/** Which way an elbow points as it bends: back and down, with the body's front and up the spine by this much behind it, so an arm held forward bends up. */
+const ELBOW_UP = 0.5;
+/** The ankle's range, as the angle between shin and foot: drawn up, and pointed. */
+const ANKLE_BENT = 1.2;
+const ANKLE_POINTED = 2.6;
+/** How far ahead of the ankle a toe is kept, as a share of the foot's length. */
+const TOE_AHEAD = 0.25;
+const ELBOWS = [[J.lShoulder, J.lElbow, J.lHand], [J.rShoulder, J.rElbow, J.rHand]] as const;
+const ANKLES = [[J.lAnkle, J.lToe], [J.rAnkle, J.rToe]] as const;
+const FORWARD = new Float64Array(3);
+const DIR = new Float64Array(3);
 
 /**
  * A dropped gun: three balls held rigid, at the grip, the muzzle and under

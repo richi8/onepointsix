@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { LEAN_OFFSET, MANTLE_REACH, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
+import { GRENADE_RADIUS, LEAN_OFFSET, MANTLE_REACH, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
@@ -18,7 +18,7 @@ import {
   actionMatrix, AT_REST, BOLT_START, BOLT_TIME, boltHand, type GunPoints, magazineMatrix, type Parts, path, reloadHands, shotParts, SOME_ROUNDS,
 } from './handwork.ts';
 import { Litter } from './litter.ts';
-import { JOINT, RAGDOLL_STEP, Ragdoll, type Solid, Tumbler, type Verlet } from './ragdoll.ts';
+import { JOINT, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, stepOf, Tumbler, type Verlet } from './ragdoll.ts';
 import { RagRig, type Slump, slump } from './ragrig.ts';
 import {
   type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, placeWorld, reach, rotateWorld, span, turnWorld, wristFor,
@@ -121,6 +121,9 @@ const HANDOFF = 0.35;
  * which can come a moment after the snapshot, before falling without it.
  */
 const DEATH_WAIT = 0.25;
+/** How long kill events are kept, for death cams, and how far ahead of the time shown one may be. */
+const DEATH_KEEP = 30;
+const DEATH_AHEAD = 0.5;
 /** How long a dropped gun takes to leave the hands' last place for where it really falls. */
 const GUN_BLEND = 0.3;
 /** How far a dropped gun is rolled as it leaves the hands. */
@@ -131,6 +134,18 @@ const SHOVE_SHARE = 0.2;
 /** A grenade throws the whole body, and up. */
 const BLAST = 3;
 const BLAST_LIFT = 1.5;
+/** A grenade throws bodies already down at this speed at its heart, less with distance, and up by this share of it. */
+const BLAST_DOWN = 4;
+const BLAST_DOWN_LIFT = 0.5;
+/** How thick the living are to the dead falling against them. */
+const LIVING_RADIUS = 0.25;
+/**
+ * A body left lying after its player is up again elsewhere stays at least
+ * this long after dying, and then until it's out of view, but never more
+ * than twice that; no more than CORPSES are kept, the oldest going first.
+ */
+const CORPSE_TIME = 30;
+const CORPSES = 8;
 
 const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
@@ -235,8 +250,13 @@ interface Figure {
   flashMesh: THREE.Sprite;
   weapon: number;
   quiet: boolean;
-  /** Seconds since it died, or -1 while alive. */
+  /** The player it draws. */
+  id: number;
+  /** Seconds since it died, or -1 while alive, and the game's time it died at. */
   deadFor: number;
+  diedAt: number;
+  /** How it was last seen: kept to draw its body after it's up again elsewhere. */
+  snap: PlayerSnap | null;
   /** How it was killed, from the kill event, until it's seen dead or alive again. */
   death: Death | null;
   /** Where it falls from: its feet, pushed off walls, and the way the death clip faces. */
@@ -246,13 +266,12 @@ interface Figure {
   fresh: boolean;
   /** Seconds it has been seen dead without word of how it was killed. */
   unexplained: number;
-  /** Its ragdoll once it takes over from the death clip, the bones on it, and the steps it has had. */
+  /** Its ragdoll once it takes over from the death clip, and the bones on it. */
   rag: Ragdoll | null;
   rig: RagRig | null;
-  ragSteps: number;
   /** The ragdoll's step the bones were last laid on, so a body at rest isn't laid again. */
   rigSteps: number;
-  /** The gun falling from its hands, and the steps it has had. */
+  /** The gun falling from its hands. */
   drop: Drop | null;
   flash: number;
   muzzle: number;
@@ -358,7 +377,29 @@ interface Reactions {
 }
 
 /** What a kill event says about how a body falls. */
-type Death = Pick<Extract<GameEvent, { k: 'kill' }>, 'pose' | 'at' | 'dir' | 'weapon' | 'head'>;
+type Death = Pick<Extract<GameEvent, { k: 'kill' }>, 'pose' | 'at' | 'dir' | 'weapon' | 'head'> & {
+  /** The game's time it died at, in seconds, when told. */
+  time?: number;
+};
+
+/**
+ * The game's time that bodies are drawn at, in seconds, and where everyone
+ * was at any time near it: all falls step on its clock (see stepAll).
+ */
+export interface Clock {
+  time: number;
+  at(time: number): readonly PlayerSnap[];
+}
+
+/** Something that shakes bodies lying near: a blast throws them (`force` > 0), a breaking panel lets them fall further. */
+interface Knock {
+  step: number;
+  x: number;
+  y: number;
+  z: number;
+  reach: number;
+  force: number;
+}
 
 /**
  * A dropped gun: three balls held rigid (grip, muzzle and magazine), the
@@ -367,7 +408,6 @@ type Death = Pick<Extract<GameEvent, { k: 'kill' }>, 'pose' | 'at' | 'dir' | 'we
  */
 interface Drop {
   tumbler: Tumbler;
-  steps: number;
   turn: THREE.Quaternion;
   frame: THREE.Quaternion;
   offset: THREE.Vector3;
@@ -414,12 +454,19 @@ export class Bodies {
   private slump: Slump | null = null;
   /** The bodies lying, or falling, that others land on. */
   private rags: Verlet[] = [];
+  /** Bodies left lying after their player was up again elsewhere, or gone, oldest first. */
+  private corpses: Figure[] = [];
+  /** The time bodies are drawn at, and where everyone was at any time near it. */
+  private time = 0;
+  private clock: Clock | null = null;
+  /** Blasts and breaks to shake bodies with, on the step they happened. */
+  private knocks: Knock[] = [];
   /**
-   * How each body was last killed, kept until it's seen alive again, so one
-   * first drawn dead (after leaving a death cam) lies
-   * where it fell.
+   * How each body was killed lately, with when, so one first drawn dead
+   * (after leaving a death cam) lies where it fell, and one dying in a death
+   * cam falls as it did.
    */
-  private readonly deaths = new Map<number, Death>();
+  private readonly deaths = new Map<number, Death[]>();
   private readonly camera = new THREE.Vector3();
   private readonly frustum = new THREE.Frustum();
   private readonly bounds = new THREE.Sphere(new THREE.Vector3(), 1.4);
@@ -471,9 +518,14 @@ export class Bodies {
     this.litter.drop(gun.mag, GUN_MAT, matrix, points, velocity);
   }
 
-  /** Pose everyone as seen from `camera`; bodies it can't see are skipped. */
-  update(players: readonly PlayerSnap[], dt: number, camera?: THREE.Camera): void {
+  /**
+   * Pose everyone as seen from `camera`; bodies it can't see are skipped.
+   * `clock` says the game's time being shown; without one, time runs on by `dt`.
+   */
+  update(players: readonly PlayerSnap[], dt: number, camera?: THREE.Camera, clock?: Clock): void {
     this.litter.update(dt, this.ground);
+    this.time = clock ? clock.time : this.time + dt;
+    this.clock = clock ?? null;
     if (camera) {
       this.camera.setFromMatrixPosition(camera.matrixWorld);
       this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -481,22 +533,64 @@ export class Bodies {
     }
     const seen = new Set<number>();
     this.rags = [];
-    for (const f of this.figures.values()) if (f.rag) this.rags.push(f.rag);
+    for (const f of [...this.figures.values(), ...this.corpses]) if (f.rag) this.rags.push(f.rag);
+    const posed: [Figure, PlayerSnap][] = [];
     for (const p of players) {
       seen.add(p.id);
       let f = this.figures.get(p.id);
+      // Up again elsewhere: the body stays behind a while.
+      if (f && !p.dead && f.deadFor >= 0 && f.rag) {
+        this.leave(f);
+        f = undefined;
+      }
       if (!f) {
         f = this.create(p.id, p.team, p.commander);
         this.figures.set(p.id, f);
         f.lastX = p.x;
         f.lastY = p.y;
         f.lastZ = p.z;
-        if (p.dead) f.death = this.deaths.get(p.id) ?? null;
+        if (p.dead) f.death = this.deathOf(p.id, true);
       }
-      this.pose(f, p, dt);
+      posed.push([f, this.pose(f, p, dt)]);
+    }
+    for (const [id, f] of [...this.figures]) {
+      if (seen.has(id)) continue;
+      if (f.deadFor >= 0 && f.rag) this.leave(f);
+      else this.remove(id);
     }
 
-    for (const id of [...this.figures.keys()]) if (!seen.has(id)) this.remove(id);
+    this.stepFalls(players);
+    for (const [f, p] of posed) this.draw(f, p, dt);
+    this.corpses = this.corpses.filter((f, i) => {
+      f.deadFor = Math.max(this.time - f.diedAt, 0);
+      // Gone once it has lain long enough and nobody sees it go, and it isn't still falling.
+      const old = f.deadFor > CORPSE_TIME * 2 || (f.deadFor > CORPSE_TIME && !f.group.visible) || i < this.corpses.length - CORPSES;
+      if (old && !this.falling(f)) {
+        this.dispose(f);
+        return false;
+      }
+      this.draw(f, f.snap!, dt);
+      return true;
+    });
+  }
+
+  /** Every body goes, and whatever was to shake them: as a death cam starts or ends, or a game. */
+  clear(): void {
+    this.update([], 0);
+    for (const f of this.corpses) this.dispose(f);
+    this.corpses = [];
+    this.knocks = [];
+  }
+
+  /** Whether its body or gun is still on the move. */
+  private falling(f: Figure): boolean {
+    return !!f.rag && (!f.rag.asleep || (!!f.drop && !f.drop.tumbler.asleep));
+  }
+
+  /** Its player is up again elsewhere, or gone: the body lies on its own for a while (see CORPSE_TIME). */
+  private leave(f: Figure): void {
+    this.figures.delete(f.id);
+    this.corpses.push(f);
   }
 
   /**
@@ -530,10 +624,13 @@ export class Bodies {
     }
   }
 
-  /** Someone was killed: they fall from where the event says, pushed the way the round went. */
-  killed(e: Death & { victim: number }): void {
-    const death = { pose: e.pose, at: e.at, dir: e.dir, weapon: e.weapon, head: e.head };
-    this.deaths.set(e.victim, death);
+  /** Someone was killed at `time`, the game's: they fall from where the event says, pushed the way the round went. */
+  killed(e: Death & { victim: number }, time = this.time): void {
+    const death = { pose: e.pose, at: e.at, dir: e.dir, weapon: e.weapon, head: e.head, time };
+    // Kept a while, even once they're up again: a death cam shows them dying again.
+    const list = (this.deaths.get(e.victim) ?? []).filter((d) => d.time! > time - DEATH_KEEP);
+    list.push(death);
+    this.deaths.set(e.victim, list);
     const f = this.figures.get(e.victim);
     if (f) f.death = death;
   }
@@ -544,13 +641,14 @@ export class Bodies {
     this.litter.clear();
   }
 
-  /** Something broke near (x, y, z): the dead lying against it may fall further. */
-  shake(x: number, y: number, z: number, reach: number): void {
-    for (const f of this.figures.values()) {
-      for (const v of [f.rag, f.drop?.tumbler]) {
-        if (v && Math.hypot(v.bounds.x - x, v.bounds.y - y, v.bounds.z - z) < reach + v.bounds.r) v.wake();
-      }
-    }
+  /** Something broke near (x, y, z) at `time`, the game's: the dead lying against it may fall further. */
+  shake(x: number, y: number, z: number, reach: number, time = this.time): void {
+    this.knocks.push({ step: stepOf(time), x, y, z, reach, force: 0 });
+  }
+
+  /** A grenade went off at (x, y, z) at `time`, the game's: it throws the dead lying near in the open. */
+  blast(x: number, y: number, z: number, time = this.time): void {
+    this.knocks.push({ step: stepOf(time), x, y, z, reach: GRENADE_RADIUS, force: BLAST_DOWN });
   }
 
   /** Where a body's muzzle is in the world, or null if it isn't drawn. */
@@ -573,10 +671,14 @@ export class Bodies {
   private remove(id: number): void {
     const f = this.figures.get(id);
     if (!f) return;
+    this.dispose(f);
+    this.figures.delete(id);
+  }
+
+  private dispose(f: Figure): void {
     this.scene.remove(f.group, f.gun);
     for (const m of f.materials) m.dispose();
     f.soldier?.mixer.stopAllAction();
-    this.figures.delete(id);
   }
 
   private create(id: number, team: Team, commander: boolean): Figure {
@@ -603,7 +705,7 @@ export class Bodies {
     const f: Figure = {
       group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
       gun, held, magMesh, actionMesh, lastMag: null, torch, flashMesh, weapon: 0, quiet: false,
-      deadFor: -1, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, ragSteps: 0, rigSteps: -1, drop: null,
+      id, deadFor: -1, diedAt: 0, snap: null, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
       air: 0, mantle: 0, climb: null, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, crouchFast: 0, headFix: 0, duck: 0,
       firedFor: 1e3, hitFor: 1e3, hitHead: false, hitLow: false, hitDir: new THREE.Vector3(0, 0, 1), soldier: null, casters: null,
@@ -716,7 +818,24 @@ export class Bodies {
     };
   }
 
-  private pose(f: Figure, p: PlayerSnap, dt: number): void {
+  /**
+   * How `id` was last killed by now, at most a moment later (the event can
+   * come before the snapshot); only if lately unless `any`.
+   */
+  private deathOf(id: number, any: boolean): Death | null {
+    const list = this.deaths.get(id) ?? [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const t = list[i].time!;
+      if (t > this.time + DEATH_AHEAD) continue;
+      return any || t > this.time - DEATH_WAIT - 1 ? list[i] : null;
+    }
+    return null;
+  }
+
+  /** Take in how it's seen now, and returns that as it's to be drawn. */
+  private pose(f: Figure, p: PlayerSnap, dt: number): PlayerSnap {
+    // Just seen dead: how it was killed, told by now (always so in a death cam, which replays no kill events).
+    if (p.dead && f.deadFor < 0 && !f.death) f.death = this.deathOf(p.id, false);
     // Seen dead before the kill event came: a moment on its feet, waiting for it.
     if (p.dead && f.deadFor < 0 && !f.death && !f.fresh && f.soldier && f.unexplained < DEATH_WAIT) {
       f.unexplained += dt;
@@ -781,11 +900,12 @@ export class Bodies {
 
     const died = p.dead && f.deadFor < 0;
     const revived = !p.dead && f.deadFor >= 0;
-    f.deadFor = p.dead ? Math.max(f.deadFor, 0) + dt : -1;
+    // Timed from the kill event when there is one, so a death cam's bodies fall on the same steps as the game's.
+    if (died) f.diedAt = Math.min(f.death?.time ?? this.time, this.time);
+    f.deadFor = p.dead ? Math.max(this.time - f.diedAt, 0) : -1;
     if (died && f.soldier) this.fall(f, p);
     if (revived) {
       f.death = null;
-      this.deaths.delete(p.id);
       f.rag = f.rig = null;
       if (f.drop) {
         f.drop = null;
@@ -798,12 +918,16 @@ export class Bodies {
     if (p.dead && f.soldier) {
       f.group.position.copy(f.fallAt);
       f.group.quaternion.setFromAxisAngle(V_UP, f.fallYaw);
-      if (f.deadFor >= HANDOFF && !f.rag) this.goLimp(f);
       if (died && f.fresh) this.settle(f);
-      this.fallOn(f);
+      else if (f.deadFor >= HANDOFF && !f.rag) this.goLimp(f);
     }
     f.fresh = false;
+    f.snap = p;
+    return p;
+  }
 
+  /** Draw it as posed, its fall stepped up to now. */
+  private draw(f: Figure, p: PlayerSnap, dt: number): void {
     // Out of sight with no shadow or beam of its own in view, or lost in the fog: not drawn.
     const bounds = this.bounds;
     if (f.rag) bounds.set(V_TMP.set(f.rag.bounds.x, f.rag.bounds.y, f.rag.bounds.z), Math.max(BODY_RADIUS, f.rag.bounds.r + 0.3));
@@ -909,7 +1033,6 @@ export class Bodies {
     f.fallYaw = best - this.deathYaw;
     f.fallAt.set(x + Math.sin(best) * back, y, z + Math.cos(best) * back);
     f.rag = f.rig = null;
-    f.ragSteps = 0;
 
     // The gun falls from about where the hands held it, facing ahead and rolling out of them (upright, it
     // could land balanced on its edge); it's drawn from where it really was, easing onto its fall.
@@ -929,6 +1052,8 @@ export class Bodies {
     const now = points.flatMap((v) => v.toArray());
     const before = points.flatMap((v) => [v.x - vx * RAGDOLL_STEP, v.y - vy * RAGDOLL_STEP, v.z - vz * RAGDOLL_STEP]);
     const tumbler = new Tumbler(now, before);
+    tumbler.start = stepOf(f.diedAt);
+    tumbler.owner = f.id;
     const turn = Q_A.clone();
     const frame = gunFrame(tumbler, new THREE.Quaternion()).invert();
     const offset = new THREE.Vector3();
@@ -939,7 +1064,7 @@ export class Bodies {
       offsetTurn.copy(f.gun.getWorldQuaternion(Q_B)).multiply(Q_A.copy(turn).invert());
     }
     this.scene.add(f.gun);
-    f.drop = { tumbler, steps: 0, turn, frame, offset, offsetTurn };
+    f.drop = { tumbler, turn, frame, offset, offsetTurn };
   }
 
   /** Metres free along `yaw` from (x, z), up to `length`, at knee and waist height. */
@@ -981,40 +1106,84 @@ export class Bodies {
         rag.push(i, dx * k, dy * k, dz * k);
       }
     }
+    rag.start = stepOf(f.diedAt + HANDOFF);
+    rag.owner = f.id;
     f.rag = rag;
-    f.ragSteps = 0;
     f.rig = new RagRig(f.soldier!.bones, rag, s, f.group);
     f.rigSteps = -1;
   }
 
   /** First seen dead, as after a death cam: already lying where it came to rest. */
   private settle(f: Figure): void {
-    f.deadFor = HANDOFF;
+    f.diedAt = this.time - HANDOFF;
     this.goLimp(f);
     const rag = f.rag!;
     const tumbler = f.drop?.tumbler;
     while (!rag.asleep) rag.step(this.ground, this.rags);
-    while (tumbler && !tumbler.asleep) tumbler.step(this.ground, this.rags);
-    f.ragSteps = rag.steps;
-    f.deadFor = HANDOFF + rag.steps * RAGDOLL_STEP;
-    if (f.drop) f.drop.steps = Math.floor(f.deadFor / RAGDOLL_STEP);
+    while (tumbler && !tumbler.asleep) tumbler.step(this.ground, this.rags.filter((r) => r !== rag));
+    // It lay down in no time: its clock starts now.
+    for (const v of [rag, tumbler]) if (v) (v.start = stepOf(this.time)), (v.ticks = 0);
+    f.diedAt = this.time - HANDOFF - rag.steps * RAGDOLL_STEP;
+    f.deadFor = this.time - f.diedAt;
     this.rags.push(rag);
   }
 
-  /** Step its ragdoll and gun up to now, on their fixed clock, onto the ground and the dead. */
-  private fallOn(f: Figure): void {
-    const drop = f.drop;
-    if (drop) {
-      const due = Math.floor(f.deadFor / RAGDOLL_STEP);
-      // Its own body is left out: it falls away from it, and would only knock it about.
-      if (drop.steps < due) {
-        const on = this.rags.filter((r) => r !== f.rag);
-        for (; drop.steps < due; drop.steps++) drop.tumbler.step(this.ground, on);
-      }
+  /**
+   * Step every body and dropped gun up to now on the game's clock, all
+   * together, onto the ground, the dead and the living, shaken by what
+   * blew up or broke near them on the step it did.
+   */
+  private stepFalls(players: readonly PlayerSnap[]): void {
+    const falls: Verlet[] = [];
+    for (const f of [...this.figures.values(), ...this.corpses]) {
+      if (f.rag) falls.push(f.rag);
+      if (f.drop) falls.push(f.drop.tumbler);
     }
-    if (f.rag) {
-      const due = Math.floor((f.deadFor - HANDOFF) / RAGDOLL_STEP);
-      for (; f.ragSteps < due; f.ragSteps++) f.rag.step(this.ground, this.rags);
+    // The same order in a death cam as in the game: by when they started, whose they are, the body before the gun.
+    falls.sort((a, b) => a.start - b.start || a.owner - b.owner || b.n - a.n);
+    const due = stepOf(this.time);
+    const clock = this.clock;
+    const crowd = (step: number): Living[] => {
+      const out: Living[] = [];
+      for (const p of clock ? clock.at(step * RAGDOLL_STEP) : players) {
+        if (p.dead) continue;
+        const top = p.y + hitboxes({ x: 0, y: 0, z: 0, yaw: 0, duck: p.duck, lean: 0 }).neckY;
+        out.push({ x: p.x, z: p.z, bottom: p.y + LIVING_RADIUS, top, r: LIVING_RADIUS });
+      }
+      return out;
+    };
+    const knock = (step: number): void => {
+      for (const k of this.knocks) if (k.step <= step) this.knock(k, falls);
+      this.knocks = this.knocks.filter((k) => k.step > step);
+    };
+    if (falls.length) stepAll(falls, due, this.ground, this.rags, crowd, knock);
+    // Nothing lying to shake by now.
+    this.knocks = this.knocks.filter((k) => k.step >= due);
+  }
+
+  /** Wake the falls near a knock, throwing them away from a blast that can reach them. */
+  private knock(k: Knock, falls: readonly Verlet[]): void {
+    for (const v of falls) {
+      const b = v.bounds;
+      const d = Math.hypot(b.x - k.x, b.y - k.y, b.z - k.z);
+      // Those that started falling since were thrown by it already, if at all.
+      if (d > k.reach + b.r || v.start >= k.step) continue;
+      if (k.force > 0) {
+        // Walls and cover shield it.
+        const dx = b.x - k.x;
+        const dy = b.y - k.y;
+        const dz = b.z - k.z;
+        if (d > 0.3 && this.ground.raycast(k.x, k.y + 0.2, k.z, dx / d, (dy - 0.2) / d, dz / d, d) < d - b.r) continue;
+        for (let i = 0; i < v.n; i++) {
+          const x = v.pos[i * 3] - k.x;
+          const y = v.pos[i * 3 + 1] - k.y;
+          const z = v.pos[i * 3 + 2] - k.z;
+          const r = Math.hypot(x, y, z) || 1;
+          const s = k.force * Math.max(1 - r / k.reach, 0);
+          v.push(i, (x / r) * s, Math.max(y / r, 0) * s + s * BLAST_DOWN_LIFT, (z / r) * s);
+        }
+      }
+      v.wake();
     }
   }
 
@@ -1052,6 +1221,8 @@ export class Bodies {
     // Near, a random wait: once it moves off, it takes its turn out of step with the others.
     f.wait = near ? Math.random() * FAR_UPDATE : FAR_UPDATE;
     if (f.rig) {
+      // A body that died out of sight never played its death clip, which lets go of the gun.
+      if (f.rigSteps < 0) for (const hand of s.hands) curl(hand, 0.3);
       if (f.rigSteps !== f.rag!.steps) {
         f.rigSteps = f.rag!.steps;
         f.group.updateMatrixWorld(true);

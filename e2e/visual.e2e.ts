@@ -101,6 +101,10 @@ const POSES: Record<string, string> = {
   climb: 'show=climb:0.08,climb:0.14,climb:0.2,climb:0.3&view=front&ledge=1.2&eye=-3.4,1.6,1.5&at=2.4,1.1,0.5',
   slope: 'show=stand,walk,crouch&view=front&slope=0.3&eye=1.6,1.6,6&at=1.6,1.1,0',
   drops: 'show=reload:0.9:0,reload:0.9:1&view=front&eye=0.8,1.4,2.4&at=0.8,0.4,0.4',
+  // Chunk 34: a pile of bodies, the same pile after a grenade under it, and one falling against someone standing.
+  pile: 'show=dead:1.5,dead:1.4,dead:1.3&view=side&spacing=0.7&eye=0.4,2.6,4.2&at=1.6,0.2,0',
+  'pile-blast': 'show=dead:1.5,dead:1.4,dead:1.3&view=side&spacing=0.7&blast=0.8&blastat=1.4,0.6&eye=0.4,2.6,4.2&at=1.6,0.2,0',
+  against: 'show=dead:1.5,stand&view=side&spacing=0.9&eye=-1.5,1.6,3&at=0.5,0.5,0',
 };
 
 for (const [name, query] of Object.entries(POSES)) {

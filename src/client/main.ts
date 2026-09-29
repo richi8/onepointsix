@@ -348,7 +348,7 @@ function openIsland(next: WorldConfig): void {
   if (dressed) view.applyAssets(dressed);
   if (!Number.isNaN(still)) view.light3d.finishAll();
   bodies.forget();
-  bodies.update([], 0);
+  bodies.clear();
   bodies.ground = world;
   bags.update([]);
   grenades.update([]);
@@ -610,7 +610,7 @@ function join(): void {
   bodies.forget();
   conn = new Connection(config, world, mode, playerName(), transport);
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
-  conn.onEvents = (events) => events.forEach((e) => onEvent(e));
+  conn.onEvents = (events, time) => events.forEach((e) => onEvent(e, time));
   conn.onWelcome = (cover) => showCover(cover);
   conn.onSpawn = (s) => {
     input.yaw = s.yaw;
@@ -723,7 +723,7 @@ function playDeathcam(): void {
   ownDeath = killedBy.e.killer === conn?.id;
   showCover(deathcam.cover);
   // Start the bodies afresh, as they were then.
-  bodies.update([], 0);
+  bodies.clear();
   runHud.hideResults();
   // The killer's health, ammo and hits.
   hudEl.hidden = false;
@@ -741,7 +741,7 @@ function stopDeathcam(results = true): void {
   hudEl.hidden = true;
   hudEl.classList.remove('watching');
   showCover(conn?.cover ?? noCover);
-  bodies.update([], 0);
+  bodies.clear();
   if (results) showLastResults?.();
 }
 
@@ -815,7 +815,7 @@ function toMenu(): void {
   paused.hidden = true;
   menu.hidden = false;
   view.preview = true;
-  bodies.update([], 0);
+  bodies.clear();
   bags.update([]);
   grenades.update([]);
   playButton.focus();
@@ -923,7 +923,8 @@ function ownShot(shot: Shot, players: readonly PlayerSnap[]): void {
  * `replayed` is set for events played back in a death cam. While one shows,
  * live events only keep the books: the world is shown as it was then.
  */
-function onEvent(e: GameEvent, replayed = false): void {
+/** A game event, from the game's `time` (in seconds), or replayed in a death cam. */
+function onEvent(e: GameEvent, time: number, replayed = false): void {
   if (deathcam && !replayed && e.k !== 'deathcam' && e.k !== 'runEnd') return;
   // Whose eyes we see through: our own, or the killer's in a death cam.
   const me = deathcam?.state ?? conn?.predictor.state;
@@ -940,7 +941,7 @@ function onEvent(e: GameEvent, replayed = false): void {
       sfx.hurt();
       break;
     case 'kill':
-      bodies.killed(e);
+      bodies.killed(e, time);
       feedEvent(e);
       break;
     case 'extract':
@@ -971,7 +972,7 @@ function onEvent(e: GameEvent, replayed = false): void {
         view.updatePanel(id);
         effects.shatter(world.panels[id].box, view.panelColor(id, color), view.panelLayer(id), e.x, e.y, e.z);
       }
-      bodies.shake(e.x, e.y, e.z, 4);
+      bodies.shake(e.x, e.y, e.z, 4, time);
       for (const id of e.panels) sfx.changed(world.panels[id].box);
       eventSound(e);
       break;
@@ -994,6 +995,7 @@ function onEvent(e: GameEvent, replayed = false): void {
     case 'boom': {
       const d = me ? Math.hypot(e.x - me.x, e.y - me.y, e.z - me.z) : Infinity;
       effects.explosion(to.set(e.x, e.y, e.z));
+      bodies.blast(e.x, e.y, e.z, time);
       eventSound(e);
       shake = Math.max(shake, clamp(1 - d / SHAKE_RANGE, 0, 1));
       break;
@@ -1268,13 +1270,17 @@ renderer.setAnimationLoop(() => {
   const cam = deathcam;
   // Bodies move on the time shown: slowed round the kill in a death cam.
   const before = cam?.time ?? 0;
-  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: RecordedEvent) => onEvent(e, true), (kill) => ownDeath || hud.mark(false, kill));
+  cam?.update(dt, (fx) => weaponFx(fx, () => cam.others()), (e: RecordedEvent, time: number) => onEvent(e, time, true), (kill) => ownDeath || hud.mark(false, kill));
   // Soldiers stood on the menu's island hold still for screenshots with time stopped.
   const bodyDt = cam ? Math.max(cam.time - before, 0) : !conn && !Number.isNaN(still) ? 0 : dt;
   hud.age(bodyDt);
   const players = cam ? cam.others() : (conn?.interpolated() ?? devStanding);
   bodies.sun.copy(view.lit.sunDir);
-  bodies.update(players, bodyDt, camera);
+  // Bodies fall on the game's clock, against everyone as the server had them.
+  const clock = cam
+    ? { time: cam.time, at: (t: number) => cam.everyoneAt(t) }
+    : conn ? { time: conn.renderTime(), at: (t: number) => conn!.everyoneAt(t) } : undefined;
+  bodies.update(players, bodyDt, camera, clock);
   bags.update(conn?.bags ?? []);
   grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? []));
   if (conn) view.setExtracts(conn.extracts, now);

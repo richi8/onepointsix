@@ -245,7 +245,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | 31 | **Local browser tests** | A browser test for the single-file build opened from `file://`; tests for the lighting presets, rain, flashlights and the menu's condition pickers; the benchmark split out of the default run and its adaptive-resolution check shortened. Rescoped from **Tests in CI** after measuring it: CI's runners have no GPU (see Decisions) | `npm run test:browser` covers the single file and every condition, and runs in about a minute | **Done** (62 tests in 54 s on an M3 Pro, down from about 2.4 min; `npm run bench` 57 s, down from about 1.5 min) |
 | 32 | **Cheaper soldiers, full shadows** | Each soldier's meshes merged so it draws in a few calls instead of about 43; the time saved spent on bodies taking shadows everywhere, not only near buildings, and casting them past 60 m; bodies, bags and debris in the sea's reflection, and the reflection skipped when no sea is in view; the island's shadow map following doors, broken walls and swaying crowns; the cascade patch told apart by a flag, not by counting directional lights | The benchmark's 24-body frame is well under chunk 30's, a soldier in a tree's shadow out in the open is shaded, and a wading soldier is reflected | **Done** (24 bodies: 1,151 draw calls to 245 and 14.4–14.9 ms to 10.8–11.2 ms a frame in one session on an M3 Pro, bodies now shaded everywhere; screenshot tests of a soldier in a tree's shade and one wading. The island's map doesn't sway: accepted, see the history) |
 | 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | **Done** (in the pose viewer, with screenshot tests of a climb, hits from the side, a slope and dropped magazines; not watched in play. The climb is keyed by hand, the fast crouch is the run clip played low, and the library's pistol shooting clip wasn't moved over, so each gun's kick is keyed instead. Posing 24 near bodies about 2.5 to 2.8–2.9 ms) |
-| 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | Not started |
+| 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | **Done** (by unit tests, pose viewer screenshots of a pile before and after a grenade and of a body against someone standing, and a browser test of a fall in play and in the death cam, bit for bit; not watched in play. Bodies left behind stay 30 s, not only until at rest. Posing 24 living bodies costs the same as before, within a noisy session's spread) |
 | 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | Not started |
 | 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | Not started |
 | 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | Not started |
@@ -309,6 +309,27 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   digit, and a fall magnifies it. Operators' bodies still go after 5 s, so most never come to rest
   in view. It was checked with pose viewer screenshots, unit tests and a browser test; nobody has
   watched it in play.
+  **Resolved in part** (34): bodies are pushed off the living, each an upright capsule from feet
+  to neck as the server had them at that step; knees bend only forward, elbows only back (and
+  down, so an arm held out bends up), and one bent the wrong way when it went limp is kept from
+  bending further and let straighten out. The feet turn at the ankle, between drawn up and
+  pointed, their toes kept ahead of the shin. A body that died out of sight opens its hands. A
+  grenade throws bodies and guns lying within its reach, less with distance, unless a ray from it
+  to the body's middle is blocked. Every fall now steps on one clock of the game's time, all
+  together in a fixed order, starting on the kill event's step; the living, blasts and breaks
+  come in on the step they happened, and the death cam finds each kill by its time (kill events
+  aren't replayed), so a death cam falls bit for bit as the game did, pile-ups included (a unit
+  test lands two bodies on each other the same however the frames fall; a browser test compares
+  a body's fall in play and in the death cam). A body left behind when its player is back in the
+  game, or gone, stays until it comes to rest and 30 s after dying, then until it's out of view,
+  never more than 60 s, and at most 8 of them. Still: falls match only within one browser engine,
+  as above. The living aren't moved by a body, and their arms and guns don't stop one. Which way
+  a body falls is picked by rays that miss the living and the dead, so it can fall toward someone
+  and crumple at their feet. Elbows bend by a guess from the body's front and spine, as the balls
+  don't twist, and an arm lying along that guess is left free. Bodies left lying aren't in a death
+  cam and are cleared when it starts and ends, and the dropped magazines aren't thrown by a
+  blast. Checked with pose viewer screenshots (a pile before and after a grenade, a body against
+  someone standing), unit tests and browser tests; nobody has watched it in play.
 - **The animation was checked by still screenshots** (13) of chosen moments in the new pose viewer
   (`dev/pose.html`), plus one screenshot of a real game in first person. Nobody has watched it
   moving at full speed in play, and its cost per frame with many bodies near wasn't measured.
@@ -558,6 +579,8 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   batches after it, though nothing chunk 31 changed touches it. At its last step, facing the dead
   rival's bag, no tag with the bag's $8,000 shows within 20 s. The bag may land out of sight, out
   of the tags' reach or behind something; not looked into.
+  Seen again in chunk 34: it passed in one full run, then failed in the next and on its own,
+  both with chunk 34's changes and without them.
 
 ### Playtest and tuning
 - **Bot runs can't check run length** (12). An operator bot searches only 1–3 crates and leaves,

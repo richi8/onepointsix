@@ -27,8 +27,12 @@ import { GRENADE, WEAPONS } from '../src/shared/weapons.ts';
 // `hit` (a round just landed in the first body's chest), `climb:t` (t seconds into a climb onto `ledge`,
 // a ledge that high in front of everyone in the front view). The dead are killed
 // by a round from in front, or from yaw `from`, in the head with `headshot`,
-// or by a grenade with `grenade`; `dead:t` has been dead for 2t seconds. The
-// page sets document.title to "ready" once the frame is drawn, for screenshots.
+// or by a grenade with `grenade`; `dead:t` has been dead for 2t seconds.
+// `spacing=k` stands the bodies k metres apart (1.6 by default), so the dead
+// fall on each other or against the living, and `blast=t` sets off a grenade
+// t seconds before the end at `blastat=x,z` (the middle of the row, a little
+// in front, by default). The page sets document.title to "ready" once the
+// frame is drawn, for screenshots.
 
 const q = new URLSearchParams(location.search);
 const view = q.get('view') ?? 'side';
@@ -100,7 +104,7 @@ const ground = {
 if (slope) floorMesh.rotation.z = Math.atan(slope);
 
 const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 200);
-const spacing = 1.6;
+const spacing = Number(q.get('spacing') ?? 1.6);
 const width = (show.length - 1) * spacing;
 const distance = Number(q.get('d') ?? 3 + show.length * 2.2);
 camera.position.set(width / 2, 1.1, distance);
@@ -229,6 +233,11 @@ if (view === 'fp') {
       });
     });
     prev = snaps.map((p) => p.dead);
+    if (q.has('blast')) {
+      const at = end - Number(q.get('blast'));
+      const [bx, bz] = q.has('blastat') ? q.get('blastat')!.split(',').map(Number) : [width / 2, 0.6];
+      if (s >= at && s - dt < at) bodies.blast(bx, floor(bx) + 0.1, bz);
+    }
     bodies.update(snaps, dt, camera);
   }
   if (q.has('hit')) {

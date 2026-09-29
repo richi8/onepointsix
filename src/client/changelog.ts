@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-29',
+    title: 'Bodies that stay down',
+    notes: [
+      'Bodies fall against soldiers standing near instead of through them.',
+      'Knees and elbows no longer bend the wrong way, and feet turn at the ankle.',
+      'A grenade throws bodies and guns already lying near it.',
+      'A soldier killed out of sight lets go of the gun.',
+      'A fallen operator’s body stays for about half a minute after they are back in the game, instead of vanishing after 5 seconds.',
+      'The death cam shows every body falling exactly as it did, even two landing on each other.',
+    ],
+  },
+  {
+    date: '2026-09-29',
     title: 'Hands on the gun',
     notes: [
       'Reloads move the gun’s parts: magazines slide out and fall to the ground, where they lie for a while, fresh ones go in from the hand, the pistol’s slide is racked, and the bolt-action’s bolt is lifted and drawn back.',

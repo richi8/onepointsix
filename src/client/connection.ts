@@ -85,7 +85,7 @@ export class Connection {
   /** Predicted effects of the local player's own commands: shots, reloads, switches. */
   onFx: ((fx: WeaponFx) => void) | null = null;
   /** Events from the server: hits, damage taken, kills and other players' shots. */
-  onEvents: ((events: GameEvent[]) => void) | null = null;
+  onEvents: ((events: GameEvent[], time: number) => void) | null = null;
   /** The server (re)spawned the local player; `state` is where and facing which way. */
   onSpawn: ((state: PlayerState) => void) | null = null;
   /** Joined: this is how the cover stands right now. */
@@ -161,6 +161,14 @@ export class Connection {
     return playersAt(this.snapshots, this.renderTime());
   }
 
+  /**
+   * Everyone, this player too, as the server had them at `time`: the same
+   * whether now or replayed in a death cam, for bodies falling against them.
+   */
+  everyoneAt(time: number): PlayerSnap[] {
+    return playersAt(this.recording.snapshots, time);
+  }
+
   /** Live grenades as they were at renderTime. */
   grenades(): GrenadeSnap[] {
     return grenadesAt(this.snapshots, this.renderTime());
@@ -203,7 +211,7 @@ export class Connection {
           if (e.k === 'door') for (const i of e.doors) (e.open ? this.open.add(i) : this.open.delete(i));
         }
         this.trimRecording(msg.tick * SERVER_DT);
-        this.onEvents?.(msg.events);
+        this.onEvents?.(msg.events, msg.tick * SERVER_DT);
         break;
     }
   }
