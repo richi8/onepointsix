@@ -10,7 +10,7 @@ import type { PlayerSnap } from '../src/shared/protocol.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
-// A frame-cost benchmark on the default island, run by the browser tests
+// A frame-cost benchmark on the default island, run by `npm run bench`
 // (e2e/bench.e2e.ts) or by hand at /dev/bench.html on the dev server:
 //
 // - A frame with nobody about, then with `n` soldiers (24 by default) close
@@ -263,7 +263,7 @@ async function adaptive(seconds: number, target = 26) {
 }
 
 await renderer.compileAsync(scene, camera);
-if (q.has('adaptive')) Object.assign(window, { adaptive: await adaptive(Number(q.get('adaptive')) || 60) });
+if (q.has('adaptive')) Object.assign(window, { adaptive: await adaptive(Number(q.get('adaptive')) || 25) });
 else Object.assign(window, { bench: await frameCost() });
 document.title = 'done';
 

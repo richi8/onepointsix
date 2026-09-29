@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-// Runs first; the frame-cost benchmark is its teardown, so it runs after every
-// other test has finished.
+// Runs first: the dev server is up and serving the game.
 
 test('the dev server serves the game', async ({ request }) => {
   const page = await request.get('./');

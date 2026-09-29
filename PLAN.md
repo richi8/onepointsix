@@ -237,12 +237,12 @@ Chunks 31–40 work through the Known Issues Phase 3 left open. The aim is to re
 to add features: the core loop stays as it is, and the game ideas stay in Future. The same rules
 apply: no backend, nothing that breaks the rules that keep multiplayer easy to add later, and
 each chunk marks the Known Issues named in its scope **Resolved** (or **Resolved in part**,
-saying what's left). The game is built and tested in Chrome only for now (see Decisions). The CI
-chunk comes first so every later chunk is checked there, and the human pass comes last.
+saying what's left). The game is built and tested in Chrome only for now (see Decisions), and
+the browser tests run on the developer's machine, not in CI (chunk 31). The human pass comes last.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 31 | **Tests in CI** | The browser tests run in CI on Linux in Chromium (`--use-angle=gl`, or software drawing where the GPU can't be had), with screenshots kept per platform; a browser test for the single-file build opened from `file://`; tests for the lighting presets, rain, flashlights and the menu's condition pickers; the scripts' CI job run on GitHub once pushed | Every push runs Vitest and the browser tests, and a broken screenshot or UI fails the build | Not started |
+| 31 | **Local browser tests** | A browser test for the single-file build opened from `file://`; tests for the lighting presets, rain, flashlights and the menu's condition pickers; the benchmark split out of the default run and its adaptive-resolution check shortened. Rescoped from **Tests in CI** after measuring it: CI's runners have no GPU (see Decisions) | `npm run test:browser` covers the single file and every condition, and runs in about a minute | **Done** (62 tests in 54 s on an M3 Pro, down from about 2.4 min; `npm run bench` 57 s, down from about 1.5 min) |
 | 32 | **Cheaper soldiers, full shadows** | Each soldier's meshes merged so it draws in a few calls instead of about 43; the time saved spent on bodies taking shadows everywhere, not only near buildings, and casting them past 60 m; bodies, bags and debris in the sea's reflection, and the reflection skipped when no sea is in view; the island's shadow map following doors, broken walls and swaying crowns; the cascade patch told apart by a flag, not by counting directional lights | The benchmark's 24-body frame is well under chunk 30's, a soldier in a tree's shadow out in the open is shaded, and a wading soldier is reflected | Not started |
 | 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | Not started |
 | 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | Not started |
@@ -483,15 +483,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred). The new build isn't on
   the live site until it's pushed.
 
-### Sharing and leaderboards
-- **The single-file build is checked by hand only** (single file). `npm run build:single` makes
-  `dist-single/onepointsix.html`, the whole game in one 8.3 MB page that plays when opened from
-  disk: one inline script, workers and `public/` packed in base64 and served to `fetch()` and
-  `new Worker` by a small shim in the page. It was checked by opening it from `file://` in headless
-  Chromium, Firefox and WebKit (loaded, textured, a run started). No Playwright test covers it,
-  since the suite runs on the dev server. The shim covers only `fetch()` and `Worker`, so a new
-  loader that uses `XMLHttpRequest`, an `<img src>` or a module worker with imports would break it.
-
 ### Day, night and weather
 - **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
   behind it. Shadows would need a shadow map per light, drawn every frame.
@@ -507,6 +498,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   of up to 24 beams and glares, three spotlights and the rain on a mid-range laptop wasn't
   measured. The lighting presets, rain, flashlights and menu pickers have no automated tests; the
   config, link, bot senses, night guards and loot do.
+  **Resolved in part** (31): screenshots outside an outpost at dusk, in rain, in fog, at night
+  with your flashlight lit (dev-only `?torch`) and on a rainy night with it; a test that T lights
+  the flashlight at night and puts it out, and does nothing by day; the menu's pickers were
+  already tested (chunk 19). The dev camera (`?cam=`) now sees the fog a player there would, not
+  the menu's thinned fog. The cost on a mid-range laptop still isn't measured.
 - **Night tuning comes from bots only** (16). In a bot playtest (4 islands × 15 min each),
   operator bots got out of 18% of runs on a clear day, 22% in rain, 26% in fog, 12% on a clear
   night, 19% on a rainy night and 24% on a foggy night. So night is the hardest and fog the
@@ -567,16 +563,31 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **The browser tests don't run in CI** (19). The deploy workflow still runs only Vitest. The
   tests want a GPU to draw the game at speed; on Linux Chromium is told to use OpenGL
   (`--use-angle=gl`), which hasn't been tried.
+  **Left for later** (31): tried and set aside (see Decisions). In the Playwright Linux image,
+  every choice of `--use-angle` (gl, vulkan, swiftshader, none) ends in SwiftShader, drawing in
+  software, and GitHub's runners have no GPU. `E2E_GL=software npm run test:browser` shows it
+  on the Mac: about 20 s to load the page and 45 s to 1.5 min a test with one worker (on the
+  M3 Pro's cores), 10 minutes for the suite with four, and 7 tests failing on slow frames (the
+  textures fading in, the death cam, resuming after Esc). On a 2-core runner the suite would
+  take well over an hour a push. Linux would also need screenshots of its own, made on a
+  matching machine; Docker here has 1 CPU and under 1 GB, too little to make them.
 - **The screenshots come from one machine** (19): Chromium on an M3 Pro through Metal, at
-  640 × 360, kept in `e2e/screenshots/darwin/`. Another machine makes its own on its first run
-  (which reports each as a failure once), so they only catch changes on the machine that made
-  them. A change to fewer than 1% of the pixels passes.
+  640 × 360, kept in `e2e/screenshots/darwin/`. With the tests local only (31), that's the
+  machine they run on. Another machine makes its own on its first run (which reports each as a
+  failure once), so they only catch changes on the machine that made them. A change to fewer
+  than 1% of the pixels passes.
 - **The scripts' CI job hasn't run on GitHub yet** (20). `.github/workflows/scripts.yml` runs
   both scripts on Ubuntu when they or their lists change, and the unit tests on what they make.
   It was run as-is in a Linux x86-64 container (about 8 minutes under emulation), not on GitHub,
   since it isn't pushed. It downloads from Poly Haven, Freesound and poly.pizza every time, so
   a change or a rate limit there fails it. The transcoder's build script isn't in it (it needs
-  Docker or Emscripten).
+  Docker or Emscripten). Its run on GitHub was dropped from chunk 31 with the rest of CI; it
+  still runs there if pushed.
+- **The rivals bounty test is flaky** (31, found while timing the suite). "A rival with the
+  bounty is marked..." failed 1 of 20 runs on the code before chunk 31, and 3 of 7 in two
+  batches after it, though nothing chunk 31 changed touches it. At its last step, facing the dead
+  rival's bag, no tag with the bag's $8,000 shows within 20 s. The bag may land out of sight, out
+  of the tags' reach or behind something; not looked into.
 - **Soldiers are expensive to draw** (19). In the benchmark, 24 soldiers 4 to 25 m off take a
   Chromium frame from 3.1 to 10.6 ms (Firefox 7 to 16, WebKit 4 to 11). Posing them is only 2.4 ms
   of it: the rest is drawing, about 43 draw calls each with their shadows (1,113 against 86) and
@@ -734,6 +745,10 @@ extraction stays as hard as it is.
   Safari, Firefox's late sound start) stay. Sounds come as Opus only, so Safari needs macOS 15.4
   or later; dropping the AAC copies saved 1.6 MB and took the single-file build from 8.3 to
   5.9 MB.
+- **Browser tests stay local** (31, 2026-09-29): CI can't draw the game at speed (no GPU on
+  GitHub's runners; see "The browser tests don't run in CI"), so `npm run test:browser` runs on
+  the developer's machine before pushing, and the deploy is still gated by Vitest only. The
+  frame-cost benchmark is out of the default run: `npm run bench`, when rendering cost changes.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
   ambientCG, Quaternius). Chunk 9 also used a Mixamo soldier, which chunk 11 replaced to leave
   no licensing doubts.
@@ -768,6 +783,6 @@ extraction stays as hard as it is.
 - **The sky light stays as tuned** (20): measured, it's 24% brighter than the original sky
   would give, but the lighting was tuned by eye on it, so it wasn't scaled down to match.
 - **Testing:** Vitest for the shared simulation (determinism, movement, collision), and from
-  chunk 19 Playwright for the game in the browser (`npm run test:browser`: Chromium on the Vite
-  dev server, whose development build has the hooks the tests use; Firefox and WebKit until
-  2026-09-29).
+  chunk 19 Playwright for the game in the browser (`npm run test:browser`, and `npm run bench`
+  for the frame-cost benchmark: Chromium on the Vite dev server, whose development build has the
+  hooks the tests use; Firefox and WebKit until 2026-09-29).

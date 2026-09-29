@@ -1098,6 +1098,9 @@ const still = import.meta.env.DEV ? Number(new URLSearchParams(location.search).
 // And the light inside every building is worked out at once, rather than a little each frame.
 if (!Number.isNaN(still)) view.light3d.finishAll();
 
+/** In development, `?torch` lights your own flashlight on the menu camera too, for screenshots of its beam. */
+const devTorch = import.meta.env.DEV && new URLSearchParams(location.search).has('torch');
+
 /** Seconds for the wind, waves and rain. */
 function sceneTime(): number {
   return Number.isNaN(still) ? performance.now() / 1000 : still;
@@ -1105,6 +1108,8 @@ function sceneTime(): number {
 
 function orbitCamera(now: number): void {
   if (devCam) {
+    // Seen as someone standing there would, not through the menu's thinned fog.
+    view.preview = false;
     camera.position.set(devCam[0], devCam[1], devCam[2]);
     camera.lookAt(devCam[3], devCam[4], devCam[5]);
     focus.set(devCam[3], devCam[4], devCam[5]);
@@ -1210,7 +1215,7 @@ if (import.meta.env.DEV) {
   Object.assign(window, {
     THREE,
     game: {
-      treeFade, camera, scene, renderer, bodies, effects, sfx, viewModel, input, resolution, dev,
+      treeFade, camera, scene, renderer, bodies, effects, sfx, viewModel, input, resolution, flashlights, dev,
       get view() { return view; }, get world() { return world; }, get conn() { return conn; }, get deathcam() { return deathcam; },
     },
   });
@@ -1260,7 +1265,7 @@ renderer.setAnimationLoop(() => {
   } else orbitCamera(now);
   camera.updateMatrixWorld();
   // In a death cam, the killer's own light lights their view.
-  const torch = cam ? cam.lit : !!state && !state.dead && input.light;
+  const torch = cam ? cam.lit : state ? !state.dead && input.light : devTorch;
   flashlights.update(camera, torch, players, (id, out, dir) => bodies.torch(id, out, dir));
   view.torch(torch && flashlights.dark, camera.position, camera.getWorldDirection(V_LOOK));
   viewModel.torchOn = torch;

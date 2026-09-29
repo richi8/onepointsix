@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { chromium, expect, test, type BrowserType } from '@playwright/test';
 
-// The frame-cost report (see dev/bench.ts), in Chromium, after all
-// the other tests. It prints the numbers next to those in bench-baseline.json,
+// The frame-cost report (see dev/bench.ts), in Chromium, run on its own
+// (npm run bench) rather than with the other tests. It prints the numbers next to those in bench-baseline.json,
 // the last ones kept on purpose, and fails only if the page does. To keep a
-// run's numbers as the new baseline: BENCH_BASELINE=1 npm run test:browser.
+// run's numbers as the new baseline: BENCH_BASELINE=1 npm run bench.
 // Then the adaptive resolution on a GPU slowed on purpose, which does fail if
 // it doesn't settle.
 
@@ -59,13 +59,15 @@ for (const [name, type, args] of ENGINES) {
 
 // Adaptive resolution on a GPU made slow on purpose, in Chromium only: the
 // point is the controller, and one engine's timing is enough to see it settle.
+// 25 s is long enough to settle (in about 3 s) and for one step back up that
+// proves too slow to be taken back.
 test('adaptive resolution settles on a slow GPU', async ({ baseURL }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(120_000);
   const browser = await chromium.launch({ args: ENGINES[0][2] });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-    await page.goto(new URL('dev/bench.html?adaptive=60', baseURL).href);
-    await page.waitForFunction(() => document.title === 'done', null, { timeout: 200_000 });
+    await page.goto(new URL('dev/bench.html?adaptive=25', baseURL).href);
+    await page.waitForFunction(() => document.title === 'done', null, { timeout: 100_000 });
     const a = await page.evaluate(() => (window as unknown as { adaptive: Adaptive }).adaptive);
     adaptive = a;
     // Full resolution was too slow, so it came down, and holds 50 fps without switching back and forth.

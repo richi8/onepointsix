@@ -12,7 +12,8 @@
     "sim": "node src/server/headless.ts",
     "playtest": "node src/server/playtest.ts",
     "test": "vitest run",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test --project=chromium",
+    "bench": "playwright test --project=bench"
   },
   "dependencies": {
     "three": "^0.186.0"

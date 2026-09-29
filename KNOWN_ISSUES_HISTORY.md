@@ -492,6 +492,18 @@ notes the chunk it came from.
   https://richi8.github.io/onepointsix/. It served the latest pushed build (chunk 10's bundle
   hash) and the assets, and a `?world=4242&mode=pve&by=Tester&score=1234` link opened island
   #4242 in PvE with the challenge shown. Pages gzips `.hdr` and `.glb` and caches for 10 minutes.
+- **The single-file build is checked by hand only** (single file). `npm run build:single` makes
+  `dist-single/onepointsix.html`, the whole game in one 8.3 MB page that plays when opened from
+  disk: one inline script, workers and `public/` packed in base64 and served to `fetch()` and
+  `new Worker` by a small shim in the page. It was checked by opening it from `file://` in headless
+  Chromium, Firefox and WebKit (loaded, textured, a run started). No Playwright test covers it,
+  since the suite runs on the dev server. The shim covers only `fetch()` and `Worker`, so a new
+  loader that uses `XMLHttpRequest`, an `<img src>` or a module worker with imports would break it.
+  **Resolved** (31): `e2e/single.e2e.ts` builds it into a folder of its own (under a second),
+  opens it from `file://`, waits for the menu, starts a run and fails on any page error, console
+  error, texture failure or request to the disk besides the page itself, so a loader the shim
+  doesn't cover should fail it (not tried by breaking the shim). The page is 5.9 MB since the AAC
+  copies were dropped.
 
 ### Day, night and weather
 - **Others' flashlights shine from their gun's muzzle** (16). There's no torch model on the gun,

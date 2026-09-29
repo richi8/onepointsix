@@ -3,12 +3,14 @@ import { defineConfig, devices } from '@playwright/test';
 // Browser tests (`npm run test:browser`): the real game on the Vite dev server,
 // whose development build has the hooks the tests use (window.game, game.dev,
 // ?cam= and ?still=). Chromium only for now: Firefox and Safari come back
-// before release (see Decisions in PLAN.md). The frame-cost benchmark runs
-// last, on its own.
+// before release (see Decisions in PLAN.md). The frame-cost benchmark is a
+// project of its own, run only when asked for (`npm run bench`).
 
 const PORT = 5188;
-// Headless Chromium draws WebGL in software unless told to use the GPU.
-const gpu = process.platform === 'darwin' ? ['--use-angle=metal'] : ['--use-angle=gl'];
+// Headless Chromium draws WebGL in software unless told to use the GPU. Where
+// there's none to use, as on CI, it draws in software (SwiftShader) anyway;
+// E2E_GL=software asks for that anywhere, to see what CI sees.
+export const gpu = process.env.E2E_GL === 'software' ? ['--use-angle=swiftshader'] : process.platform === 'darwin' ? ['--use-angle=metal'] : ['--use-angle=gl'];
 
 export default defineConfig({
   testDir: 'e2e',
@@ -31,14 +33,14 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    { name: 'setup', testMatch: 'setup.e2e.ts', teardown: 'bench' },
+    { name: 'setup', testMatch: 'setup.e2e.ts' },
     {
       name: 'chromium',
       dependencies: ['setup'],
       testIgnore: ['setup.e2e.ts', 'bench.e2e.ts'],
       use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: { args: gpu } },
     },
-    // After everything else, so nothing else is drawing meanwhile.
+    // On its own, so nothing else is drawing meanwhile.
     { name: 'bench', testMatch: 'bench.e2e.ts', fullyParallel: false },
   ],
   webServer: {

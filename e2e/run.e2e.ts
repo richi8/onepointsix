@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { EXTRACT_FEE } from '../src/shared/constants.ts';
 import { lootValue } from '../src/shared/loot.ts';
 import { parseShareLink } from '../src/shared/share.ts';
@@ -131,5 +131,26 @@ test.describe('resuming', () => {
     await card.locator('.score').click();
     await expect(note).toContainText('holds the mouse for a moment after Esc');
     await expect(note).toHaveText('Your browser didn’t give the mouse back. Click again to resume.', { timeout: 10_000 });
+  });
+});
+
+test.describe('flashlight', () => {
+  const lit = (page: Page) => page.evaluate(() => window.game.input.light && window.game.flashlights.own.intensity > 0);
+
+  test('T lights it at night and puts it out again', async ({ page }) => {
+    await open(page, '?time=night');
+    await play(page);
+    await page.keyboard.press('KeyT');
+    await expect.poll(() => lit(page)).toBe(true);
+    await page.keyboard.press('KeyT');
+    await expect.poll(() => lit(page)).toBe(false);
+  });
+
+  test('T does nothing by day', async ({ page }) => {
+    await open(page);
+    await play(page);
+    await page.keyboard.press('KeyT');
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => window.game.input.light)).toBe(false);
   });
 });

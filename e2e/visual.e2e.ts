@@ -51,6 +51,25 @@ test('island: indoor at dusk', async ({ page }) => {
   await expect(page).toHaveScreenshot('indoor-dusk.png');
 });
 
+// Outside an outpost at eye height, a lamp on its wall, in each light and
+// weather but a clear day: the sky, sun and fog of each, the rain (frozen),
+// and at night your own flashlight lit and the lamps.
+const OUTSIDE = 'o0,-25,1.7,-25,0,1.5,0';
+const CONDITIONS: Record<string, string> = {
+  dusk: '&time=dusk',
+  rain: '&weather=rain',
+  fog: '&weather=fog',
+  night: '&time=night&torch',
+  'night-rain': '&time=night&weather=rain&torch',
+};
+
+for (const [name, query] of Object.entries(CONDITIONS)) {
+  test(`conditions: ${name}`, async ({ page }) => {
+    await spot(page, OUTSIDE, query);
+    await expect(page).toHaveScreenshot(`conditions-${name}.png`);
+  });
+}
+
 const POSES: Record<string, string> = {
   moving: 'show=stand,walk,run,crouch,crouchwalk,jump,fall,mantle&view=side&d=13',
   hands: 'show=reload:0.1,reload:0.4,draw,throw:0.2,lean,leanl,aimup,dead&view=front&d=13',
