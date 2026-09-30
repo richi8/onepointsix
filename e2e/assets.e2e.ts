@@ -1,13 +1,9 @@
-import { existsSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { open } from './game.ts';
 
 // The assets as the game loads them: through our own Basis transcoder in
 // every engine, and measured against the originals they were made from (see
-// dev/assets.ts), which only runs where scripts/fetch-assets.mjs has left
-// them in its cache.
-
-const ORIGINALS = new URL('../node_modules/.cache/fetch-assets/originals/sky.hdr', import.meta.url);
+// dev/assets.ts).
 
 test('the textures load through the transcoder', async ({ page }) => {
   await open(page);
@@ -32,7 +28,6 @@ interface Report {
 }
 
 test('the packed assets against the originals', async ({ page }) => {
-  test.skip(!existsSync(ORIGINALS), 'no originals: run node scripts/fetch-assets.mjs');
   await page.goto('./dev/assets.html');
   await page.waitForFunction(() => document.title === 'done', null, { timeout: 90_000 });
   const r = await page.evaluate(() => (window as unknown as { report: Report }).report);

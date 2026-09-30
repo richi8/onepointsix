@@ -1387,9 +1387,12 @@ notes the chunk it came from.
   static.poly.pizza answered the soldier's download with 403, though the same URL downloads fine
   from a home connection, so its Cloudflare most likely turns away datacentre IPs.
   **Resolved** (2026-09-30): a User-Agent of the scripts' own didn't help, so the four source
-  models (the soldier and three guns, 1.8 MB, public domain) are committed in `scripts/models`
-  with their poly.pizza URLs noted, and `fetch-assets.mjs` reads them from there. The packed
-  models came out byte for byte the same.
+  models (the soldier and three guns, 1.8 MB, public domain) are committed with their poly.pizza
+  URLs noted, and `fetch-assets.mjs` reads them from there. The packed models came out byte for
+  byte the same. Then every other original followed, so nothing depends on the sites staying up:
+  the Poly Haven textures and sky, the animation library and the Freesound previews, 53 MB in all,
+  in `scripts/originals`. The scripts download only what's missing there, and the browser test
+  of the packed assets no longer skips without them.
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops

@@ -1,5 +1,6 @@
-// Downloads the game's CC0 sounds from Freesound (see src/client/soundlist.ts),
-// cuts them, and packs them into three files, the early sounds, the ambience
+// Cuts the game's CC0 sounds from Freesound (see src/client/soundlist.ts),
+// committed as the previews in scripts/originals/sounds (any missing there are
+// downloaded, to be committed too, so nothing depends on Freesound staying up), and packs them into three files, the early sounds, the ambience
 // and the late ones (see BANKS), each as Opus: public/assets/sounds-early.ogg,
 // sounds-ambience.ogg and sounds-late.ogg, with where each sound sits in
 // public/assets/sounds.json. The results are committed, so this only needs
@@ -15,6 +16,7 @@ import { ffmpeg } from './tools.mjs';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
 const CACHE = new URL('../node_modules/.cache/fetch-sounds/', import.meta.url).pathname;
+const ORIGINALS = new URL('originals/sounds/', import.meta.url).pathname;
 const RATE = 44100;
 /** Silence between sounds in the packed file, so none bleeds into the next. */
 const GAP = 0.05;
@@ -32,18 +34,18 @@ const FORMATS = [
 
 /** A recording's preview as mono samples, checked to be CC0 on its page first. */
 async function recording(id) {
-  const wav = join(CACHE, `${id}.wav`);
-  if (!existsSync(wav)) {
+  const mp3 = join(ORIGINALS, `${id}.mp3`);
+  if (!existsSync(mp3)) {
     const page = await (await fetch(`https://freesound.org/s/${id}/`, { headers: { 'User-Agent': 'Mozilla/5.0' } })).text();
     if (!page.includes('creativecommons.org/publicdomain/zero/1.0')) throw new Error(`Freesound ${id} isn't CC0`);
     const url = page.match(/https:\/\/cdn\.freesound\.org\/previews\/\d+\/\d+_\d+-hq\.mp3/)?.[0];
     if (!url) throw new Error(`No preview for Freesound ${id}`);
-    const mp3 = join(CACHE, `${id}.mp3`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${res.status} ${url}`);
     writeFileSync(mp3, Buffer.from(await res.arrayBuffer()));
-    ffmpeg(['-i', mp3, '-ac', '1', '-ar', String(RATE), '-c:a', 'pcm_s16le', wav]);
   }
+  const wav = join(CACHE, `${id}.wav`);
+  ffmpeg(['-i', mp3, '-ac', '1', '-ar', String(RATE), '-c:a', 'pcm_s16le', wav]);
   return readWav(readFileSync(wav));
 }
 
@@ -156,6 +158,7 @@ function opusPreSkip(file) {
 }
 
 mkdirSync(CACHE, { recursive: true });
+mkdirSync(ORIGINALS, { recursive: true });
 const banks = BANKS.map(({ name, has }) => ({ name, sounds: SOUNDS.filter((s) => has(s.name)) }));
 const round = (v) => Math.round(v * 1e5) / 1e5;
 const formats = FORMATS.map(({ ext, type }) => ({ ext, type, priming: 0 }));

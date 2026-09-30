@@ -1,11 +1,12 @@
-// Downloads the game's CC0 assets (or reads them from scripts/models) and
-// packs them for the web into public/assets. The results are committed, so this only needs running again
-// to change them. Pass section names (textures, sky, models) to redo only
+// Packs the game's CC0 assets for the web into public/assets, from the
+// originals committed in scripts/originals (downloading any that are missing
+// there, to be committed too, so nothing depends on the sites staying up).
+// The results are committed, so this only needs running again to change them. Pass section names (textures, sky, models) to redo only
 // those; with none, it does them all. Runs on macOS (Apple Silicon or Intel) and Linux (x86-64 or
 // Arm): ffmpeg resizes the textures (see tools.mjs), and the KTX tools come
 // from Khronos's release for the platform if `ktx` isn't on the PATH. The
-// downloaded originals stay in node_modules/.cache/fetch-assets/originals,
-// for e2e/assets.e2e.ts to measure the packed ones against.
+// browser tests measure the packed assets against the originals (see
+// dev/assets.ts).
 //
 //   node scripts/fetch-assets.mjs [textures] [sky] [models]
 
@@ -22,13 +23,14 @@ import { retarget } from './retarget.mjs';
 import { ffmpeg, get } from './tools.mjs';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
-/**
- * The source models, committed: poly.pizza, where they come from, refuses
- * downloads from GitHub's runners. Each file's origin is noted where it's used.
- */
-const MODELS = new URL('models/', import.meta.url).pathname;
 const CACHE = new URL('../node_modules/.cache/fetch-assets/', import.meta.url).pathname;
-const ORIGINALS = join(CACHE, 'originals');
+const ORIGINALS = new URL('originals/', import.meta.url).pathname;
+/**
+ * The source models, which can't be fetched again here: poly.pizza, where
+ * they come from, refuses downloads from GitHub's runners. Each file's origin
+ * is noted where it's used.
+ */
+const MODELS = join(ORIGINALS, 'models');
 const SIZE = 512;
 const HDRI = 'kloofendal_48d_partly_cloudy_puresky';
 /**
@@ -83,7 +85,7 @@ const KTX_BUILDS = {
   'linux-x64': 'Linux-x86_64.tar.bz2',
 };
 
-/** A download kept in the cache, fetched only the first time. */
+/** A download kept with the originals, fetched only if it isn't there. */
 async function cached(url, path) {
   if (!existsSync(path)) writeFileSync(path, await get(url));
   return path;
@@ -270,7 +272,7 @@ async function model(file, path, edit = () => {}) {
 }
 
 if (doing('models')) {
-  const library = join(CACHE, 'animation-library');
+  const library = join(ORIGINALS, 'animations');
   mkdirSync(library, { recursive: true });
   for (const ext of ['gltf', 'bin']) await cached(`${LIBRARY}${LIBRARY_FILE}.${ext}`, join(library, `${LIBRARY_FILE}.${ext}`));
   const clips = await io.read(join(library, `${LIBRARY_FILE}.gltf`));

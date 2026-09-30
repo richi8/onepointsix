@@ -1,7 +1,7 @@
 # Asset credits
 
-Everything here is CC0 (public domain). `scripts/fetch-assets.mjs` downloads it and packs it for
-the web. The one exception is `basis/`, the Basis Universal transcoder built from Binomial's source
+Everything here is CC0 (public domain). The originals are kept in `scripts/originals`, and
+`scripts/fetch-assets.mjs` packs them for the web. The one exception is `basis/`, the Basis Universal transcoder built from Binomial's source
 by `scripts/build-transcoder.mjs`, under the Apache License 2.0, as three.js ships it.
 
 - **Textures and sky** from [Poly Haven](https://polyhaven.com), CC0: grass_ground,

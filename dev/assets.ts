@@ -6,8 +6,7 @@ import { LAYERS } from '../src/shared/layers.ts';
 
 // The packed assets measured against the originals they were made from, run
 // by the browser tests (e2e/assets.e2e.ts) or by hand at /dev/assets.html on
-// the dev server. Needs the originals that scripts/fetch-assets.mjs keeps in
-// node_modules/.cache/fetch-assets/originals.
+// the dev server, with the originals committed in scripts/originals.
 //
 // - Textures: every layer of the KTX2 arrays, decoded as the GPU sees it (in
 //   the format the transcoder picks here, and in each other format it could
@@ -24,7 +23,7 @@ import { LAYERS } from '../src/shared/layers.ts';
 // results and document.title to "done".
 
 const q = new URLSearchParams(location.search);
-const ORIGINALS = '/node_modules/.cache/fetch-assets/originals/';
+const ORIGINALS = '/scripts/originals/';
 const TEXTURES = q.get('textures') ?? '/assets/textures/';
 const SIZE = 512;
 /** The sky's cube size, as in src/client/assets.ts. */
