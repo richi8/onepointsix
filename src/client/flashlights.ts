@@ -1,16 +1,18 @@
 import * as THREE from 'three';
 import type { PlayerSnap } from '../shared/protocol.ts';
+import { localLights } from './locallights.ts';
 
 // Flashlights after dark. Your own lights the way from just below your eye,
-// and casts shadows, so it doesn't light the far side of a wall. Others'
-// shine from the torches on their guns: the nearest few really light the
-// ground, and every lit one shows a faint beam and a glare when it points
-// your way, which is how you spot a guard across the island at night. Every
-// light that could be used stays in the scene all the time, so switching one
-// on never recompiles a material.
+// and casts shadows from a map of its own, so it doesn't light the far side
+// of a wall. Others' shine from the torches on their guns: each lit one
+// lights the world with the local lights (see locallights.ts), the nearest
+// casting shadows too, and shows a faint beam and a glare when it points
+// your way, which is how you spot a guard across the island at night. Your
+// own light stays in the scene all the time, so switching it on never
+// recompiles a material.
 
-/** Others' flashlights that light the world, nearest first. */
-const LIT_OTHERS = 4;
+/** Others' lit flashlights, nearest first, whose beams light the rain. */
+export const RAIN_BEAMS = 3;
 /** Your own light's shadow map, texels a side. */
 const SHADOW_MAP = 1024;
 /** Beams and glares drawn for others' lights this far off, at most this many. */
@@ -28,7 +30,7 @@ const OWN_OFFSET = new THREE.Vector3(0.18, -0.22, 0);
 
 export class Flashlights {
   private readonly own: THREE.SpotLight;
-  private readonly others: THREE.SpotLight[] = [];
+  private readonly color = new THREE.Color(0xfff2de);
   private readonly beams: THREE.Mesh[] = [];
   private readonly glares: THREE.Sprite[] = [];
   private night = false;
@@ -50,7 +52,6 @@ export class Flashlights {
     this.own.shadow.bias = -0.0005;
     this.own.shadow.normalBias = 0.03;
     this.own.shadow.autoUpdate = false;
-    for (let i = 0; i < LIT_OTHERS; i++) this.others.push(spot());
 
     const beamGeo = new THREE.ConeGeometry(Math.tan(ANGLE) * BEAM_LENGTH, BEAM_LENGTH, 20, 1, true)
       .translate(0, -BEAM_LENGTH / 2, 0)
@@ -80,7 +81,7 @@ export class Flashlights {
     this.night = dark;
     this.fogNear = fogNear;
     this.fogFar = fogFar;
-    for (const s of [this.own, ...this.others]) s.visible = dark;
+    this.own.visible = dark;
     // Its shadow map drawn once, so there's one to bind before it's first switched on.
     this.own.shadow.needsUpdate = dark;
     if (!dark) for (let i = 0; i < BEAMS; i++) this.beams[i].visible = this.glares[i].visible = false;
@@ -89,13 +90,16 @@ export class Flashlights {
   /**
    * Once a frame: your own light from `camera` if `on`, and the lit ones
    * among `players`, shining from `torch` where the body is drawn, along the
-   * gun, or else from the eye along the aim.
+   * gun, or else from the eye along the aim. Returns the lit ones' lenses and
+   * directions, nearest first, into `lit`, for the rain.
    */
   update(
     camera: THREE.Camera, on: boolean, players: readonly PlayerSnap[],
     torch: (id: number, out: THREE.Vector3, dir: THREE.Vector3) => THREE.Vector3 | null,
-  ): void {
-    if (!this.night) return;
+    lit: { at: THREE.Vector3; dir: THREE.Vector3 }[] = [],
+  ): { at: THREE.Vector3; dir: THREE.Vector3 }[] {
+    lit.length = 0;
+    if (!this.night) return lit;
     const eye = camera.position;
     this.own.intensity = on ? INTENSITY : 0;
     this.own.shadow.autoUpdate = on;
@@ -105,7 +109,7 @@ export class Flashlights {
       this.own.target.updateMatrixWorld();
     }
 
-    const lit: { p: PlayerSnap; at: THREE.Vector3; dir: THREE.Vector3; d: number }[] = [];
+    const others: { p: PlayerSnap; at: THREE.Vector3; dir: THREE.Vector3; d: number }[] = [];
     for (const p of players) {
       if (!p.light || p.dead) continue;
       const d = Math.hypot(p.x - eye.x, p.z - eye.z);
@@ -117,22 +121,32 @@ export class Flashlights {
         const cp = Math.cos(p.pitch);
         dir.set(-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp);
       }
-      lit.push({ p, at, dir, d });
+      others.push({ p, at, dir, d });
     }
-    lit.sort((a, b) => a.d - b.d);
+    others.sort((a, b) => a.d - b.d);
 
-    this.others.forEach((s, i) => {
-      const l = lit[i];
-      s.intensity = l ? INTENSITY : 0;
-      if (!l) return;
-      s.position.copy(l.at);
-      s.target.position.copy(l.at).add(l.dir);
-      s.target.updateMatrixWorld();
-    });
-
+    for (const o of others) {
+      // Its light reaches DISTANCE round it: past that and the fog, nothing of it shows.
+      if (o.d - DISTANCE > this.fogFar) continue;
+      const light = localLights.add();
+      light.x = o.at.x;
+      light.y = o.at.y;
+      light.z = o.at.z;
+      light.dx = o.dir.x;
+      light.dy = o.dir.y;
+      light.dz = o.dir.z;
+      light.color.copy(this.color);
+      light.intensity = INTENSITY;
+      light.range = DISTANCE;
+      light.decay = DECAY;
+      light.angle = ANGLE;
+      light.penumbra = PENUMBRA;
+      light.shadow = true;
+      light.near = o.d;
+    }
     const toEye = new THREE.Vector3();
     for (let i = 0; i < BEAMS; i++) {
-      const l = lit[i];
+      const l = others[i];
       const beam = this.beams[i];
       const glare = this.glares[i];
       beam.visible = glare.visible = !!l;
@@ -150,6 +164,8 @@ export class Flashlights {
       glare.scale.setScalar(0.35 + l.d * 0.012);
       glare.material.opacity = facing * Math.max(fade, 0.25);
     }
+    for (let i = 0; i < Math.min(others.length, RAIN_BEAMS); i++) lit.push(others[i]);
+    return lit;
   }
 }
 

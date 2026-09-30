@@ -232,10 +232,41 @@ export interface Lamp {
   outpost: number;
 }
 
-/** A lamp's height over the ground, how far its arm reaches, and how far round its foot it lights someone up. */
+/** A lamp's height over the ground and how far its arm reaches. */
 export const LAMP_HEIGHT = 5.5;
 const LAMP_ARM = 0.9;
-export const LAMP_REACH = 9;
+/**
+ * A lamp's light, as drawn and as bots see by it: its strength, how far it
+ * reaches and how fast it fades, the half-angle of its cone and how soft the
+ * cone's edge is (radians and a share, as three.js's spotlights take them),
+ * and how far its light leans toward the outpost's middle for each metre down.
+ */
+export const LAMP_LIGHT = { intensity: 36, range: 24, decay: 1.4, angle: 0.95, penumbra: 0.75, tilt: 0.45 } as const;
+/** Lamplight at least this bright shows someone as plainly as by day. */
+export const LAMP_SEEN = 0.5;
+
+/** Where a lamp's light comes from, below its housing. */
+export function lampFrom(l: Lamp): Point {
+  return { x: l.hx, y: l.hy - 0.12, z: l.hz };
+}
+
+/** How brightly lamp `l` alone lights (x, y, z), walls or not: its cone and its fall-off, as three.js's spotlight works them out. */
+export function lampShine(l: Lamp, x: number, y: number, z: number): number {
+  const { intensity, range, decay, angle, penumbra, tilt } = LAMP_LIGHT;
+  const fx = x - l.hx;
+  const fy = y - (l.hy - 0.12);
+  const fz = z - l.hz;
+  const d = Math.hypot(fx, fy, fz);
+  if (d >= range || d < 1e-3) return d < 1e-3 ? intensity : 0;
+  // The cone's axis: down, and toward the middle.
+  const ax = l.dx * tilt;
+  const az = l.dz * tilt;
+  const cos = (fx * ax - fy + fz * az) / (d * Math.hypot(ax, 1, az));
+  const cone = smoothstep(Math.cos(angle), Math.cos(angle * (1 - penumbra)), cos);
+  if (cone <= 0) return 0;
+  const cut = Math.max(1 - (d / range) ** 4, 0);
+  return (intensity / Math.max(d ** decay, 0.01)) * cut * cut * cone;
+}
 /** Lamps in each outpost, and the least room between two of them. */
 const LAMPS = 3;
 const LAMP_SPACING = 12;
@@ -401,19 +432,24 @@ export class World {
   // ---------------------------------------------------------------- queries
 
   /**
-   * Whether a lamp still standing shines on (x, y, z): within its reach
-   * across the ground and in its line of sight, so not behind a wall or
-   * under a roof. Only after dark does that mean anything.
+   * How brightly the lamps still standing light (x, y, z), as the client draws
+   * them: within each one's cone, fading with distance, and only where the
+   * lamp is in sight, so not behind a wall or under a roof. About 1 a few
+   * metres under a lamp; only after dark does it mean anything.
    */
-  inLamplight(x: number, y: number, z: number): boolean {
+  lamplight(x: number, y: number, z: number): number {
+    let sum = 0;
     for (const l of this.lamps) {
       if (this.panels[l.panel].box.gone) continue;
-      const px = l.hx + l.dx * LAMP_REACH * 0.35;
-      const pz = l.hz + l.dz * LAMP_REACH * 0.35;
-      if (Math.hypot(x - px, z - pz) > LAMP_REACH || y > l.hy) continue;
-      if (this.hasLineOfSight(l.hx, l.hy - 0.2, l.hz, x, y, z)) return true;
+      const lit = lampShine(l, x, y, z);
+      if (lit > 0.02 && this.hasLineOfSight(l.hx, l.hy - 0.2, l.hz, x, y, z)) sum += lit;
     }
-    return false;
+    return sum;
+  }
+
+  /** Whether the lamps light (x, y, z) enough that someone there is seen from as far as by day. */
+  inLamplight(x: number, y: number, z: number): boolean {
+    return this.lamplight(x, y, z) >= LAMP_SEEN;
   }
 
   /** Height of the rendered terrain mesh, matching its triangulation exactly. */

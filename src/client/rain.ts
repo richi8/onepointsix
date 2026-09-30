@@ -1,14 +1,17 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import type { World } from '../shared/world.ts';
+import { ISLAND_GLSL, islandUniforms } from './islandmap.ts';
 
 // Rain: streaks falling through a box that follows the camera, splashes where
-// they land, wet ground with puddles, and now and then lightning. Every drop
-// has a fixed place in the world that wraps round the box, so turning or
-// walking doesn't drag the rain along; the vertex shader does all the
-// moving, so the streaks cost one draw call and no work on the CPU. A map of
-// the roofs round the camera keeps the rain, its splashes and the wet off
-// whatever is under one.
+// they land, wet ground, trees, grass and bodies, puddles where water
+// gathers, rippling, and now and then lightning. Every drop has a fixed place
+// in the world that wraps round the box, so turning or walking doesn't drag
+// the rain along; the vertex shader does all the moving, so the streaks cost
+// one draw call and no work on the CPU. A sharp map of the roofs round the
+// camera, and the island's coarser one farther off, keep the rain, its
+// splashes and the wet off whatever is under one. Flashlight beams near the
+// camera light the drops in them.
 
 const DROPS = 9000;
 /** Metres across and high of the box of rain round the camera. */
@@ -40,24 +43,29 @@ const STRIKE_GAP: [number, number] = [18, 55];
 const STRIKE_NEAR = 700;
 const STRIKE_FAR = 4500;
 
-/** Your own flashlight's beam, for lighting the drops in it: whether it's on, where from and which way. */
+/** Flashlight beams that light the drops in them: yours and the nearest others'. */
+export const RAIN_TORCHES = 4;
+
+/** The beams lighting the drops: where each comes from (w 1 if lit) and which way it points. */
 const torchUniforms = {
-  torchOn: { value: 0 },
-  torchFrom: { value: new THREE.Vector3() },
-  torchDir: { value: new THREE.Vector3(0, 0, -1) },
+  torchFrom: { value: Array.from({ length: RAIN_TORCHES }, () => new THREE.Vector4()) },
+  torchDir: { value: Array.from({ length: RAIN_TORCHES }, () => new THREE.Vector3(0, 0, -1)) },
 };
 
-/** GLSL: `inBeam(p)`, how brightly your flashlight lights world point `p`, 0 to 1; and the beam's colour. */
+/** GLSL: `inBeam(p)`, how brightly the flashlights light world point `p`, 0 to 1; and the beam's colour. */
 const TORCH_GLSL = /* glsl */ `
-  uniform float torchOn;
-  uniform vec3 torchFrom;
-  uniform vec3 torchDir;
+  uniform vec4 torchFrom[${RAIN_TORCHES}];
+  uniform vec3 torchDir[${RAIN_TORCHES}];
   float inBeam(vec3 p) {
-    if (torchOn <= 0.0) return 0.0;
-    vec3 to = p - torchFrom;
-    float d = length(to);
-    float cone = smoothstep(${Math.cos(0.34).toFixed(4)}, ${Math.cos(0.2).toFixed(4)}, dot(to / d, torchDir));
-    return torchOn * cone * (1.0 - smoothstep(3.0, 22.0, d));
+    float lit = 0.0;
+    for (int i = 0; i < ${RAIN_TORCHES}; i++) {
+      if (torchFrom[i].w <= 0.0) break;
+      vec3 to = p - torchFrom[i].xyz;
+      float d = length(to);
+      float cone = smoothstep(${Math.cos(0.34).toFixed(4)}, ${Math.cos(0.2).toFixed(4)}, dot(to / d, torchDir[i]));
+      lit += cone * (1.0 - smoothstep(3.0, 22.0, d));
+    }
+    return min(lit, 1.0);
   }
 `;
 
@@ -66,33 +74,43 @@ const BEAM_GLSL = 'const vec3 BEAM_COLOR = vec3(1.0, 0.95, 0.87);';
 
 /**
  * Uniforms shared by the rain and every material that gets wet: the roof
- * map, its corner in the world (x, z) and one over its width, and how wet
- * things are, 0 dry to 1 soaked.
+ * map round the camera, its corner in the world (x, z) and one over its
+ * width; how wet things are, 0 dry to 1 soaked; and the seconds that ripple
+ * the puddles. Past the roof map, the island's coarser one (islandmap.ts).
  */
 export const rainUniforms = {
   roofMap: { value: roofTexture(new Float32Array(ROOF_CELLS * ROOF_CELLS).fill(OPEN_SKY)) },
   roofCorner: { value: new THREE.Vector3(0, 0, 1 / (ROOF_CELLS * ROOF_CELL)) },
   wetness: { value: 0 },
+  rainTime: { value: 0 },
+  ...islandUniforms,
 };
 
-/** GLSL: `underRoof(p)` is 1 where a roof of the map covers world point `p`, else 0. */
+/** GLSL: `underRoof(p)` is 1 where a standing roof covers world point `p`, else 0. */
 export const ROOF_GLSL = /* glsl */ `
   uniform sampler2D roofMap;
   uniform vec3 roofCorner;
+  ${ISLAND_GLSL}
   float underRoof(vec3 p) {
     vec2 uv = (p.xz - roofCorner.xy) * roofCorner.z;
-    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
-    return p.y < texture(roofMap, uv).r - 0.05 ? 1.0 : 0.0;
+    // Round the camera the sharp map, farther off the island's.
+    float top = any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))) ? islandCell(p).r : texture(roofMap, uv).r;
+    return p.y < top - 0.05 ? 1.0 : 0.0;
   }
 `;
+
+/** GLSL: `underRoof` for what never stands under a roof, such as trees and grass. */
+const OPEN_GLSL = 'float underRoof(vec3 p) { return 0.0; }';
 
 /**
  * GLSL for a surface's fragment shader, after its colour and roughness are
  * known: wet ground is darker and shinier, walls less so, and flat ground
- * gathers puddles that mirror the sky. Needs `ROOF_GLSL`.
+ * gathers puddles where water would, in the hollows, which mirror the sky
+ * and ripple in the rain. Needs `underRoof` and, for puddles, `ISLAND_GLSL`.
  */
 export const WET_GLSL = /* glsl */ `
   uniform float wetness;
+  uniform float rainTime;
   float wetHash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
   }
@@ -103,15 +121,38 @@ export const WET_GLSL = /* glsl */ `
     return mix(mix(wetHash(i), wetHash(i + vec2(1.0, 0.0)), f.x), mix(wetHash(i + vec2(0.0, 1.0)), wetHash(i + vec2(1.0, 1.0)), f.x), f.y);
   }
   // How wet a point facing n is, how much of a puddle it holds, and how glossy
-  // its film of water is, into wet.x, wet.y and wet.z.
-  vec3 wetAt(vec3 p, vec3 n) {
+  // its film of water is, into wet.x, wet.y and wet.z; gather is how much
+  // water the ground there gathers, 0 to 1.
+  vec3 wetAt(vec3 p, vec3 n, float gather) {
     if (wetness <= 0.0) return vec3(0.0);
     float w = wetness * (1.0 - underRoof(p)) * mix(0.45, 1.0, clamp(n.y, 0.0, 1.0));
     float patches = wetNoise(p.xz * 0.35) * 0.65 + wetNoise(p.xz * 1.3) * 0.35;
-    float puddle = w * smoothstep(0.995, 0.9995, n.y) * smoothstep(0.6, 0.68, patches);
-    // Water pools a little in the hollows, so the sheen comes and goes in patches.
-    float film = w * smoothstep(0.45, 0.7, patches) * smoothstep(0.95, 0.99, n.y);
+    // Water lies in the hollows, its edge ragged.
+    float pool = gather * 1.3 + (patches - 0.5) * 0.6;
+    float puddle = w * smoothstep(0.985, 0.996, n.y) * smoothstep(0.5, 0.62, pool);
+    // A film of water comes and goes in patches, thicker toward the hollows.
+    float film = w * smoothstep(0.45, 0.7, patches + gather * 0.4) * smoothstep(0.95, 0.99, n.y);
     return vec3(w, puddle, film);
+  }
+  // The slope of a puddle's surface at p, rippled by drops landing in it:
+  // a ring spreading from a random spot in each half-metre cell, each on its own beat.
+  vec2 rippleAt(vec2 p) {
+    vec2 slope = vec2(0.0);
+    vec2 base = floor(p * 2.0);
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        vec2 cell = base + vec2(float(i), float(j));
+        float h = wetHash(cell);
+        vec2 c = (cell + vec2(h, wetHash(cell + 17.3))) * 0.5;
+        float t = fract(rainTime * 1.1 + h * 7.0);
+        vec2 to = p - c;
+        float d = length(to);
+        float x = (d - t * 0.3) * 60.0;
+        float ring = exp(-x * x * 0.08) * (1.0 - t) * (1.0 - t);
+        slope += to / max(d, 1e-3) * cos(x) * ring * 0.3;
+      }
+    }
+    return slope;
   }
 `;
 
@@ -124,16 +165,49 @@ export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: st
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', `#include <common>\n${ROOF_GLSL}\n${WET_GLSL}`)
     .replace('#include <roughnessmap_fragment>', /* glsl */ `#include <roughnessmap_fragment>
-      vec3 wet = wetAt(${pos}, ${normal});
+      vec3 wet = wetAt(${pos}, ${normal}, ${puddles ? `islandPuddle(${pos})` : '0.0'});
       ${puddles ? '' : 'wet.y = 0.0;'}
       // Soaking deepens a colour as well as darkening it.
       diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.5 * wet.x)) * (1.0 - 0.15 * wet.x - 0.25 * wet.y);
       // Soaked soil and grass stay mostly matte; only a thin film on the flat catches the sky.
       roughnessFactor = mix(mix(mix(roughnessFactor, 0.9, wet.x), 0.78, wet.z), 0.03, wet.y);`)
-    // A puddle lies flat, whatever the ground's bumps.
+    // A puddle lies flat, whatever the ground's bumps, but for its ripples.
     .replace('#include <lights_fragment_begin>', /* glsl */ `
-      normal = normalize(mix(normal, (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz, wet.y));
+      if (wet.y > 0.0) {
+        vec2 ripple = rippleAt(${pos}.xz);
+        normal = normalize(mix(normal, (viewMatrix * vec4(normalize(vec3(-ripple.x, 1.0, -ripple.y)), 0.0)).xyz, wet.y));
+      }
       #include <lights_fragment_begin>`);
+}
+
+/**
+ * Make a material get wet in the rain, darker and a little glossier, keeping
+ * whatever it already does as it compiles: for trees, grass, bodies, bags and
+ * debris. Its world position is worked out from the view, and how much it
+ * faces up from its triangle. `sheltered` for what can stand under a roof,
+ * which then keeps it dry; `gloss` is the roughness a soaked surface goes
+ * toward.
+ */
+export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, gloss = 0.45, sheltered = true): M {
+  const before = material.onBeforeCompile;
+  const key = material.customProgramCacheKey.bind(material);
+  material.onBeforeCompile = (shader, renderer) => {
+    before.call(material, shader, renderer);
+    Object.assign(shader.uniforms, rainUniforms);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${sheltered ? ROOF_GLSL : OPEN_GLSL}\n${WET_GLSL}`)
+      .replace('#include <roughnessmap_fragment>', /* glsl */ `#include <roughnessmap_fragment>
+        if (wetness > 0.0) {
+          mat3 wetToWorld = transpose(mat3(viewMatrix));
+          vec3 wetP = wetToWorld * (-vViewPosition - viewMatrix[3].xyz);
+          float up = abs((wetToWorld * normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)))).y);
+          float soaked = wetAt(wetP, vec3(0.0, up, 0.0), 0.0).x;
+          diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.4 * soaked)) * (1.0 - 0.12 * soaked);
+          roughnessFactor = mix(roughnessFactor, min(roughnessFactor, ${gloss.toFixed(2)}), soaked);
+        }`);
+  };
+  material.customProgramCacheKey = () => `${key()}-wet${sheltered ? '' : '-open'}`;
+  return material;
 }
 
 export class Rain {
@@ -288,11 +362,16 @@ export class Rain {
     this.splashMaterial.uniforms.color.value.copy(color).multiplyScalar(1.3);
   }
 
-  /** Your own flashlight, on or off, shining from `from` along `dir`, for the drops caught in its beam. */
-  torch(on: boolean, from: THREE.Vector3, dir: THREE.Vector3): void {
-    torchUniforms.torchOn.value = on && this.on ? 1 : 0;
-    torchUniforms.torchFrom.value.copy(from);
-    torchUniforms.torchDir.value.copy(dir);
+  /** The lit flashlights nearest the camera, yours first if it's on, for the drops caught in their beams. */
+  torches(lit: readonly { at: THREE.Vector3; dir: THREE.Vector3 }[]): void {
+    const { torchFrom, torchDir } = torchUniforms;
+    for (let i = 0; i < RAIN_TORCHES; i++) {
+      const t = this.on ? lit[i] : undefined;
+      if (t) {
+        torchFrom.value[i].set(t.at.x, t.at.y, t.at.z, 1);
+        torchDir.value[i].copy(t.dir);
+      } else torchFrom.value[i].w = 0;
+    }
   }
 
   /** A roof may have broken: the roof map is made again. */
@@ -315,6 +394,7 @@ export class Rain {
     this.lastTime = time;
     this.placeRoofs(eye);
     if (!this.on) return;
+    rainUniforms.rainTime.value = time % 1000;
     this.material.uniforms.center.value.copy(eye);
     this.material.uniforms.time.value = time % 1000;
     this.splashMaterial.uniforms.time.value = time % 1000;

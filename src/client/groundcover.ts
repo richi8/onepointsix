@@ -8,6 +8,7 @@ import { clamp, smoothstep } from '../shared/geom.ts';
 import { GROUND_LAYERS, groundWeights } from '../shared/ground.ts';
 import { Layer, LAYERS } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
+import { wetMaterial } from './rain.ts';
 import { groundTint, onTiles } from './terrain.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 
@@ -103,15 +104,15 @@ export class GroundCover {
     };
     this.layers = {
       grass: make('grass', grassGeometry(), grassMaterial(this.blades, this.eye, null)),
-      bush: make('bush', bushGeometry(), onTiles(fading(new THREE.MeshStandardMaterial({
+      bush: make('bush', bushGeometry(), wetMaterial(onTiles(fading(new THREE.MeshStandardMaterial({
         map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1, envMapIntensity: 0.55,
-      }), KINDS.bush.range, this.eye, 0.4), world)),
-      pebble: make('pebble', pebbleGeometry(), fading(new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), KINDS.pebble.range, this.eye, 0)),
+      }), KINDS.bush.range, this.eye, 0.4), world), 0.9, false)),
+      pebble: make('pebble', pebbleGeometry(), wetMaterial(fading(new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), KINDS.pebble.range, this.eye, 0), 0.4, false)),
     };
   }
 
   applyAssets(assets: Assets): void {
-    const material = surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.95, flatShading: true });
+    const material = surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.95, flatShading: true }, 1, { wet: true });
     this.layers.pebble.mesh.material = fading(material, KINDS.pebble.range, this.eye, 0);
     this.layers.grass.mesh.material = grassMaterial(this.blades, this.eye, assets);
   }
@@ -396,7 +397,7 @@ function grassMaterial(blades: THREE.Texture, eye: { value: THREE.Vector3 }, ass
         }`);
   };
   material.customProgramCacheKey = () => `${key}-grass-${assets ? 1 : 0}`;
-  return material;
+  return wetMaterial(material, 0.92, false);
 }
 
 /**

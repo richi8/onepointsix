@@ -23,7 +23,7 @@ import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import { type Bush, CONCEALED, VEG_CELL, bagShows, vegetationOf } from '../shared/vegetation.ts';
-import { inBuilding, type Point, type World } from '../shared/world.ts';
+import { inBuilding, lampShine, type Lamp, type Point, type World } from '../shared/world.ts';
 import type { ExtractPoint } from './extracts.ts';
 import { reached, type NavGrid, type Waypoint } from './nav.ts';
 import { TEMPERS, type Personality, type Temper } from './personality.ts';
@@ -137,6 +137,11 @@ export function beamSpot(world: World, a: Agent): Point | null {
   return { x: eye.x + dx * k, y: eye.y + dy * k, z: eye.z + dz * k };
 }
 
+/** Just under a lamp's housing: in sight from where a round meets it. */
+function lampTarget(l: Lamp): Point {
+  return { x: l.hx, y: l.hy - 0.1, z: l.hz };
+}
+
 /** Whether a would shoot b. Operators are each on their own side; guards stick together. */
 export function hostile(a: Agent, b: Agent): boolean {
   if (a === b) return false;
@@ -166,6 +171,16 @@ export const BEAM_THROW = 30;
 const BEAM_GUESS = 0.25;
 /** Operator bots switch their flashlight off this close to an outpost, and whenever they aren't just going about their run. */
 const OPERATOR_DARK = 110;
+/**
+ * After dark, an operator searching a crate or waiting in a spot that a lamp
+ * lights shoots the lamp out first, from at most this far, when it has seen
+ * nobody for LAMP_CALM seconds; it looks again every LAMP_LOOK seconds and
+ * gives up on a lamp after LAMP_TRY.
+ */
+const LAMP_SHOT = 35;
+const LAMP_CALM = 10;
+const LAMP_LOOK = 1;
+const LAMP_TRY = 5;
 /** Footstep hearing ranges: sprinting and walking. Crouch-walking is silent. */
 const STEPS_SPRINT = 22;
 const STEPS_WALK = 9;
@@ -297,6 +312,9 @@ export const tally = {
   slams: 0,
   /** Thinks spent up on a floor off the ground: upstairs or on a watchtower, sentries left out. */
   upThinks: 0,
+  /** Lamps an operator set about shooting out, and paths it looked for keeping out of lamplight. */
+  lampsAimed: 0,
+  shyPaths: 0,
 };
 
 /** A place to go to, and whether it's in a bush, where it has to be reached more exactly. */
@@ -382,6 +400,10 @@ export class Bot {
   private use: 'hold' | 'tap' | null = null;
   /** The doorway it's in or just came through: a leaf of it, and which side of it it came from. */
   private doorway: { id: number; side: number } | null = null;
+  /** A lamp it's shooting out, by index, or -1; when it gives up on it, and when it next looks for one. */
+  private lampAim = -1;
+  private lampUntil = 0;
+  private lampLook = 0;
 
   // Plans.
   private step = 0;
@@ -541,6 +563,7 @@ export class Bot {
     this.perceive(ctx, self, dt);
     this.decide(ctx, self);
     this.behave(ctx, self);
+    this.lamps(ctx, self);
     this.checkStuck(self, dt);
     this.doors(ctx, self);
     if (this.role.kind !== 'sentry' && self.y > ctx.world.floorHeight(self.x, self.z) + 2) tally.upThinks++;
@@ -1392,6 +1415,46 @@ export class Bot {
     return ctx.world.outposts.every((o) => Math.hypot(o.x - self.x, o.z - self.z) > OPERATOR_DARK);
   }
 
+  /**
+   * After dark, an operator about to search a crate or wait in a spot that a
+   * lamp lights shoots the lamp out first, if it can see it and nobody has
+   * been about lately.
+   */
+  private lamps(ctx: BotContext, self: Agent): void {
+    const w = ctx.world;
+    const calm = (): boolean => [...this.contacts.values()].every((c) => c.level < 1 || this.now - c.seenAt > LAMP_CALM);
+    if (this.lampAim >= 0) {
+      const l = w.lamps[this.lampAim];
+      if (w.panels[l.panel].box.gone || this.now > this.lampUntil || !this.isRoutine(this.state) || !calm()) this.lampAim = -1;
+      return;
+    }
+    const g = this.goal;
+    if (this.role.kind !== 'operator' || !ctx.senses.dark || (this.state !== 'loot' && this.state !== 'camp') || !g) return;
+    if (this.now < this.lampLook) return;
+    this.lampLook = this.now + LAMP_LOOK;
+    if (Math.hypot(g.x - self.x, g.z - self.z) > LAMP_SHOT) return;
+    const gy = (g.y ?? w.floorHeight(g.x, g.z)) + 1.2;
+    if (!w.inLamplight(g.x, gy, g.z) || !calm()) return;
+    const eye = hitboxes(self);
+    let best = -1;
+    let most = 0;
+    w.lamps.forEach((l, i) => {
+      if (w.panels[l.panel].box.gone) return;
+      const shine = lampShine(l, g.x, gy, g.z);
+      if (shine <= most) return;
+      const at = lampTarget(l);
+      if (Math.hypot(at.x - eye.headX, at.y - eye.headY, at.z - eye.headZ) > LAMP_SHOT) return;
+      if (!w.hasLineOfSight(eye.headX, eye.headY, eye.headZ, at.x, at.y, at.z)) return;
+      if (!w.hasLineOfSight(l.hx, l.hy - 0.2, l.hz, g.x, gy, g.z)) return;
+      best = i;
+      most = shine;
+    });
+    if (best < 0) return;
+    this.lampAim = best;
+    this.lampUntil = this.now + LAMP_TRY;
+    tally.lampsAimed++;
+  }
+
   private isRoutine(state: BotState): boolean {
     return state === 'patrol' || state === 'loot' || state === 'extract' || state === 'hunt' || state === 'camp';
   }
@@ -1604,7 +1667,10 @@ export class Bot {
     let buttons = 0;
 
     // Where to look: the target, a point of interest, the way ahead, or around.
-    const dir = this.moveDir(ctx, self, a);
+    // Shooting out a lamp, it stands still.
+    const lamp = !fighting && this.lampAim >= 0 ? lampTarget(ctx.world.lamps[this.lampAim]) : null;
+    const moving = this.moveDir(ctx, self, a);
+    const dir = lamp ? null : moving;
     const eye = hitboxes(self);
     let wantYaw = this.yaw;
     let wantPitch = IDLE_PITCH;
@@ -1628,6 +1694,12 @@ export class Bot {
       const t = now + this.wobblePhase;
       wantYaw = aimYaw + this.errYaw + (Math.sin(t * 1.7) + Math.sin(t * 3.1) * 0.5) * s.wobble - self.recoilYaw * s.recoilControl;
       wantPitch = aimPitch + this.errPitch + Math.sin(t * 2.3) * s.wobble - self.recoilPitch * s.recoilControl;
+    } else if (lamp) {
+      // At the housing's middle, from the eye the round leaves from.
+      const from = eyePosition(ctx.world, self.x, self.y, self.z, this.yaw, self.duck, self.lean);
+      dist = Math.hypot(lamp.x - from.x, lamp.z - from.z);
+      aimYaw = wantYaw = yawToward(from.x, from.z, lamp.x, lamp.z);
+      aimPitch = wantPitch = Math.atan2(lamp.y + 0.12 - from.y, dist);
     } else if (this.focus) {
       wantYaw = yawToward(eye.headX, eye.headZ, this.focus.x, this.focus.z);
       wantPitch = Math.atan2(this.focus.y - eye.headY, Math.hypot(this.focus.x - eye.headX, this.focus.z - eye.headZ));
@@ -1685,6 +1757,14 @@ export class Bot {
         buttons |= Btn.Fire;
         this.nextTap = now + w.interval + s.tapDelay * (0.6 + this.rand() * 0.8);
       }
+    } else if (lamp && ready) {
+      // One round at a time, once it's aimed.
+      if (dist > ADS_RANGE) buttons |= Btn.Aim;
+      const off = Math.hypot(angleDiff(this.yaw + self.recoilYaw, aimYaw), this.pitch + self.recoilPitch - aimPitch);
+      if (off < Math.max(Math.atan(0.2 / Math.max(dist, 0.5)), 0.004) && now >= this.nextTap && !self.triggerHeld) {
+        buttons |= Btn.Fire;
+        this.nextTap = now + Math.max(w.interval, 0.3);
+      }
     } else if (fighting && ready && dist > ADS_RANGE) {
       buttons |= Btn.Aim;
     } else {
@@ -1713,7 +1793,10 @@ export class Bot {
         ctx.pathBudget--;
         this.pathAt = now;
         this.pathGoal = g;
-        this.path = ctx.nav.findPath(self.x, self.z, g.x, g.z, self.y, g.y) ?? [];
+        // After dark an operator going about its run keeps out of the lamps' light.
+        const shy = this.role.kind === 'operator' && ctx.senses.dark && this.isRoutine(this.state);
+        if (shy) tally.shyPaths++;
+        this.path = ctx.nav.findPath(self.x, self.z, g.x, g.z, self.y, g.y, shy) ?? [];
         this.noPath = this.path.length === 0;
       }
       while (this.path.length > 1 && reached(this.path[0], self.x, self.y, self.z)) this.path.shift();

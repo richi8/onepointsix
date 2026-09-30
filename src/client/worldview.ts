@@ -11,6 +11,7 @@ import { patchFog } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
+import { IslandMap } from './islandmap.ts';
 import { Lamps } from './lamps.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
@@ -117,6 +118,8 @@ export class WorldView {
   private textured = false;
   /** How much of the sky reaches inside each building. */
   readonly light3d: IndoorLight;
+  /** The island's roofs, puddles and buildings, for the rain and the light inside. */
+  private readonly island: IslandMap;
   private previewing = true;
   /** Whether something casting shadows has broken since the island's still shadow map was drawn, and when it was. */
   private castersChanged = false;
@@ -147,7 +150,8 @@ export class WorldView {
     this.light();
 
     this.world = world;
-    this.light3d = new IndoorLight(world);
+    this.island = new IslandMap(world);
+    this.light3d = new IndoorLight(world, this.island);
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
     this.extractGroup = extracts.group;
@@ -317,13 +321,17 @@ export class WorldView {
     this.glass.instanceMatrix.needsUpdate = true;
     this.light3d.changed();
     this.rain.roofChanged();
+    this.island.roofs();
     this.sun.redraw();
   }
 
   /** Show one panel as the world has it. */
   updatePanel(id: number): void {
     if (!this.world.panels[id]) return;
-    if (this.world.panels[id].kind === 'roof') this.rain.roofChanged();
+    if (this.world.panels[id].kind === 'roof') {
+      this.rain.roofChanged();
+      this.island.roofs(this.world.panels[id].box);
+    }
     if (this.world.panels[id].kind === 'lamp') this.lamps.show();
     this.showPanel(id);
     this.props.instanceMatrix.needsUpdate = true;
@@ -475,9 +483,9 @@ export class WorldView {
     this.hemi.color.copy(l.hemiSky).lerp(FLASH_SKY, f);
   }
 
-  /** Your own flashlight, on or off, from `from` along `dir`: the rain in its beam glints. */
-  torch(on: boolean, from: THREE.Vector3, dir: THREE.Vector3): void {
-    this.rain.torch(on, from, dir);
+  /** The lit flashlights nearest the camera, yours first if it's on: the rain in their beams glints. */
+  torches(lit: readonly { at: THREE.Vector3; dir: THREE.Vector3 }[]): void {
+    this.rain.torches(lit);
   }
 
   /** Whether the camera is under the sea. */

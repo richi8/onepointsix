@@ -3,7 +3,7 @@ import { Btn, CMD_DT, PLAYER_RADIUS } from '../src/shared/constants.ts';
 import { rayAabb, rayCylinder } from '../src/shared/geom.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
-import { World } from '../src/shared/world.ts';
+import { LAMP_SEEN, lampShine, World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const w1 = new World(1);
@@ -132,6 +132,39 @@ describe('lamps', () => {
     const l = world.lamps.find((l) => world.inLamplight(l.hx + l.dx * 3, l.y + 1.2, l.hz + l.dz * 3))!;
     expect(l).toBeDefined();
     expect(world.inLamplight(l.hx + l.dx * 30, l.y + 1.2, l.hz + l.dz * 30)).toBe(false);
+  });
+
+  it('light the cone they point along, as drawn, not behind them or far to the side', () => {
+    const world = new World(DEFAULT_WORLD.seed);
+    const l = world.lamps[0];
+    const at = (along: number, side: number) => {
+      const x = l.hx + l.dx * along - l.dz * side;
+      const z = l.hz + l.dz * along + l.dx * side;
+      return lampShine(l, x, world.floorHeight(x, z) + 1.2, z);
+    };
+    expect(at(3, 0)).toBeGreaterThan(LAMP_SEEN * 3);
+    expect(at(6, 0)).toBeGreaterThan(LAMP_SEEN);
+    expect(at(-4, 0)).toBe(0);
+    expect(at(3, 9)).toBeLessThan(LAMP_SEEN / 4);
+    expect(at(16, 0)).toBeLessThan(LAMP_SEEN / 4);
+  });
+
+  it('are hidden by walls: somewhere in a cone, but behind a wall, stays dark', () => {
+    const world = new World(DEFAULT_WORLD.seed);
+    let hidden = 0;
+    for (const l of world.lamps) {
+      for (let along = 1; along < 12; along += 0.5) {
+        for (let side = -6; side <= 6; side += 0.5) {
+          const x = l.hx + l.dx * along - l.dz * side;
+          const z = l.hz + l.dz * along + l.dx * side;
+          const y = world.floorHeight(x, z) + 1.2;
+          if (lampShine(l, x, y, z) < LAMP_SEEN * 2 || world.hasLineOfSight(l.hx, l.hy - 0.2, l.hz, x, y, z)) continue;
+          hidden++;
+          if (world.lamps.every((o) => o === l || lampShine(o, x, y, z) === 0)) expect(world.inLamplight(x, y, z)).toBe(false);
+        }
+      }
+    }
+    expect(hidden).toBeGreaterThan(0);
   });
 
   it('go out when shot', () => {

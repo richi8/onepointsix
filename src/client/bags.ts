@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import type { BagSnap } from '../shared/protocol.ts';
+import { wetMaterial } from './rain.ts';
 import { REFLECTED } from './water.ts';
 
 // Bags on the ground, left by bodies or dropped: a placeholder duffel until chunk 9.
 
 const geometry = new THREE.BoxGeometry(0.6, 0.35, 0.4).translate(0, 0.175, 0);
-const material = new THREE.MeshStandardMaterial({ color: 0x3d4a2f, roughness: 0.9 });
+const material = wetMaterial(new THREE.MeshStandardMaterial({ color: 0x3d4a2f, roughness: 0.9 }), 0.55);
 
 export class Bags {
   private readonly scene: THREE.Scene;

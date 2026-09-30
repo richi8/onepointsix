@@ -249,7 +249,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | 33 | **Animation III** | Feet placed on the ground under them on slopes and steps; hit reactions that depend on where the round came from, and a shooting motion per gun; the crouch-walk paced to its speed; a real climb (keyframed by hand or from another CC0 set); reloads with moving parts (a bolt handle, a slide and a magazine as their own meshes; the old magazine drops; the bolt-action loads the rounds it needs); first-person arms of the right proportions; the points on the guns snapped to their geometry | In the pose viewer and in play, a body climbs, reloads, takes a hit from the side and stands on a slope like a person | **Done** (in the pose viewer, with screenshot tests of a climb, hits from the side, a slope and dropped magazines; not watched in play. The climb is keyed by hand, the fast crouch is the run clip played low, and the library's pistol shooting clip wasn't moved over, so each gun's kick is keyed instead. Posing 24 near bodies about 2.5 to 2.8–2.9 ms) |
 | 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | **Done** (by unit tests, pose viewer screenshots of a pile before and after a grenade and of a body against someone standing, and a browser test of a fall in play and in the death cam, bit for bit; not watched in play. Bodies left behind stay 30 s, not only until at rest. Posing 24 living bodies costs the same as before, within a noisy session's spread) |
 | 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | **Done** (by unit tests: paths walked up to the crate upstairs and back out on every seed with a two-storey building and up every watchtower, a guard going upstairs to a shot heard there, guards shutting doors behind them and an operator slamming one on a chase, four posts bringing an upper storey down whole; a browser test of a door opening at once with 400 ms of lag; screenshots of a watchtower, a container and the plain ceiling. Not watched in play. "Room by room" is a bot looking into what it heard, not a sweep of the rooms. A bot playtest came out as before, 9% of operator bots out by day, and simulated faster, 31 s against 35 s, as boxes now have one shape) |
-| 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | Not started |
+| 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | **Done** (screenshot tests outside the wall behind a lamp, now dark, the lamps' shadows over a yard and a yard under a lamp on a rainy night, wet with puddles; unit tests of the lamps' cone and walls for bots, paths round lamplight and a bot's shot meeting a lamp; the benchmark's rainy night 14.6 ms against 14.9 ms for the code before in one session on an M3 Pro. Lights past the 16 nearest and shadows past the six nearest are left out; not watched in play) |
 | 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | Not started |
 | 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | Not started |
 | 39 | **Trees and grass** | Trees from CC0 models, or better generated ones, small enough to download, with impostors baked from them to match; grass that shows blades up close instead of three flat cards, fading to the current tufts farther off; the sight model's cover checked against the new grass; within the benchmark's frame budget | Close up, a tree and a patch of grass look real in a screenshot, and the benchmark holds its frame time | Not started |
@@ -396,6 +396,16 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   through its doorway, is lit like the outdoors. Floors under the hemisphere light still look
   brighter than the walls round them. The first-person gun reads the cell it's in, eased over a
   quarter of a second. Tuned (30% floor, 2.6 gain) by screenshots only.
+  **Resolved in part** (36): each way to the sky counts as much as the sky that way shows outside
+  the building, from five spots in it: hills and other buildings (by a ray out to 150 m) hide it,
+  and trees' crowns within 45 m (as cones) hide 60% of it. Materials find the building a point is
+  in from the island's map, so every building (up to 16; islands have 10 or 11) is lit inside
+  however far off. Indoors, a floor gets at most 70% of the sky's light it would facing up, so no
+  more than its walls. No leak at the foot of a wall showed in screenshots at dusk, before or
+  after; the cells under the floor are filled from the room. Still open: only sky light is
+  counted (no bounce, no colour), cells are 0.5 m, what hides the sky outside is worked out once
+  per building and not again when another building breaks, and the gun in your hands reads the
+  cell it's in.
 - **The reflection is partial** (24): it holds the terrain, trees, props, rocks, flags and the sky,
   not bodies, bags, grass, bushes, debris, rain, effects or the sea itself, so a soldier wading
   has no reflection. It's a third of the screen's resolution and redrawn every frame the camera
@@ -503,16 +513,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   machine was busier wasn't looked into; it wasn't kept as the new baseline.
 
 ### Day, night and weather
-- **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
-  behind it. Shadows would need a shadow map per light, drawn every frame.
-  **Resolved in part** (25): your own light casts shadows from a 1024 px map, drawn only while
-  it's on. Others' lights still don't (see below).
-- **Only the two nearest other flashlights light the world** (16). Farther ones show only a faint
-  beam and a glare when pointed your way. Three spotlights (yours and two others) are always in the
-  scene at dusk and night so switching one on never recompiles a material.
-  **Resolved in part** (25): the four nearest now do. With 24 soldiers close up, all lit, in rain
-  at night, the benchmark frame costs about 0.5 ms more than the same crowd by day (M3 Pro, a
-  noisy run: both about 14 ms with the machine loaded). Past four, still beams and glares only.
 - **The look was tuned by screenshots only** (16), on an M3 Pro through headless Chrome. The cost
   of up to 24 beams and glares, three spotlights and the rain on a mid-range laptop wasn't
   measured. The lighting presets, rain, flashlights and menu pickers have no automated tests; the
@@ -527,12 +527,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   night, 19% on a rainy night and 24% on a foggy night. So night is the hardest and fog the
   easiest, as intended, but none of the numbers (sight multiples, one extra guard per outpost,
   loot boost, flashlight reach) have been checked by humans.
-- **Others' flashlights cast no shadows** (25), nor light the rain: only your own beam makes
-  drops glint and throws shadows.
-- **Only terrain, props and rocks get wet** (25). Trees, grass, bushes, bodies and debris look as
-  they do dry. Puddles are painted by noise on near-flat ground, not where water would gather,
-  and don't ripple. The roof map reaches 32 m round the camera; beyond it everything is wet, so
-  a far building's floor seen through a door would be too.
 - **Outpost lamps cast no shadows** (lamps, after chunk 29). Two or three lamps on poles stand
   against each outpost's walls, lit at dusk and night, but only the four nearest the camera
   really light the world (handed from lamp to lamp as you move, fading over 20 m first; gone past
@@ -541,11 +535,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   though lamps stand 9 m clear of the outpost's building. Soldiers cast no shadow under them, and
   the gun in your hands isn't lit by them. The four lights cost no more than the benchmark's noise
   on the rainy night (median 15.1 to 15.6 ms a frame against 15.1 ms without, Chromium, M3 Pro).
-- **Lamplight for bots is a disc** (lamps): anyone within 9 m of the spot a standing lamp points
-  at, below it and in its line of sight, is seen from as far as by day (as in a bot's own beam).
-  Crouching helps only as much as by day. Operator bots don't avoid lamplight, and nobody shoots
-  lamps out on purpose; only the player's and stray rounds or blasts do. A shot lamp comes back with the
-  other broken panels. Checked by unit tests and screenshots only; nobody has played it.
+  **Resolved in part** (36): every lamp within 150 m lights the world and the nearest cast
+  shadows (see the flashlights, in the history), so a wall keeps a lamp's light in and soldiers
+  and crates throw shadows under them; a screenshot test looks outside the wall behind a lamp,
+  where the strip of light used to be. Still open: the gun in your hands isn't lit by them or by
+  others' flashlights (it's drawn apart, and the lights are turned off for it).
 - **Grass is still crossed cards** (natural grass, after chunk 29). Tufts now take the ground's
   colour at their roots (the terrain's textures, blended by its weights, from a small mip in the
   vertex shader), lean their normals out so a tuft shades like a clump, glow when the sun or a lamp
@@ -556,6 +550,26 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   thickened by mip level at 0.2 rather than 0.3, which keeps its tops ragged), a little less than
   the sight model's cover. Checked by screenshots only; the frame cost wasn't measured apart from
   the benchmark still passing.
+- **Local lights have a budget** (36). At most 16 lamps and others' flashlights light the world,
+  ranked by how near the camera they come; past that, the farthest go out at once rather than
+  fading. Only the six nearest that cast shadows get a tile of the atlas, 512 px each, all drawn
+  every frame; the sea's reflection reuses the last frame's atlas. Shadow offsets were tuned by
+  screenshots only. On the benchmark's rainy night (24 lit flashlights near the quarry's lamps)
+  the frame held within noise of the code before (14.6 against 14.9 ms median in one session on
+  an M3 Pro), with 120 more draw calls; a mid-range laptop wasn't measured.
+- **Bots and lamps are unplayed** (36). Only operator bots shoot lamps out, and only one about to
+  search a crate or wait in a spot the lamp lights; they do it without a suppressor too, which
+  guards may hear. In a bot playtest at night in rain (4 islands × 15 min), they aimed at a lamp
+  3 times, and operator bots got out of 16% of runs against 12% for the code before, in the same
+  session. Crouching under a lamp still helps only as much as by day.
+- **Wet is worked out simply** (36). Bodies, bags and debris dry the moment they're under a roof,
+  and are as wet as the ground round them in the open, how much they face up judged from their
+  triangles. Puddles form only on the terrain, not on floors or roofs open to the sky. Past 32 m
+  from the camera, roofs are known in 2 m cells, so a floor near a far building's wall may be wet.
+  Grass and leaves were kept nearly matte when wet, as a gloss turned them grey in screenshots.
+  Checked by screenshots only.
+- **Sunlight shows down a building's inside corners** (seen in chunk 36): a thin line of sun
+  shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
 
 ### Rivals
 - **Campers may wait where they can't see the extraction point** (18). A spot that can see into it

@@ -11,6 +11,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-09-30',
+    title: 'Lamps, lights and the wet',
+    notes: [
+      'The outposts’ lamps and other people’s flashlights cast shadows: a wall between you and a lamp keeps you in the dark, and someone standing under a lamp throws a shadow. Every lamp in an outpost lights the ground now, not only the few nearest you, and so does every flashlight in view.',
+      'Other people’s flashlight beams light up the rain they shine through, as yours does.',
+      'A lamp lights up only the ground its light falls on, a cone in front of it, not a ring all round it. Guards see you plainly only in that cone, and not behind a wall or a crate that shades you from it.',
+      'At night, bot operators keep to the dark round an outpost’s lamps, and shoot out a lamp that lights a crate they mean to search.',
+      'Trees, grass, bushes, soldiers, dropped bags and debris get wet in the rain. Puddles gather in hollows and on level ground, where water would, and ripple in the rain. Floors under a roof stay dry however far off they are.',
+      'Rooms facing a hill or a stand of trees are darker than rooms facing open sky, every building is lit inside as it should be, however far off, and floors indoors are no longer brighter than the walls round them.',
+    ],
+  },
+  {
     date: '2026-09-29',
     title: 'Guns held properly',
     notes: [

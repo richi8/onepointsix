@@ -3,14 +3,15 @@ import { beamSpot, Bot, hostile, type Agent, type BotContext, type Role } from '
 import { NavGrid } from '../src/server/nav.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
-import { GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { Btn, GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { DEFAULT_CONDITIONS, sensesOf, type Senses } from '../src/shared/conditions.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { spawnState, type PlayerState } from '../src/shared/sim.ts';
 import { RIFLE } from '../src/shared/weapons.ts';
-import { inBuilding, watchtower, World } from '../src/shared/world.ts';
+import { inBuilding, lampShine, LAMP_SEEN, watchtower, World } from '../src/shared/world.ts';
+import { eyePosition } from '../src/shared/sim.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const world = new World(DEFAULT_WORLD.seed);
@@ -321,6 +322,77 @@ describe('operator bots', () => {
     for (let t = 0; t < SERVER_TICK_RATE * OPERATOR_REFILL + 1; t++) server.step();
     expect(operators()).toHaveLength(1);
     expect(operators()[0].id).not.toBe(op.id);
+  });
+});
+
+describe('operator bots after dark', () => {
+  const night = sensesOf({ time: 'night', weather: 'clear' });
+
+  /** A lamplit spot in front of a lamp, and a dark one some way off with the lamp in sight. */
+  function litCrate(): { l: World['lamps'][number]; crate: { x: number; y: number; z: number }; from: { x: number; z: number } } {
+    for (const l of world.lamps) {
+      const crate = { x: l.hx + l.dx * 3, y: 0, z: l.hz + l.dz * 3 };
+      crate.y = world.floorHeight(crate.x, crate.z);
+      if (!nav.dry(crate.x, crate.z) || !world.inLamplight(crate.x, crate.y + 1.2, crate.z)) continue;
+      for (let a = 0; a < Math.PI * 2; a += 0.3) {
+        const x = crate.x + Math.sin(a) * 18;
+        const z = crate.z + Math.cos(a) * 18;
+        const y = world.floorHeight(x, z);
+        if (!nav.dry(x, z) || world.lamplight(x, y + 1.2, z) > 0.05) continue;
+        if (!world.hasLineOfSight(x, y + 1.6, z, l.hx, l.hy - 0.1, l.hz)) continue;
+        return { l, crate, from: { x, z } };
+      }
+    }
+    throw new Error('no lamplit crate with a dark spot in sight of its lamp');
+  }
+
+  it('shoot out the lamp over a crate they mean to search, and aim true', () => {
+    const { l, crate, from } = litCrate();
+    expect(lampShine(l, crate.x, crate.y + 1.2, crate.z)).toBeGreaterThan(LAMP_SEEN);
+    const self = agent(1, 'operator', from.x, from.z);
+    const role: Role = { kind: 'operator', loot: [{ ...crate, look: crate }], planned: 1, greed: 20 };
+    const bot = new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(1));
+    const ctx: BotContext = {
+      world, nav, time: 0, agents: [self], agent: (id) => (id === 1 ? self : undefined), pathBudget: 10, callout: () => {},
+      extracts: [], lootView: () => null, senses: night, bounty: 0, bags: () => [],
+    };
+    let fired: { yaw: number; pitch: number } | null = null;
+    for (let t = 0, seq = 0; t < 4 && !fired; t += SERVER_DT) {
+      ctx.time = t;
+      bot.think(ctx, self, SERVER_DT);
+      for (const cmd of bot.commands(ctx, self, seq)) {
+        seq = cmd.seq;
+        if (cmd.buttons & Btn.Fire) fired ??= cmd;
+        // It stands where it is while it shoots.
+        if (fired) expect(cmd.buttons & (Btn.Forward | Btn.Back | Btn.Left | Btn.Right)).toBe(0);
+      }
+    }
+    expect(fired).not.toBeNull();
+    // The round, fired from its eye as aimed, meets the lamp.
+    const eye = eyePosition(world, self.x, self.y, self.z, fired!.yaw, 0, 0);
+    const cp = Math.cos(fired!.pitch);
+    const dir = [-Math.sin(fired!.yaw) * cp, Math.sin(fired!.pitch), -Math.cos(fired!.yaw) * cp];
+    // Lamps are clear panels, met only by rays that stop at glass, as rounds do.
+    expect(world.raycastPanel(eye.x, eye.y, eye.z, dir[0], dir[1], dir[2], 60, true).panel).toBe(l.panel);
+  });
+
+  it('leave the lamps alone by day', () => {
+    const { crate, from } = litCrate();
+    const self = agent(1, 'operator', from.x, from.z);
+    const role: Role = { kind: 'operator', loot: [{ ...crate, look: crate }], planned: 1, greed: 20 };
+    const bot = new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(1));
+    const ctx: BotContext = {
+      world, nav, time: 0, agents: [self], agent: (id) => (id === 1 ? self : undefined), pathBudget: 10, callout: () => {},
+      extracts: [], lootView: () => null, senses: sensesOf(DEFAULT_CONDITIONS), bounty: 0, bags: () => [],
+    };
+    for (let t = 0, seq = 0; t < 4; t += SERVER_DT) {
+      ctx.time = t;
+      bot.think(ctx, self, SERVER_DT);
+      for (const cmd of bot.commands(ctx, self, seq)) {
+        seq = cmd.seq;
+        expect(cmd.buttons & Btn.Fire).toBe(0);
+      }
+    }
   });
 });
 

@@ -8,6 +8,7 @@ import { groundEye, onTiles } from './terrain.ts';
 import { Layer } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { WIND_GLSL, wind } from './wind.ts';
+import { wetMaterial } from './rain.ts';
 
 // Firs: a trunk, a dark core of cones and whorls of branch cards with needles
 // drawn on them, which give the ragged outline. Near trees are drawn in full,
@@ -72,10 +73,11 @@ export class Trees {
     const trunkGeo = new THREE.CylinderGeometry(0.14, 0.3, HEIGHT - 0.8, 7).translate(0, (HEIGHT - 0.8) / 2, 0);
     const coreGeo = core(mulberry32(world.seed + 19));
     const cardGeo = branches(mulberry32(world.seed + 21));
-    const trunkMat = full(new THREE.MeshStandardMaterial({ color: 0x4a3526, roughness: 1 }), world);
-    const coreMat = full(swaying(new THREE.MeshStandardMaterial({ roughness: 0.95 })), world);
+    // Bark and needles darken and shine a little in the rain.
+    const trunkMat = wetMaterial(full(new THREE.MeshStandardMaterial({ color: 0x4a3526, roughness: 1 }), world), 0.6, false);
+    const coreMat = wetMaterial(full(swaying(new THREE.MeshStandardMaterial({ roughness: 0.95 })), world), 0.75, false);
     const branchMap = branchTexture();
-    const cardMat = full(swaying(new THREE.MeshStandardMaterial({ map: branchMap, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85 })), world);
+    const cardMat = wetMaterial(full(swaying(new THREE.MeshStandardMaterial({ map: branchMap, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85 })), world), 0.75, false);
     // Shadows sway with the crowns, and hand over to the impostors' halfway through the fade.
     const depth = (map?: THREE.Texture) => full(swaying(new THREE.MeshDepthMaterial({
       depthPacking: THREE.RGBADepthPacking, ...(map ? { map, alphaTest: 0.45 } : {}),
@@ -142,7 +144,7 @@ export class Trees {
   }
 
   applyAssets(assets: Assets): void {
-    const bark = full(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.bark }, { roughness: 0.95 }, 1.5), this.world);
+    const bark = full(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.bark }, { roughness: 0.95 }, 1.5, { wet: true }), this.world);
     for (const t of this.tiles) t.meshes[0].material = bark;
   }
 

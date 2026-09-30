@@ -74,6 +74,24 @@ for (const [name, query] of Object.entries(CONDITIONS)) {
   });
 }
 
+// Chunk 36, the outpost's lamps at night: outside the wall behind one, which
+// keeps its light in (it used to light a strip of ground out there); the yard
+// from above, the lamps' shadows cast by crates and the watchtower; and the
+// yard under a lamp on a rainy night, wet, with puddles on the level ground.
+const LAMPS: Record<string, string> = {
+  'lamp-behind-wall': 'o0,-22,2.2,-9,-15.5,0.3,-5&time=night',
+  'lamp-yard': 'o0,0,16,-22,2,0,4&time=night',
+  'lamp-wet': 'o0,2,1.7,-8,11,0,-4&time=night&weather=rain',
+};
+
+for (const [name, query] of Object.entries(LAMPS)) {
+  test(`lamps: ${name}`, async ({ page }) => {
+    const [cam, ...rest] = query.split('&');
+    await spot(page, cam, rest.map((r) => `&${r}`).join(''));
+    await expect(page).toHaveScreenshot(`${name}.png`);
+  });
+}
+
 // Soldiers stood on the island (see ?stand in main.ts): one in a tree's
 // shadow out in the open, shaded, beside one in the sun; one wading, mirrored
 // in the sea.

@@ -12,6 +12,7 @@ import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
 import { FAR_SHADOWS } from './cascades.ts';
 import { dimIndoors } from './indoorlight.ts';
+import { wetMaterial } from './rain.ts';
 import { lensOf, lightTorch, makeTorch, mountTorch, torchMount, torchPart, type Torch } from './torch.ts';
 import type { Building } from '../shared/world.ts';
 import {
@@ -157,7 +158,10 @@ const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
 /** Every carried gun's: the look is in its vertices. */
 const GUN_MAT = vertexSurfaces(new THREE.MeshStandardMaterial());
 const ROUND_MAT = new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 });
-for (const m of [GUN_MAT, ROUND_MAT]) dimIndoors(m);
+for (const m of [GUN_MAT, ROUND_MAT]) {
+  dimIndoors(m);
+  wetMaterial(m, 0.35);
+}
 const FLASH_MAT = new THREE.SpriteMaterial({
   map: flashTexture(), color: 0xffc070, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
 });
@@ -730,6 +734,7 @@ export class Bodies {
     for (const m of f.materials) {
       flashWhereHit(m, f.hit);
       dimIndoors(m);
+      wetMaterial(m, 0.5);
     }
     group.traverse((o) => {
       o.layers.enable(REFLECTED);

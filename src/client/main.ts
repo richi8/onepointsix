@@ -24,6 +24,8 @@ import { Connection, WorkerTransport, type Recording, type RecordedEvent } from 
 import type { Deathcam, DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
 import { Flashlights } from './flashlights.ts';
+import { localLights } from './locallights.ts';
+import { wetMaterial } from './rain.ts';
 import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
@@ -97,6 +99,7 @@ let view = new WorldView(world, config);
 const scene = view.scene;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+localLights.prepare(renderer);
 /** The lazily loaded parts of the island. */
 let prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
 const resolution = new Resolution(renderer);
@@ -180,7 +183,7 @@ let dressed: Assets | null = null;
 function dress(assets: Assets): void {
   dressed = assets;
   view.applyAssets(assets);
-  effects.setDebrisMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }));
+  effects.setDebrisMaterial(wetMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }), 0.5));
   bodies.setModel(assets.soldier, assets.guns);
   viewModel.setGuns(assets.guns, assets.environment);
   viewModel.setArms(assets.soldier);
@@ -1128,6 +1131,8 @@ function eventSound(e: GameEvent): void {
 const focus = new THREE.Vector3();
 /** Which way the camera looks, reused each frame. */
 const V_LOOK = new THREE.Vector3();
+/** Others' lit flashlights nearest the camera, for the rain, reused each frame. */
+const rainBeams: { at: THREE.Vector3; dir: THREE.Vector3 }[] = [];
 const start = performance.now() / 1000;
 let last = start;
 let lastYaw = 0;
@@ -1317,6 +1322,8 @@ renderer.setAnimationLoop(() => {
   }
   const dt = Math.min(now - last, 0.1);
   last = now;
+  // Lamps and others' flashlights add their lights as the frame is worked out.
+  localLights.begin();
 
   if (conn) {
     conn.update(dt);
@@ -1355,8 +1362,9 @@ renderer.setAnimationLoop(() => {
   camera.updateMatrixWorld();
   // In a death cam, the killer's own light lights their view.
   const torch = cam ? cam.lit : state ? !state.dead && input.light : devTorch;
-  flashlights.update(camera, torch, players, (id, out, dir) => bodies.torch(id, out, dir));
-  view.torch(torch && flashlights.dark, camera.position, camera.getWorldDirection(V_LOOK));
+  const beams = flashlights.update(camera, torch, players, (id, out, dir) => bodies.torch(id, out, dir), rainBeams);
+  if (torch && flashlights.dark) beams.unshift({ at: camera.position, dir: camera.getWorldDirection(V_LOOK) });
+  view.torches(beams);
   viewModel.torchOn = torch;
   sfx.underwater = view.underwater;
   sfx.update(camera, dt);
@@ -1382,6 +1390,7 @@ renderer.setAnimationLoop(() => {
 
   if (cam?.done) stopDeathcam();
   if (holdFrame) return;
+  localLights.draw(renderer, scene);
   view.reflect(renderer, camera);
   const wobbling = view.underwater;
   if (wobbling) wobble(camera, now);
@@ -1390,7 +1399,10 @@ renderer.setAnimationLoop(() => {
   if (wobbling) camera.updateProjectionMatrix();
   if (state) {
     renderer.clearDepth();
+    // The gun is drawn in a space of its own, where the world's lights would land in the wrong place.
+    localLights.hide();
     renderer.render(viewModel.scene, viewModel.camera);
+    localLights.restore();
   }
   if (pictureNext) {
     // Straight after drawing, while the frame is still there to copy.

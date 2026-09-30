@@ -713,6 +713,53 @@ notes the chunk it came from.
   and the night's strength raised to 7, so the island's brightness and colour stay close to
   chunk 16's (measured on screenshots); reflections are greyer than the sky in view as a result.
 
+- **Flashlights cast no shadows** (16), so a beam lights the far side of a wall and the room
+  behind it. Shadows would need a shadow map per light, drawn every frame.
+  **Resolved in part** (25): your own light casts shadows from a 1024 px map, drawn only while
+  it's on. Others' lights still don't (see below).
+  **Resolved** (36): others' flashlights and the outpost lamps cast shadows too, from one atlas of
+  six 512 px tiles drawn in three.js's own shadow pass, so crowns sway and leaf cards cut out in
+  them; the nearest six lights that cast shadows get a tile each frame (see Known Issues for the
+  budget).
+- **Only the two nearest other flashlights light the world** (16). Farther ones show only a faint
+  beam and a glare when pointed your way. Three spotlights (yours and two others) are always in the
+  scene at dusk and night so switching one on never recompiles a material.
+  **Resolved in part** (25): the four nearest now do. With 24 soldiers close up, all lit, in rain
+  at night, the benchmark frame costs about 0.5 ms more than the same crowd by day (M3 Pro, a
+  noisy run: both about 14 ms with the machine loaded). Past four, still beams and glares only.
+  **Resolved** (36): others' flashlights and the lamps light the world through a patch to
+  three.js's lighting chunk, from a list of up to 16 lights in uniforms every lit material shares,
+  so none of them costs a texture unit or a recompile. The six nearest are lit fully, the rest
+  with their diffuse light only. Every lit flashlight within its reach of the fog lights the
+  world, not only the nearest four.
+- **Others' flashlights cast no shadows** (25), nor light the rain: only your own beam makes
+  drops glint and throws shadows.
+  **Resolved** (36): they cast shadows (see above), and the beams of the three lit flashlights
+  nearest the camera make the drops glint, as yours does.
+- **Only terrain, props and rocks get wet** (25). Trees, grass, bushes, bodies and debris look as
+  they do dry. Puddles are painted by noise on near-flat ground, not where water would gather,
+  and don't ripple. The roof map reaches 32 m round the camera; beyond it everything is wet, so
+  a far building's floor seen through a door would be too.
+  **Resolved** (36): trees (in full and as impostors), grass, bushes, pebbles, bodies, their guns,
+  bags and debris darken and turn a little glossy in rain, by a patch that works out each pixel's
+  place from the view. Puddles gather where the island's map says water would: hollows lower than
+  the ground 6 m round them and flat enough to hold water, and level ground such as an outpost's
+  yard a little everywhere, the noise only raggeding their edges; they ripple with rings from
+  drops. Past the sharp roof map, a map of the island's roofs in 2 m cells keeps far floors dry.
+- **Lamplight for bots is a disc** (lamps): anyone within 9 m of the spot a standing lamp points
+  at, below it and in its line of sight, is seen from as far as by day (as in a bot's own beam).
+  Crouching helps only as much as by day. Operator bots don't avoid lamplight, and nobody shoots
+  lamps out on purpose; only the player's and stray rounds or blasts do. A shot lamp comes back with the
+  other broken panels. Checked by unit tests and screenshots only; nobody has played it.
+  **Resolved** (36): bots see by the lamp's cone as it's drawn (the same strength, reach, fall-off,
+  angle and lean, in `LAMP_LIGHT`): lit enough to be seen as by day about 9 m out in front of a
+  lamp and 3–4 m to either side, nothing behind it, and not behind a wall or anything else between
+  the lamp and them. After dark, operator bots going about their run find paths that keep out of
+  lamplight where there's a way round (lit ground costs five times as much), and one about to
+  search a crate or wait in a spot a lamp lights shoots the lamp out first, if it can see it within
+  35 m and has seen nobody for 10 s. Unit tests cover the cone, walls, the paths and a bot's shot
+  meeting the lamp. See Known Issues for what's left.
+
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
   are drawn and collided as they are now, so a replayed killer can walk or shoot differently

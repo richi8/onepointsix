@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { wetMaterial } from './rain.ts';
 import { GRAVITY } from '../shared/constants.ts';
 import type { Box } from '../shared/world.ts';
 import { REFLECTED } from './water.ts';
@@ -116,7 +117,7 @@ export class Effects {
 
     const chunkGeo = new THREE.BoxGeometry(1, 1, 1);
     chunkGeo.setAttribute('layer', this.debrisLayer);
-    this.debris = new THREE.InstancedMesh(chunkGeo, new THREE.MeshStandardMaterial({ roughness: 0.9 }), MAX_DEBRIS);
+    this.debris = new THREE.InstancedMesh(chunkGeo, wetMaterial(new THREE.MeshStandardMaterial({ roughness: 0.9 }), 0.5), MAX_DEBRIS);
     this.debris.count = 0;
     this.debris.frustumCulled = false;
     this.debris.castShadow = this.debris.receiveShadow = true;
