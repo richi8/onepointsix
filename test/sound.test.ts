@@ -196,7 +196,9 @@ describe('hearing II', () => {
       for (let i = 1; i <= 10; i++) field.route({ ...outside, x: outside.x + (batch * 10 + i) * 2 }, inside);
       best = Math.min(best, (performance.now() - t0) / 10);
     }
-    expect(best).toBeLessThan(4);
+    // About 1.4 ms on an M3 Pro. GitHub's shared runners run about three times
+    // slower (4.3 ms was seen there), so CI only catches a real blow-up.
+    expect(best).toBeLessThan(process.env.CI ? 12 : 4);
   });
 
   it('rings like a room inside, and like the open at sea', () => {
