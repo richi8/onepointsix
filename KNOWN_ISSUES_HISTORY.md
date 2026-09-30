@@ -563,33 +563,6 @@ notes the chunk it came from.
   loaded behind the menu right after the early one and before the rest; they fade in once
   they're in. The early bank is down from 728 kB to 143 kB (29 s of sound), and the loading
   screen waits for 3.97 MB, down from 4.55 MB.
-- **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,
-  the rifle and pistol reloads are mixes of other recordings, the bolt-action's shot is a .405
-  Winchester lever-action, and concrete footsteps reuse the stone ones played 10% faster. Every
-  gun shares the one suppressed shot, pitched per gun, and the bolt-action reloads with the rifle's
-  magazine sound.
-  **Resolved in part** (26): each gun has a real suppressed shot (a suppressed SIG P226 for the
-  pistol, a MacMillan Tac-50 for the bolt-action, and for the rifle a suppressed sniper rifle from
-  a US government video, the nearest real one found); the bolt-action fires a Sauer 404 (a
-  bolt-action rifle), and reloads with a Mauser K98's bolt going back, rounds pressed in from a
-  clip and the bolt going home, cut from one recording by its loudness envelope; concrete has its
-  own footsteps. All CC0 previews, checked on their pages by the script. Still stand-ins: the rifle
-  and pistol magazine reloads (mixes of other recordings), and the rifle's suppressed shot is a
-  sniper rifle's. The Tac-50 recording stays loud for two seconds after the shot (echo or wind on
-  a phone microphone, going by the envelope), so only its first 0.9 s is used.
-  **Resolved in part** (37): the reloads are real guns: the rifle's magazine out, a fresh one
-  seated and its charging handle from an AR15 being handled, the pistol's magazine from a pistol
-  and its slide from a Glock 19. Each part plays as the hands get to it rather than as one mix at
-  the start, and a reload cut short by drawing another gun cuts its sounds short too. The cuts
-  were placed by loudness envelope, not by ear: in the AR15 recording the loud clicks alternate
-  with quieter ones about two seconds apart, taken as seating and pulling the magazine, and a
-  pair 0.3 s apart as the charging handle pulled and let go. Still a stand-in: the rifle's
-  suppressed shot, as no CC0 recording of a suppressed rifle of its kind was found (the few
-  suppressed ones on Freesound are made in an editor, an air rifle, or a blank-firing BB gun).
-  The rifle's reload still has no charging handle in the animation, though the sound plays.
-  **Accepted** (2026-09-30): only the rifle's suppressed shot is still a stand-in, and no real one
-  is to be had under CC0; the charging handle heard in the rifle's reload without being seen is a
-  small thing. Closed at the user's request.
 - **The reverb is one generated room** (14), the same everywhere, only louder when walled in.
   It isn't placed in 3D, and a place with no roof yet (every building so far) rings like a room
   when its walls are close.
