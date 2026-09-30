@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'More ways out',
+    notes: [
+      'Every island now has six extraction points, one for each outpost, instead of four. The four you know are where they were.',
+      'Each extraction point has low walls and boulders around it to crouch behind while you wait.',
+      'Guards are slower to swing their aim onto you, slower to steady it and less accurate at first. Walking into their sight is still a fight, but you have a moment longer to answer it.',
+      'Every island has changed, so best scores set before were set on slightly different ground.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Cover on the approaches',
     notes: [
       'The ground round every outpost, from about 45 to 130 m out, has more to hide behind: clusters of boulders you can crouch behind, far more bushes and grass grown up to waist height. Guards and bots see through it no better than you do.',

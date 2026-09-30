@@ -102,11 +102,18 @@ export function extractKind(index: number): 'walk' | 'call' {
 
 const COMPASS = ['North', 'North-east', 'East', 'South-east', 'South', 'South-west', 'West', 'North-west'];
 
-/** A name for an extraction point from where it lies on the island, e.g. "South-west beach". */
+/**
+ * A name for an extraction point from where it lies on the island, e.g.
+ * "South-west beach". If an earlier point already has that name, the next
+ * nearest direction.
+ */
 export function extractName(world: World, index: number): string {
   const e = world.extracts[index];
+  const kind = extractKind(index) === 'call' ? 'landing zone' : 'beach';
+  const taken = new Set<string>();
+  for (let i = 0; i < index; i++) if (extractKind(i) === extractKind(index)) taken.add(extractName(world, i));
   // Yaw 0 faces -z, so north is -z.
-  const a = Math.atan2(e.x, -e.z);
-  const dir = COMPASS[((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
-  return `${dir} ${extractKind(index) === 'call' ? 'landing zone' : 'beach'}`;
+  const a = Math.atan2(e.x, -e.z) / (Math.PI / 4);
+  const byNearness = COMPASS.map((dir, i) => ({ dir, off: Math.abs((((a - i) % 8) + 12) % 8 - 4) })).sort((p, q) => p.off - q.off);
+  return byNearness.map(({ dir }) => `${dir} ${kind}`).find((n) => !taken.has(n))!;
 }

@@ -711,6 +711,21 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   people, who pick their cover; nobody has played it yet. The benchmark's frame time didn't
   move. Every island's outskirts changed, so scores and links from before were set on slightly
   different ground.
+- **Weaker guards, more exits and cover at them didn't raise extraction** (38, after the chunk).
+  At the user's request, guards turn and settle 25% slower, trail a moving target a third longer
+  and start 1.6 times an operator's aim error (was 1.3; `guardSkill` in `skill.ts`); islands have
+  six extraction points, one per outpost (was four; the first four didn't move, and a name
+  already taken goes to the next nearest compass direction); and each point has five pieces of
+  cover 9–14 m out: low breakable walls and rows of boulders, from their own random stream.
+  Bot playtests (6 islands × 30 min, day, seeds 1–6): 12% of operator bot runs extracted before,
+  11% with the slower aim alone, 9% with the larger error too, 12% with six points, and 11% with
+  the cover as well. Guard kills of operators fell from 75 to 65 an hour, but more operators got
+  past the guards and killed each other (89 to 100 an hour). Most bots die fighting long before
+  they head out, so neither the exits nor the guards' aim are what limits extraction. The first
+  cover tried was crate stacks, which put about seven loot crates by every exit (every crate on
+  the ground is a loot crate, see `lootCrates`) and sent extraction to 28% with runs a minute
+  shorter; boulders replaced them. Kept for people; nobody has played it yet. Every island has
+  changed, so scores and links from before were set on slightly different ground.
 - **Operators getting away are often shot in the back** (38). Fleeing 40–70 m from guards is now
   the commonest way for an operator bot to die at a guard's hands: in a 4-island × 10-minute
   diagnostic, 23 of 51 guard kills were on the way. They sprint in the open without firing back

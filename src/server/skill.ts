@@ -119,15 +119,18 @@ export const SKILLS: Record<Difficulty, Skill> = {
  * A guard's skill: worse at hitting than an operator of the same grade, so
  * that three guards at once don't cut a player down in a second. No aimed
  * headshots, the aim lower on the body so a burst climbs into the chest, a
- * wider sway, slower to react and to settle, and shorter bursts.
+ * wider sway, slower to react, to turn and to settle, trailing a moving
+ * target further, and shorter bursts.
  */
 export function guardSkill(s: Skill): Skill {
   return {
     ...s,
+    turnRate: s.turnRate * 0.75,
+    trackLag: s.trackLag / 0.75,
     headChance: 0,
     aimHeight: 0.15,
-    aimError: s.aimError * 1.3,
-    settle: s.settle * 0.6,
+    aimError: s.aimError * 1.6,
+    settle: s.settle * 0.45,
     wobble: s.wobble * 3,
     reaction: s.reaction * 1.3,
     burst: [Math.round(s.burst[0] * 0.6), Math.round(s.burst[1] * 0.6)],

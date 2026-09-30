@@ -1,4 +1,5 @@
 import {
+  EXTRACT_RADIUS,
   GRID_RES,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
@@ -290,7 +291,8 @@ export interface Body {
 const GRID_CELL = 8;
 const GRID_OFFSET = 1024;
 const OUTPOST_NAMES = ['Fort Ash', 'Radio Hill', 'Quarry', 'Old Mill', 'Pinecrest', 'Lookout'];
-const EXTRACT_COUNT = 4;
+/** One for each outpost. */
+const EXTRACT_COUNT = 6;
 /**
  * The outskirts of an outpost, metres from its middle: the ground its guards
  * watch over, given boulders to crouch behind (this many clusters each), and
@@ -298,6 +300,8 @@ const EXTRACT_COUNT = 4;
  */
 export const OUTSKIRTS: [number, number] = [45, 130];
 const OUTSKIRT_CLUSTERS = 14;
+/** Pieces of cover round each extraction point. */
+const EXTRACT_COVER = 5;
 /** Walls are split into columns about this wide. */
 const WALL_PANEL = 1.6;
 /** Tall walls are split into rows this far above the ground: crouch cover below, a window above. */
@@ -435,6 +439,7 @@ export class World {
     this.placeHuts(mulberry32(this.seed ^ 0x510e527f));
     this.placeLamps(mulberry32(this.seed ^ 0x9b05688c));
     this.placeOutskirtRocks(mulberry32(this.seed ^ 0xa54ff53a));
+    this.placeExtractCover(mulberry32(this.seed ^ 0xbb67ae85));
   }
 
   // ---------------------------------------------------------------- queries
@@ -1879,6 +1884,52 @@ export class World {
           this.rocks.push({ x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 });
           this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, stamp: 0 });
         }
+      }
+    }
+    for (let i = start; i < this.colliders.length; i++) this.insert(this.colliders[i]);
+  }
+
+  /**
+   * Low walls and rows of boulders in a ring just outside each extraction point,
+   * across the way in, so whoever waits there has something to crouch behind.
+   */
+  private placeExtractCover(rng: () => number): void {
+    const start = this.colliders.length;
+    for (const e of this.extracts) {
+      const turn = rng() * Math.PI * 2;
+      for (let placed = 0, tries = 0; placed < EXTRACT_COVER && tries < 40; tries++) {
+        // Stepped round by the golden angle, so a blocked or wet side is skipped and the rest stays spread.
+        const a = turn + tries * 2.4 + (rng() - 0.5) * 0.3;
+        const d = EXTRACT_RADIUS + 3 + rng() * 5;
+        const x = e.x + Math.sin(a) * d;
+        const z = e.z + Math.cos(a) * d;
+        const y = this.terrainHeight(x, z);
+        if (y < 1.5 || this.blocked(x, z, 2.5)) continue;
+        // Square to the point, whichever axis is nearer.
+        const alongX = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a));
+        if (rng() < 0.5) {
+          const len = 3 + rng() * 2;
+          const h = 1.1 + rng() * 0.4;
+          const hx = alongX ? len / 2 : 0.3;
+          const hz = alongX ? 0.3 : len / 2;
+          const [lo, hi] = this.heightRange(x - hx, z - hz, x + hx, z + hz);
+          if (hi - lo > 1) continue;
+          this.addWall(x - hx, lo - 0.3, z - hz, x + hx, hi + h, z + hz, hi);
+        } else {
+          // Boulders rather than crates, which would be loot crates by the exit.
+          const count = 2 + Math.floor(rng() * 2);
+          for (let k = 0; k < count; k++) {
+            const r = 1 + rng() * 0.5;
+            const h = r * (0.95 + rng() * 0.2);
+            const off = (k - (count - 1) / 2) * 1.8;
+            const rx = x + (alongX ? off : 0);
+            const rz = z + (alongX ? 0 : off);
+            const ry = this.terrainHeight(rx, rz);
+            this.rocks.push({ x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 });
+            this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, stamp: 0 });
+          }
+        }
+        placed++;
       }
     }
     for (let i = start; i < this.colliders.length; i++) this.insert(this.colliders[i]);
