@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Fire and move',
+    notes: [
+      'Bot operators and guards no longer hold the trigger from one spot. They fire a few shots, duck into cover to reload, then pop out somewhere else to shoot again, from the other side of the cover when they can. Watch where they went down, not where they last fired from.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Cover on the approaches',
     notes: [
       'The ground round every outpost, from about 45 to 130 m out, has more to hide behind: clusters of boulders you can crouch behind, far more bushes and grass grown up to waist height. Guards and bots see through it no better than you do.',

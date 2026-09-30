@@ -86,6 +86,7 @@ console.log(
   `camps given up for want of a spot that sees the extraction point ${share(tally.campless, tally.camps)}; ` +
   `hid from a fight nearby ${tally.hides}, ${share(tally.bushHides, tally.hides)} in a bush; paths through bushes and tall grass ${tally.hiddenPaths}; ` +
   `operators ducking out of sight of a shooter ${tally.pinned}, outgunned ${tally.outgunned}; ` +
+  `volleys ducked into cover after ${tally.volleys}, come out elsewhere after ${tally.peeks}; ` +
   `doors shut behind them ${tally.shuts}, ${tally.slams} of them on someone chasing; thinks spent upstairs or up a tower ${tally.upThinks}; ` +
   `lamps aimed at ${tally.lampsAimed}, paths looked for keeping out of lamplight ${tally.shyPaths}`,
 );

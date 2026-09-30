@@ -7,7 +7,7 @@ import { PERSONALITIES, TEMPERS, type Personality } from '../src/server/personal
 import { planOperator } from '../src/server/population.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
-import { BOUNTY_MIN, BOUNTY_PING, CROUCH_EYE_HEIGHT, EYE_HEIGHT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { BOUNTY_MIN, BOUNTY_PING, Btn, CROUCH_EYE_HEIGHT, EYE_HEIGHT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { DEFAULT_CONDITIONS, sensesOf } from '../src/shared/conditions.ts';
 import { ITEMS, lootValue } from '../src/shared/loot.ts';
 import type { BagSnap, GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
@@ -378,6 +378,55 @@ describe('bot senses and stealth III', () => {
 });
 
 describe('operators and guards', () => {
+  it('fight in volleys: a few shots, into cover, then out somewhere else that sees the target', () => {
+    const inside = (bot: Bot) => bot as unknown as { spot: (Point & { bush?: boolean }) | null; firedFrom: Point | null };
+    let cycles = 0;
+    for (let seed = 1; seed <= 16; seed++) {
+      const at = openSpot(250, 13 + seed);
+      const self = agent(1, 'operator', at.x, at.z);
+      const foe = agent(2, 'operator', at.x, at.z - 30);
+      const bot = new Bot({ kind: 'operator', loot: [], planned: 0, greed: 20, personality: 'looter' }, SKILLS.normal, RIFLE, yawToward(self.x, self.z, foe.x, foe.z), mulberry32(seed));
+      const ctx = context([self, foe]);
+      const state = (): string => bot.state;
+      let seq = 0;
+      let shots = 0;
+      // Thinks, and fires as it commands (this body doesn't move or use up rounds).
+      const go = (from: number, until: (t: number) => boolean): number => {
+        let t = from;
+        for (; !until(t); t += 0.1) {
+          ctx.time = t;
+          bot.think(ctx, self, 0.1);
+          for (const cmd of bot.commands(ctx, self, seq)) (seq = cmd.seq), (shots += cmd.buttons & Btn.Fire ? 1 : 0);
+        }
+        return t;
+      };
+      bot.hurt(foe, 0);
+      let t = go(0, (t) => t >= 0.3);
+      // Where it can't see the other, it ducks before firing a shot.
+      if (state() !== 'engage') continue;
+      t = go(t, (t) => t >= 8 || state() !== 'engage');
+      // Somewhere with no cover near, it fights on.
+      if (state() !== 'cover') continue;
+      expect(shots).toBeGreaterThan(0);
+      const fired = inside(bot).firedFrom!;
+      const spot = inside(bot).spot!;
+      Object.assign(self, { x: spot.x, y: spot.y, z: spot.z });
+      // In cover it stays down a while, and holds its fire, then comes out elsewhere.
+      const before = shots;
+      t = go(t, (t) => t >= 20 || state() !== 'cover');
+      expect(shots).toBe(before);
+      if (state() !== 'peek') continue;
+      const peek = inside(bot).spot!;
+      expect(Math.hypot(peek.x - fired.x, peek.z - fired.z)).toBeGreaterThanOrEqual(3);
+      expect(world.hasLineOfSight(peek.x, peek.y + EYE_HEIGHT, peek.z, foe.x, foe.y + EYE_HEIGHT * 0.75, foe.z)).toBe(true);
+      Object.assign(self, { x: peek.x, y: peek.y, z: peek.z });
+      go(t, (u) => u >= t + 0.5);
+      expect(state()).toBe('engage');
+      cycles++;
+    }
+    expect(cycles).toBeGreaterThan(2);
+  });
+
   it('get away from a guard shooting from far off, and fight back up close', () => {
     const at = openSpot(150, 3);
     const self = agent(1, 'operator', at.x, at.z);

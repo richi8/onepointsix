@@ -711,6 +711,16 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   people, who pick their cover; nobody has played it yet. The benchmark's frame time didn't
   move. Every island's outskirts changed, so scores and links from before were set on slightly
   different ground.
+- **Bots fighting in volleys rarely come out elsewhere** (38, after the chunk). At the user's
+  request, operator bots (the thorough playtest's left out) and guards now shoot in volleys:
+  after 1.2–2.8 s of firing (guards 2–4 s) at a target over 10 m off they take cover, reload,
+  and come out at a spot within 9 m that sees the target, away from where they last shot from
+  and on the other side of the cover if they can (`VOLLEY`, `PEEK_REACH` in `bot.ts`). Only
+  about a third of those covers end in such a spot (724 and 251 by day in a bot playtest of
+  6 islands × 20 min): most are cut short because the target still sees the cover or the run
+  to it takes over 2 s, and the bot fights on from where it is. Extraction came out as before
+  within the noise: 11% by day (11%) and 18% at night in rain (19%), but operators killed a
+  third fewer guards by day (71 an hour against 105). Nobody has played against it.
 - **Operators getting away are often shot in the back** (38). Fleeing 40–70 m from guards is now
   the commonest way for an operator bot to die at a guard's hands: in a 4-island × 10-minute
   diagnostic, 23 of 51 guard kills were on the way. They sprint in the open without firing back

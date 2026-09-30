@@ -74,6 +74,8 @@ export interface LootSpot extends Point {
 
 export type BotState =
   | 'patrol' | 'loot' | 'extract' | 'investigate' | 'engage' | 'cover' | 'flank'
+  // Coming out of cover somewhere else to shoot again.
+  | 'peek'
   // Operators by personality: roaming for a fight, waiting by an extraction point, closing in on a fight or the bounty,
   // and lying low while one goes on nearby.
   | 'hunt' | 'camp' | 'stalk' | 'hide';
@@ -284,6 +286,20 @@ const LEAVE_BY = 150;
 /** Rounds passing this close to a bot's chest put it under fire. */
 const NEAR_MISS = 2.5;
 const COVER_COOLDOWN = 6;
+/**
+ * Operators and guards fight in volleys: after shooting for VOLLEY seconds
+ * (GUARD_VOLLEY for guards) they duck into cover, reload, and come out again
+ * at another spot within PEEK_REACH that sees their target, at least
+ * PEEK_APART from where they last shot from and on the other side of the
+ * cover if they can. Not with the target closer than VOLLEY_CLOSE: then they
+ * fight it out. They give up getting to the spot after PEEK_TIME seconds.
+ */
+const VOLLEY: [number, number] = [1.2, 2.8];
+const GUARD_VOLLEY: [number, number] = [2, 4];
+const VOLLEY_CLOSE = 10;
+const PEEK_REACH = 9;
+const PEEK_APART = 3;
+const PEEK_TIME = 6;
 const COVER_TIME: [number, number] = [1.5, 3];
 const FLANK_TIME = 14;
 const INVESTIGATE_TIME = 25;
@@ -360,6 +376,9 @@ export const tally = {
   /** Lamps an operator set about shooting out, and paths it looked for keeping out of lamplight. */
   lampsAimed: 0,
   shyPaths: 0,
+  /** Volleys fired and then ducked into cover after, and spots come out at elsewhere to shoot again. */
+  volleys: 0,
+  peeks: 0,
 };
 
 /** A place to go to, and whether it's in a bush, where it has to be reached more exactly. */
@@ -423,6 +442,9 @@ export class Bot {
   // Firing.
   private weapon: number;
   private burstEnd = 0;
+  /** When the volley being fired ends, or 0 before its first shot; and where it last shot from. */
+  private volleyEnd = 0;
+  private firedFrom: Point | null = null;
   private pauseUntil = 0;
   private nextTap = 0;
   /** No friend stands in the line of fire. */
@@ -883,11 +905,11 @@ export class Bot {
       } else if (this.state === 'engage' && now - c.seenAt > LOST_TIME) {
         if (!this.flank(ctx, self, c)) this.investigate(ctx, c);
         return;
-      } else if (this.state === 'engage' || this.state === 'cover' || this.state === 'flank') return;
+      } else if (this.state === 'engage' || this.state === 'cover' || this.state === 'flank' || this.state === 'peek') return;
     }
 
     // Shot by someone out of sight, or a friend called out a contact. Operators don't go looking for guards.
-    if (known && known[1].seenAt >= this.stateAt && this.state !== 'flank' && !this.slipsAway(ctx, known[0])) {
+    if (known && known[1].seenAt >= this.stateAt && this.state !== 'flank' && this.state !== 'peek' && !this.slipsAway(ctx, known[0])) {
       this.target = known[0];
       if (hurt && this.rand() < this.skill.coverChance && now - this.lastCover > COVER_COOLDOWN && this.takeCover(ctx, self, known[1])) return;
       this.investigate(ctx, known[1]);
@@ -944,6 +966,11 @@ export class Bot {
   /** An operator ducks out of sight of shooters, unless it's a thorough one, which can't be killed and doesn't notice being shot. */
   private dodges(): boolean {
     return this.role.kind === 'operator' && !this.role.thorough;
+  }
+
+  /** Whether it fights in volleys from cover: guards and operators that duck out of sight. */
+  private volleys(): boolean {
+    return this.role.kind === 'guard' || this.dodges();
   }
 
   /** Whether it's in the extraction zone it's heading for, waiting to get out. */
@@ -1293,6 +1320,14 @@ export class Bot {
           this.crouch = self.reload > 0;
           break;
         }
+        // A volley fired: duck into cover, to come out shooting somewhere else.
+        if (this.volleyEnd > 0 && now >= this.volleyEnd) {
+          this.volleyEnd = 0;
+          if (d > VOLLEY_CLOSE && this.takeCover(ctx, self, c)) {
+            tally.volleys++;
+            break;
+          }
+        }
         if (d > EFFECTIVE_RANGE[this.weapon]) {
           this.goTo(this.leashed(ctx, { x: a.x, y: a.y, z: a.z }));
           break;
@@ -1328,7 +1363,7 @@ export class Bot {
           if (this.slipsAway(ctx, this.target) && !c?.visible) {
             this.target = 0;
             this.enter(this.routine());
-          } else this.enter('engage');
+          } else if (!c || c.visible || !this.peek(ctx, self, c)) this.enter('engage');
         }
         break;
       }
@@ -1344,6 +1379,20 @@ export class Bot {
           if (c) this.investigate(ctx, c);
           else this.enter(this.routine());
         }
+        break;
+      }
+
+      case 'peek': {
+        // Out of cover to where it can shoot from again; the moment it sees its target it fights.
+        const spot = this.spot!;
+        const c = this.contacts.get(this.target);
+        if (!c || away(spot, self) <= ARRIVE || now - this.stateAt > PEEK_TIME) {
+          this.enter(c ? 'engage' : this.routine());
+          break;
+        }
+        this.goTo(spot);
+        this.pace = role.kind === 'operator' ? 'sneak' : 'walk';
+        this.focus = { x: c.x, y: c.y + EYE_HEIGHT, z: c.z };
         break;
       }
     }
@@ -1526,6 +1575,7 @@ export class Bot {
     this.errYaw = Math.cos(a) * err;
     this.errPitch = Math.sin(a) * err * 0.6;
     this.burstEnd = 0;
+    this.volleyEnd = 0;
   }
 
   /** Switch state; `again` restarts the current one. */
@@ -1533,6 +1583,7 @@ export class Bot {
     if (state === this.state && !again) return;
     this.state = state;
     this.stateAt = this.now;
+    if (state !== 'engage') this.volleyEnd = 0;
     this.waitUntil = 0;
     this.path = [];
     this.pathGoal = null;
@@ -1751,6 +1802,48 @@ export class Bot {
       bestScore = score;
     }
     return best;
+  }
+
+  /**
+   * Come out of cover to shoot at `c` again: to the nearest spot within
+   * PEEK_REACH that sees it, not much nearer it, away from where it last
+   * shot from and, if it can, on the other side of the cover.
+   */
+  private peek(ctx: BotContext, self: Agent, c: Contact): boolean {
+    if (!this.volleys()) return false;
+    const w = ctx.world;
+    const veg = vegetationOf(w);
+    const from = this.firedFrom ?? self;
+    const ty = c.y + EYE_HEIGHT * 0.75;
+    const dx = self.x - c.x;
+    const dz = self.z - c.z;
+    const dist = Math.hypot(dx, dz);
+    // Which side of the line from the target through the cover a point is on.
+    const side = (x: number, z: number): number => Math.sign(dx * (z - c.z) - dz * (x - c.x));
+    const was = side(from.x, from.z);
+    let best: Spot | null = null;
+    let bestScore = Infinity;
+    const turn = this.rand() * Math.PI * 2;
+    const rings = 4;
+    for (let i = 0; i < 8 * rings; i++) {
+      const a = turn + (i / (8 * rings)) * Math.PI * 2;
+      const r = 1.5 + (i % rings) * ((PEEK_REACH - 1.5) / (rings - 1));
+      const p = this.leashed(ctx, { x: self.x + Math.sin(a) * r, y: self.y, z: self.z + Math.cos(a) * r });
+      const toTarget = Math.hypot(p.x - c.x, p.z - c.z);
+      if (!ctx.nav.dry(p.x, p.z) || toTarget < VOLLEY_CLOSE || Math.hypot(p.x - from.x, p.z - from.z) < PEEK_APART) continue;
+      const score = Math.hypot(p.x - self.x, p.z - self.z) + (side(p.x, p.z) === was ? 5 : 0) + Math.max(0, dist - toTarget);
+      if (score >= bestScore) continue;
+      const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
+      const ey = y + EYE_HEIGHT;
+      if (!w.hasLineOfSight(p.x, ey, p.z, c.x, ty, c.z) || veg.seeThrough(p.x, ey, p.z, c.x, ty, c.z) < CONCEALED) continue;
+      best = { x: p.x, y, z: p.z };
+      bestScore = score;
+    }
+    if (!best) return false;
+    tally.peeks++;
+    this.enter('peek');
+    this.spot = best;
+    return true;
   }
 
   /** Circle around to where a lost target was last seen, from the side. */
@@ -1991,6 +2084,10 @@ export class Bot {
       buttons |= Btn.Aim;
     } else {
       this.burstEnd = 0;
+    }
+    if (fighting && buttons & Btn.Fire && this.volleys()) {
+      if (this.volleyEnd === 0) this.volleyEnd = now + this.between(this.role.kind === 'guard' ? GUARD_VOLLEY : VOLLEY);
+      this.firedFrom = { x: self.x, y: self.y, z: self.z };
     }
     if (self.mag[self.weapon] === 0 && self.reserve[self.weapon] > 0) buttons |= Btn.Reload;
     if (this.reloadWanted && !fighting) {
