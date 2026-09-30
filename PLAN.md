@@ -406,17 +406,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   recordings aren't what they stand for" in the history).
 
 ### Performance and loading
-- **Adaptive resolution is untested on slow hardware** (9) and could flip back and forth.
-  **Resolved in part** (15): it did flip. A test with a simulated GPU that is too slow at full
-  resolution and comfortably fast one step down saw 121 switches in 10 minutes. Now a step up
-  that turns slow within 10 s isn't tried again for 30 s, then 60 s, and so on up to 10 minutes;
-  the same test sees fewer than 12. It still hasn't run on real slow hardware.
-  **Resolved in part** (24): the benchmark page now slows the GPU on purpose (an extra pass over
-  every pixel, weighed so full resolution takes about 25 ms a frame) and runs the game's own
-  Resolution on the real renderer for a minute. In Chromium it stepped to 0.85 at 1.8 s and 0.7
-  at 3.3 s, then held there at 15.5 ms a frame; a browser test fails if it doesn't settle under
-  20 ms within four changes. Only Chromium runs it, and the slowness is simulated, not real
-  hardware (chunk 30).
 - **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
   production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred).
 

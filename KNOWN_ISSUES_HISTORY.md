@@ -814,6 +814,18 @@ notes the chunk it came from.
   from a clean run (8.8 ms empty, 12.1 ms with 24 bodies, 14.8 ms on the rainy night); the empty
   frame, measured first, swings between 6 and 9 ms from run to run, so it's the least telling of
   the numbers.
+- **Adaptive resolution is untested on slow hardware** (9) and could flip back and forth.
+  **Resolved in part** (15): it did flip. A test with a simulated GPU that is too slow at full
+  resolution and comfortably fast one step down saw 121 switches in 10 minutes. Now a step up
+  that turns slow within 10 s isn't tried again for 30 s, then 60 s, and so on up to 10 minutes;
+  the same test sees fewer than 12. It still hasn't run on real slow hardware.
+  **Resolved in part** (24): the benchmark page now slows the GPU on purpose (an extra pass over
+  every pixel, weighed so full resolution takes about 25 ms a frame) and runs the game's own
+  Resolution on the real renderer for a minute. In Chromium it stepped to 0.85 at 1.8 s and 0.7
+  at 3.3 s, then held there at 15.5 ms a frame; a browser test fails if it doesn't settle under
+  20 ms within four changes. Only Chromium runs it, and the slowness is simulated, not real
+  hardware (chunk 30).
+  **Accepted** (2026-09-30): the user is fine with it being tested only on simulated slowness.
 
 ### Sharing and leaderboards
 - **A link without a mode is taken as Mixed** (10), so an old `?world=` link with a score in it
