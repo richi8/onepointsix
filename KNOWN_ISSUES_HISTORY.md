@@ -473,6 +473,13 @@ notes the chunk it came from.
   sheen, which had shaded the full trees darker and bluer than their impostors (now within 4% of
   each other by mean colour) and glared against the sun. What's left is under "Every tree is
   the same spruce" in the plan.
+- **Every tree is the same spruce** (39). One tree is generated per island and every tree is
+  that one, turned, scaled and tinted; there's one species, and no saplings, dead trees or
+  broadleaves. Sprays are cards: from under a few metres, most of all looking up into a crown,
+  they read as flat fronds. Limbs are drawn only within 40 m, and the needles have no sheen, wet
+  or dry. Each hand-over (30–40 m and 110–140 m) is a dither that shows as a fine speckle in a
+  still picture; nobody has watched the trees in motion.
+  **Accepted** (2026-09-30): the user is fine with it for now.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
@@ -891,6 +898,12 @@ notes the chunk it came from.
   every direction and checks its cover at each tenth of its height is within 0.15 of the model's.
   Only the lower blade vertices read the ground's textures, which kept the blades within the
   benchmark's noise. What's left is under "Blades only up close" in the plan.
+- **Blades only up close** (39). Grass is drawn blade by blade only within 8–12 m; past that
+  it's the crossed cards, and the hand-over shows as a faint band in a still picture. The blades
+  are wider than real grass (about 2–8 cm at a typical tuft), so a tuft of them hides as much as
+  the sight model says; the cards' own cover was never measured against it. Neither casts a
+  shadow. Checked by screenshots and the benchmark on an M3 Pro only.
+  **Accepted** (2026-09-30): the user is fine with it for now.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

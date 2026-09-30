@@ -432,12 +432,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   over its hitbox front to back, the whole body, feet and all, first moves up to 0.3 m, and only
   what's left is taken by the hips and the waist. A crouch keeps the clip's hunch, but its feet
   can stand a little behind the legs' hitbox.
-- **Every tree is the same spruce** (39). One tree is generated per island and every tree is
-  that one, turned, scaled and tinted; there's one species, and no saplings, dead trees or
-  broadleaves. Sprays are cards: from under a few metres, most of all looking up into a crown,
-  they read as flat fronds. Limbs are drawn only within 40 m, and the needles have no sheen, wet
-  or dry. Each hand-over (30–40 m and 110–140 m) is a dither that shows as a fine speckle in a
-  still picture; nobody has watched the trees in motion.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
@@ -509,11 +503,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Checked by screenshots only.
 - **Sunlight shows down a building's inside corners** (seen in chunk 36): a thin line of sun
   shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
-- **Blades only up close** (39). Grass is drawn blade by blade only within 8–12 m; past that
-  it's the crossed cards, and the hand-over shows as a faint band in a still picture. The blades
-  are wider than real grass (about 2–8 cm at a typical tuft), so a tuft of them hides as much as
-  the sight model says; the cards' own cover was never measured against it. Neither casts a
-  shadow. Checked by screenshots and the benchmark on an M3 Pro only.
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-09-30 (see the history).
