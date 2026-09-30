@@ -154,6 +154,14 @@ const loadingEl = document.getElementById('loading')!;
 const loadingSkip = document.getElementById('loading-skip') as HTMLButtonElement;
 let loaded = false;
 let skipped = false;
+/**
+ * Whether frames are drawn. Not behind the loading screen until the island
+ * wears its textures, so no shaders are compiled for the flat colours it
+ * covers: on a cold shader cache, those cost seconds.
+ */
+let drawing = false;
+/** Set for the frames drawn under the loading screen to prepare the ones after. */
+let warming = false;
 /** While set, the frame isn't drawn: a picture of the last one covers the view as the textures go on. */
 let holdFrame = false;
 /** Set to take a picture of the next frame drawn. */
@@ -164,6 +172,7 @@ const FADE_IN = 0.8;
 function finishLoading(): void {
   if (loaded) return;
   loaded = true;
+  drawing = true;
   loadingEl.classList.add('done');
   setTimeout(() => loadingEl.remove(), 600);
   playButton.focus();
@@ -230,12 +239,44 @@ import('./assets.ts')
     orbitCamera(performance.now() / 1000);
     camera.updateMatrixWorld();
     await renderer.compileAsync(scene, camera);
+    // Frames drawn under the loading screen until one has drawn the sea's
+    // reflection, whether or not it's in view (it waits for the shadow maps):
+    // they compile what can't be ahead, the shadow maps' shaders and, in
+    // Chrome on Metal, a pipeline for each material and picture drawn into,
+    // which cost seconds on a cold cache.
+    drawing = true;
+    warming = true;
+    for (let i = 0; i < 30 && !view.reflecting; i++) await nextFrame();
+    warming = false;
+    // Drawing is only asked of the GPU; wait for it to have done it.
+    await gpuDone();
   })
   .catch((err: unknown) => {
     console.warn('Assets failed to load; staying with flat colours.', err);
     toast('Textures failed to load. Playing in flat colours.');
   })
   .finally(finishLoading);
+
+/** Resolves once the GPU has done everything asked of it so far, checked once a frame. */
+function gpuDone(): Promise<void> {
+  const gl = renderer.getContext() as WebGL2RenderingContext;
+  const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+  if (!sync) return Promise.resolve();
+  gl.flush();
+  return new Promise((resolve) => {
+    const check = (): void => {
+      if (gl.getSyncParameter(sync, gl.SYNC_STATUS) === gl.SIGNALED || gl.isContextLost()) {
+        gl.deleteSync(sync);
+        resolve();
+      } else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  });
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 // ------------------------------------------------------------------ menu
 
@@ -1389,9 +1430,9 @@ renderer.setAnimationLoop(() => {
   contractProps.update(contracts);
 
   if (cam?.done) stopDeathcam();
-  if (holdFrame) return;
+  if (holdFrame || !drawing) return;
   localLights.draw(renderer, scene);
-  view.reflect(renderer, camera);
+  view.reflect(renderer, camera, warming);
   const wobbling = view.underwater;
   if (wobbling) wobble(camera, now);
   renderer.clear();

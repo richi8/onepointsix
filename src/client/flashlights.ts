@@ -8,8 +8,9 @@ import { localLights } from './locallights.ts';
 // lights the world with the local lights (see locallights.ts), the nearest
 // casting shadows too, and shows a faint beam and a glare when it points
 // your way, which is how you spot a guard across the island at night. Your
-// own light stays in the scene all the time, so switching it on never
-// recompiles a material.
+// own light stays in the scene all the time, by day too at no brightness, so
+// neither switching it on nor nightfall recompiles every lit material: on a
+// cold shader cache, that stalled a switch to night for seconds.
 
 /** Others' lit flashlights, nearest first, whose beams light the rain. */
 export const RAIN_BEAMS = 3;
@@ -40,7 +41,6 @@ export class Flashlights {
   constructor(scene: THREE.Scene) {
     const spot = (): THREE.SpotLight => {
       const s = new THREE.SpotLight(0xfff2de, 0, DISTANCE, ANGLE, PENUMBRA, DECAY);
-      s.visible = false;
       scene.add(s, s.target);
       return s;
     };
@@ -81,9 +81,11 @@ export class Flashlights {
     this.night = dark;
     this.fogNear = fogNear;
     this.fogFar = fogFar;
-    this.own.visible = dark;
-    // Its shadow map drawn once, so there's one to bind before it's first switched on.
-    this.own.shadow.needsUpdate = dark;
+    if (!dark) this.own.intensity = 0;
+    // Its shadow map drawn once, by day too, so there's one to bind before
+    // it's first switched on: until then three.js binds a stand-in, which
+    // Chrome on Metal builds every lit material's pipeline afresh for.
+    this.own.shadow.needsUpdate = true;
     if (!dark) for (let i = 0; i < BEAMS; i++) this.beams[i].visible = this.glares[i].visible = false;
   }
 

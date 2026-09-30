@@ -106,7 +106,7 @@ export class Water {
   constructor(world: World) {
     this.world = world;
     this.reflection = {
-      target: new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }),
+      target: reflectionTarget(),
       camera: new THREE.PerspectiveCamera(),
       matrix: { value: new THREE.Matrix4() },
       on: { value: 0 },
@@ -130,19 +130,25 @@ export class Water {
     return this.saved !== null;
   }
 
-  /**
-   * Draw the picture the sea reflects: what's in the REFLECTED layer, seen
-   * from `camera` mirrored in the surface, at a fraction of the screen's
-   * resolution. Shadows and matrices are reused from the last frame.
-   */
+  /** Whether the last frame drew the reflection. */
+  get reflecting(): boolean {
+    return this.reflection.on.value > 0;
+  }
+
   /** Free the reflection's picture. */
   dispose(): void {
     this.reflection.target.dispose();
   }
 
-  reflect(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+  /**
+   * Draw the picture the sea reflects: what's in the REFLECTED layer, seen
+   * from `camera` mirrored in the surface, at a fraction of the screen's
+   * resolution. Shadows and matrices are reused from the last frame. If
+   * `force`, even with no sea in view.
+   */
+  reflect(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, force = false): void {
     const r = this.reflection;
-    if (this.under || camera.position.y < WATER_LEVEL || !this.seaInView(camera, (scene.fog as THREE.Fog | null)?.far ?? camera.far)) {
+    if (this.under || camera.position.y < WATER_LEVEL || (!force && !this.seaInView(camera, (scene.fog as THREE.Fog | null)?.far ?? camera.far))) {
       r.on.value = 0;
       return;
     }
@@ -266,6 +272,44 @@ export function wobble(camera: THREE.PerspectiveCamera, time: number): void {
   m[1] += 0.015 * Math.sin(time * 1.1 + 2.3);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
+
+/**
+ * The picture the reflection is drawn into. three.js draws into a picture
+ * with shaders of their own, in linear colour and not tone mapped, which
+ * would compile every material a second time: seconds on a cold shader
+ * cache. Told it's a picture for XR, it uses the screen's, tone mapped and
+ * in sRGB; the sea undoes both as it reads it (seaUnmap).
+ */
+function reflectionTarget(): THREE.WebGLRenderTarget {
+  const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, colorSpace: THREE.SRGBColorSpace });
+  (target as { isXRRenderTarget?: boolean }).isXRRenderTarget = true;
+  return target;
+}
+
+/**
+ * GLSL undoing what the screen's shaders do to a colour at the end: sRGB
+ * encoding, then three.js's Neutral tone mapping and exposure, which the
+ * renderer uses (see main.ts). Colours never tone mapped, like the sky's,
+ * come out a little brighter, as if they had been.
+ */
+const UNMAP_GLSL = /* glsl */ `
+  vec3 seaUnmap(vec3 c) {
+    c = sRGBTransferEOTF(vec4(max(c, 0.0), 1.0)).rgb;
+    // The compression above 0.76 and the desaturation toward the peak with it.
+    const float start = 0.8 - 0.04;
+    const float d = 1.0 - start;
+    float newPeak = min(max(c.r, max(c.g, c.b)), 0.999);
+    if (newPeak >= start) {
+      float peak = d * d / (1.0 - newPeak) - d + start;
+      float g = 1.0 - 1.0 / (0.15 * (peak - newPeak) + 1.0);
+      c = (min(c, vec3(newPeak)) - g * newPeak) / (1.0 - g) * (peak / newPeak);
+    }
+    // The toe: the darkest channel was lowered by an offset that depends on it.
+    float low = min(c.r, min(c.g, c.b));
+    float x = low < 0.04 ? sqrt(max(low, 0.0) / 6.25) : low + 0.04;
+    return (c + (x - low)) / toneMappingExposure;
+  }
+`;
 
 /** Set `out` to `camera` mirrored in the sea's surface, looking up at what it sees reflected. */
 function mirror(camera: THREE.PerspectiveCamera, out: THREE.PerspectiveCamera): void {
@@ -422,7 +466,7 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvSeaPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
 
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${common}`)
+      .replace('#include <common>', `#include <common>\n${common}\n${UNMAP_GLSL}`)
       .replace('#include <map_fragment>', /* glsl */ `
         float depth = seaDepth(vSeaPos.xz);
         float far = length(vSeaPos - cameraPosition);
@@ -467,7 +511,7 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
           float fresnel = min(0.02 + 0.98 * pow(1.0 - facing, 5.0), 0.6);
           vec4 at = seaReflectionMatrix * vec4(vSeaPos.x, ${WATER_LEVEL.toFixed(2)}, vSeaPos.z, 1.0);
           vec2 uv = at.xy / at.w + seaNormal.xz * vec2(0.06, 0.1) - vec2(0.0, 0.012 * grazing);
-          vec3 mirrored = texture2D(seaReflection, uv).rgb;
+          vec3 mirrored = seaUnmap(texture2D(seaReflection, uv).rgb);
           float k = fresnel * (1.0 - foam);
           outgoingLight = mix(outgoingLight, mirrored, k);
           diffuseColor.a = mix(diffuseColor.a, 1.0, k);

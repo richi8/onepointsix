@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Faster first load',
+    notes: [
+      'The first time you open the game, or after an update, it loads in about half the time it did.',
+      'Switching the menu to dusk or night no longer freezes the game for a few seconds.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Walls hold back every light',
     notes: [
       'With many lamps and flashlights about, the farther ones no longer shine through walls.',

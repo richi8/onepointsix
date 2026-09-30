@@ -426,11 +426,16 @@ export class WorldView {
     this.light3d.update();
   }
 
-  /** Draw what the sea reflects, before drawing the scene from `camera`. */
-  reflect(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void {
+  /** Whether the last frame drew the sea's reflection. */
+  get reflecting(): boolean {
+    return this.water.reflecting;
+  }
+
+  /** Draw what the sea reflects, before drawing the scene from `camera`; if `force`, even with no sea in view. */
+  reflect(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, force = false): void {
     // Its pass reuses the shadow maps, so it waits for a frame to have drawn
-    // every one, a flashlight's switched on at nightfall too.
-    if (this.scene.children.every(drawnShadow)) this.water.reflect(renderer, this.scene, camera);
+    // every one, your own flashlight's included.
+    if (this.scene.children.every(drawnShadow)) this.water.reflect(renderer, this.scene, camera, force);
   }
 
   /**
