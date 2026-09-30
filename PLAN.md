@@ -522,18 +522,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
 
 ### Code and testing
-- **The client's rendering, animation and audio have no automated tests** (9). They were checked
-  by screenshots only, and nobody has listened to the audio.
-  Still true of the rendering and animation after chunk 13; the new snapshot fields they draw from
-  (motion, action, suppressor, commander) are tested.
-  After chunk 14, the ground paint, occlusion, enclosure, finding the sea, the voice pool and the
-  packed sound list are tested. The audio engine itself was only checked in headless Chrome by a
-  script outside the repo (offline renders of each sound, and a Mixed game checking the recordings
-  decode and the ambience comes up), and still nobody has listened to it.
-  **Resolved in part** (19): the browser tests compare screenshots of the island (water, ground
-  cover, impostors, cascades, indoor light by day and night) and of the pose viewer's soldiers,
-  and decode the sound bank in all three engines to check each shot starts on time. The
-  animation is still only checked in still pictures, and still nobody has listened to the audio.
 - **The rivals bounty test is flaky** (31, found while timing the suite). "A rival with the
   bounty is marked..." failed 1 of 20 runs on the code before chunk 31, and 3 of 7 in two
   batches after it, though nothing chunk 31 changed touches it. At its last step, facing the dead

@@ -1127,7 +1127,25 @@ notes the chunk it came from.
   Docker or Emscripten). Its run on GitHub was dropped from chunk 31 with the rest of CI; it
   still runs there if pushed.
   **Resolved** (2026-09-30): pushed with chunk 20, and it passed on GitHub.
-
+- **The client's rendering, animation and audio have no automated tests** (9). They were checked
+  by screenshots only, and nobody has listened to the audio.
+  Still true of the rendering and animation after chunk 13; the new snapshot fields they draw from
+  (motion, action, suppressor, commander) are tested.
+  After chunk 14, the ground paint, occlusion, enclosure, finding the sea, the voice pool and the
+  packed sound list are tested. The audio engine itself was only checked in headless Chrome by a
+  script outside the repo (offline renders of each sound, and a Mixed game checking the recordings
+  decode and the ambience comes up), and still nobody has listened to it.
+  **Resolved in part** (19): the browser tests compare screenshots of the island (water, ground
+  cover, impostors, cascades, indoor light by day and night) and of the pose viewer's soldiers,
+  and decode the sound bank in all three engines to check each shot starts on time. The
+  animation is still only checked in still pictures, and still nobody has listened to the audio.
+  **Accepted** (2026-09-30): the browser tests now cover most of it: about 40 screenshot
+  comparisons (island spots, every light and weather, lamps, soldiers and the pose viewer), two
+  ragdoll tests (a body falling and the death cam replaying it the same) and four audio tests
+  (sounds in on time, every shot starting on time, far fights going to the distant-battle bed,
+  a sound's ringing coming back from its side), besides the unit tests of the sound code. What's
+  left, animation checked in motion and the audio judged by ear, is fine as it is. Closed at the
+  user's request.
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops
