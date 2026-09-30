@@ -455,6 +455,24 @@ notes the chunk it came from.
   **Resolved** (24): the one thing left, reflecting the island, came with the sea's reflection
   (see "The sea reflects only the sky" above); what that still lacks is under "The reflection
   is partial" in the plan.
+- **Trees are procedural** (9), because Poly Haven's tree models are hundreds of MB each. They
+  have no LOD or impostors, and they don't sway.
+  **Resolved in part** (15): trees are split into 100 m tiles. Tiles within 170–190 m of the
+  camera draw every tree in full, and their crowns sway in one wind. Farther tiles draw each tree
+  as an impostor: a card facing the camera, with a picture of the tree baked at startup. In the
+  shadow pass the card faces the sun, so far trees still cast shadows. The trees are still
+  procedural.
+  **Resolved** (39): still generated, as real tree models are far too big to download, but as
+  spruces rather than cones and cards: a flared trunk, whorls of limbs drooping at the foot and
+  rising at the top, many small arched sprays of needles along each limb with shoots hanging
+  under them, dead twigs below the crown and a dark core inside it, shaded darker toward the
+  trunk and the crown's foot. A tree is drawn in full within 30–40 m, then as the same tree with
+  a tenth of the triangles (no limbs, a few large sprays a limb) out to 110–140 m, and the
+  impostors are baked from that plainer tree; each hand-over is a dither the three share, so
+  no pixel is drawn twice. Sprays keep their normals out of the crown on both sides and have no
+  sheen, which had shaded the full trees darker and bluer than their impostors (now within 4% of
+  each other by mean colour) and glared against the sun. What's left is under "Every tree is
+  the same spruce" in the plan.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
@@ -856,6 +874,24 @@ notes the chunk it came from.
   loot boost, flashlight reach) have been checked by humans.
   **Accepted** (2026-09-30): the user is fine with it for now; bot extraction at night in rain is
   about 20%, near the day baseline (see Decisions).
+- **Grass is still crossed cards** (natural grass, after chunk 29). Tufts now take the ground's
+  colour at their roots (the terrain's textures, blended by its weights, from a small mip in the
+  vertex shader), lean their normals out so a tuft shades like a clump, glow when the sun or a lamp
+  is behind them, vary in patches of drier and greener and a finer mottle, and have soft edges by
+  alpha-to-coverage. Up close each tuft is still three flat cards; it reads as grass, not as blades.
+  Until the textures load the roots keep the blades' own colour. The patches are colour only, so
+  what bots see through is unchanged; distant grass looks a touch thinner than before (its alpha is
+  thickened by mip level at 0.2 rather than 0.3, which keeps its tops ragged), a little less than
+  the sight model's cover. Checked by screenshots only; the frame cost wasn't measured apart from
+  the benchmark still passing.
+  **Resolved** (39): within 8–12 m of the camera each tuft is drawn blade by blade (18 tapering,
+  curving blades, coloured as the painted ones and still taking the ground's colour at the
+  root), handing over to the cards by how many of each pixel's samples each covers. The blades
+  hide about as much as the sight model's tufts: test/foliage.test.ts draws a tuft side on from
+  every direction and checks its cover at each tenth of its height is within 0.15 of the model's.
+  Only the lower blade vertices read the ground's textures, which kept the blades within the
+  benchmark's noise. What's left is under "Blades only up close" in the plan.
+
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
   are drawn and collided as they are now, so a replayed killer can walk or shoot differently

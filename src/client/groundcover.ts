@@ -11,14 +11,18 @@ import { surfaceMaterial } from './surfaces.ts';
 import { wetMaterial } from './rain.ts';
 import { groundTint, onTiles } from './terrain.ts';
 import { WIND_GLSL, wind } from './wind.ts';
+import { filled } from './cardtexture.ts';
 
 // Grass, low bushes and pebbles on the ground round the camera. Each 8 m cell
 // of the island scatters its own the same way every time, thickest where the
 // ground is painted grass, and never on props, under roofs or in the sea.
 // Only the cells near the camera are drawn, and everything shrinks away
-// toward the edge of its range, so nothing pops in. Nothing collides with
-// them, but bots can't see through the bushes and grass: both come from
-// shared/vegetation.ts, where the server finds them too.
+// toward the edge of its range, so nothing pops in. Near the camera each tuft
+// of grass is drawn blade by blade, farther off as crossed cards with blades
+// painted on. Nothing collides with them, but bots can't see through the
+// bushes and grass: both come from shared/vegetation.ts, where the server
+// finds them too, and the blades are about as thick as the tufts it models
+// (see test/foliage.test.ts).
 
 const CELL = VEG_CELL;
 
@@ -33,9 +37,20 @@ interface Kind {
   size: [number, number];
 }
 
+/**
+ * Metres from the camera over which tufts hand over from blades, drawn one by
+ * one, to crossed cards with blades painted on, pixel by pixel.
+ */
+const BLADES_START = 8;
+const BLADES_END = 12;
+/** Tufts are gathered to draw blade by blade once the camera has moved this far, from this much past BLADES_END. */
+const BLADES_SLACK = 2;
+
 const KINDS = {
   // Placed by Vegetation.
   grass: { range: 42, density: 1.6, keep: () => 0, size: [0, 0] },
+  // The same tufts near the camera, blade by blade.
+  blades: { range: BLADES_END, density: 1.6, keep: () => 0, size: [0, 0] },
   // Placed by Vegetation; drawn out to where bots can see.
   bush: { range: 120, density: 0.018, keep: () => 0, size: [0, 0] },
   pebble: { range: 35, density: 0.07, keep: (w, i) => 0.25 + w[i + Layer.rock] + w[i + Layer.dirt] * 0.8 + w[i + Layer.sand] * 0.5, size: [0.06, 0.26] },
@@ -64,6 +79,9 @@ interface Batch {
   capacity: number;
 }
 
+/** Blades in a tuft drawn one by one. */
+const BLADES = 18;
+
 const LUSH = new THREE.Color(0x8ea35a);
 const DRY = new THREE.Color(0xb3a262);
 const LEAF = new THREE.Color(0x6a8a44);
@@ -80,6 +98,8 @@ export class GroundCover {
   private readonly blades = bladeTexture();
   private cx = NaN;
   private cz = NaN;
+  /** Where the tufts drawn blade by blade were last gathered round. */
+  private readonly bladesAt = new THREE.Vector2(Infinity, Infinity);
 
   constructor(world: World) {
     this.world = world;
@@ -95,7 +115,7 @@ export class GroundCover {
       mesh.frustumCulled = false;
       mesh.receiveShadow = true;
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
-      if (name === 'grass') {
+      if (name === 'grass' || name === 'blades') {
         geo.setAttribute('groundA', new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4));
         geo.setAttribute('groundB', new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4));
       }
@@ -104,6 +124,7 @@ export class GroundCover {
     };
     this.layers = {
       grass: make('grass', grassGeometry(), grassMaterial(this.blades, this.eye, null)),
+      blades: make('blades', bladesGeometry(), grassMaterial(null, this.eye, null)),
       bush: make('bush', bushGeometry(), wetMaterial(onTiles(fading(new THREE.MeshStandardMaterial({
         map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1, envMapIntensity: 0.55,
       }), KINDS.bush.range, this.eye, 0.4), world), 0.9, false)),
@@ -115,17 +136,24 @@ export class GroundCover {
     const material = surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.95, flatShading: true }, 1, { wet: true });
     this.layers.pebble.mesh.material = fading(material, KINDS.pebble.range, this.eye, 0);
     this.layers.grass.mesh.material = grassMaterial(this.blades, this.eye, assets);
+    this.layers.blades.mesh.material = grassMaterial(null, this.eye, assets);
   }
 
-  /** Fill in the cells round `eye`; cheap unless it has moved into another cell. */
+  /**
+   * Fill in the cells round `eye`; cheap unless it has moved into another
+   * cell, or a couple of metres for the tufts drawn blade by blade.
+   */
   update(eye: THREE.Vector3): void {
     this.eye.value.copy(eye);
     const cx = Math.floor(eye.x / CELL);
     const cz = Math.floor(eye.z / CELL);
-    if (cx === this.cx && cz === this.cz) return;
+    const moved = Math.hypot(eye.x - this.bladesAt.x, eye.z - this.bladesAt.y) > BLADES_SLACK;
+    if (cx === this.cx && cz === this.cz && !moved) return;
+    const names = (Object.keys(KINDS) as KindName[]).filter((name) => name === 'blades' ? moved : cx !== this.cx || cz !== this.cz);
     this.cx = cx;
     this.cz = cz;
-    for (const name of Object.keys(KINDS) as KindName[]) {
+    if (moved) this.bladesAt.set(eye.x, eye.z);
+    for (const name of names) {
       const { mesh, kind, capacity } = this.layers[name];
       const r = Math.ceil(kind.range / CELL);
       let count = 0;
@@ -138,18 +166,33 @@ export class GroundCover {
           // Only cells that reach within range of the camera's cell.
           if (Math.max(Math.hypot(dx, dz) - 1.5, 0) * CELL > kind.range) continue;
           const s = this.cell(cx + dx, cz + dz)[name];
-          const n = Math.min(s.count, capacity - count);
-          matrices.set(s.matrices.subarray(0, n * 16), count * 16);
-          colors.set(s.colors.subarray(0, n * 3), count * 3);
-          if (s.ground && groundA && groundB) {
-            const a = groundA.array as Float32Array;
-            const b = groundB.array as Float32Array;
-            for (let k = 0; k < n; k++) {
-              a.set(s.ground.subarray(k * GROUND, k * GROUND + 4), (count + k) * 4);
-              b.set(s.ground.subarray(k * GROUND + 4, k * GROUND + 8), (count + k) * 4);
+          // Blades are many triangles a tuft, so only for the tufts in their range.
+          const reach = name === 'blades' ? BLADES_END + BLADES_SLACK : Infinity;
+          // A run of tufts in a row copied at once: the whole cell, but for blades.
+          let from = 0;
+          const flush = (to: number) => {
+            const n = Math.min(to - from, capacity - count);
+            if (n <= 0) return;
+            matrices.set(s.matrices.subarray(from * 16, (from + n) * 16), count * 16);
+            colors.set(s.colors.subarray(from * 3, (from + n) * 3), count * 3);
+            if (s.ground && groundA && groundB) {
+              const a = groundA.array as Float32Array;
+              const b = groundB.array as Float32Array;
+              for (let k = 0; k < n; k++) {
+                a.set(s.ground.subarray((from + k) * GROUND, (from + k) * GROUND + 4), (count + k) * 4);
+                b.set(s.ground.subarray((from + k) * GROUND + 4, (from + k) * GROUND + 8), (count + k) * 4);
+              }
+            }
+            count += n;
+          };
+          if (reach < Infinity) {
+            for (let k = 0; k < s.count; k++) {
+              if (Math.hypot(s.matrices[k * 16 + 12] - eye.x, s.matrices[k * 16 + 14] - eye.z) <= reach) continue;
+              flush(k);
+              from = k + 1;
             }
           }
-          count += n;
+          flush(s.count);
         }
       }
       mesh.count = count;
@@ -175,8 +218,10 @@ export class GroundCover {
     // Pebbles carry on from the grass's random numbers, as when both were scattered here.
     const rand = mulberry32((ix * 73856093) ^ (iz * 19349663) ^ this.world.seed);
     for (let k = 0; k < tufts.draws; k++) rand();
+    const grass = this.placeGrass(ix, iz);
     c = {
-      grass: this.placeGrass(ix, iz),
+      grass,
+      blades: grass,
       bush: this.placeBushes(ix, iz),
       pebble: this.scatter(ix, iz, 'pebble', rand),
     };
@@ -313,10 +358,13 @@ function fading(material: THREE.MeshStandardMaterial, range: number, eye: { valu
           vec3 push = windPush(base, windTime) * position.y * position.y * ${(give * 0.25).toFixed(3)};
           transformed += transpose(mat3(instanceMatrix)) * push / (s * s);` : ''}
         }`);
-    // Cards light as the ground they grow from, from either side.
+    // Cards and blades light as the ground they grow from, from either side.
     if (give > 0) {
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize(vNormal);')
+        .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize(vNormal);');
+    }
+    if (give > 0 && material.map) {
+      shader.fragmentShader = shader.fragmentShader
         // Smaller mips average leaves into the gaps round them and fall under
         // the alpha test, hollowing cards out at a distance; make up for it.
         .replace('#include <alphatest_fragment>', /* glsl */ `
@@ -338,12 +386,21 @@ function fading(material: THREE.MeshStandardMaterial, range: number, eye: { valu
  * With `assets`, each root takes the colour of the ground textures under it,
  * as the terrain blends them; before they arrive, the blades keep their own.
  */
-function grassMaterial(blades: THREE.Texture, eye: { value: THREE.Vector3 }, assets: Assets | null): THREE.MeshStandardMaterial {
-  const material = fading(new THREE.MeshStandardMaterial({
+function grassMaterial(blades: THREE.Texture | null, eye: { value: THREE.Vector3 }, assets: Assets | null): THREE.MeshStandardMaterial {
+  // Cards with blades painted on, or (without `blades`) blades one by one,
+  // shaded root to tip by their vertex colours.
+  const material = fading(new THREE.MeshStandardMaterial(blades ? {
     map: blades, alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 1, envMapIntensity: 0.55,
+  } : {
+    vertexColors: true, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.9, envMapIntensity: 0.55,
   // Soft edges keep receding blades from hollowing out, so they need less
   // thickening than hard-edged cards, and keep ragged tops.
-  }), KINDS.grass.range, eye, 1, 0.2);
+  }), blades ? KINDS.grass.range : KINDS.blades.range, eye, 1, 0.2);
+  // Near the camera a tuft is drawn blade by blade, farther off as cards; in
+  // between, the one fades out as the other fades in, by how many of each
+  // pixel's samples they cover.
+  const near = !blades;
+  const handover = 'varying float vHandover;';
   const before = material.onBeforeCompile;
   const key = material.customProgramCacheKey();
   material.onBeforeCompile = (shader, renderer) => {
@@ -355,6 +412,7 @@ function grassMaterial(blades: THREE.Texture, eye: { value: THREE.Vector3 }, ass
     }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', /* glsl */ `#include <common>
+        ${handover}
         attribute vec4 groundA;
         attribute vec4 groundB;
         varying vec3 vRoot;
@@ -368,11 +426,17 @@ function grassMaterial(blades: THREE.Texture, eye: { value: THREE.Vector3 }, ass
           return textureLod(surfAlbedo, vec3(xz / surfScale[i], layer), lod).rgb * surfTint[i];
         }` : ''}`)
       .replace('#include <project_vertex>', /* glsl */ `#include <project_vertex>
+        vHandover = smoothstep(${BLADES_START.toFixed(1)}, ${BLADES_END.toFixed(1)}, distance(instanceMatrix[3].xz, coverEye.xz));
+        // Wholly the other kind here: every vertex off screen.
+        if (${near ? 'vHandover >= 1.0' : 'vHandover <= 0.0'}) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         vUp = position.y;
         ${assets ? `
-        {
-          // The ground's colour where this corner of the card stands, from a
-          // small mip, so it follows the texture's patches but not its grain.
+        // The ground's colour where this corner of the card stands, from a
+        // small mip, so it follows the texture's patches but not its grain.
+        // Only where it shows: not off screen, and for blades, only low down
+        // (it's gone by a third of the way up), as there are so many of them.
+        vRoot = vec3(0.0);
+        if (${near ? 'vHandover < 1.0 && position.y < 0.45' : 'vHandover > 0.0'}) {
           vec2 xz = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xz;
           float lod = log2(float(textureSize(surfAlbedo, 0).x)) - 4.0;
           vRoot = (groundA.x * groundLayer(0.0, xz, lod) + groundA.y * groundLayer(1.0, xz, lod)
@@ -380,7 +444,11 @@ function grassMaterial(blades: THREE.Texture, eye: { value: THREE.Vector3 }, ass
             + groundB.x * groundLayer(4.0, xz, lod)) * groundB.yzw;
         }` : 'vRoot = vec3(0.0);'}`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vRoot;\nvarying float vUp;')
+      .replace('#include <common>', `#include <common>\nvarying vec3 vRoot;\nvarying float vUp;\n${handover}`)
+      .replace('#include <alphatest_fragment>', /* glsl */ `
+        ${near ? 'diffuseColor.a = 1.0;' : ''}
+        #include <alphatest_fragment>
+        diffuseColor.a *= ${near ? '1.0 - vHandover' : 'vHandover'};`)
       .replace('#include <color_fragment>', /* glsl */ `#include <color_fragment>
         ${assets ? `
         // Out of the ground: its colour at the root, a little shaded by the
@@ -396,7 +464,7 @@ function grassMaterial(blades: THREE.Texture, eye: { value: THREE.Vector3 }, ass
             * (behind * 1.2 + through * 0.35) * smoothstep(0.05, 0.6, vUp) * RECIPROCAL_PI;
         }`);
   };
-  material.customProgramCacheKey = () => `${key}-grass-${assets ? 1 : 0}`;
+  material.customProgramCacheKey = () => `${key}-grass-${assets ? 1 : 0}-${near ? 'blades' : 'cards'}`;
   return wetMaterial(material, 0.92, false);
 }
 
@@ -427,6 +495,71 @@ function grassGeometry(): THREE.BufferGeometry {
     n.normalize();
     normals.setXYZ(i, n.x, n.y, n.z);
   }
+  return geo;
+}
+
+/**
+ * A tuft of single blades, a unit tall and as wide as the cards': each a
+ * tapering strip rooted near the middle, leaning out and curving over, some
+ * yellower or darker than others and all darker at the root. Their normals
+ * lean out from the middle as the cards' do.
+ */
+export function bladesGeometry(): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const color: number[] = [];
+  const index: number[] = [];
+  const rand = mulberry32(17);
+  const ROWS = 4;
+  const n = new THREE.Vector3();
+  for (let k = 0; k < BLADES; k++) {
+    const a = rand() * Math.PI * 2;
+    const r = Math.sqrt(rand()) * 0.38;
+    const rootX = Math.cos(a) * r;
+    const rootZ = Math.sin(a) * r;
+    // Leaning out from the tuft's middle, give or take.
+    const lean = a + (rand() - 0.5) * 1.2;
+    const height = 0.7 + rand() * 0.45;
+    const reach = (0.1 + rand() * 0.25) * height;
+    const width = 0.07 + rand() * 0.06;
+    // Faces turned from the lean at random, so some blades are seen flat and some edge on.
+    const face = lean + Math.PI / 2 + (rand() - 0.5) * 1.4;
+    const sx = Math.cos(face) * width;
+    const sz = Math.sin(face) * width;
+    // Coloured as the painted blades are (see bladeTexture), root to tip.
+    const light = 38 + rand() * 22;
+    const root = new THREE.Color().setHSL(78 / 360, 0.35, (light * 0.55) / 100, THREE.SRGBColorSpace);
+    const tip = new THREE.Color().setHSL((68 + rand() * 20) / 360, 0.48, light / 100, THREE.SRGBColorSpace);
+    const c = new THREE.Color();
+    const first = pos.length / 3;
+    for (let row = 0; row < ROWS; row++) {
+      const t = row / (ROWS - 1);
+      // Out along the lean, more toward the tip, and down a little as it bends over.
+      const out = reach * t * t;
+      const cx = rootX + Math.cos(lean) * out;
+      const cz = rootZ + Math.sin(lean) * out;
+      const y = height * (t - 0.12 * t * t * t * (reach / height) * 3);
+      const taper = (1 - t) ** 0.5 * 0.5 + (t < 1 ? 0.02 : 0);
+      for (const side of [-1, 1]) {
+        pos.push(cx + sx * taper * side, y, cz + sz * taper * side);
+        n.set(cx, 0, cz).normalize().multiplyScalar(0.35);
+        n.y = 1;
+        n.normalize();
+        nrm.push(n.x, n.y, n.z);
+        c.lerpColors(root, tip, t);
+        color.push(c.r, c.g, c.b);
+      }
+    }
+    for (let row = 0; row < ROWS - 1; row++) {
+      const b = first + row * 2;
+      index.push(b, b + 1, b + 2, b + 2, b + 1, b + 3);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(color, 3));
+  geo.setIndex(index);
   return geo;
 }
 
@@ -520,40 +653,4 @@ function leafTexture(): THREE.Texture {
     g.fill();
   }
   return filled(canvas);
-}
-
-/**
- * The canvas as a texture whose see-through pixels carry the leaves' average
- * colour instead of black. A canvas can't keep a colour where it's fully
- * transparent, and smaller mips averaged that black into the leaves, which
- * turned distant bushes a dark, sky-lit blue-grey.
- */
-function filled(canvas: HTMLCanvasElement): THREE.Texture {
-  const { width: w, height: h } = canvas;
-  const src = canvas.getContext('2d')!.getImageData(0, 0, w, h).data;
-  const sum = [0, 0, 0];
-  let n = 0;
-  for (let i = 0; i < src.length; i += 4) {
-    if (src[i + 3] < 128) continue;
-    for (let k = 0; k < 3; k++) sum[k] += src[i + k];
-    n++;
-  }
-  const data = new Uint8Array(w * h * 4);
-  // Rows bottom to top, as a canvas texture would be flipped.
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = ((h - 1 - y) * w + x) * 4;
-      const o = (y * w + x) * 4;
-      const clear = src[i + 3] === 0;
-      for (let k = 0; k < 3; k++) data[o + k] = clear ? Math.round(sum[k] / Math.max(n, 1)) : src[i + k];
-      data[o + 3] = src[i + 3];
-    }
-  }
-  const tex = new THREE.DataTexture(data, w, h);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.generateMipmaps = true;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.needsUpdate = true;
-  return tex;
 }

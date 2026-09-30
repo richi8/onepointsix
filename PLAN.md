@@ -252,7 +252,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | **Done** (screenshot tests outside the wall behind a lamp, now dark, the lamps' shadows over a yard and a yard under a lamp on a rainy night, wet with puddles; unit tests of the lamps' cone and walls for bots, paths round lamplight and a bot's shot meeting a lamp; the benchmark's rainy night 14.6 ms against 14.9 ms for the code before in one session on an M3 Pro. Lights past the 16 nearest and shadows past the six nearest are left out; not watched in play) |
 | 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | **Done** (from the ground floor, a shot upstairs comes from the foot of the stairs, muffled 0.47 against 0.97 straight through the floor; the loading screen waits for 3.97 MB, down from 4.55 MB just before: the scripts had grown since the 4.3 MB was measured; the rifle's suppressed shot stays a stand-in, since no real one was found) |
 | 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | **Done** (by bot playtests of 6 islands × 20 min: 13% by day and 18% at night in rain on seeds 1–6, against 9% and 15% just before, and 13% and 18% against 10% and 17% on seeds 7–12; guards, the fee and extraction unchanged. Campers never wait blind, rats lie low when a fight breaks out nearby, and sneaking bots keep to bushes and tall grass, which cover little of the island. Nobody has played against it) |
-| 39 | **Trees and grass** | Trees from CC0 models, or better generated ones, small enough to download, with impostors baked from them to match; grass that shows blades up close instead of three flat cards, fading to the current tufts farther off; the sight model's cover checked against the new grass; within the benchmark's frame budget | Close up, a tree and a patch of grass look real in a screenshot, and the benchmark holds its frame time | Not started |
+| 39 | **Trees and grass** | Trees from CC0 models, or better generated ones, small enough to download, with impostors baked from them to match; grass that shows blades up close instead of three flat cards, fading to the current tufts farther off; the sight model's cover checked against the new grass; within the benchmark's frame budget | Close up, a tree and a patch of grass look real in a screenshot, and the benchmark holds its frame time | **Done** (generated spruces in two levels of detail, the impostors baked from the plainer one, and blades within 12 m, checked by screenshots; a unit test holds the blades' cover to the sight model's; in runs alternating with the code before on an M3 Pro, the benchmark's frames came out within its noise, the trees costing about 1.1 ms of the 24-body frame before and after. Nobody has looked at it in play) |
 | 40 | **Human pass II** | What needs people and hardware: a mid-range laptop for the 5 s load, 60 fps and the adaptive resolution; runs by other people with the stats export; watching the animation, ragdolls, swaying and waves in play; listening to the recordings, reverbs and corners; fighting through the buildings and against bots hiding in bushes; tuning from what they show (guards, weapons, extraction timings and fee, loot, night) | The Playtest and tuning goals are met with human data, and every Known Issue is Resolved, Moot or listed below as left for later | Not started |
 
 Known Issues that Phase 4 leaves alone:
@@ -287,13 +287,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   joists, a boarded parapet and stairs with treads and risers, and the shipping containers from
   corner posts, rails, ribbed steel walls and roof and a pair of doors with locking bars (see
   below for what they collide as). Buildings, crates and walls are still boxes.
-- **Trees are procedural** (9), because Poly Haven's tree models are hundreds of MB each. They
-  have no LOD or impostors, and they don't sway.
-  **Resolved in part** (15): trees are split into 100 m tiles. Tiles within 170–190 m of the
-  camera draw every tree in full, and their crowns sway in one wind. Farther tiles draw each tree
-  as an impostor: a card facing the camera, with a picture of the tree baked at startup. In the
-  shadow pass the card faces the sun, so far trees still cast shadows. The trees are still
-  procedural.
 - **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
   best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
   helmet hides the face, and its hands stay open instead of gripping the gun.
@@ -439,6 +432,12 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   over its hitbox front to back, the whole body, feet and all, first moves up to 0.3 m, and only
   what's left is taken by the hips and the waist. A crouch keeps the clip's hunch, but its feet
   can stand a little behind the legs' hitbox.
+- **Every tree is the same spruce** (39). One tree is generated per island and every tree is
+  that one, turned, scaled and tinted; there's one species, and no saplings, dead trees or
+  broadleaves. Sprays are cards: from under a few metres, most of all looking up into a crown,
+  they read as flat fronds. Limbs are drawn only within 40 m, and the needles have no sheen, wet
+  or dry. Each hand-over (30–40 m and 110–140 m) is a dither that shows as a fine speckle in a
+  still picture; nobody has watched the trees in motion.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
@@ -490,16 +489,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   and crates throw shadows under them; a screenshot test looks outside the wall behind a lamp,
   where the strip of light used to be. Still open: the gun in your hands isn't lit by them or by
   others' flashlights (it's drawn apart, and the lights are turned off for it).
-- **Grass is still crossed cards** (natural grass, after chunk 29). Tufts now take the ground's
-  colour at their roots (the terrain's textures, blended by its weights, from a small mip in the
-  vertex shader), lean their normals out so a tuft shades like a clump, glow when the sun or a lamp
-  is behind them, vary in patches of drier and greener and a finer mottle, and have soft edges by
-  alpha-to-coverage. Up close each tuft is still three flat cards; it reads as grass, not as blades.
-  Until the textures load the roots keep the blades' own colour. The patches are colour only, so
-  what bots see through is unchanged; distant grass looks a touch thinner than before (its alpha is
-  thickened by mip level at 0.2 rather than 0.3, which keeps its tops ragged), a little less than
-  the sight model's cover. Checked by screenshots only; the frame cost wasn't measured apart from
-  the benchmark still passing.
 - **Local lights have a budget** (36). At most 16 lamps and others' flashlights light the world,
   ranked by how near the camera they come; past that, the farthest go out at once rather than
   fading. Only the six nearest that cast shadows get a tile of the atlas, 512 px each, all drawn
@@ -520,6 +509,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Checked by screenshots only.
 - **Sunlight shows down a building's inside corners** (seen in chunk 36): a thin line of sun
   shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
+- **Blades only up close** (39). Grass is drawn blade by blade only within 8–12 m; past that
+  it's the crossed cards, and the hand-over shows as a faint band in a still picture. The blades
+  are wider than real grass (about 2–8 cm at a typical tuft), so a tuft of them hides as much as
+  the sight model says; the cards' own cover was never measured against it. Neither casts a
+  shadow. Checked by screenshots and the benchmark on an M3 Pro only.
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-09-30 (see the history).

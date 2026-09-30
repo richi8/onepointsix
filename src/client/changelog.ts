@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Real-looking trees and grass',
+    notes: [
+      'The trees are now spruces grown limb by limb, thick with sprays of needles and dark inside the crown, instead of cones hung with flat branches. They keep their shape from up close out to the horizon.',
+      'Grass near you is made of single blades swaying in the wind, turning into the old tufts a dozen metres off.',
+      'Grass hides you from guards and bots exactly as before, and the trees stand where they did.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Rivals with something to lose',
     notes: [
       'Bot operators carrying any real loot stop picking fights. They let you pass unless you come right up to them or shoot first, and then they fight back as before. Hunters are the exception: they still come for you.',

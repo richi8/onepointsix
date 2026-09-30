@@ -42,7 +42,7 @@ const GRASS_TOP = TUFT_SIZE[1] * 1.2 * OUTSKIRT_GRASS;
  * Share of a sight line a tuft stops, crossed through its middle low down.
  * Its blades thin out from halfway up to nothing near the top.
  */
-const TUFT_BLOCK = 0.85;
+export const TUFT_BLOCK = 0.85;
 /** Metres between samples along a sight line, looking for where it runs low enough for grass. */
 const GRASS_STEP = 0.5;
 /**

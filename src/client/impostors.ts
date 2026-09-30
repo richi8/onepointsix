@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { World } from '../shared/world.ts';
 import { addGroundDrop, groundEye } from './terrain.ts';
-import { SWAY, TREE_HEIGHT, treeFade, treeFadeGlsl, type TreeParts } from './trees.ts';
+import { needles, SWAY, thickened, TREE_HEIGHT, treeFade, treeFadeGlsl, type TreeParts } from './trees.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 import { wetMaterial } from './rain.ts';
 
@@ -14,7 +14,7 @@ import { wetMaterial } from './rain.ts';
 // far trees still cast shadows. Loaded lazily by Trees.
 
 /** Half the width of the card, in unit-tree metres: the widest whorl's reach. */
-const CARD_HALF = 3.2;
+export const CARD_HALF = 3.2;
 /** Sides the tree is baked from, evenly round it. */
 const VIEWS = 8;
 /** Each baked picture, in pixels. */
@@ -29,7 +29,7 @@ export class Impostors {
   constructor(world: World, colors: readonly THREE.Color[]) {
     this.world = world;
     const card = new THREE.PlaneGeometry(CARD_HALF * 2, TREE_HEIGHT).translate(0, TREE_HEIGHT / 2, 0);
-    this.mesh = new THREE.InstancedMesh(card, new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 1 }), world.trees.length);
+    this.mesh = new THREE.InstancedMesh(card, new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 0.9, envMapIntensity: 0.55 }), world.trees.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     world.trees.forEach((t, i) => {
@@ -55,16 +55,13 @@ export class Impostors {
     // An ambient light of π gives back each surface's own colour.
     colour.add(new THREE.AmbientLight(0xffffff, Math.PI));
     colour.add(
-      new THREE.Mesh(unit.trunk, opaque(new THREE.MeshStandardMaterial({ color: unit.trunkColor, roughness: 1 }))),
-      new THREE.Mesh(unit.core, opaque(new THREE.MeshStandardMaterial({ color: unit.coreColor, roughness: 1 }))),
-      new THREE.Mesh(unit.cards, opaque(new THREE.MeshStandardMaterial({ map: unit.map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 }))),
+      new THREE.Mesh(unit.wood, opaque(new THREE.MeshStandardMaterial({ color: unit.woodColor, roughness: 1 }))),
+      new THREE.Mesh(unit.foliage, opaque(thickened(new THREE.MeshStandardMaterial({
+        map: unit.map, vertexColors: true, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1,
+      })))),
     );
     const facing = new THREE.Scene();
-    facing.add(
-      new THREE.Mesh(unit.trunk, normalMaterial()),
-      new THREE.Mesh(unit.core, normalMaterial()),
-      new THREE.Mesh(unit.cards, normalMaterial(unit.map)),
-    );
+    facing.add(new THREE.Mesh(unit.wood, normalMaterial()), new THREE.Mesh(unit.foliage, normalMaterial(unit.map)));
 
     const camera = new THREE.OrthographicCamera(-CARD_HALF, CARD_HALF, TREE_HEIGHT, 0, 0.1, 40);
     const clear = renderer.getClearColor(new THREE.Color());
@@ -108,7 +105,7 @@ export class Impostors {
     const material = this.mesh.material as THREE.MeshStandardMaterial;
     material.onBeforeCompile = (shader) => card(shader, uniforms, this.world, true);
     material.customProgramCacheKey = () => 'tree-impostor';
-    wetMaterial(material, 0.75, false);
+    wetMaterial(needles(material, false), 0.75, false);
     material.needsUpdate = true;
     const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, alphaTest: 0.5 });
     depth.onBeforeCompile = (shader) => card(shader, uniforms, this.world, false);
@@ -156,7 +153,10 @@ function normalMaterial(map?: THREE.Texture): THREE.ShaderMaterial {
       #endif
       void main() {
         #ifdef USE_CARD_MAP
-          if (texture2D(map, vUv).a < 0.45) discard;
+          // Thickened as the colours' picture is (see thickened in trees.ts).
+          vec2 texel = vUv * vec2(textureSize(map, 0));
+          float mip = max(0.0, 0.5 * log2(max(dot(dFdx(texel), dFdx(texel)), dot(dFdy(texel), dFdy(texel)))));
+          if (texture2D(map, vUv).a * (1.0 + mip * 0.35) < 0.4) discard;
         #endif
         vec3 n = normalize(vN);
         gl_FragColor = vec4(n * 0.5 + 0.5, 1.0);
