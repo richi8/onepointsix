@@ -85,11 +85,14 @@ const KTX_BUILDS = {
   'linux-x64': 'Linux-x86_64.tar.bz2',
 };
 
-/** A download kept with the originals, fetched only if it isn't there. */
+/** A download kept with the originals, fetched only if it isn't there; `url` may be a function that finds it. */
 async function cached(url, path) {
-  if (!existsSync(path)) writeFileSync(path, await get(url));
+  if (!existsSync(path)) writeFileSync(path, await get(typeof url === 'function' ? await url() : url));
   return path;
 }
+
+/** A Poly Haven asset's files, as its API lists them. */
+const polyHavenFiles = async (id) => (await fetch(`https://api.polyhaven.com/files/${id}`)).json();
 
 /** The `ktx` tool and the environment to run it in. */
 async function ktxTool() {
@@ -141,9 +144,8 @@ if (doing('textures')) {
   const work = mkdtempSync(join(tmpdir(), 'fetch-assets-'));
   const pngs = { color: [], normal: [] };
   for (const { polyHaven } of LAYERS) {
-    const files = await (await fetch(`https://api.polyhaven.com/files/${polyHaven}`)).json();
     for (const [map, kind] of [['Diffuse', 'color'], ['nor_gl', 'normal']]) {
-      const jpg = await cached(files[map]['1k'].jpg.url, join(ORIGINALS, `${polyHaven}_${kind}.jpg`));
+      const jpg = await cached(async () => (await polyHavenFiles(polyHaven))[map]['1k'].jpg.url, join(ORIGINALS, `${polyHaven}_${kind}.jpg`));
       const png = join(work, `${polyHaven}_${kind}.png`);
       ffmpeg(['-i', jpg, '-vf', `scale=${SIZE}:${SIZE}:force_original_aspect_ratio=decrease:flags=lanczos,vflip`, png]);
       pngs[kind].push(png);
@@ -165,8 +167,7 @@ rmSync(work, { recursive: true });
 
 // Only used for image-based lighting, so half the smallest size Poly Haven has is plenty.
 if (doing('sky')) {
-  const hdri = await (await fetch(`https://api.polyhaven.com/files/${HDRI}`)).json();
-  const sky1k = await cached(hdri.hdri['1k'].hdr.url, join(ORIGINALS, 'sky.hdr'));
+  const sky1k = await cached(async () => (await polyHavenFiles(HDRI)).hdri['1k'].hdr.url, join(ORIGINALS, 'sky.hdr'));
   writeFileSync(join(OUT, 'sky.hdr'), halveHdr(readFileSync(sky1k)));
   console.log('sky.hdr');
 }
