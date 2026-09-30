@@ -563,7 +563,78 @@ notes the chunk it came from.
   loaded behind the menu right after the early one and before the rest; they fade in once
   they're in. The early bank is down from 728 kB to 143 kB (29 s of sound), and the loading
   screen waits for 3.97 MB, down from 4.55 MB.
-
+- **Some recordings aren't what they stand for** (14). The suppressed shot sounds synthesized,
+  the rifle and pistol reloads are mixes of other recordings, the bolt-action's shot is a .405
+  Winchester lever-action, and concrete footsteps reuse the stone ones played 10% faster. Every
+  gun shares the one suppressed shot, pitched per gun, and the bolt-action reloads with the rifle's
+  magazine sound.
+  **Resolved in part** (26): each gun has a real suppressed shot (a suppressed SIG P226 for the
+  pistol, a MacMillan Tac-50 for the bolt-action, and for the rifle a suppressed sniper rifle from
+  a US government video, the nearest real one found); the bolt-action fires a Sauer 404 (a
+  bolt-action rifle), and reloads with a Mauser K98's bolt going back, rounds pressed in from a
+  clip and the bolt going home, cut from one recording by its loudness envelope; concrete has its
+  own footsteps. All CC0 previews, checked on their pages by the script. Still stand-ins: the rifle
+  and pistol magazine reloads (mixes of other recordings), and the rifle's suppressed shot is a
+  sniper rifle's. The Tac-50 recording stays loud for two seconds after the shot (echo or wind on
+  a phone microphone, going by the envelope), so only its first 0.9 s is used.
+  **Resolved in part** (37): the reloads are real guns: the rifle's magazine out, a fresh one
+  seated and its charging handle from an AR15 being handled, the pistol's magazine from a pistol
+  and its slide from a Glock 19. Each part plays as the hands get to it rather than as one mix at
+  the start, and a reload cut short by drawing another gun cuts its sounds short too. The cuts
+  were placed by loudness envelope, not by ear: in the AR15 recording the loud clicks alternate
+  with quieter ones about two seconds apart, taken as seating and pulling the magazine, and a
+  pair 0.3 s apart as the charging handle pulled and let go. Still a stand-in: the rifle's
+  suppressed shot, as no CC0 recording of a suppressed rifle of its kind was found (the few
+  suppressed ones on Freesound are made in an editor, an air rifle, or a blank-firing BB gun).
+  The rifle's reload still has no charging handle in the animation, though the sound plays.
+  **Accepted** (2026-09-30): only the rifle's suppressed shot is still a stand-in, and no real one
+  is to be had under CC0; the charging handle heard in the rifle's reload without being seen is a
+  small thing. Closed at the user's request.
+- **The reverb is one generated room** (14), the same everywhere, only louder when walled in.
+  It isn't placed in 3D, and a place with no roof yet (every building so far) rings like a room
+  when its walls are close.
+  **Improved** (15): the outposts' buildings have roofs, so inside them the reverb is right. The
+  walled yards around them still ring like a room.
+  **Improved** (23): a place with nothing within 12 m overhead counts as only 30% as enclosed, so a
+  walled yard echoes a little instead of ringing like a room; the wind and crickets come through
+  there as in the open. It's one ray straight up, so an overhang or a tree above counts as a
+  roof. Reverb per space is still chunk 26's.
+  **Resolved in part** (26): three reverbs, each its own generated impulse: a room (dense early
+  reflections, a second's tail), a walled yard (a few distinct slaps 45–170 ms in, a thinner tail)
+  and the open (a faint, dark wash dying over nearly 3 s). Where the listener stands is split
+  between them by how walled in it is and whether it's roofed; a sound out in the world rings half
+  with the listener's space and half with its own (6 rays round it and one up). Your own sounds and
+  footsteps ring with the listener's. The returns still aren't placed in 3D, and a roof is still
+  one ray straight up.
+  **Resolved in part** (37): the half of a sound's ringing that comes from the space round it is
+  panned to where the sound seems to be before its reverb, whose two sides ring apart, so a door
+  slammed to your right rings back from the right (four times as loud there as on the left, in the
+  browser test); the listener's own half still comes from all round. A roof is found by six rays,
+  one straight up and five leaning 30° round it, as a share of the sky covered, so an overhang or
+  the eaves count for part of a roof, not all of it. What's left: the returns are panned only left
+  and right, not in front, behind or overhead, and the impulses are still generated, not
+  recorded.
+  **Accepted** (2026-09-30): returns panned only left and right and generated impulses are fine for
+  now. Closed at the user's request.
+- **Sound round corners is worked out on a flat grid** (26). The grid is at ground level, so
+  upstairs, on a roof or up a watchtower, routes are worked out as if on the ground below; the
+  legs are checked in 3D, so a wrong route is dropped rather than heard, but a right one upstairs
+  can be missed. Sound can't go round through an open window, only straight through its gap, and
+  goes round only within 48 m; past that it's straight through or over. The losses per material
+  and per bend were picked, not measured or heard.
+  **Resolved in part** (37): over the ground grid, each stair, upper floor, watchtower platform
+  and roof has a node in the air over it, and so has each broken window, in its gap. They're
+  joined to the nodes round them by lines checked against the world, rising or falling beside the
+  higher one when they're more than a metre apart in height, so sound goes up a stairwell, out of
+  a window upstairs and down to the ground, or over a roof's edge. A sound past the 48 m flood,
+  up to 150 m, is heard along the way out of the flood nearest to it, then straight on, so from
+  inside a house a far shot comes in through the door. What's left: that far leg is straight, so
+  a sound far off inside another building is still heard straight through or over it; a floor's
+  links are worked out the first time the flood reaches them, 1–4 ms at an outpost once; a
+  window is only a way round once its glass is broken (none open); and the losses per material
+  and per bend are still picked, not measured.
+  **Accepted** (2026-09-30): what's left (the straight far leg, links worked out on first reach, no
+  way round through unbroken windows, picked losses) is small. Closed at the user's request.
 ### Performance and loading
 - **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat
   colours, and the swap is visible.
