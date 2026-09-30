@@ -1010,6 +1010,16 @@ notes the chunk it came from.
   uniform vectors), untried on a GPU that allows few.
   **Accepted** (2026-09-30): the user is fine with what's left; none of it is major. Lights now
   fade out past the 16 rather than switch off, and the rest is cost that held the benchmark.
+- **The look was tuned by screenshots only** (16), on an M3 Pro through headless Chrome. The cost
+  of up to 24 beams and glares, three spotlights and the rain on a mid-range laptop wasn't
+  measured. The lighting presets, rain, flashlights and menu pickers have no automated tests; the
+  config, link, bot senses, night guards and loot do.
+  **Resolved in part** (31): screenshots outside an outpost at dusk, in rain, in fog, at night
+  with your flashlight lit (dev-only `?torch`) and on a rainy night with it; a test that T lights
+  the flashlight at night and puts it out, and does nothing by day; the menu's pickers were
+  already tested (chunk 19). The dev camera (`?cam=`) now sees the fog a player there would, not
+  the menu's thinned fog. The cost on a mid-range laptop still isn't measured.
+  **Resolved** (2026-09-30): the user played on a mid-range laptop and found the performance OK.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
