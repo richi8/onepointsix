@@ -965,6 +965,13 @@ notes the chunk it came from.
   lit faces clear; no acne showed in screenshots by day or at dusk, and the sun through a window
   now falls a sliver narrower, as its jambs no longer leak either. A screenshot test of an inside
   corner at dusk, held to 100 pixels, fails on the line (1,293 pixels) without the change.
+- **Bots and lamps are unplayed** (36). Only operator bots shoot lamps out, and only one about to
+  search a crate or wait in a spot the lamp lights; they do it without a suppressor too, which
+  guards may hear. In a bot playtest at night in rain (4 islands × 15 min), they aimed at a lamp
+  3 times, and operator bots got out of 16% of runs against 12% for the code before, in the same
+  session. Crouching under a lamp still helps only as much as by day.
+  **Accepted** (2026-09-30): the user is fine with it; the lamps are there mainly for the look of
+  the place, and players will likely shoot them more often than bots do.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

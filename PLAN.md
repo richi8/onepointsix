@@ -450,11 +450,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   screenshots only. On the benchmark's rainy night (24 lit flashlights near the quarry's lamps)
   the frame held within noise of the code before (14.6 against 14.9 ms median in one session on
   an M3 Pro), with 120 more draw calls; a mid-range laptop wasn't measured.
-- **Bots and lamps are unplayed** (36). Only operator bots shoot lamps out, and only one about to
-  search a crate or wait in a spot the lamp lights; they do it without a suppressor too, which
-  guards may hear. In a bot playtest at night in rain (4 islands × 15 min), they aimed at a lamp
-  3 times, and operator bots got out of 16% of runs against 12% for the code before, in the same
-  session. Crouching under a lamp still helps only as much as by day.
 - **Wet is worked out simply** (36). Bodies, bags and debris dry the moment they're under a roof,
   and are as wet as the ground round them in the open, how much they face up judged from their
   triangles. Puddles form only on the terrain, not on floors or roofs open to the sky. Past 32 m
