@@ -4,9 +4,16 @@
 
 import { execFileSync } from 'node:child_process';
 
-export async function get(url, init) {
-  const res = await fetch(url, init);
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
+// Named, since some hosts' bot rules turn away Node's default User-Agent.
+const USER_AGENT = 'onepointsix-asset-scripts (+https://github.com/richi8/onepointsix)';
+
+export async function get(url, init = {}) {
+  const res = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...init.headers } });
+  if (!res.ok) {
+    // Cloudflare says when a bot rule, not the file, is the reason.
+    const rule = res.headers.get('cf-mitigated');
+    throw new Error(`${res.status} ${url}${rule ? ` (Cloudflare: ${rule})` : ''}`);
+  }
   return Buffer.from(await res.arrayBuffer());
 }
 

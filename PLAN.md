@@ -414,7 +414,12 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Checked by screenshots only.
 
 ### Code and testing
-Nothing open: the last was resolved on 2026-09-30 (see the history).
+- **The asset script's CI job can't download the models** (2026-09-30). On GitHub's runners,
+  static.poly.pizza answers the soldier's download with 403, though the same URL downloads fine
+  from a home connection, so its Cloudflare most likely turns away datacentre IPs. The scripts
+  now send a User-Agent of their own and name Cloudflare's bot rule when one refuses. If the job
+  still fails, the fix is to mirror the four CC0 source models somewhere the runner can reach
+  (e.g. a GitHub release) and fetch them from there.
 
 ### Playtest and tuning
 Nothing open: everything so far was resolved or accepted on 2026-09-30 (see the history, and the
