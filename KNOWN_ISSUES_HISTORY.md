@@ -778,7 +778,13 @@ notes the chunk it came from.
   search a crate or wait in a spot a lamp lights shoots the lamp out first, if it can see it within
   35 m and has seen nobody for 10 s. Unit tests cover the cone, walls, the paths and a bot's shot
   meeting the lamp. See Known Issues for what's left.
-
+- **Night tuning comes from bots only** (16). In a bot playtest (4 islands × 15 min each),
+  operator bots got out of 18% of runs on a clear day, 22% in rain, 26% in fog, 12% on a clear
+  night, 19% on a rainy night and 24% on a foggy night. So night is the hardest and fog the
+  easiest, as intended, but none of the numbers (sight multiples, one extra guard per outpost,
+  loot boost, flashlight reach) have been checked by humans.
+  **Accepted** (2026-09-30): the user is fine with it for now; bot extraction at night in rain is
+  about 20%, near the day baseline (see Decisions).
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
   are drawn and collided as they are now, so a replayed killer can walk or shoot differently
@@ -1107,7 +1113,104 @@ notes the chunk it came from.
   a fifth of the island's land). A rat hearing gunfire within 90 m lies low for 10–20 s (longer
   while the shots go on) in a bush that hides it from the fight, or out of its sight within
   25 m, then goes on. What's left is in PLAN.md's "Hidden routes keep little off open ground".
-
+- **Bot runs can't check run length** (12). An operator bot searches only 1–3 crates and leaves,
+  so even its extracted runs last about 1:20. The bot playtest (`npm run playtest`) is good for
+  comparing ways of playing and how often operators meet, not for how long a human run lasts.
+  **Resolved in part** (29): `npm run playtest -- 30 12 1 --thorough` has one operator bot at a
+  time loot 6–10 crates and carry 30–40 kg, as a person tends to, and keep to every crate it
+  planned. Such bots die within a minute like the rest, so they can't be killed: guards' rounds
+  hit them for nothing and they don't notice (else they'd stand fighting a guard they can't see
+  forever), and they're given ammo when out. Over 12 islands their 46 runs lasted 5:56 at the
+  median, 6:09 for the 87% that got out; the other 13% ran out the clock stuck in a fight. So a
+  run that isn't cut short by death lands inside 3–10 minutes, but it's a bot's route and fights,
+  not a person's.
+  **Accepted** (2026-09-30): the user is fine with it for now; the thorough playtest reads run
+  length well enough until people play.
+- **Guards were too deadly for a person** (30). The first human run log (84 runs by the
+  developer on seed 1, about half of them tries with no aim to get out) had 88% of runs end in
+  death, 77% of those to guards, a median 0:30 into the run, and 42% of guard kills were
+  headshots; extracted runs lasted a median 2:30. Two or three guards firing at once was the
+  usual way to die. Most guard hits land at 50–100 m, often from towers, and 18% of rounds a
+  guard aimed at the body still struck the head, so removing aimed headshots alone changed
+  nothing: one head hit (70) and one body hit (28) kill.
+  **Resolved in part** (30): guards now take their grade's skill through `guardSkill`
+  (`server/skill.ts`): no aimed headshots, aim nearer the hips (so a burst climbs into the chest),
+  3× the sway, 30% more aim error and reaction time, 40% slower settling and bursts 40% shorter.
+  Their head hits do 0.6 of a headshot's damage (`GUARD_HEAD_SHARE`, 42 instead of 70), a rule
+  that applies to guards only; operators, bots and people alike, are unchanged. In the bot
+  playtest (6 islands × 20 min) guards kill 127 operators an hour instead of 155 by day and
+  136 instead of 146 at night in rain, with 21% and 11% of those kills in the head (38% and 33%
+  before); operator bots extract from 19% and 21% of runs (17% and 20%). Those playtests are
+  noisy (runs that should come out equal differ by up to 20%), and bots die charging guards, so
+  it waits on people playing to say whether it's enough. A limit on how many guards may shoot at
+  one person at once was tried and dropped at the user's request.
+  **Changed further** (30): guards have 50 health (`GUARD_HP`) instead of 100, so two rifle
+  rounds to the body drop one instead of four. Bots now read health as a share of their full
+  health (wounded below 60%, ducking into cover when shot at below 70%), so guards don't turn
+  timid at half the health. In the bot playtest (6 islands × 20 min) operators kill 181–186
+  guards an hour by day instead of 127 and 129 instead of 77 at night in rain, guards kill
+  126–146 operators an hour instead of 147–153, and operator bot extraction barely moves (3–5%
+  by day, 9% at night in rain): since the extraction fee, what kills bots is the longer search,
+  not the guards. For a person, who picks their fights, it should matter far more; not yet
+  played.
+  **Accepted** (2026-09-30): the user is fine with it for now, with guards eased further since
+  (slower to turn and settle, more aim error; see "Weaker guards, more exits and cover at them
+  didn't raise extraction"). People playing will say if it's still too much.
+- **Most of the listed tuning wasn't changed** (12): guard count, bot skill numbers, weapon damage
+  and recoil, extraction timings and loot values. In the bot playtest the rifle and bolt-action
+  came out even (about 210 and 190 points per run), as did light and heavy carrying, so there was
+  nothing to fix there without human data. Only the operator cap and operator bot behaviour were
+  tuned.
+  **Accepted** (2026-09-30): the user is fine with it for now; tuned from human run logs when there
+  are more.
+- **The new buildings were tried by bots only** (23). Two bot playtests of 6 islands × 20 minutes
+  each, before and after, came out the same: operator bots got out of 12% of runs before and
+  12.5% after (13% → 11% on seeds 1–6, 11% → 14% on seeds 7–12), with the same kill rates. Over
+  30 minutes of bot games bots opened 10 doors and broke 5 panes; no roof came down. Nothing
+  was tuned, as nothing moved. Nobody has fought through the new buildings.
+  Still (35): bots now go upstairs, up the watchtowers and through doors they shut behind them,
+  and guards no longer look into a friend's door or broken panel (only their gunfire). Bot
+  playtests of 6 islands × 20 minutes before and after the chunk: by day operator bots got out of
+  9% of runs both times, with about the same kill rates; at night in rain 15% before and 13%
+  after. The bots spent about 40 bot-minutes upstairs or on a tower in the two hours of day play.
+  Nothing was tuned, and nobody has fought upstairs or up a tower against them.
+  **Accepted** (2026-09-30): the user is fine with it for now; bot extraction sits at the baseline
+  (see Decisions).
+- **Bot stealth was tried by bots only** (27). Two 6-island × 30-minute bot playtests, by day and
+  at night in rain: operator bots got out of 15% and 17% of runs (12% just before the chunk);
+  rats 24% and 36%, hunters 6% and 9%. The playtest now prints how often bots take a bush for
+  cover and to wait in, how far off their guesses at fights are and how often camps are blind
+  (counted in `tally`, a module-level counter in `server/bot.ts`). Nobody has played against bots
+  that hide in bushes, and whether they're too hard to find there is untested.
+  Still (38): rats now also lie low when a fight breaks out nearby and sneak through bushes and
+  tall grass, and operators get away from guards; tried by bots only. Since the flights count as
+  cover taken, the playtest's share of cover taken in a bush fell from 33% to about 10–18%.
+  **Accepted** (2026-09-30): the user is fine with it for now; bot extraction sits at the baseline
+  (see Decisions).
+- **The thorough playtest isn't a person** (29). Its bots can't be killed, play alone, don't
+  notice being shot and never run dry, so it reads how long a full search and its fights take,
+  not how often a person survives one. 13% of its runs still end stuck in a fight at 10:00.
+  **Accepted** (2026-09-30): the user is fine with it for now; it's a tool for reading run length,
+  not a stand-in for people.
+- **Extracted runs were short** (30): 2:30 at the median in the first human run log, below
+  the 3–10 minute goal; getting in and out with a couple of crates paid.
+  **Changed** (30): a pickup now costs 5,000 (`EXTRACT_FEE`), paid from the loot on
+  extraction: carrying less, you can't call a pickup or hold a walk-in point, and the HUD says
+  so (the pack shows "$X of $5,000", the zone "A pickup costs $5,000 — you carry $X", the pause
+  menu how far short you are). Operator bots plan 12 spare crates past their own stops and
+  search them, carrying up to 50 kg, until they can pay, even when hurt or short of time. That
+  hit them hard: in the bot playtest (6 islands × 20 min) 3% of their runs extract by day (19%
+  just before) and 10% at night in rain (21%), their extracted runs last 3:45 and 3:06, and 97%
+  and 90% end in death; left as it is for now. Scores kept on leaderboards and in share links
+  from before don't pay the fee, so they're 5,000 higher than the same run would score now. The
+  dev shortcut that ends a run as extracted skips the check, so the loot's part of a score is
+  never below zero.
+  **Lowered** (30) to 2,000 after a second tester's log: both of their extractions (on the
+  build before the fee) carried under 5,000 (4,900 and 3,250), and none of their 7 runs on the
+  current build got out. In the bot playtest operator bots now extract from 9% of runs by day
+  (3% at 5,000, 19% before the fee) and 15% at night in rain (9%, 21%), with extracted runs of
+  2:19 and 2:16. The HUD texts above follow the constant.
+  **Accepted** (2026-09-30): the user is fine with it for now; the fee stays at 2,000.
 ## Dropped
 
 Open issues taken off the plan on 2026-09-28 as not worth pursuing: records of what was measured
