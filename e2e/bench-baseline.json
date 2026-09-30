@@ -5,38 +5,60 @@
     "bodies": 24,
     "empty": {
       "frame": {
-        "median": 3.1,
-        "p95": 4.4,
-        "max": 6.1
+        "median": 8.8,
+        "p95": 10.7,
+        "max": 15.9
       },
       "calls": 86,
-      "triangles": 417816
+      "triangles": 813428
     },
     "crowd": {
       "bodies": {
-        "median": 2.4,
-        "p95": 2.6,
-        "max": 2.8
+        "median": 2.7,
+        "p95": 3.2,
+        "max": 3.5
       },
       "frame": {
-        "median": 10.6,
-        "p95": 11,
-        "max": 11.4
+        "median": 12.1,
+        "p95": 16,
+        "max": 17.8
       },
-      "calls": 1113,
-      "triangles": 1103876
+      "calls": 248,
+      "triangles": 1506224
+    },
+    "distant": {
+      "bodies": {
+        "median": 0.6,
+        "p95": 1.1,
+        "max": 1.4
+      },
+      "frame": {
+        "median": 10.5,
+        "p95": 12.1,
+        "max": 21.6
+      },
+      "calls": 166
     },
     "groundCover": {
       "first": {
-        "median": 1.1,
-        "p95": 1.9,
-        "max": 21.1
+        "median": 3.5,
+        "p95": 4.6,
+        "max": 50.1
       },
       "again": {
-        "median": 1,
-        "p95": 1.7,
-        "max": 20.3
+        "median": 2,
+        "p95": 3,
+        "max": 25.4
       }
+    },
+    "night": {
+      "frame": {
+        "median": 14.8,
+        "p95": 16.7,
+        "max": 20.9
+      },
+      "calls": 518,
+      "triangles": 2848646
     }
   }
 }

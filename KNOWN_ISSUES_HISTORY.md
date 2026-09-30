@@ -480,6 +480,48 @@ notes the chunk it came from.
   or dry. Each hand-over (30–40 m and 110–140 m) is a dither that shows as a fine speckle in a
   still picture; nobody has watched the trees in motion.
   **Accepted** (2026-09-30): the user is fine with it for now.
+- **Only the bodies you hit flinch** (33, from 13). Hits are told only to whoever fired, so a body
+  struck by someone else doesn't react on your screen, whichever way the round went.
+  **Accepted** (2026-09-30): the user is fine with it for now.
+- **Bots' floors are only those marked walkable** (35): stairs, a two-storey building's upper
+  floor and a watchtower's platform and stairs. Roofs, container tops, crates and wall tops are no
+  place for a bot, though a player can mantle onto them, and bots never jump or mantle as part of
+  a path. Paths are smoothed only on the ground, so up stairs and across an upper floor a bot
+  walks cell to cell. Links between floor nodes are found by a walk along the line between them
+  that follows the game's rules closely but not exactly (the edge of the tower's bottom step,
+  0.5 m high, isn't counted as an edge). "Clearing a building room by room" is a bot looking into
+  what it heard or last saw, which can be upstairs; nothing makes a bot sweep a building's rooms
+  in turn. Friends' gunfire is looked into where the friend fired from, so guards now run up the
+  watchtower when its sentry shoots.
+  **Accepted** (2026-09-30): the user is fine with it for now.
+- **Door leaves count as open for bots' paths** (35): the nav grid keeps clear of every leaf where
+  it stands open, and walks through where it stands shut, as bots open doors by walking into
+  them. A bot opening a door toward itself is swept back by the leaf, the opener not counting as
+  in the way.
+  **Accepted** (2026-09-30): the user is fine with it for now.
+- **Doors swing on two clocks** (35): the server swings them each tick and each client each frame,
+  so a leaf mid-swing can be a frame apart on the two. A door you swung isn't in the death cam as
+  it swung; the death cam shows doors as they stood at its start. Whether someone stands in the
+  way is judged from where they stood, not from the leaf's thickness, and on your own screen from
+  where you see others, a tenth of a second behind; the server's answer puts it right.
+  **Accepted** (2026-09-30): the user is fine with it for now.
+- **Bots slam doors on a chase only rarely** (35): once in two 20-minute bot playtests of six
+  islands (in 982 doors shut). It needs a bot getting away from someone seen in the last 6 s,
+  within 30 m of the doorway on the side it came from, and a doorway on its way. Nobody has been
+  chased through a door by a person, and a shut door only slows a chaser, who opens it.
+  **Accepted** (2026-09-30): the user is fine with it for now.
+- **The upper floor rests only on its posts** (35): with every wall under it shot out but the
+  posts standing, the upper storey stays up; with the posts gone it falls though the walls stand.
+  The landing beside the stairs falls with the posts too. Someone standing on a floor that falls
+  just drops. A building's ground storey can't be brought down but a panel at a time, and a
+  one-storey building's roof comes down only once everything under it has gone, as before.
+  **Accepted** (2026-09-30): the user is fine with it for now.
+- **Towers and containers collide as the boxes they were** (35): drawn from their parts, they
+  still stop rounds, sight and bodies as solid boxes, so the finger gaps between a parapet's
+  boards, the space between the deck's joists and the underside of the stairs are solid. A
+  container's doors don't open. Every watchtower is the same, and the wood is a little darker
+  than the boxes were.
+  **Accepted** (2026-09-30): the user is fine with it for now.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
@@ -762,6 +804,16 @@ notes the chunk it came from.
   still hasn't been seen by a test; the messages were checked in WebKit, which refuses every
   lock, with the time since Esc faked.
   **Resolved** (30): the messages in chunk 20 cover it, and resuming works in play.
+- **The benchmark's empty frame is twice its kept baseline** (32): 5–6.8 ms against 3.1, in runs
+  of both the code before chunk 32 and after it in the same session, with the same 95 draw calls
+  and 502k triangles as each other. The baseline in `e2e/bench-baseline.json` is older than the
+  night case and the far frame, so whether a later chunk made the empty frame dearer or the
+  machine was busier wasn't looked into; it wasn't kept as the new baseline.
+  **Resolved** (2026-09-30): in chunk 39 the code before measured 5.5–7.3 ms empty in the same
+  sessions as the new code, so the machine had slowed, not the code. The baseline was kept again
+  from a clean run (8.8 ms empty, 12.1 ms with 24 bodies, 14.8 ms on the rainy night); the empty
+  frame, measured first, swings between 6 and 9 ms from run to run, so it's the least telling of
+  the numbers.
 
 ### Sharing and leaderboards
 - **A link without a mode is taken as Mixed** (10), so an old `?world=` link with a score in it

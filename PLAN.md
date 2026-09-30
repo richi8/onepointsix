@@ -341,39 +341,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (19): the benchmark times the rebuild at about 1 ms a cell crossed in all
   three engines (see "The ground cover's first fill"), and the screenshots are now compared by
   the tests. The mid-range laptop and watching it move are left for chunk 30.
-- **Bots' floors are only those marked walkable** (35): stairs, a two-storey building's upper
-  floor and a watchtower's platform and stairs. Roofs, container tops, crates and wall tops are no
-  place for a bot, though a player can mantle onto them, and bots never jump or mantle as part of
-  a path. Paths are smoothed only on the ground, so up stairs and across an upper floor a bot
-  walks cell to cell. Links between floor nodes are found by a walk along the line between them
-  that follows the game's rules closely but not exactly (the edge of the tower's bottom step,
-  0.5 m high, isn't counted as an edge). "Clearing a building room by room" is a bot looking into
-  what it heard or last saw, which can be upstairs; nothing makes a bot sweep a building's rooms
-  in turn. Friends' gunfire is looked into where the friend fired from, so guards now run up the
-  watchtower when its sentry shoots.
-- **Door leaves count as open for bots' paths** (35): the nav grid keeps clear of every leaf where
-  it stands open, and walks through where it stands shut, as bots open doors by walking into
-  them. A bot opening a door toward itself is swept back by the leaf, the opener not counting as
-  in the way.
-- **Doors swing on two clocks** (35): the server swings them each tick and each client each frame,
-  so a leaf mid-swing can be a frame apart on the two. A door you swung isn't in the death cam as
-  it swung; the death cam shows doors as they stood at its start. Whether someone stands in the
-  way is judged from where they stood, not from the leaf's thickness, and on your own screen from
-  where you see others, a tenth of a second behind; the server's answer puts it right.
-- **Bots slam doors on a chase only rarely** (35): once in two 20-minute bot playtests of six
-  islands (in 982 doors shut). It needs a bot getting away from someone seen in the last 6 s,
-  within 30 m of the doorway on the side it came from, and a doorway on its way. Nobody has been
-  chased through a door by a person, and a shut door only slows a chaser, who opens it.
-- **The upper floor rests only on its posts** (35): with every wall under it shot out but the
-  posts standing, the upper storey stays up; with the posts gone it falls though the walls stand.
-  The landing beside the stairs falls with the posts too. Someone standing on a floor that falls
-  just drops. A building's ground storey can't be brought down but a panel at a time, and a
-  one-storey building's roof comes down only once everything under it has gone, as before.
-- **Towers and containers collide as the boxes they were** (35): drawn from their parts, they
-  still stop rounds, sight and bodies as solid boxes, so the finger gaps between a parapet's
-  boards, the space between the deck's joists and the underside of the stairs are solid. A
-  container's doors don't open. Every watchtower is the same, and the wood is a little darker
-  than the boxes were.
 - **The light volume is rough** (23). Cells about 0.5 m across leave a little light leaking at the
   foot of walls; only sky light is counted (no light bounced off the floor, no colour), and only
   what the building itself hides: hills, trees and other buildings outside don't darken a room.
@@ -419,8 +386,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   and in view (within 90 m), where they saw them fall; they don't land on bodies, go after 90 s,
   and no more than 40 lie about. The rifle's charging handle doesn't move, and the pistol's
   magazine body is a plain box inside the grip.
-- **Only the bodies you hit flinch** (33, from 13). Hits are told only to whoever fired, so a body
-  struck by someone else doesn't react on your screen, whichever way the round went.
 - **The low run is the run clip lowered** (33): the hips tipped and dropped over the run's feet,
   not a crouched run of its own. A foot on a step's edge stands at the step's height, as the
   ground's height counts anything under a player's width.
@@ -454,11 +419,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   hardware (chunk 30).
 - **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
   production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred).
-- **The benchmark's empty frame is twice its kept baseline** (32): 5–6.8 ms against 3.1, in runs
-  of both the code before chunk 32 and after it in the same session, with the same 95 draw calls
-  and 502k triangles as each other. The baseline in `e2e/bench-baseline.json` is older than the
-  night case and the far frame, so whether a later chunk made the empty frame dearer or the
-  machine was busier wasn't looked into; it wasn't kept as the new baseline.
 
 ### Day, night and weather
 - **The look was tuned by screenshots only** (16), on an M3 Pro through headless Chrome. The cost
