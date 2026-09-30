@@ -1,4 +1,5 @@
 import { PLAYER_HEIGHT, PLAYER_RADIUS, STEP_HEIGHT, WATER_LEVEL } from '../shared/constants.ts';
+import { vegetationOf } from '../shared/vegetation.ts';
 import { leafRect, type Box, type World } from '../shared/world.ts';
 
 // Where bots can walk: a 1 m grid over the island, each cell open, wet
@@ -22,6 +23,8 @@ const BLOCKED = 3;
 const WET_COST = 4;
 /** For a bot keeping to the dark, lamplit ground is this many times the cost of walking. */
 const LIT_COST = 5;
+/** For a bot sneaking, ground without bushes or tall grass is this many times the cost of walking. */
+const BARE_COST = 1.7;
 /** Clearance kept from obstacles beyond the body's radius, so paths don't scrape corners. */
 const MARGIN = 0.15;
 /** Obstacles this far above the feet or less are stepped onto, not walked round. */
@@ -125,6 +128,8 @@ export class NavGrid {
   /** Whether each ground cell asked about is lamplit, and how many lamps were out when that was worked out. */
   private readonly litCells = new Map<number, boolean>();
   private litOut = -1;
+  /** Whether each ground cell asked about gives someone sneaking cover. */
+  private readonly coverCells = new Map<number, boolean>();
   /** Searches run so far, for budgeting and tests. */
   searches = 0;
 
@@ -241,8 +246,9 @@ export class NavGrid {
    * budget, the route ends at the closest point reached; walking it and
    * searching again gets there. Null if the goal has nowhere walkable near it.
    * With `shy`, the route keeps out of lamplight where it can, as a bot does after dark.
+   * With `hidden`, it goes through bushes and tall grass where it can, as a bot sneaking does.
    */
-  findPath(sx: number, sz: number, gx: number, gz: number, sy?: number, gy?: number, shy = false): Waypoint[] | null {
+  findPath(sx: number, sz: number, gx: number, gz: number, sy?: number, gy?: number, shy = false, hidden = false): Waypoint[] | null {
     this.searches++;
     const n = this.n;
     const size = n * n;
@@ -255,7 +261,9 @@ export class NavGrid {
     const goal = target === this.nodeAt(gx, gz, gy) ? { x: gx, z: gz, ...this.height(target) } : this.waypoint(target);
     if (shy) this.lampsChanged();
     const lit = (cell: number) => shy && this.lit(cell);
-    if (s0 < size && target < size && this.lineWalkable(start.x, start.z, goal.x, goal.z) && !(shy && this.lineLit(start.x, start.z, goal.x, goal.z))) return [goal];
+    const cost = (cell: number, s: number) => (s === WET ? WET_COST : 1) * (lit(cell) ? LIT_COST : 1) * (hidden && !this.covered(cell) ? BARE_COST : 1);
+    if (s0 < size && target < size && this.lineWalkable(start.x, start.z, goal.x, goal.z) && !(shy && this.lineLit(start.x, start.z, goal.x, goal.z)) &&
+      !(hidden && this.lineBare(start.x, start.z, goal.x, goal.z) > 0)) return [goal];
 
     if (!this.g) {
       const all = size + MAX_FLOOR_NODES;
@@ -327,9 +335,9 @@ export class NavGrid {
           if (onGround && k !== SAME && !this.floored.has(cur) && !this.floored.has(ni)) {
             // No cutting corners past a blocked cell.
             if (k < 4 || (this.state(cx + ddx, cz) !== BLOCKED && this.state(cx, cz + ddz) !== BLOCKED)) {
-              visit(cur, ni, g[cur] + step * (s === WET ? WET_COST : 1) * (lit(ni) ? LIT_COST : 1), nx, nz);
+              visit(cur, ni, g[cur] + step * cost(ni, s), nx, nz);
             }
-          } else if (this.linked(cur, k, 0, ni)) visit(cur, ni, g[cur] + step * (s === WET ? WET_COST : 1) * (lit(ni) ? LIT_COST : 1), nx, nz);
+          } else if (this.linked(cur, k, 0, ni)) visit(cur, ni, g[cur] + step * cost(ni, s), nx, nz);
         }
         const up = this.floors.get(ni);
         if (up) up.forEach((f, j) => f !== cur && this.linked(cur, k, j + 1, f) && visit(cur, f, g[cur] + step, nx, nz));
@@ -344,7 +352,32 @@ export class NavGrid {
     if (found) points[points.length - 1] = goal;
     else if (points.length <= 1) return null;
     points[0] = start;
-    return this.smooth(points, shy);
+    return this.smooth(points, shy, hidden);
+  }
+
+  /** Whether a cell's ground gives someone sneaking through it cover. */
+  private covered(cell: number): boolean {
+    let v = this.coverCells.get(cell);
+    if (v === undefined) {
+      const x = ((cell % this.n) + 0.5) * CELL - this.world.half;
+      const z = (Math.floor(cell / this.n) + 0.5) * CELL - this.world.half;
+      v = vegetationOf(this.world).cover(x, z);
+      this.coverCells.set(cell, v);
+    }
+    return v;
+  }
+
+  /** Cells without cover the straight line from a to b on the ground crosses, a's own left out. */
+  private lineBare(ax: number, az: number, bx: number, bz: number): number {
+    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / CELL));
+    let bare = 0;
+    for (let i = 1; i <= steps; i++) {
+      const f = i / steps;
+      const ix = this.cellX(ax + (bx - ax) * f);
+      const iz = this.cellX(az + (bz - az) * f);
+      if (ix >= 0 && iz >= 0 && ix < this.n && iz < this.n && !this.covered(iz * this.n + ix)) bare++;
+    }
+    return bare;
   }
 
   /** Whether the ground in a cell is lamplit, at a standing body's chest. */
@@ -383,10 +416,14 @@ export class NavGrid {
   /**
    * Drop waypoints on the ground that a straight walkable line can skip; the
    * start is left out. With `shy`, not by a line through lamplight the route
-   * went round.
+   * went round, and with `hidden`, not by one over more bare ground than the
+   * route took.
    */
-  private smooth(points: Waypoint[], shy = false): Waypoint[] {
+  private smooth(points: Waypoint[], shy = false, hidden = false): Waypoint[] {
     const out: Waypoint[] = [];
+    // Bare cells along the route up to each point.
+    const bareTo = [0];
+    if (hidden) for (let i = 1; i < points.length; i++) bareTo.push(bareTo[i - 1] + this.lineBare(points[i - 1].x, points[i - 1].z, points[i].x, points[i].z));
     let anchor = 0;
     while (anchor < points.length - 1) {
       let next = anchor + 1;
@@ -396,6 +433,7 @@ export class NavGrid {
           if (!this.lineWalkable(points[anchor].x, points[anchor].z, points[k].x, points[k].z)) break;
           if (shy && this.lineLit(points[anchor].x, points[anchor].z, points[k].x, points[k].z) &&
             !points.slice(anchor, k + 1).some((p, j) => j > 0 && this.lineLit(points[anchor + j - 1].x, points[anchor + j - 1].z, p.x, p.z))) break;
+          if (hidden && this.lineBare(points[anchor].x, points[anchor].z, points[k].x, points[k].z) > bareTo[k] - bareTo[anchor]) break;
           next = k;
         }
       }

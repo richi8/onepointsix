@@ -74,8 +74,9 @@ export interface LootSpot extends Point {
 
 export type BotState =
   | 'patrol' | 'loot' | 'extract' | 'investigate' | 'engage' | 'cover' | 'flank'
-  // Operators by personality: roaming for a fight, waiting by an extraction point, and closing in on a fight or the bounty.
-  | 'hunt' | 'camp' | 'stalk';
+  // Operators by personality: roaming for a fight, waiting by an extraction point, closing in on a fight or the bounty,
+  // and lying low while one goes on nearby.
+  | 'hunt' | 'camp' | 'stalk' | 'hide';
 
 /** Something heard: a shot, a friend's callout, footsteps. */
 export interface Noise extends Point {
@@ -199,6 +200,9 @@ const THREAT_TIME = 10;
 /** Operators going about their run walk rather than sprint this close to an outpost, and sneak closer in. */
 const OUTPOST_WALK = 110;
 const OUTPOST_SNEAK = 55;
+/** An operator that has seen a guard this close keeps low for this many seconds after. */
+const GUARD_WARY = 110;
+const WARY_TIME = 10;
 /** Operators route around outposts they aren't going to, this far out. */
 const OUTPOST_BERTH = 95;
 /** The bounty is spotted in this much of the time, and its footsteps heard this much farther. */
@@ -232,10 +236,42 @@ const BAG_RANGE = 50;
 /** Hunters roam to points this far off, and campers wait this far from their extraction point. */
 const HUNT_RANGE = 150;
 const CAMP_RANGE: [number, number] = [25, 45];
-/** A camper that could only find a spot blind to its extraction point looks again this often, a little farther out each time. */
-const CAMP_RETRY = 20;
+/** A camper finding no spot that sees into its extraction point looks again this much farther out, up to CAMP_FARTHEST, then gives up camping. */
 const CAMP_WIDEN = 10;
 const CAMP_FARTHEST = 85;
+/** Spots tried at random around an extraction point for a camp, at each range. */
+const CAMP_TRIES = 24;
+/**
+ * A bot that hides from a fight heard this close goes to a bush or out of its
+ * sight within HIDE_SEARCH, and lies low there for HIDE_TIME seconds.
+ */
+const HIDE_RANGE = 90;
+const HIDE_SEARCH = 25;
+const HIDE_TIME: [number, number] = [10, 20];
+/**
+ * An operator shot at by at least OUTGUNNED people within OUTGUNNED_MEMORY
+ * seconds, or by anyone once badly hurt, is outgunned: it takes cover from
+ * them all and gets away, fighting only what shoots at it, for RETREAT_TIME.
+ */
+const OUTGUNNED = 2;
+const OUTGUNNED_MEMORY = 5;
+const BADLY_HURT = 0.4;
+const RETREAT_TIME = 20;
+/** Seconds after a round comes close that an operator ducks into cover from its shooter. */
+const PINNED = 0.8;
+/** How long an operator stays in cover from someone it's getting away from, rather than fighting. */
+const SLIP_TIME: [number, number] = [3, 6];
+/** Seconds an operator runs for cover in sight of someone before it turns to fight instead. */
+const COVER_RUN = 2;
+/**
+ * Getting away from guards onto it, or from a fight it's outgunned in, an
+ * operator runs this far off, away from them, out of their sight if it can;
+ * it turns to fight only someone this close.
+ */
+const FLEE_RANGE: [number, number] = [40, 70];
+const FLEE_FIGHT = 20;
+/** Threats that cover has to hide from, nearest first. */
+const COVER_THREATS = 4;
 /** Bushes at least this tall hide someone crouched in them, head and all. */
 const HIDING_BUSH = 1.15;
 /** How far a bot goes to hide in a bush: taking cover, and settling down to wait or watch. */
@@ -303,10 +339,19 @@ export const tally = {
   /** Fights between others gone to, and how far off the real shooter the guess was, summed. */
   joins: 0,
   guessOff: 0,
-  /** Camp spots picked, those that couldn't see the extraction point, and those later swapped for one that could. */
+  /** Camps looked for, and of those given up as no spot out to CAMP_FARTHEST sees into the extraction point. */
   camps: 0,
-  blindCamps: 0,
-  campFixes: 0,
+  campless: 0,
+  /** Times a bot hid from a fight nearby, and of those in a bush. */
+  hides: 0,
+  bushHides: 0,
+  /** Paths looked for through bushes and tall grass. */
+  hiddenPaths: 0,
+  /** Times an operator got well away rather than taking cover nearby. */
+  flights: 0,
+  /** Times an operator took cover from someone shooting at it without fighting back, and found itself outgunned. */
+  pinned: 0,
+  outgunned: 0,
   /** Doors shut behind them, and of those slammed on someone chasing. */
   shuts: 0,
   slams: 0,
@@ -336,6 +381,8 @@ interface Contact {
   since: number;
   /** When it last shot at or hit us. */
   threatAt: number;
+  /** It's a guard. */
+  guard?: boolean;
 }
 
 export class Bot {
@@ -443,12 +490,20 @@ export class Bot {
   /** Where the fight or the bounty being closed in on is. */
   private fightAt: Point | null = null;
   /** Where a camper waits and for which extraction point; set once it gives up camping. */
-  private camp: (Spot & { sees: boolean }) | null = null;
+  private camp: Spot | null = null;
   private campFor = -1;
   private campDone = false;
-  /** Its camp can't see the extraction point: when to look for a better one, and how many looks so far. */
-  private campRetry = Infinity;
-  private campTries = 0;
+  /** A fight heard nearby that it hid from; when it last hid. */
+  private alarm: (Point & { at: number }) | null = null;
+  private hideAt = -Infinity;
+  /** Until when it's getting away from a fight it's outgunned in. */
+  private retreatUntil = -Infinity;
+  /** Whether its path goes through bushes and tall grass. */
+  private pathHidden = false;
+  /** Its cover is far off, got away to rather than hidden in. */
+  private fleeing = false;
+  /** When an operator last saw a guard close enough to keep low for. */
+  private guardSeenAt = -Infinity;
   /** What it has seen bags to be worth, by id. */
   private readonly bagValues = new Map<number, number>();
   /** Who it has been told carries the bounty, or 0. */
@@ -498,6 +553,9 @@ export class Bot {
       });
     }
     const fuzz = d * 0.08;
+    if (noise.gunfire && this.temper?.hides && d < HIDE_RANGE) {
+      this.alarm = { x: noise.x + (this.rand() - 0.5) * 2 * fuzz, y: noise.y, z: noise.z + (this.rand() - 0.5) * 2 * fuzz, at: now };
+    }
     this.heard = {
       x: noise.x + (this.rand() - 0.5) * 2 * fuzz,
       y: noise.y,
@@ -525,6 +583,7 @@ export class Bot {
     c.level = Math.max(c.level, 0.7);
     c.threatAt = now;
     this.heard = { x: shooter.x, y: shooter.y, z: shooter.z, at: now };
+    this.avoid(shooter);
   }
 
   /** Took a hit from `attacker`: now it knows exactly where they are. */
@@ -538,7 +597,11 @@ export class Bot {
     c.threatAt = now;
     this.hurtAt = now;
     this.hurtHandled = false;
-    // Shot by a guard on the way: crates it watches over aren't worth it, unless searching them all.
+    this.avoid(attacker);
+  }
+
+  /** Shot at by a guard on the way: crates it watches over aren't worth it, unless searching them all. */
+  private avoid(attacker: Agent): void {
     if (attacker.team === 'guard' && this.role.kind === 'operator' && !this.role.thorough) {
       while (this.step < this.loot.length && Math.hypot(this.loot[this.step].x - attacker.x, this.loot[this.step].z - attacker.z) < GUARDED_CRATE) this.step++;
     }
@@ -682,6 +745,7 @@ export class Bot {
         if (this.isBounty(ctx, a.id)) time *= BOUNTY_SPOT;
         const was = c.level;
         c.level = Math.min(c.level + dt / time, 1);
+        if (a.team === 'guard' && c.level >= 0.5 && d < GUARD_WARY) this.guardSeenAt = now;
         if (!c.visible) c.since = now;
         c.visible = true;
         c.headOnly = headOnly;
@@ -777,14 +841,34 @@ export class Bot {
       const d = Math.hypot(c.x - self.x, c.z - self.z);
       if (id !== this.target) this.acquire(id, d, now);
       else if (c.since === now) this.reactAt = Math.max(this.reactAt, now + this.skill.reaction * 0.5);
-      if (this.state === 'cover' && now < this.spotUntil) return;
+      // In cover it stays down, unless it can see someone from there, or is still on its way after a while: then the cover has failed.
+      if (this.state === 'cover' && now < this.spotUntil && !this.coverFailed(self, c, now)) return;
       const empty = self.mag[self.weapon] === 0 && self.reserve[self.weapon] > 0 && d > 10;
       // Operators always break off from guards once hurt: there are more where that one came from.
       const duck = this.slipsAway(ctx, id) || this.rand() < this.skill.coverChance;
-      const wantCover = (empty || (hurt && health(self) < HURT && duck)) && now - this.lastCover > COVER_COOLDOWN;
-      if (wantCover && this.takeCover(ctx, self, c)) return;
+      // An operator shot at by someone it would rather get away from, or outgunned, ducks out of sight at once;
+      // a lone guard close by it fights.
+      const outgunned = this.outgunned(self, now);
+      const close = ctx.agent(id)?.team === 'guard' && d <= OPERATOR_GUARD_RANGE;
+      const pinned = this.dodges() && now - c.threatAt < PINNED && (outgunned || (this.slipsAway(ctx, id) && !close));
+      const wantCover = (empty || (hurt && health(self) < HURT && duck) || pinned) && now - this.lastCover > COVER_COOLDOWN;
+      if (wantCover && this.takeCover(ctx, self, c, pinned)) {
+        if (pinned) tally.pinned++;
+        return;
+      }
       this.enter('engage');
       return;
+    }
+
+    // Shot at by someone it isn't fighting, such as a guard far off: an operator gets out of their sight.
+    if (this.dodges() && this.state !== 'cover' && now - this.lastCover > COVER_COOLDOWN) {
+      const shooter = [...this.contacts.values()].find((c) => now - c.threatAt < PINNED);
+      if (shooter) this.outgunned(self, now);
+      if (shooter && this.takeCover(ctx, self, shooter, true)) {
+        tally.pinned++;
+        this.heard = null;
+        return;
+      }
     }
 
     if (this.target) {
@@ -818,6 +902,11 @@ export class Bot {
         return;
       }
     }
+    // A fight broke out nearby: a rat lies low until it's over.
+    if (this.alarm && this.alarm.at > this.hideAt && (this.isRoutine(this.state) || this.state === 'hide') && !this.waiting(ctx, self)) {
+      this.hide(ctx, self, this.alarm);
+      return;
+    }
     if (this.isRoutine(this.state) && this.pickUpBag(ctx, self)) return;
 
     if (this.heard && this.heard.at >= this.stateAt && this.state !== 'engage') {
@@ -827,6 +916,63 @@ export class Bot {
       if (d > (this.temper?.curiosity ?? (this.role.kind === 'operator' ? OPERATOR_CURIOSITY : GUARD_CURIOSITY))) return;
       this.investigate(ctx, h);
     }
+  }
+
+  /**
+   * Whether an operator is outgunned: shot at lately by more people than it
+   * can take on, or by anyone once badly hurt. If so it gets away for a while.
+   */
+  private outgunned(self: Agent, now: number): boolean {
+    if (!this.dodges()) return false;
+    let shooters = 0;
+    for (const c of this.contacts.values()) if (c.level >= 1 && now - c.threatAt < OUTGUNNED_MEMORY) shooters++;
+    if (shooters < OUTGUNNED && !(shooters > 0 && health(self) < BADLY_HURT)) return false;
+    if (now >= this.retreatUntil) tally.outgunned++;
+    this.retreatUntil = now + RETREAT_TIME;
+    return true;
+  }
+
+  /** Whether cover it's in or going to no longer hides it from `c`, whom it can see. */
+  private coverFailed(self: Agent, c: Contact, now: number): boolean {
+    if (this.role.kind !== 'operator' || !c.visible || !this.spot) return false;
+    const there = Math.hypot(this.spot.x - self.x, this.spot.z - self.z) <= arrival(this.spot, ARRIVE);
+    // Getting away, it runs on unless caught up with.
+    if (this.fleeing) return there || Math.hypot(c.x - self.x, c.z - self.z) < FLEE_FIGHT;
+    return there || now - this.stateAt > COVER_RUN;
+  }
+
+  /** An operator ducks out of sight of shooters, unless it's a thorough one, which can't be killed and doesn't notice being shot. */
+  private dodges(): boolean {
+    return this.role.kind === 'operator' && !this.role.thorough;
+  }
+
+  /** Whether it's in the extraction zone it's heading for, waiting to get out. */
+  private waiting(ctx: BotContext, self: Agent): boolean {
+    const e = this.state === 'extract' ? ctx.extracts[this.exit] : undefined;
+    return !!e && Math.hypot(e.x - self.x, e.z - self.z) < EXTRACT_RADIUS;
+  }
+
+  /**
+   * Lie low while a fight goes on nearby: in a bush that hides it from the
+   * fight, or else somewhere out of the fight's sight, not toward it; or just
+   * where it is. Hearing more of it keeps it there longer.
+   */
+  private hide(ctx: BotContext, self: Agent, fight: Point & { at: number }): void {
+    this.hideAt = fight.at;
+    // Where the shooter stands, as a shot is heard from their gun.
+    const w = ctx.world;
+    this.fightAt = { x: fight.x, y: w.groundHeight(fight.x, fight.z, w.floorHeight(fight.x, fight.z)), z: fight.z };
+    const until = this.now + this.between(HIDE_TIME);
+    if (this.state === 'hide') {
+      this.spotUntil = Math.max(this.spotUntil, until);
+      return;
+    }
+    tally.hides++;
+    const spot = this.coverFrom(ctx, self, [this.fightAt], HIDE_SEARCH);
+    if (spot?.bush) tally.bushHides++;
+    this.enter('hide');
+    this.spot = spot ?? { x: self.x, y: self.y, z: self.z };
+    this.spotUntil = until;
   }
 
   /** How much more a target is worth fighting, in metres nearer: the bounty, and for a hunter, the wounded. */
@@ -1045,14 +1191,10 @@ export class Bot {
           break;
         }
         if (this.campFor !== this.exit) {
-          this.campTries = 0;
-          this.pickCamp(ctx, e, now);
+          this.camp = this.pickCamp(ctx, e);
           this.campFor = this.exit;
-        } else if (now >= this.campRetry) {
-          // Blind to the extraction point from here: look again, a little farther out.
-          this.campTries++;
-          this.pickCamp(ctx, e, now);
         }
+        // Nowhere to camp that sees into it: just leave.
         if (!this.camp) {
           this.campDone = true;
           this.enter('extract');
@@ -1067,6 +1209,22 @@ export class Bot {
         this.goTo(null);
         this.crouch = true;
         this.lookAround(now, yawToward(self.x, self.z, e.x, e.z));
+        break;
+      }
+
+      case 'hide': {
+        const spot = this.spot!;
+        const fight = this.fightAt ?? spot;
+        const d = Math.hypot(spot.x - self.x, spot.z - self.z);
+        if (d > arrival(spot, ARRIVE)) {
+          this.goTo(spot);
+          this.pace = 'sneak';
+        } else {
+          this.goTo(null);
+          this.crouch = true;
+          this.lookAround(now, yawToward(self.x, self.z, fight.x, fight.z));
+        }
+        if (now >= this.spotUntil) this.enter(this.routine());
         break;
       }
 
@@ -1144,7 +1302,9 @@ export class Bot {
           const r = this.rand();
           this.strafe = r < 0.4 ? -1 : r < 0.8 ? 1 : 0;
           this.strafeUntil = now + 0.6 + this.rand() * 1;
-          this.crouch = this.skill.name !== 'easy' && d > 25 && this.rand() < 0.35;
+          // Operators, who can't count on friends, keep low more of the time.
+          const low = role.kind === 'operator' ? [15, 0.6] : [25, 0.35];
+          this.crouch = this.skill.name !== 'easy' && d > low[0] && this.rand() < low[1];
         }
         if (d < TOO_CLOSE) this.strafe = 2;
         break;
@@ -1227,11 +1387,13 @@ export class Bot {
     return best ?? goal;
   }
 
-  /** How an operator crosses the island `d` metres from where it's going: fast in the open, quietly near outposts. */
+  /** How an operator crosses the island `d` metres from where it's going: fast in the open, quietly near outposts and guards. */
   private travel(ctx: BotContext, self: Agent, d: number): void {
     const near = ctx.world.nearestOutpost(self.x, self.z)?.dist ?? Infinity;
     const sneaky = !!this.temper?.sneaky;
-    if (near < (sneaky ? OUTPOST_WALK : OUTPOST_SNEAK) && d > ARRIVE * 3) this.pace = 'sneak';
+    // Near an outpost, or with a guard seen about lately, it keeps low.
+    const wary = this.now - this.guardSeenAt < WARY_TIME;
+    if ((near < (sneaky ? OUTPOST_WALK : OUTPOST_SNEAK) || wary) && d > ARRIVE * 3) this.pace = 'sneak';
     else if (d > 30 && self.stamina > 0.4 && near > OUTPOST_WALK && !sneaky) this.pace = 'sprint';
   }
 
@@ -1255,53 +1417,50 @@ export class Bot {
     return null;
   }
 
-  /** A camp for extraction point `e`, and when to look again if it can't see into it. */
-  private pickCamp(ctx: BotContext, e: ExtractPoint, now: number): void {
-    const far = CAMP_RANGE[1] + this.campTries * CAMP_WIDEN;
-    const found = this.campSpot(ctx, e, Math.min(far, CAMP_FARTHEST));
-    if (this.campTries === 0) {
-      this.camp = found;
-      tally.camps++;
-      if (found && !found.sees) tally.blindCamps++;
-    } else if (found?.sees) {
-      // Only a spot that sees replaces the blind one it's at.
-      this.camp = found;
-      tally.campFixes++;
+  /**
+   * A camp for extraction point `e` that sees into it, looking farther out
+   * until CAMP_FARTHEST; null if there's none.
+   */
+  private pickCamp(ctx: BotContext, e: ExtractPoint): Spot | null {
+    tally.camps++;
+    for (let far = CAMP_RANGE[1]; far <= CAMP_FARTHEST; far += CAMP_WIDEN) {
+      const found = this.campSpot(ctx, e, far);
+      if (found) return found;
     }
-    this.campRetry = this.camp && !this.camp.sees && far < CAMP_FARTHEST ? now + CAMP_RETRY : Infinity;
+    tally.campless++;
+    return null;
   }
 
   /**
    * A dry spot a little way off an extraction point, out to `far`, that can
-   * see into it from a crouch if there is one: in a bush if one will do.
+   * see into it from a crouch: in a bush if one will do. Null if none of those
+   * tried can.
    */
-  private campSpot(ctx: BotContext, e: Point, far: number): (Spot & { sees: boolean }) | null {
+  private campSpot(ctx: BotContext, e: Point, far: number): Spot | null {
     const w = ctx.world;
     const sees = (x: number, y: number, z: number): boolean => w.hasLineOfSight(x, y + CROUCH_EYE_HEIGHT, z, e.x, e.y + 1, e.z);
     const clear = (x: number, z: number): boolean => ctx.nav.dry(x, z) && (w.nearestOutpost(x, z)?.dist ?? Infinity) >= OUTPOST_BERTH;
-    let best: (Spot & { sees: boolean }) | null = null;
+    let best: Spot | null = null;
     let bestD = Infinity;
     for (const b of hidingBushes(ctx.world, e.x, e.z, far)) {
       const d = Math.hypot(b.x - e.x, b.z - e.z);
       if (d < CAMP_RANGE[0] || !clear(b.x, b.z) || !sees(b.x, b.y, b.z)) continue;
       // Nearest the middle of the range.
       const off = Math.abs(d - (CAMP_RANGE[0] + CAMP_RANGE[1]) / 2);
-      if (off < bestD) (best = { x: b.x, y: b.y, z: b.z, bush: true, sees: true }), (bestD = off);
+      if (off < bestD) (best = { x: b.x, y: b.y, z: b.z, bush: true }), (bestD = off);
     }
     if (best) return best;
     const turn = this.rand() * Math.PI * 2;
-    let blind: (Spot & { sees: boolean }) | null = null;
-    for (let i = 0; i < 16; i++) {
-      const a = turn + (i / 16) * Math.PI * 2;
+    for (let i = 0; i < CAMP_TRIES; i++) {
+      const a = turn + (i / CAMP_TRIES) * Math.PI * 2;
       const r = CAMP_RANGE[0] + this.rand() * (far - CAMP_RANGE[0]);
       const x = e.x + Math.sin(a) * r;
       const z = e.z + Math.cos(a) * r;
       if (!clear(x, z)) continue;
       const y = w.groundHeight(x, z, w.floorHeight(x, z));
-      if (sees(x, y, z)) return { x, y, z, sees: true };
-      blind ??= { x, y, z, sees: false };
+      if (sees(x, y, z)) return { x, y, z };
     }
-    return blind;
+    return null;
   }
 
   /**
@@ -1389,6 +1548,10 @@ export class Bot {
     if (this.role.kind !== 'operator') return true;
     const d = Math.hypot(c.x - self.x, c.z - self.z);
     const threat = now - c.threatAt < THREAT_TIME;
+    // Getting away from a fight it's outgunned in, or heading out with enough to pay, it starts none;
+    // a hunter heading out still takes what comes, and anyone fights what's right on top of it.
+    const leaving = this.paid && this.state === 'extract' && this.personality !== 'hunter';
+    if (!threat && (now < this.retreatUntil || leaving) && d > TOUCH_RANGE * 2) return false;
     // A guard shooting from far off is got away from, not fought.
     if (ctx.agent(id)?.team === 'guard') return d <= (threat ? GUARD_FIGHT_BACK : OPERATOR_GUARD_RANGE);
     if (threat) return true;
@@ -1399,9 +1562,9 @@ export class Bot {
     return d <= range;
   }
 
-  /** An operator facing a guard, or a shy one facing anyone: it would rather get away than win. */
+  /** An operator facing a guard, a shy one facing anyone, or one outgunned: it would rather get away than win. */
   private slipsAway(ctx: BotContext, id: number): boolean {
-    return this.role.kind === 'operator' && (ctx.agent(id)?.team === 'guard' || !!this.temper?.shy);
+    return this.role.kind === 'operator' && (ctx.agent(id)?.team === 'guard' || !!this.temper?.shy || this.now < this.retreatUntil);
   }
 
   /**
@@ -1480,8 +1643,12 @@ export class Bot {
     this.spot = standing(ctx, { x: p.x, y: at.y, z: p.z });
   }
 
-  /** Find a spot nearby that the threat can't see into while crouched, and go there. */
-  private takeCover(ctx: BotContext, self: Agent, threat: Point): boolean {
+  /**
+   * Find a spot nearby that the threat, and anyone else lately shooting at or
+   * seen by it, can't see into while crouched, and go there. `slip` is for an
+   * operator getting away rather than fighting: it stays down longer.
+   */
+  private takeCover(ctx: BotContext, self: Agent, threat: Contact, slip = false): boolean {
     const now = ctx.time;
     this.lastCover = now;
     if (this.role.kind === 'sentry') {
@@ -1490,45 +1657,100 @@ export class Bot {
       this.spotUntil = now + this.between(COVER_TIME);
       return true;
     }
-    const w = ctx.world;
-    const eyeY = threat.y + EYE_HEIGHT;
-    const away = Math.hypot(threat.x - self.x, threat.z - self.z);
-    let best: Spot | null = null;
-    let bestScore = Infinity;
-    const turn = this.rand() * Math.PI * 2;
-    for (let i = 0; i < 18; i++) {
-      const a = turn + (i / 18) * Math.PI * 2;
-      const r = 2.5 + (i % 3) * 3.5;
-      const x = self.x + Math.sin(a) * r;
-      const z = self.z + Math.cos(a) * r;
-      if (!ctx.nav.dry(x, z)) continue;
-      const dT = Math.hypot(threat.x - x, threat.z - z);
-      if (dT < 6) continue;
-      const y = w.groundHeight(x, z, w.floorHeight(x, z));
-      if (w.hasLineOfSight(threat.x, eyeY, threat.z, x, y + CROUCH_EYE_HEIGHT, z)) continue;
-      const score = r + Math.max(0, away - dT);
-      if (score < bestScore) (best = { x, y, z }), (bestScore = score);
+    const threats: Contact[] = [threat];
+    for (const c of this.contacts.values()) {
+      if (c === threat || c.level < 1 || (now - c.seenAt > OUTGUNNED_MEMORY && now - c.threatAt > OUTGUNNED_MEMORY)) continue;
+      threats.push(c);
     }
-    // Or a bush that hides a crouched body from the threat.
-    const veg = vegetationOf(w);
-    for (const b of hidingBushes(w, self.x, self.z, BUSH_COVER)) {
-      const r = Math.hypot(b.x - self.x, b.z - self.z);
-      const dT = Math.hypot(threat.x - b.x, threat.z - b.z);
-      const score = r + Math.max(0, away - dT);
-      if (dT < 6 || score >= bestScore || !ctx.nav.dry(b.x, b.z)) continue;
-      const h = hitboxes({ x: b.x, y: b.y, z: b.z, yaw: 0, duck: 1, lean: 0 });
-      const shows = (y: number): number => w.hasLineOfSight(threat.x, eyeY, threat.z, b.x, y, b.z) ? veg.seeThrough(threat.x, eyeY, threat.z, b.x, y, b.z) : 0;
-      if (shows(h.headY) >= CONCEALED || shows((h.hipY + h.neckY) / 2) >= CONCEALED) continue;
-      best = { x: b.x, y: b.y, z: b.z, bush: true };
-      bestScore = score;
-    }
+    threats.sort((a, b) => Math.hypot(a.x - self.x, a.z - self.z) - Math.hypot(b.x - self.x, b.z - self.z));
+    const near = threats.slice(0, COVER_THREATS);
+    // Guards bring more guards, and a fight it's outgunned in won't stay put: better get well away.
+    const far = slip && (now < this.retreatUntil || near.some((t) => t.guard)) ? this.escapeFrom(ctx, self, near) : null;
+    const best = far ?? this.coverFrom(ctx, self, near, BUSH_COVER);
     tally.covers++;
     if (!best) return false;
     if (best.bush) tally.bushCovers++;
+    if (far) tally.flights++;
     this.enter('cover', true);
     this.spot = best;
-    this.spotUntil = now + this.between(COVER_TIME);
+    this.fleeing = !!far;
+    const run = far ? Math.hypot(far.x - self.x, far.z - self.z) / WALK_SPEED : 0;
+    this.spotUntil = now + run + this.between(slip ? SLIP_TIME : COVER_TIME);
     return true;
+  }
+
+  /**
+   * Somewhere FLEE_RANGE off, away from `threats`, that none of them can see
+   * into from where they are if there is one, and not toward an outpost.
+   */
+  private escapeFrom(ctx: BotContext, self: Agent, threats: Point[]): Spot | null {
+    const w = ctx.world;
+    let cx = 0;
+    let cz = 0;
+    for (const t of threats) (cx += t.x / threats.length), (cz += t.z / threats.length);
+    const away = Math.atan2(self.x - cx, self.z - cz);
+    const outpost = (x: number, z: number): number => Math.min(w.nearestOutpost(x, z)?.dist ?? Infinity, OUTPOST_BERTH);
+    const from = outpost(self.x, self.z);
+    let best: Spot | null = null;
+    let bestScore = Infinity;
+    for (let i = 0; i < 12; i++) {
+      const a = away + (this.rand() - 0.5) * 2.4;
+      const r = this.between(FLEE_RANGE);
+      const p = ctx.nav.nearestWalkable(self.x + Math.sin(a) * r, self.z + Math.cos(a) * r, 8);
+      if (!p || p.y !== undefined || !ctx.nav.dry(p.x, p.z)) continue;
+      const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
+      const seen = threats.some((t) => w.hasLineOfSight(t.x, t.y + EYE_HEIGHT, t.z, p.x, y + CROUCH_EYE_HEIGHT, p.z));
+      // Out of sight first, then away from the outposts and the threats.
+      const score = (seen ? 100 : 0) + Math.max(0, from - outpost(p.x, p.z)) - Math.min(...threats.map((t) => Math.hypot(t.x - p.x, t.z - p.z))) * 0.3;
+      if (score < bestScore) (best = { x: p.x, y, z: p.z }), (bestScore = score);
+    }
+    return best;
+  }
+
+  /**
+   * The nearest spot, out to about `reach`, that none of `threats` can see
+   * into while crouched, not much nearer the first of them: open ground behind
+   * something solid, or a bush that hides a crouched body. Null if none.
+   */
+  private coverFrom(ctx: BotContext, self: Agent, threats: Point[], reach: number): Spot | null {
+    const w = ctx.world;
+    const veg = vegetationOf(w);
+    const threat = threats[0];
+    const away = Math.hypot(threat.x - self.x, threat.z - self.z);
+    const hidden = (x: number, y: number, z: number, bush: boolean): boolean => {
+      const h = bush ? hitboxes({ x, y, z, yaw: 0, duck: 1, lean: 0 }) : null;
+      return threats.every((t) => {
+        const ty = t.y + EYE_HEIGHT;
+        if (Math.hypot(t.x - x, t.z - z) < 6) return false;
+        if (!h) return !w.hasLineOfSight(t.x, ty, t.z, x, y + CROUCH_EYE_HEIGHT, z);
+        const shows = (py: number): number => w.hasLineOfSight(t.x, ty, t.z, x, py, z) ? veg.seeThrough(t.x, ty, t.z, x, py, z) : 0;
+        return shows(h.headY) < CONCEALED && shows((h.hipY + h.neckY) / 2) < CONCEALED;
+      });
+    };
+    let best: Spot | null = null;
+    let bestScore = Infinity;
+    const turn = this.rand() * Math.PI * 2;
+    const rings = Math.max(3, Math.round(reach / 4));
+    for (let i = 0; i < 6 * rings; i++) {
+      const a = turn + (i / (6 * rings)) * Math.PI * 2;
+      const r = 2.5 + (i % rings) * ((reach - 2.5) / rings);
+      const x = self.x + Math.sin(a) * r;
+      const z = self.z + Math.cos(a) * r;
+      if (!ctx.nav.dry(x, z)) continue;
+      const score = r + Math.max(0, away - Math.hypot(threat.x - x, threat.z - z));
+      if (score >= bestScore) continue;
+      const y = w.groundHeight(x, z, w.floorHeight(x, z));
+      if (!hidden(x, y, z, false)) continue;
+      best = { x, y, z };
+      bestScore = score;
+    }
+    for (const b of hidingBushes(w, self.x, self.z, reach)) {
+      const score = Math.hypot(b.x - self.x, b.z - self.z) + Math.max(0, away - Math.hypot(threat.x - b.x, threat.z - b.z));
+      if (score >= bestScore || !ctx.nav.dry(b.x, b.z) || !hidden(b.x, b.y, b.z, true)) continue;
+      best = { x: b.x, y: b.y, z: b.z, bush: true };
+      bestScore = score;
+    }
+    return best;
   }
 
   /** Circle around to where a lost target was last seen, from the side. */
@@ -1788,7 +2010,10 @@ export class Bot {
       const g = this.goal;
       const pg = this.pathGoal;
       const now = ctx.time;
-      const stale = !pg || Math.hypot(pg.x - g.x, pg.z - g.z) > 1.5 || Math.abs((pg.y ?? 0) - (g.y ?? 0)) > 1.5 || this.path.length === 0;
+      // Sneaking, or a sneaky operator going about its run, keeps to bushes and tall grass.
+      const hidden = this.pace === 'sneak' || (!!this.temper?.sneaky && this.isRoutine(this.state));
+      const stale = !pg || Math.hypot(pg.x - g.x, pg.z - g.z) > 1.5 || Math.abs((pg.y ?? 0) - (g.y ?? 0)) > 1.5 || this.path.length === 0 ||
+        hidden !== this.pathHidden;
       if (stale && now - this.pathAt >= REPATH_DELAY && ctx.pathBudget > 0) {
         ctx.pathBudget--;
         this.pathAt = now;
@@ -1796,7 +2021,9 @@ export class Bot {
         // After dark an operator going about its run keeps out of the lamps' light.
         const shy = this.role.kind === 'operator' && ctx.senses.dark && this.isRoutine(this.state);
         if (shy) tally.shyPaths++;
-        this.path = ctx.nav.findPath(self.x, self.z, g.x, g.z, self.y, g.y, shy) ?? [];
+        this.pathHidden = hidden;
+        if (hidden) tally.hiddenPaths++;
+        this.path = ctx.nav.findPath(self.x, self.z, g.x, g.z, self.y, g.y, shy, hidden) ?? [];
         this.noPath = this.path.length === 0;
       }
       while (this.path.length > 1 && reached(this.path[0], self.x, self.y, self.z)) this.path.shift();
@@ -1825,10 +2052,10 @@ export class Bot {
     return null;
   }
 
-  private contact(id: number, a: Point): Contact {
+  private contact(id: number, a: Agent): Contact {
     let c = this.contacts.get(id);
     if (!c) {
-      c = { level: 0, visible: false, headOnly: false, x: a.x, y: a.y, z: a.z, seenAt: -Infinity, since: 0, threatAt: -Infinity };
+      c = { level: 0, visible: false, headOnly: false, x: a.x, y: a.y, z: a.z, seenAt: -Infinity, since: 0, threatAt: -Infinity, guard: a.team === 'guard' };
       this.contacts.set(id, c);
     }
     return c;

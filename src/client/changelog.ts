@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Smarter rivals',
+    notes: [
+      'Bot operators live longer. Shot at by guards, or by two people at once, they duck out of sight straight away and get well clear, rather than trading shots in the open. If their cover doesn’t hide them, they fight back from it instead of waiting there to be shot.',
+      'Bot operators keep low for a while after spotting a guard, and one heading out with enough to pay for a pickup leaves you alone unless you start it (hunters excepted).',
+      'Sneaking bots keep to bushes and tall grass where they can, and a rat that hears a fight nearby goes to ground until it’s over.',
+      'A camper only waits where it can see into the extraction point. If there’s nowhere like that, it doesn’t camp.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Sound through the floors',
     notes: [
       'A shot upstairs is heard coming down the stairs, not muffled through the floor, and a fight on the ground is heard up the stairwell. Sound finds its way over roofs, off watchtowers and out of upstairs windows too.',

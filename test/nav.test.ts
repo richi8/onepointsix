@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NavGrid, type Waypoint } from '../src/server/nav.ts';
+import { mulberry32 } from '../src/shared/rng.ts';
+import { vegetationOf } from '../src/shared/vegetation.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
@@ -127,5 +129,46 @@ describe('NavGrid after dark', () => {
     const shy = litNav.findPath(from.x, from.z, cx + l.dz * 9, cz - l.dx * 9, undefined, undefined, true);
     const plain = litNav.findPath(from.x, from.z, cx + l.dz * 9, cz - l.dx * 9);
     expect(shy && plain && Math.abs(length(from, shy) - length(from, plain))).toBeLessThan(0.5);
+  });
+
+  it('takes a hidden route through bushes and tall grass where a plain one crosses the open', () => {
+    const veg = vegetationOf(world);
+    /** Metres of a route over ground without cover, sampled every half metre. */
+    const bare = (from: Waypoint, path: Waypoint[]): number => {
+      let m = 0;
+      let prev = from;
+      for (const p of path) {
+        const steps = Math.ceil(Math.hypot(p.x - prev.x, p.z - prev.z) / 0.5);
+        for (let i = 1; i <= steps; i++) if (!veg.cover(prev.x + ((p.x - prev.x) * i) / steps, prev.z + ((p.z - prev.z) * i) / steps)) m += 0.5;
+        prev = p;
+      }
+      return m;
+    };
+    const rand = mulberry32(8);
+    let tried = 0;
+    let plainBare = 0;
+    let hiddenBare = 0;
+    let plainLength = 0;
+    let hiddenLength = 0;
+    while (tried < 12) {
+      const from = world.randomLandPoint(rand);
+      const a = rand() * Math.PI * 2;
+      const to = { x: from.x + Math.sin(a) * 60, z: from.z + Math.cos(a) * 60 };
+      if (!nav.dry(from.x, from.z) || !nav.dry(to.x, to.z)) continue;
+      const plain = nav.findPath(from.x, from.z, to.x, to.z);
+      const hidden = nav.findPath(from.x, from.z, to.x, to.z, undefined, undefined, false, true);
+      if (!plain || !hidden || Math.hypot(plain.at(-1)!.x - to.x, plain.at(-1)!.z - to.z) > 1) continue;
+      tried++;
+      expect(walkableRoute(from, hidden)).toBe(true);
+      expect(Math.hypot(hidden.at(-1)!.x - to.x, hidden.at(-1)!.z - to.z)).toBeLessThan(1);
+      plainBare += bare(from, plain);
+      hiddenBare += bare(from, hidden);
+      plainLength += length(from, plain);
+      hiddenLength += length(from, hidden);
+    }
+    // Less of it in the open, for a walk hardly longer: much of the island has no cover near,
+    // and the cost of open ground is kept low so a sneaking bot doesn't wander.
+    expect(hiddenBare).toBeLessThan(plainBare * 0.9);
+    expect(hiddenLength).toBeLessThan(plainLength * 1.1);
   });
 });

@@ -926,6 +926,18 @@ notes the chunk it came from.
   row, with no marker of your own), then give a rival more, find its marker by looking where it
   was called, kill it (a feed row marked bounty) and read its bag's value off the tag, all with a
   real game in each engine.
+- **Campers may wait where they can't see the extraction point** (18). A spot that can see into it
+  from a crouch is preferred, but if none of 16 tries finds one, any dry spot 25–45 m off will do.
+  **Resolved in part** (27): a camper first looks for a big bush 25 m out to the range that sees
+  into the extraction point, then for any spot that does. A blind camp is looked at again every
+  20 s, 10 m farther out each time up to 85 m, and swapped for a spot that sees. In the day
+  playtest 19% of first camps were blind and 22 of those 50 later moved to one that could see; the
+  rest ran out of range or time. Campers still settle for a blind spot while they look.
+  **Resolved** (38): a camper waits only where it sees into the extraction point from a crouch.
+  It looks for a big bush that does, then for any of 24 spots that does, out to 45 m, then
+  again 10 m farther each time up to 85 m; finding none, it doesn't camp and heads out. In the
+  bot playtest (6 islands × 20 min) no camp was given up for want of a spot by day (0 of 43)
+  and 5 of 94 at night in rain.
 
 ### Licensing
 - **The Mixamo soldier's terms need checking** (9). Mixamo allows royalty-free use in games, but
@@ -1086,6 +1098,15 @@ notes the chunk it came from.
   **Changed** (30): rewards are 5× as much (intel 7,500, cache 6,000, commander 12,500). Not yet
   played with; bots still get no contracts.
   **Resolved** (30): contracts pay 5× as much; the user considers it done.
+- **Bots don't sneak through grass or bushes** (27). They hide in bushes only to take cover or to
+  wait, never pick a route through cover, and rats don't hide on hearing a fight nearby.
+  **Resolved** (38): a bot sneaking (near an outpost, closing in on a fight, or after seeing a
+  guard) and a rat going about its run take routes through bushes and tall grass: the nav grid
+  counts open ground as 1.7 times the walk (`BARE_COST`), a 1 m square counting as cover under a
+  bush at least 0.8 m tall or with tufts adding up to 1.2 m of height (`Vegetation.cover`, about
+  a fifth of the island's land). A rat hearing gunfire within 90 m lies low for 10–20 s (longer
+  while the shots go on) in a bush that hides it from the fight, or out of its sight within
+  25 m, then goes on. What's left is in PLAN.md's "Hidden routes keep little off open ground".
 
 ## Dropped
 

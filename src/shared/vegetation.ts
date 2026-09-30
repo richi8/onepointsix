@@ -38,6 +38,12 @@ const GRASS_TOP = TUFT_SIZE[1] * 1.2;
 const TUFT_BLOCK = 0.85;
 /** Metres between samples along a sight line, looking for where it runs low enough for grass. */
 const GRASS_STEP = 0.5;
+/**
+ * Cover for someone sneaking through: a bush at least this tall, or tufts in
+ * one 1 m square whose heights add up to this many metres.
+ */
+const COVER_BUSH = 0.8;
+const COVER_GRASS = 1.2;
 /** Grass cells kept before they're all let go and scattered again as needed. */
 const GRASS_CELLS = 3000;
 
@@ -213,6 +219,31 @@ export class Vegetation {
   grassiness(x: number, z: number): number {
     const i = this.vertex(x, z);
     return Math.min(this.weights[i + Layer.grass] + this.weights[i + Layer.dryGrass] * 0.8, 1);
+  }
+
+  /**
+   * Whether the 1 m square of ground at (x, z) gives someone sneaking through
+   * it some cover: a bush over it, or grass grown thick and tall there.
+   */
+  cover(x: number, z: number): boolean {
+    const sx = Math.floor(x);
+    const sz = Math.floor(z);
+    const ix = Math.floor(sx / VEG_CELL);
+    const iz = Math.floor(sz / VEG_CELL);
+    const cx = sx + 0.5;
+    const cz = sz + 0.5;
+    for (let jz = Math.floor((cz - 1.5) / VEG_CELL); jz <= Math.floor((cz + 1.5) / VEG_CELL); jz++) {
+      for (let jx = Math.floor((cx - 1.5) / VEG_CELL); jx <= Math.floor((cx + 1.5) / VEG_CELL); jx++) {
+        for (const b of this.bushes(jx, jz)) {
+          if (b.height >= COVER_BUSH && Math.hypot(b.x - cx, b.z - cz) < b.size * BUSH_EDGE + 0.5) return true;
+        }
+      }
+    }
+    const { data, start } = this.tufts(ix, iz);
+    const sq = (sz - iz * VEG_CELL) * VEG_CELL + (sx - ix * VEG_CELL);
+    let height = 0;
+    for (let k = start[sq]; k < start[sq + 1]; k++) height += data[k * TUFT_STRIDE + 4];
+    return height >= COVER_GRASS;
   }
 
   /**

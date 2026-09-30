@@ -7,7 +7,7 @@ import { PERSONALITIES, TEMPERS, type Personality } from '../src/server/personal
 import { planOperator } from '../src/server/population.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
-import { BOUNTY_MIN, BOUNTY_PING, EYE_HEIGHT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { BOUNTY_MIN, BOUNTY_PING, CROUCH_EYE_HEIGHT, EYE_HEIGHT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { DEFAULT_CONDITIONS, sensesOf } from '../src/shared/conditions.ts';
 import { ITEMS, lootValue } from '../src/shared/loot.ts';
 import type { BagSnap, GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
@@ -172,7 +172,7 @@ describe('bot senses and stealth', () => {
     expect(Math.max(...offs)).toBeLessThan(200 * 0.12 * Math.SQRT2 + 0.01);
   });
 
-  it('an operator hurt by a guard in the open hides in a bush that keeps them out of sight', () => {
+  it('a rat hurt by another operator in the open hides in a bush that keeps them out of sight', () => {
     const veg = vegetationOf(world);
     let tried = 0;
     let inBush = 0;
@@ -181,7 +181,7 @@ describe('bot senses and stealth', () => {
         for (const b of veg.bushes(ix, iz)) {
           if (b.height < 1.2 || !nav.dry(b.x, b.z) || world.outposts.some((o) => Math.hypot(o.x - b.x, o.z - b.z) < 120)) continue;
           const self = agent(1, 'operator', b.x + 4, b.z + 3);
-          const guard = agent(2, 'guard', b.x - 40, b.z);
+          const guard = agent(2, 'operator', b.x - 40, b.z);
           if (!nav.dry(self.x, self.z) || !world.hasLineOfSight(self.x, self.y + 1.6, self.z, guard.x, guard.y + 1.2, guard.z)) continue;
           if (veg.seeThrough(self.x, self.y + 1.6, self.z, guard.x, guard.y + 1.2, guard.z) < 0.5) continue;
           tried++;
@@ -259,6 +259,120 @@ describe('telling what kind of rival it was', () => {
     c.drop(0.5, 0, 0, [GOLD], 1, 'rat');
     c.drop(0.2, 0, 0, [GOLD], 2, 'looter');
     expect(c.bags()).toEqual([expect.objectContaining({ kind: 'rat', value: lootValue([GOLD, GOLD, GOLD]) })]);
+  });
+});
+
+describe('bot senses and stealth III', () => {
+  type Inside = { spot: (Point & { bush?: boolean }) | null; camp: Point | null; fleeing: boolean };
+  const inside = (bot: Bot) => bot as unknown as Inside;
+
+  it('a camper only ever waits where it can see into the extraction point, or doesn’t camp', () => {
+    const extracts = new Extracts(world, mulberry32(1)).points;
+    let camped = 0;
+    extracts.forEach((e, i) => {
+      // Some way off it, so this is the extraction point it picks.
+      const rand = mulberry32(20 + i);
+      let at: { x: number; z: number } | null = null;
+      for (let k = 0; k < 200 && !at; k++) {
+        const a = rand() * Math.PI * 2;
+        const x = e.x + Math.sin(a) * 60;
+        const z = e.z + Math.cos(a) * 60;
+        if (nav.dry(x, z)) at = { x, z };
+      }
+      if (!at) return;
+      const self = agent(1, 'operator', at.x, at.z);
+      const camper = operator('camper');
+      const ctx = { ...context([self]), extracts: [e] };
+      think(camper, ctx, self, 0.5);
+      const camp = inside(camper).camp;
+      if (!camp) {
+        expect(camper.state).toBe('extract');
+        return;
+      }
+      camped++;
+      expect(camper.state).toBe('camp');
+      expect(world.hasLineOfSight(camp.x, camp.y + CROUCH_EYE_HEIGHT, camp.z, e.x, e.y + 1, e.z)).toBe(true);
+    });
+    expect(camped).toBeGreaterThan(extracts.length / 2);
+  });
+
+  it('a rat lies low on hearing a fight nearby, out of its sight, then goes on; a looter doesn’t', () => {
+    const at = openSpot(250, 11);
+    const self = agent(1, 'operator', at.x, at.z);
+    const shooter = agent(2, 'operator', at.x + 60, at.z);
+    const crate = { x: at.x - 150, y: self.y, z: at.z };
+    const gunfire = (bot: Bot, t: number) =>
+      bot.hear(self, { x: shooter.x, y: shooter.y + EYE_HEIGHT, z: shooter.z, radius: 180, source: 2, gunfire: true }, t);
+    for (const [p, want] of [['rat', 'hide'], ['looter', 'loot']] as const) {
+      const bot = operator(p, [crate]);
+      const ctx = context([self]);
+      think(bot, ctx, self, 0.2);
+      gunfire(bot, 0.2);
+      think(bot, ctx, self, 0.3, 0.2);
+      expect(bot.state).toBe(want);
+      if (p !== 'rat') continue;
+      // Somewhere the fight can't see, unless there's nowhere near: then just where it is.
+      const spot = inside(bot).spot!;
+      const fy = world.groundHeight(shooter.x, shooter.z, world.floorHeight(shooter.x, shooter.z)) + EYE_HEIGHT;
+      const hidden = !world.hasLineOfSight(shooter.x, fy, shooter.z, spot.x, spot.y + CROUCH_EYE_HEIGHT, spot.z) ||
+        (!!spot.bush && vegetationOf(world).seeThrough(shooter.x, fy, shooter.z, spot.x, spot.y + 0.9, spot.z) < CONCEALED);
+      expect(hidden || Math.hypot(spot.x - self.x, spot.z - self.z) < 0.01).toBe(true);
+      // There (this body doesn't walk), more shots keep it down; once they stop, it gets on with its run.
+      Object.assign(self, { x: spot.x, y: spot.y, z: spot.z });
+      const until = () => (bot as unknown as { spotUntil: number }).spotUntil;
+      const first = until();
+      gunfire(bot, 8);
+      think(bot, ctx, self, 1, 8);
+      expect(bot.state).toBe('hide');
+      expect(until()).toBeGreaterThan(Math.max(first, 18) - 0.01);
+      const end = until();
+      think(bot, ctx, self, end - 9 - 0.3, 9);
+      expect(bot.state).toBe('hide');
+      think(bot, ctx, self, 0.6, end - 0.3);
+      expect(bot.state).toBe('loot');
+    }
+  });
+
+  it('an operator shot at by a guard far off gets well away out of its sight, not just behind the next bush', () => {
+    let tried = 0;
+    let away = 0;
+    for (let seed = 1; tried < 8; seed++) {
+      const at = openSpot(150, seed);
+      const self = agent(1, 'operator', at.x, at.z);
+      const guard = agent(2, 'guard', at.x + 90, at.z);
+      if (!world.hasLineOfSight(self.x, self.y + EYE_HEIGHT, self.z, guard.x, guard.y + EYE_HEIGHT, guard.z)) continue;
+      tried++;
+      const bot = operator('looter', [{ x: at.x - 150, y: self.y, z: at.z }]);
+      bot.underFire(guard, 0);
+      think(bot, context([self, guard]), self, 0.1);
+      expect(bot.state).toBe('cover');
+      const spot = inside(bot).spot!;
+      expect(inside(bot).fleeing).toBe(true);
+      // Off and away from the guard.
+      expect(Math.hypot(spot.x - self.x, spot.z - self.z)).toBeGreaterThan(30);
+      expect(Math.hypot(spot.x - guard.x, spot.z - guard.z)).toBeGreaterThan(90);
+      if (!world.hasLineOfSight(guard.x, guard.y + EYE_HEIGHT, guard.z, spot.x, spot.y + CROUCH_EYE_HEIGHT, spot.z)) away++;
+    }
+    // Mostly out of its sight: open ground doesn't always offer that.
+    expect(away).toBeGreaterThan(tried / 2);
+  });
+
+  it('an operator shot by two others at once is outgunned and gets away, where one alone it fights', () => {
+    const at = openSpot(250, 13);
+    const self = agent(1, 'operator', at.x, at.z);
+    const a = agent(2, 'operator', at.x, at.z - 30);
+    const b = agent(3, 'operator', at.x + 8, at.z - 30);
+    const fight = (shooters: Agent[]) => {
+      const bot = new Bot({ kind: 'operator', loot: [], planned: 0, greed: 20, personality: 'looter' }, SKILLS.normal, RIFLE, yawToward(self.x, self.z, a.x, a.z), mulberry32(3));
+      const ctx = context([self, ...shooters]);
+      for (const s of shooters) bot.hurt(s, 0);
+      think(bot, ctx, self, 0.3);
+      return bot;
+    };
+    expect(fight([a]).state).toBe('engage');
+    const outgunned = fight([a, b]);
+    expect(outgunned.state).toBe('cover');
+    expect(inside(outgunned).fleeing).toBe(true);
   });
 });
 

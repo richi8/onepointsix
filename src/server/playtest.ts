@@ -83,7 +83,9 @@ const share = (n: number, of: number) => `${n} of ${of} (${of ? Math.round((n / 
 console.log(
   `stealth: hid from a threat in a bush ${share(tally.bushCovers, tally.covers)}, waited in a bush ${share(tally.bushWaits, tally.waits)}; ` +
   `fights joined ${tally.joins}, guessed ${tally.joins ? (tally.guessOff / tally.joins).toFixed(1) : '-'} m off the shooter on average; ` +
-  `camps blind to their extraction point ${share(tally.blindCamps, tally.camps)}, ${tally.campFixes} later moved to one that could see; ` +
+  `camps given up for want of a spot that sees the extraction point ${share(tally.campless, tally.camps)}; ` +
+  `hid from a fight nearby ${tally.hides}, ${share(tally.bushHides, tally.hides)} in a bush; paths through bushes and tall grass ${tally.hiddenPaths}; ` +
+  `operators ducking out of sight of a shooter ${tally.pinned}, outgunned ${tally.outgunned}; ` +
   `doors shut behind them ${tally.shuts}, ${tally.slams} of them on someone chasing; thinks spent upstairs or up a tower ${tally.upThinks}; ` +
   `lamps aimed at ${tally.lampsAimed}, paths looked for keeping out of lamplight ${tally.shyPaths}`,
 );

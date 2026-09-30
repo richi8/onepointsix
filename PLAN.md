@@ -251,7 +251,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | **Done** (by unit tests: paths walked up to the crate upstairs and back out on every seed with a two-storey building and up every watchtower, a guard going upstairs to a shot heard there, guards shutting doors behind them and an operator slamming one on a chase, four posts bringing an upper storey down whole; a browser test of a door opening at once with 400 ms of lag; screenshots of a watchtower, a container and the plain ceiling. Not watched in play. "Room by room" is a bot looking into what it heard, not a sweep of the rooms. A bot playtest came out as before, 9% of operator bots out by day, and simulated faster, 31 s against 35 s, as boxes now have one shape) |
 | 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | **Done** (screenshot tests outside the wall behind a lamp, now dark, the lamps' shadows over a yard and a yard under a lamp on a rainy night, wet with puddles; unit tests of the lamps' cone and walls for bots, paths round lamplight and a bot's shot meeting a lamp; the benchmark's rainy night 14.6 ms against 14.9 ms for the code before in one session on an M3 Pro. Lights past the 16 nearest and shadows past the six nearest are left out; not watched in play) |
 | 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | **Done** (from the ground floor, a shot upstairs comes from the foot of the stairs, muffled 0.47 against 0.97 straight through the floor; the loading screen waits for 3.97 MB, down from 4.55 MB just before: the scripts had grown since the 4.3 MB was measured; the rifle's suppressed shot stays a stand-in, since no real one was found) |
-| 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | Not started |
+| 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | **Done** (by bot playtests of 6 islands × 20 min: 13% by day and 18% at night in rain on seeds 1–6, against 9% and 15% just before, and 13% and 18% against 10% and 17% on seeds 7–12; guards, the fee and extraction unchanged. Campers never wait blind, rats lie low when a fight breaks out nearby, and sneaking bots keep to bushes and tall grass, which cover little of the island. Nobody has played against it) |
 | 39 | **Trees and grass** | Trees from CC0 models, or better generated ones, small enough to download, with impostors baked from them to match; grass that shows blades up close instead of three flat cards, fading to the current tufts farther off; the sight model's cover checked against the new grass; within the benchmark's frame budget | Close up, a tree and a patch of grass look real in a screenshot, and the benchmark holds its frame time | Not started |
 | 40 | **Human pass II** | What needs people and hardware: a mid-range laptop for the 5 s load, 60 fps and the adaptive resolution; runs by other people with the stats export; watching the animation, ragdolls, swaying and waves in play; listening to the recordings, reverbs and corners; fighting through the buildings and against bots hiding in bushes; tuning from what they show (guards, weapons, extraction timings and fee, loot, night) | The Playtest and tuning goals are met with human data, and every Known Issue is Resolved, Moot or listed below as left for later | Not started |
 
@@ -586,15 +586,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Sunlight shows down a building's inside corners** (seen in chunk 36): a thin line of sun
   shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
 
-### Rivals
-- **Campers may wait where they can't see the extraction point** (18). A spot that can see into it
-  from a crouch is preferred, but if none of 16 tries finds one, any dry spot 25–45 m off will do.
-  **Resolved in part** (27): a camper first looks for a big bush 25 m out to the range that sees
-  into the extraction point, then for any spot that does. A blind camp is looked at again every
-  20 s, 10 m farther out each time up to 85 m, and swapped for a spot that sees. In the day
-  playtest 19% of first camps were blind and 22 of those 50 later moved to one that could see; the
-  rest ran out of range or time. Campers still settle for a blind spot while they look.
-
 ### Code and testing
 - **The client's rendering, animation and audio have no automated tests** (9). They were checked
   by screenshots only, and nobody has listened to the audio.
@@ -634,6 +625,22 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   PvE easier for humans, so guards were left alone until humans have played.
   Still true after chunk 29 (see Rivals): 84% of their runs end in death by day, 82% at night in
   rain.
+  **Resolved in part** (38): operator bots survive more runs, with the guards, the fee and
+  extraction as they were. Shot at by someone they'd rather not fight (a guard past 40 m, anyone
+  for a rat), or by two at once, or by anyone once below 40% health, they duck out of sight at
+  once; from guards, and when outgunned, they get 40–70 m away, out of sight if they can, and
+  start no fights for 20 s. Their cover must hide them from everyone lately seen or shooting,
+  not only one, and cover that turns out to show them (they can see the enemy from it, or are
+  still running for it after 2 s) is fought from instead of waited in, which before got them
+  shot without firing back. They keep low for 10 s after seeing a guard within 110 m, a guard
+  shooting at them from any range spoils the crates near it as a hit did, they crouch more in a
+  fight, and heading out with enough to pay they start no fights but a hunter's. In bot
+  playtests of 6 islands × 20 min: by day 13% of runs extracted (9% before) on seeds 1–6 and 13%
+  (10%) on seeds 7–12; at night in rain 18% (15%) and 18% (17%). Guards kill 65–77 operators an
+  hour by day instead of 123–126. Most runs still end in death, and the night gain is thin.
+  Tried and left out, as they did worse: starting fights with guards only within 15 m, no fights
+  at all once able to pay, counting enemies in sight as outgunning before they fire, escaping
+  through bushes and grass, and the nearest escape rather than the farthest.
 - **Guards were too deadly for a person** (30). The first human run log (84 runs by the
   developer on seed 1, about half of them tries with no aim to get out) had 88% of runs end in
   death, 77% of those to guards, a median 0:30 into the run, and 42% of guard kills were
@@ -683,8 +690,19 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   cover and to wait in, how far off their guesses at fights are and how often camps are blind
   (counted in `tally`, a module-level counter in `server/bot.ts`). Nobody has played against bots
   that hide in bushes, and whether they're too hard to find there is untested.
-- **Bots don't sneak through grass or bushes** (27). They hide in bushes only to take cover or to
-  wait, never pick a route through cover, and rats don't hide on hearing a fight nearby.
+  Still (38): rats now also lie low when a fight breaks out nearby and sneak through bushes and
+  tall grass, and operators get away from guards; tried by bots only. Since the flights count as
+  cover taken, the playtest's share of cover taken in a bush fell from 33% to about 10–18%.
+- **Hidden routes keep little off open ground** (38). Bushes and tall grass cover about a fifth of
+  the island's land in patches, and open ground costs only 1.7 times the walk, so a sneaking bot's
+  route crosses about 15% less open ground than a plain one, for 3% more walking. At 2.5 times
+  it crossed 22% less for 9% more, but operator bots got out of fewer runs (11% and 16% against
+  13% and 18% on seeds 1–6, and 13% and 16% against 13% and 18% on seeds 7–12). The search is
+  weighted A* (1.4), so it doesn't always find the most covered way.
+- **Operators getting away are often shot in the back** (38). Fleeing 40–70 m from guards is now
+  the commonest way for an operator bot to die at a guard's hands: in a 4-island × 10-minute
+  diagnostic, 23 of 51 guard kills were on the way. They sprint in the open without firing back
+  until someone is within 20 m.
 - **The thorough playtest isn't a person** (29). Its bots can't be killed, play alone, don't
   notice being shot and never run dry, so it reads how long a full search and its fights take,
   not how often a person survives one. 13% of its runs still end stuck in a fight at 10:00.
