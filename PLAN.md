@@ -431,6 +431,15 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   its sky with two shaders three.js keeps to itself, 0.8 s cold; measured only in Chrome on Metal.
   Once in three cold loads the old code hung in "Preparing the island…" for nearly two minutes;
   the new code didn't in about fifteen, which doesn't rule it out.
+  **Resolved in part** (after 39): the user found the first second of a game froze on a cold
+  cache, and so did shooting a window the first time: 2.2 s at the start, compiling the soldiers,
+  the gun in your hands and the effects. The frames under the loading screen now also draw an
+  operator, a guard and a commander with each gun, a bag, a grenade, a round, hits, a broken
+  panel's debris and a blast, with everything hidden shown and nothing culled, and the gun in
+  your hands; the debris is coloured from the start, as colours first given at a break changed
+  its shader. Cold, a game now starts with a 133 ms frame (the soldiers' legs, whose shader goes
+  with the stand-ins) and a window breaks with none. The cost moved to the loading screen, which
+  now goes after about 11.7 s cold instead of 8.5 s; warm, 0.93 s instead of 0.83 s.
 
 ### Day, night and weather
 - **Wet is worked out simply** (36). Bodies, bags and debris dry the moment they're under a roof,

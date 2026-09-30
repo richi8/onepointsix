@@ -16,6 +16,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     notes: [
       'The first time you open the game, or after an update, it loads in about half the time it did.',
       'Switching the menu to dusk or night no longer freezes the game for a few seconds.',
+      'The first game after loading no longer freezes as it starts, nor does the first window you break.',
     ],
   },
   {

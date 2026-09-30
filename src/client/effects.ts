@@ -119,6 +119,8 @@ export class Effects {
     chunkGeo.setAttribute('layer', this.debrisLayer);
     this.debris = new THREE.InstancedMesh(chunkGeo, wetMaterial(new THREE.MeshStandardMaterial({ roughness: 0.9 }), 0.5), MAX_DEBRIS);
     this.debris.count = 0;
+    // Coloured from the start: colours first given as a panel breaks would recompile its material.
+    this.debris.setColorAt(0, new THREE.Color());
     this.debris.frustumCulled = false;
     this.debris.castShadow = this.debris.receiveShadow = true;
     this.debris.layers.enable(REFLECTED);

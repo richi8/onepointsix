@@ -160,7 +160,12 @@ let skipped = false;
  * covers: on a cold shader cache, those cost seconds.
  */
 let drawing = false;
-/** Set for the frames drawn under the loading screen to prepare the ones after. */
+/**
+ * Set for the frames drawn under the loading screen to prepare the ones
+ * after: soldiers of every kind stand in the middle of the island with a bag
+ * and a grenade, everything hidden is shown and nothing is culled, and the
+ * gun in your hands is drawn too.
+ */
 let warming = false;
 /** While set, the frame isn't drawn: a picture of the last one covers the view as the textures go on. */
 let holdFrame = false;
@@ -240,14 +245,18 @@ import('./assets.ts')
     camera.updateMatrixWorld();
     await renderer.compileAsync(scene, camera);
     // Frames drawn under the loading screen until one has drawn the sea's
-    // reflection, whether or not it's in view (it waits for the shadow maps):
-    // they compile what can't be ahead, the shadow maps' shaders and, in
-    // Chrome on Metal, a pipeline for each material and picture drawn into,
-    // which cost seconds on a cold cache.
+    // reflection, whether or not it's in view (it waits for the shadow maps),
+    // with everything shown that play shows later (see warming): they compile
+    // what can't be ahead, the shadow maps' shaders and, in Chrome on Metal,
+    // a pipeline for each material and picture drawn into, which cost
+    // seconds on a cold cache, as a game starts or a window first breaks.
     drawing = true;
     warming = true;
-    for (let i = 0; i < 30 && !view.reflecting; i++) await nextFrame();
+    warmEffects();
+    for (let i = 0; i < 30 && (i < 2 || !view.reflecting); i++) await nextFrame();
     warming = false;
+    bodies.clear();
+    effects.clear();
     // Drawing is only asked of the GPU; wait for it to have done it.
     await gpuDone();
   })
@@ -272,6 +281,51 @@ function gpuDone(): Promise<void> {
     };
     requestAnimationFrame(check);
   });
+}
+
+/** Stand-ins drawn while warming: an operator, a guard and a commander, one with each gun and one lit. */
+function warmPlayers(): PlayerSnap[] {
+  const y = world.floorHeight(0, 0);
+  return (['operator', 'guard', 'guard'] as const).map((team, i) => ({
+    id: -1 - i, team, x: i - 1, y, z: 0, yaw: 0, pitch: 0, duck: 0, lean: 0, dead: false, weapon: i, quiet: i === 0,
+    motion: 'ground', act: 'none', actT: 0, commander: i === 2, light: i === 0,
+  }));
+}
+
+/** A round, a hit and a broken panel with its debris, and a grenade going off, for the warming frames. */
+function warmEffects(): void {
+  const y = world.floorHeight(0, 0);
+  const at = new THREE.Vector3(0, y + 1, 2);
+  effects.tracer(new THREE.Vector3(0, y + 1, 10), at);
+  effects.impact(at, 'world', new THREE.Vector3(0, 1, 0));
+  effects.impact(at, 'body', new THREE.Vector3(0, 1, 0));
+  const panel = world.panels[0];
+  if (panel) effects.shatter(panel.box, new THREE.Color(1, 1, 1), view.panelLayer(0), at.x, at.y, at.z);
+  effects.explosion(at);
+}
+
+/** Show everything in `root` but its lights, unculled, and every instanced mesh at least once; returns the undoing. */
+function showAll(root: THREE.Object3D): () => void {
+  const undo: (() => void)[] = [];
+  root.traverse((o) => {
+    if ((o as THREE.Light).isLight) return;
+    if (!o.visible) {
+      o.visible = true;
+      undo.push(() => (o.visible = false));
+    }
+    if (o.frustumCulled) {
+      o.frustumCulled = false;
+      undo.push(() => (o.frustumCulled = true));
+    }
+    const m = o as THREE.InstancedMesh;
+    if (m.isInstancedMesh && m.count === 0) {
+      m.count = 1;
+      undo.push(() => (m.count = 0));
+    }
+  });
+  return () => {
+    for (const f of undo) f();
+  };
 }
 
 function nextFrame(): Promise<void> {
@@ -1380,15 +1434,16 @@ renderer.setAnimationLoop(() => {
   // Soldiers stood on the menu's island hold still for screenshots with time stopped.
   const bodyDt = cam ? Math.max(cam.time - before, 0) : !conn && !Number.isNaN(still) ? 0 : dt;
   hud.age(bodyDt);
-  const players = cam ? cam.others() : (conn?.interpolated() ?? devStanding);
+  const players = cam ? cam.others() : (conn?.interpolated() ?? (warming ? warmPlayers() : devStanding));
   bodies.sun.copy(view.lit.sunDir);
   // Bodies fall on the game's clock, against everyone as the server had them.
   const clock = cam
     ? { time: cam.time, at: (t: number) => cam.everyoneAt(t) }
     : conn ? { time: conn.renderTime(), at: (t: number) => conn!.everyoneAt(t) } : undefined;
   bodies.update(players, bodyDt, camera, clock);
-  bags.update(conn?.bags ?? []);
-  grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? []));
+  const y0 = world.floorHeight(0, 0);
+  bags.update(conn?.bags ?? (warming ? [{ id: -1, x: 0, y: y0, z: 1 }] : []));
+  grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? (warming ? [{ id: -1, x: 1, y: y0 + 0.5, z: 1 }] : [])));
   if (conn) view.setExtracts(conn.extracts, now);
 
   const me = conn?.predictor.render(inputLoop.alpha);
@@ -1431,6 +1486,7 @@ renderer.setAnimationLoop(() => {
 
   if (cam?.done) stopDeathcam();
   if (holdFrame || !drawing) return;
+  const shown = warming ? [showAll(scene), showAll(viewModel.scene)] : [];
   localLights.draw(renderer, scene);
   view.reflect(renderer, camera, warming);
   const wobbling = view.underwater;
@@ -1438,13 +1494,14 @@ renderer.setAnimationLoop(() => {
   renderer.clear();
   renderer.render(scene, camera);
   if (wobbling) camera.updateProjectionMatrix();
-  if (state) {
+  if (state || warming) {
     renderer.clearDepth();
     // The gun is drawn in a space of its own, the camera's: the world's lights are placed in it.
     localLights.apart(camera);
     renderer.render(viewModel.scene, viewModel.camera);
     localLights.restore();
   }
+  for (const undo of shown) undo();
   if (pictureNext) {
     // Straight after drawing, while the frame is still there to copy.
     const shot = document.createElement('canvas');
