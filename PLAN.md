@@ -294,13 +294,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   as an impostor: a card facing the camera, with a picture of the tree baked at startup. In the
   shadow pass the card faces the sun, so far trees still cast shadows. The trees are still
   procedural.
-- **Water is a flat, see-through plane** (9), with no waves, reflections, shoreline foam or
-  underwater effect.
-  **Resolved in part** (15): a 240 m grid round the camera rolls with four wave trains, inside a
-  flat ring out to the horizon. The sea's depth comes from a height map of the island: shallow
-  water is clear and pale, deep water dark, waves die down toward the shore and foam laps along
-  it in bands. Below the surface the fog turns murky green. It reflects the sky through the
-  environment map, but not the island (see below).
 - **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
   best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
   helmet hides the face, and its hands stay open instead of gripping the gun.
@@ -328,9 +321,8 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   test lands two bodies on each other the same however the frames fall; a browser test compares
   a body's fall in play and in the death cam). A body left behind when its player is back in the
   game, or gone, stays until it comes to rest and 30 s after dying, then until it's out of view,
-  never more than 60 s, and at most 8 of them. Still: falls match only within one browser engine,
-  as above. The living aren't moved by a body, and their arms and guns don't stop one. Which way
-  a body falls is picked by rays that miss the living and the dead, so it can fall toward someone
+  never more than 60 s, and at most 8 of them. Still: the living aren't moved by a body, and
+  their arms and guns don't stop one. Which way a body falls is picked by rays that miss the living and the dead, so it can fall toward someone
   and crumple at their feet. Elbows bend by a guess from the body's front and spine, as the balls
   don't twist, and an arm lying along that guess is left free. Bodies left lying aren't in a death
   cam and are cleared when it starts and ends, and the dropped magazines aren't thrown by a
@@ -528,8 +520,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   20 ms within four changes. Only Chromium runs it, and the slowness is simulated, not real
   hardware (chunk 30).
 - **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
-  production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred). The new build isn't on
-  the live site until it's pushed.
+  production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred).
 - **The benchmark's empty frame is twice its kept baseline** (32): 5–6.8 ms against 3.1, in runs
   of both the code before chunk 32 and after it in the same session, with the same 95 draw calls
   and 502k triangles as each other. The baseline in `e2e/bench-baseline.json` is older than the
@@ -617,29 +608,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   cover, impostors, cascades, indoor light by day and night) and of the pose viewer's soldiers,
   and decode the sound bank in all three engines to check each shot starts on time. The
   animation is still only checked in still pictures, and still nobody has listened to the audio.
-- **The browser tests don't run in CI** (19). The deploy workflow still runs only Vitest. The
-  tests want a GPU to draw the game at speed; on Linux Chromium is told to use OpenGL
-  (`--use-angle=gl`), which hasn't been tried.
-  **Left for later** (31): tried and set aside (see Decisions). In the Playwright Linux image,
-  every choice of `--use-angle` (gl, vulkan, swiftshader, none) ends in SwiftShader, drawing in
-  software, and GitHub's runners have no GPU. `E2E_GL=software npm run test:browser` shows it
-  on the Mac: about 20 s to load the page and 45 s to 1.5 min a test with one worker (on the
-  M3 Pro's cores), 10 minutes for the suite with four, and 7 tests failing on slow frames (the
-  textures fading in, the death cam, resuming after Esc). On a 2-core runner the suite would
-  take well over an hour a push. Linux would also need screenshots of its own, made on a
-  matching machine; Docker here has 1 CPU and under 1 GB, too little to make them.
-- **The screenshots come from one machine** (19): Chromium on an M3 Pro through Metal, at
-  640 × 360, kept in `e2e/screenshots/darwin/`. With the tests local only (31), that's the
-  machine they run on. Another machine makes its own on its first run (which reports each as a
-  failure once), so they only catch changes on the machine that made them. A change to fewer
-  than 1% of the pixels passes.
-- **The scripts' CI job hasn't run on GitHub yet** (20). `.github/workflows/scripts.yml` runs
-  both scripts on Ubuntu when they or their lists change, and the unit tests on what they make.
-  It was run as-is in a Linux x86-64 container (about 8 minutes under emulation), not on GitHub,
-  since it isn't pushed. It downloads from Poly Haven, Freesound and poly.pizza every time, so
-  a change or a rate limit there fails it. The transcoder's build script isn't in it (it needs
-  Docker or Emscripten). Its run on GitHub was dropped from chunk 31 with the rest of CI; it
-  still runs there if pushed.
 - **The rivals bounty test is flaky** (31, found while timing the suite). "A rival with the
   bounty is marked..." failed 1 of 20 runs on the code before chunk 31, and 3 of 7 in two
   batches after it, though nothing chunk 31 changed touches it. At its last step, facing the dead
@@ -807,8 +775,8 @@ extraction stays as hard as it is.
   or later; dropping the AAC copies saved 1.6 MB and took the single-file build from 8.3 to
   5.9 MB.
 - **Browser tests stay local** (31, 2026-09-29): CI can't draw the game at speed (no GPU on
-  GitHub's runners; see "The browser tests don't run in CI"), so `npm run test:browser` runs on
-  the developer's machine before pushing, and the deploy is still gated by Vitest only. The
+  GitHub's runners; see "The browser tests don't run in CI" in the history), so
+  `npm run test:browser` runs on the developer's machine before pushing, and the deploy is still gated by Vitest only. The
   frame-cost benchmark is out of the default run: `npm run bench`, when rendering cost changes.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
   ambientCG, Quaternius). Chunk 9 also used a Mixamo soldier, which chunk 11 replaced to leave

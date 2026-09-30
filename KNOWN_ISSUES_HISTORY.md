@@ -445,6 +445,16 @@ notes the chunk it came from.
   decides) and nobody you can see stands in its way; the server's word confirms it, a "stuck"
   answer or no answer within 1.5 s swings it back. A browser test with 400 ms of lag each way
   sees the door swinging at once, and fails without the prediction.
+- **Water is a flat, see-through plane** (9), with no waves, reflections, shoreline foam or
+  underwater effect.
+  **Resolved in part** (15): a 240 m grid round the camera rolls with four wave trains, inside a
+  flat ring out to the horizon. The sea's depth comes from a height map of the island: shallow
+  water is clear and pale, deep water dark, waves die down toward the shore and foam laps along
+  it in bands. Below the surface the fog turns murky green. It reflects the sky through the
+  environment map, but not the island (see below).
+  **Resolved** (24): the one thing left, reflecting the island, came with the sea's reflection
+  (see "The sea reflects only the sky" above); what that still lacks is under "The reflection
+  is partial" in the plan.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
@@ -1001,6 +1011,33 @@ notes the chunk it came from.
   14.4–14.9 ms to 10.8–11.2 ms and from 1,151 draw calls to 245, now with bodies taking shadows
   everywhere; the same bodies 100–400 m off from 12.9 to 10.1 ms (461 calls to 163), now casting
   shadows out to 230 m. The triangles are the same (1.19 million).
+- **The browser tests don't run in CI** (19). The deploy workflow still runs only Vitest. The
+  tests want a GPU to draw the game at speed; on Linux Chromium is told to use OpenGL
+  (`--use-angle=gl`), which hasn't been tried.
+  **Left for later** (31): tried and set aside (see Decisions). In the Playwright Linux image,
+  every choice of `--use-angle` (gl, vulkan, swiftshader, none) ends in SwiftShader, drawing in
+  software, and GitHub's runners have no GPU. `E2E_GL=software npm run test:browser` shows it
+  on the Mac: about 20 s to load the page and 45 s to 1.5 min a test with one worker (on the
+  M3 Pro's cores), 10 minutes for the suite with four, and 7 tests failing on slow frames (the
+  textures fading in, the death cam, resuming after Esc). On a 2-core runner the suite would
+  take well over an hour a push. Linux would also need screenshots of its own, made on a
+  matching machine; Docker here has 1 CPU and under 1 GB, too little to make them.
+  **Moot** (2026-09-30): decided against; see "Browser tests stay local" in Decisions.
+- **The screenshots come from one machine** (19): Chromium on an M3 Pro through Metal, at
+  640 × 360, kept in `e2e/screenshots/darwin/`. With the tests local only (31), that's the
+  machine they run on. Another machine makes its own on its first run (which reports each as a
+  failure once), so they only catch changes on the machine that made them. A change to fewer
+  than 1% of the pixels passes.
+  **Resolved** (2026-09-30): accepted, as the browser tests run only on the developer's machine
+  (see "Browser tests stay local" in Decisions).
+- **The scripts' CI job hasn't run on GitHub yet** (20). `.github/workflows/scripts.yml` runs
+  both scripts on Ubuntu when they or their lists change, and the unit tests on what they make.
+  It was run as-is in a Linux x86-64 container (about 8 minutes under emulation), not on GitHub,
+  since it isn't pushed. It downloads from Poly Haven, Freesound and poly.pizza every time, so
+  a change or a rate limit there fails it. The transcoder's build script isn't in it (it needs
+  Docker or Emscripten). Its run on GitHub was dropped from chunk 31 with the rest of CI; it
+  still runs there if pushed.
+  **Resolved** (2026-09-30): pushed with chunk 20, and it passed on GitHub.
 
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
