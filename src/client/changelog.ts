@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Solid corners',
+    notes: [
+      'Sunlight no longer shows through a building in a thin line where two walls meet inside.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Real-looking trees and grass',
     notes: [
       'The trees are now spruces grown limb by limb, thick with sprays of needles and dark inside the crown, instead of cones hung with flat branches. They keep their shape from up close out to the horizon.',

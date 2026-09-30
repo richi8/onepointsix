@@ -461,8 +461,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   from the camera, roofs are known in 2 m cells, so a floor near a far building's wall may be wet.
   Grass and leaves were kept nearly matte when wet, as a gloss turned them grey in screenshots.
   Checked by screenshots only.
-- **Sunlight shows down a building's inside corners** (seen in chunk 36): a thin line of sun
-  shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-09-30 (see the history).

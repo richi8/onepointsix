@@ -297,7 +297,7 @@ export class WorldView {
     props.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers, 1));
     props.instanceColor!.needsUpdate = true;
     const old = props.material as THREE.Material;
-    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0 }, 1, { indoor: true, wet: true }), this.world);
+    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE }, 1, { indoor: true, wet: true }), this.world);
     old.dispose();
 
     this.trees.applyAssets(assets);
@@ -606,11 +606,20 @@ function makeGlass(world: World, props: THREE.InstancedMesh): { mesh: THREE.Inst
   return { mesh, of };
 }
 
+/**
+ * Props cast shadows from both sides of their boxes, not only the faces turned
+ * from the sun as three.js has it. A building's walls meet its corner posts
+ * box to box, and where a wall's inner face is lit, a shadow-map texel on the
+ * inside corner could hold the far side of the post behind it and read as lit:
+ * a line of sun down the corner. The shadows' bias keeps the lit faces clear.
+ */
+const PROP_SHADOW_SIDE = THREE.DoubleSide;
+
 function makeProps(world: World): { mesh: THREE.InstancedMesh; matrices: THREE.Matrix4[] } {
   const props = world.props;
   const mesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
-    onTiles(new THREE.MeshStandardMaterial({ roughness: 0.85 }), world),
+    onTiles(new THREE.MeshStandardMaterial({ roughness: 0.85, shadowSide: PROP_SHADOW_SIDE }), world),
     props.length,
   );
   const c = new THREE.Color();

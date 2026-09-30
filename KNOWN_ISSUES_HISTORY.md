@@ -956,6 +956,15 @@ notes the chunk it came from.
   the sight model says; the cards' own cover was never measured against it. Neither casts a
   shadow. Checked by screenshots and the benchmark on an M3 Pro only.
   **Accepted** (2026-09-30): the user is fine with it for now.
+- **Sunlight shows down a building's inside corners** (seen in chunk 36): a thin line of sun
+  shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
+  **Resolved** (2026-09-30): three.js draws shadows from the faces turned away from the sun, so a
+  wall's lit inner face wasn't in the map; on a texel straddling the corner, what was drawn could
+  be the far side of the corner post, behind the wall being lit, which read as sun. Props now
+  cast shadows from both sides (`PROP_SHADOW_SIDE` in `worldview.ts`), the shadows' bias keeping
+  lit faces clear; no acne showed in screenshots by day or at dusk, and the sun through a window
+  now falls a sliver narrower, as its jambs no longer leak either. A screenshot test of an inside
+  corner at dusk, held to 100 pixels, fails on the line (1,293 pixels) without the change.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

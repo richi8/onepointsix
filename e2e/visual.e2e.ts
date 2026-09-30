@@ -55,6 +55,14 @@ test('island: indoor at dusk', async ({ page }) => {
   await expect(page).toHaveScreenshot('indoor-dusk.png');
 });
 
+// An inside corner of that building, the low sun on the wall beside it: no line
+// of sun down the seam where the walls meet. The line is thin, about 900
+// pixels and dim, so this one is held closer than the rest.
+test('island: inside corner at dusk', async ({ page }) => {
+  await spot(page, '-64.37,17.76,41.2,-65.78,17.56,42.92', '&time=dusk');
+  await expect(page).toHaveScreenshot('corner-dusk.png', { maxDiffPixels: 100, threshold: 0.05 });
+});
+
 // Outside an outpost at eye height, a lamp on its wall, in each light and
 // weather but a clear day: the sky, sun and fog of each, the rain (frozen),
 // and at night your own flashlight lit and the lamps.
