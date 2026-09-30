@@ -1146,6 +1146,20 @@ notes the chunk it came from.
   a sound's ringing coming back from its side), besides the unit tests of the sound code. What's
   left, animation checked in motion and the audio judged by ear, is fine as it is. Closed at the
   user's request.
+- **The rivals bounty test is flaky** (31, found while timing the suite). "A rival with the
+  bounty is marked..." failed 1 of 20 runs on the code before chunk 31, and 3 of 7 in two
+  batches after it, though nothing chunk 31 changed touches it. At its last step, facing the dead
+  rival's bag, no tag with the bag's $8,000 shows within 20 s. The bag may land out of sight, out
+  of the tags' reach or behind something; not looked into.
+  Seen again in chunk 34: it passed in one full run, then failed in the next and on its own,
+  both with chunk 34's changes and without them.
+  **Resolved** (2026-09-30): the tag was right to hide. The `rival` dev command put the rival 8 m
+  ahead whatever was there, and about one run in ten its bag fell in grass thick enough to hide it
+  (bag tags are hidden by grass and bushes since chunk 27), a little uphill of the player. It now
+  takes the nearest spot round 8 m ahead where a bag would show from your eye across 1.5 m of
+  ground, as the bot may walk a step before it's killed; the first fix, checking only the spot
+  itself, still failed 3 runs in 40. After it the test passed 180 runs in a row (the only
+  failures were the browser not starting under four workers).
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops

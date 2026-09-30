@@ -208,7 +208,8 @@ export type ClientMsg =
 
 /**
  * Development shortcuts for browser tests. The rival is the nearest living
- * operator bot: `rival` brings it a few metres in front of you, `kill` has you
+ * operator bot: `rival` brings it about 8 m in front of you, where a bag it
+ * dropped would show (not in grass or behind cover), `kill` has you
  * kill it, and `give` puts items in your pack or its. `end` ends your run now,
  * `killed` meaning by the rival, or with `self` (or no rival) by your own grenade.
  * `door` puts you a step outside the doorway of the nearest outpost's

@@ -52,10 +52,10 @@ import type {
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
-import { applyCmd, copyState, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
+import { applyCmd, copyState, eyePosition, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
-import { vegetationOf } from '../shared/vegetation.ts';
+import { bagShows, vegetationOf } from '../shared/vegetation.ts';
 import { inBuilding, leafRect, World, type Box, type Point } from '../shared/world.ts';
 import { beamSpot, Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
@@ -384,15 +384,32 @@ export class GameServer {
         to.carry = lootMass(to.run.items);
         break;
       }
-      case 'rival':
+      case 'rival': {
         if (!rival) return;
-        rival.x = p.x - Math.sin(p.yaw) * 8;
-        rival.z = p.z - Math.cos(p.yaw) * 8;
+        // 8 m ahead, or the nearest way round it where a bag it dropped would show, not in grass or behind a rock,
+        // even a step or two from where it stands, as it may walk on before it's killed.
+        const eye = eyePosition(this.world, p.x, p.y, p.z, p.yaw, p.duck, p.lean);
+        const shows = (x: number, z: number): boolean => [[0, 0], ...[0, 1, 2, 3, 4, 5, 6, 7].map((k) => [Math.sin(k * Math.PI / 4) * 1.5, Math.cos(k * Math.PI / 4) * 1.5])]
+          .every(([dx, dz]) => bagShows(this.world, eye.x, eye.y, eye.z, x + dx, this.world.floorHeight(x + dx, z + dz), z + dz));
+        let at = { x: p.x - Math.sin(p.yaw) * 8, z: p.z - Math.cos(p.yaw) * 8 };
+        search: for (const d of [8, 6, 10, 5, 12]) {
+          for (const turn of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4]) {
+            const x = p.x - Math.sin(p.yaw + turn) * d;
+            const z = p.z - Math.cos(p.yaw + turn) * d;
+            if (shows(x, z)) {
+              at = { x, z };
+              break search;
+            }
+          }
+        }
+        rival.x = at.x;
+        rival.z = at.z;
         rival.y = this.world.floorHeight(rival.x, rival.z);
         rival.vx = rival.vy = rival.vz = 0;
-        rival.yaw = wrapAngle(p.yaw + Math.PI);
+        rival.yaw = Math.atan2(-(p.x - rival.x), -(p.z - rival.z));
         rival.tape.sync(rival);
         break;
+      }
       case 'kill':
         if (!rival) return;
         rival.protection = 0;

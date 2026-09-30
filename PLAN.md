@@ -522,13 +522,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   shows where two walls meet inside, a gap in the shadow map at the seam, not in the light volume.
 
 ### Code and testing
-- **The rivals bounty test is flaky** (31, found while timing the suite). "A rival with the
-  bounty is marked..." failed 1 of 20 runs on the code before chunk 31, and 3 of 7 in two
-  batches after it, though nothing chunk 31 changed touches it. At its last step, facing the dead
-  rival's bag, no tag with the bag's $8,000 shows within 20 s. The bag may land out of sight, out
-  of the tags' reach or behind something; not looked into.
-  Seen again in chunk 34: it passed in one full run, then failed in the next and on its own,
-  both with chunk 34's changes and without them.
+Nothing open: the last was resolved on 2026-09-30 (see the history).
 
 ### Playtest and tuning
 Nothing open: everything so far was resolved or accepted on 2026-09-30 (see the history, and the
