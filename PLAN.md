@@ -437,6 +437,17 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   screenshots only. On the benchmark's rainy night (24 lit flashlights near the quarry's lamps)
   the frame held within noise of the code before (14.6 against 14.9 ms median in one session on
   an M3 Pro), with 120 more draw calls; a mid-range laptop wasn't measured.
+  **Resolved in part** (after 36): every light within the 16 that casts shadows now gets a tile,
+  the six nearest 512 px and the rest 256 px, so a seventh lamp or beam no longer lights through
+  walls; a light crossing the 16 fades out over 6 m, and one crossing the six lit fully loses its
+  highlight over 6 m, instead of either happening at once. Checked by unit tests and by
+  screenshots of the lamp behind a wall with six lights put ahead of it (dark, where six tiles let
+  a strip through). On the benchmark's rainy night, 15.2–15.3 against 14.9–15.2 ms median,
+  alternating runs in one session on an M3 Pro, with 199 more draw calls and 1.6M more triangles
+  in the tiles. Still left: past 16 lights the farthest are out; every tile is drawn every frame,
+  though lamps stand still; the reflection's one-frame-old atlas; offsets tuned by screenshots;
+  no mid-range laptop. Every lit material now reads 16 shadow matrices rather than six (40 more
+  uniform vectors), untried on a GPU that allows few.
 - **Wet is worked out simply** (36). Bodies, bags and debris dry the moment they're under a roof,
   and are as wet as the ground round them in the open, how much they face up judged from their
   triangles. Puddles form only on the terrain, not on floors or roofs open to the sky. Past 32 m

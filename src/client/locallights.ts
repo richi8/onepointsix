@@ -7,22 +7,37 @@ import * as THREE from 'three';
 // lit by a patch to three.js's lighting chunk instead, from a list kept in
 // uniforms that every lit material shares, and their shadows are drawn into
 // one atlas, a tile each, by three.js's own shadow renderer. The nearest few
-// are lit fully, farther ones with their diffuse light only, and the nearest
-// of those that cast shadows get a tile.
+// are lit fully, farther ones with their diffuse light only, and every one
+// that casts shadows gets a tile, the nearest few a large one. Lights fade
+// over a few metres as they cross the budget, so none goes out at once.
 //
 // The uniforms are handed to three.js's built-in materials by reference:
 // arrays of numbers it passes through, and the atlas is a texture that
 // clones as itself, so the copy each material makes of its uniforms still
 // points at the same data.
 
-/** Lights at most, lit fully at most, and shadow tiles in the atlas's grid. */
+/** Lights at most, and lit fully at most. */
 export const MAX_LIGHTS = 16;
 const FULL = 6;
+/** Metres over which a light fades as it crosses either budget. */
+const FADE = 6;
+/**
+ * The atlas's grid of large tiles, the first BIG of them large and the last
+ * row cut into small ones, a quarter the size, one per light past those.
+ */
 const COLS = 3;
-const ROWS = 2;
-const TILES = COLS * ROWS;
-/** Texels a side of a tile. */
+const ROWS = 3;
+const BIG = COLS * (ROWS - 1);
+const TILES = MAX_LIGHTS;
+/** Texels a side of a large tile. */
 const TILE = 512;
+
+/** Where tile i lies in the atlas, in large tiles: corner, then size. */
+function tileRect(i: number): THREE.Vector4 {
+  if (i < BIG) return new THREE.Vector4(i % COLS, Math.floor(i / COLS), 1, 1);
+  const k = i - BIG;
+  return new THREE.Vector4((k % (COLS * 2)) * 0.5, ROWS - 1 + Math.floor(k / (COLS * 2)) * 0.5, 0.5, 0.5);
+}
 
 /** One light for this frame. */
 export interface LocalLight {
@@ -47,7 +62,7 @@ export interface LocalLight {
 }
 
 // Four vec4s a light: position and range; direction and the cone's outer cosine;
-// colour times intensity and the inner cosine; decay, shadow tile (-1 none), cheap (1) or full (0).
+// colour times intensity and the inner cosine; decay, shadow tile (-1 none), share lit fully (the rest diffuse only).
 const data = new Float32Array(MAX_LIGHTS * 16);
 /** x: lights in use; y: 1 while drawing apart with `localView`; z, w: one texel of the atlas, across and down. */
 const info = new Float32Array([0, 0, 1 / (TILE * COLS), 1 / (TILE * ROWS)]);
@@ -90,11 +105,15 @@ const PARS = /* glsl */ `
     if (s.w <= 0.0) return 1.0;
     vec3 c = s.xyz / s.w;
     if (c.z >= 1.0) return 1.0;
+    // The tile's corner and size in large tiles, as tileRect has them.
+    float t = float(tile);
+    vec4 rect = tile < ${BIG}
+      ? vec4(mod(t, ${COLS}.0), floor(t / ${COLS}.0), 1.0, 1.0)
+      : vec4(mod(t - ${BIG}.0, ${COLS * 2}.0) * 0.5, ${ROWS - 1}.0 + floor((t - ${BIG}.0) / ${COLS * 2}.0) * 0.5, 0.5, 0.5);
     // Kept half a texel inside the tile, so the filter never reads the next one.
-    vec2 texel = localInfo.zw * vec2(${COLS}.0, ${ROWS}.0);
+    vec2 texel = localInfo.zw * vec2(${COLS}.0, ${ROWS}.0) / rect.zw;
     vec2 uv = clamp(c.xy, texel * 1.5, 1.0 - texel * 1.5);
-    vec2 cell = vec2(mod(float(tile), ${COLS}.0), floor(float(tile) / ${COLS}.0));
-    vec2 at = (cell + uv) / vec2(${COLS}.0, ${ROWS}.0);
+    vec2 at = (rect.xy + uv * rect.zw) / vec2(${COLS}.0, ${ROWS}.0);
     vec2 d = localInfo.zw;
     return 0.25 * (
       texture(localAtlas, vec3(at + vec2(-0.5, -0.5) * d, c.z)) +
@@ -133,9 +152,12 @@ const LOOP = /* glsl */ `
       localLight.color = lc.rgb * lit;
       localLight.direction = normalize( ( localV * vec4( l, 0.0 ) ).xyz );
       localLight.visible = true;
-      if ( ld.z > 0.5 ) {
-        reflectedLight.directDiffuse += saturate( dot( geometryNormal, localLight.direction ) ) * localLight.color * BRDF_Lambert( material.diffuseColor );
-      } else {
+      // Farther lights give only their diffuse light, blended across the budget.
+      if ( ld.z < 1.0 ) {
+        reflectedLight.directDiffuse += saturate( dot( geometryNormal, localLight.direction ) ) * localLight.color * ( 1.0 - ld.z ) * BRDF_Lambert( material.diffuseColor );
+      }
+      if ( ld.z > 0.0 ) {
+        localLight.color *= ld.z;
         RE_Direct( localLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
       }
     }
@@ -182,7 +204,7 @@ class AtlasShadow extends THREE.LightShadow<THREE.PerspectiveCamera> {
     super(new THREE.PerspectiveCamera(50, 1, 0.2, 30));
     this.mapSize.set(TILE, TILE);
     for (let i = 0; i < TILES; i++) {
-      this.viewports.push(new THREE.Vector4(i % COLS, Math.floor(i / COLS), 1, 1));
+      this.viewports.push(tileRect(i));
       this.cameras.push(new THREE.PerspectiveCamera(50, 1, 0.2, 30));
       this.frustums.push(new THREE.Frustum());
       this.matrices.push(new THREE.Matrix4());
@@ -303,10 +325,14 @@ export class LocalLights {
     if (this.holder.parent !== scene) scene.add(this.holder);
     const lights = this.lights.sort((a, b) => a.near - b.near);
     const n = Math.min(lights.length, MAX_LIGHTS);
+    // Each fades as it nears the first light past a budget, so where two swap places neither jumps.
+    const cut = lights.length > MAX_LIGHTS ? lights[MAX_LIGHTS].near : Infinity;
+    const fullCut = lights.length > FULL ? lights[FULL].near : Infinity;
     let tiles = 0;
     for (let i = 0; i < n; i++) {
       const l = lights[i];
       const o = i * 16;
+      const intensity = l.intensity * Math.min((cut - l.near) / FADE, 1);
       data[o] = l.x;
       data[o + 1] = l.y;
       data[o + 2] = l.z;
@@ -315,14 +341,14 @@ export class LocalLights {
       data[o + 5] = l.dy;
       data[o + 6] = l.dz;
       data[o + 7] = Math.cos(l.angle);
-      data[o + 8] = l.color.r * l.intensity;
-      data[o + 9] = l.color.g * l.intensity;
-      data[o + 10] = l.color.b * l.intensity;
+      data[o + 8] = l.color.r * intensity;
+      data[o + 9] = l.color.g * intensity;
+      data[o + 10] = l.color.b * intensity;
       data[o + 11] = Math.cos(l.angle * (1 - l.penumbra));
       data[o + 12] = l.decay;
       data[o + 13] = -1;
-      data[o + 14] = i < FULL ? 0 : 1;
-      if (l.shadow && l.intensity > 0 && tiles < Math.min(this.tiles, TILES)) {
+      data[o + 14] = i < FULL ? Math.min((fullCut - l.near) / FADE, 1) : 0;
+      if (l.shadow && intensity > 0 && tiles < Math.min(this.tiles, TILES)) {
         this.shadow.place(tiles, l);
         this.shadow.matrices[tiles].toArray(shadowMatrices, tiles * 16);
         data[o + 13] = tiles++;
