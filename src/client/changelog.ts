@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Lamplight in your hands',
+    notes: [
+      "The outposts' lamps and other people's flashlights now light the gun in your hands, unless a wall is in the way.",
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Solid corners',
     notes: [
       'Sunlight no longer shows through a building in a thin line where two walls meet inside.',

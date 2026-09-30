@@ -1399,8 +1399,8 @@ renderer.setAnimationLoop(() => {
   if (wobbling) camera.updateProjectionMatrix();
   if (state) {
     renderer.clearDepth();
-    // The gun is drawn in a space of its own, where the world's lights would land in the wrong place.
-    localLights.hide();
+    // The gun is drawn in a space of its own, the camera's: the world's lights are placed in it.
+    localLights.apart(camera);
     renderer.render(viewModel.scene, viewModel.camera);
     localLights.restore();
   }

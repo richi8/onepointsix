@@ -156,6 +156,12 @@ export class ViewModel {
       m.group.visible = false;
       this.root.add(m.group);
     });
+    this.takeShadows();
+  }
+
+  /** Everything in the hands takes the shadows of the lamps and others' flashlights, as it would in the world. */
+  private takeShadows(): void {
+    this.root.traverse((o) => (o.receiveShadow = true));
   }
 
   /**
@@ -222,6 +228,7 @@ export class ViewModel {
         this.root.add(m.fresh);
       }
     });
+    this.takeShadows();
   }
 
   /** Swap the boxes for hands for the soldier's own arms. */
@@ -271,6 +278,7 @@ export class ViewModel {
       arm: span(bones.rArm, bones.rForeArm), forearm: span(bones.rForeArm, bones.rHand), nade, round,
     };
     for (const m of this.models) for (const h of m.hands) h.visible = false;
+    this.takeShadows();
   }
 
   resize(aspect: number): void {

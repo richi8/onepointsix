@@ -972,6 +972,24 @@ notes the chunk it came from.
   session. Crouching under a lamp still helps only as much as by day.
   **Accepted** (2026-09-30): the user is fine with it; the lamps are there mainly for the look of
   the place, and players will likely shoot them more often than bots do.
+- **Outpost lamps cast no shadows** (lamps, after chunk 29). Two or three lamps on poles stand
+  against each outpost's walls, lit at dusk and night, but only the four nearest the camera
+  really light the world (handed from lamp to lamp as you move, fading over 20 m first; gone past
+  150 m, where only the glare shows). With no shadow maps their light goes through walls: a strip
+  of ground outside the wall behind a lamp is lit, as can be a building's floor under its roof,
+  though lamps stand 9 m clear of the outpost's building. Soldiers cast no shadow under them, and
+  the gun in your hands isn't lit by them. The four lights cost no more than the benchmark's noise
+  on the rainy night (median 15.1 to 15.6 ms a frame against 15.1 ms without, Chromium, M3 Pro).
+  **Resolved in part** (36): every lamp within 150 m lights the world and the nearest cast
+  shadows (see the flashlights, in the history), so a wall keeps a lamp's light in and soldiers
+  and crates throw shadows under them; a screenshot test looks outside the wall behind a lamp,
+  where the strip of light used to be. Still open: the gun in your hands isn't lit by them or by
+  others' flashlights (it's drawn apart, and the lights are turned off for it).
+  **Resolved** (2026-09-30): the gun in your hands is lit by the lamps and others' flashlights
+  too. It's still drawn apart, but the lights are placed in its space as the world's camera sees
+  them, and it takes their shadows where it is, so a lamp behind a wall leaves it dark. Checked in
+  screenshots under a lamp at night (the fore-end and sleeve catch it), behind the wall (no change)
+  and by day (no change); no automated test.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

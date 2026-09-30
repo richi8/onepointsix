@@ -49,8 +49,10 @@ export interface LocalLight {
 // Four vec4s a light: position and range; direction and the cone's outer cosine;
 // colour times intensity and the inner cosine; decay, shadow tile (-1 none), cheap (1) or full (0).
 const data = new Float32Array(MAX_LIGHTS * 16);
-/** x: lights in use; y: the count kept while hidden; z, w: one texel of the atlas, across and down. */
+/** x: lights in use; y: 1 while drawing apart with `localView`; z, w: one texel of the atlas, across and down. */
 const info = new Float32Array([0, 0, 1 / (TILE * COLS), 1 / (TILE * ROWS)]);
+/** World to view space, for a picture drawn apart whose own view matrix isn't the world's. */
+const view = new Float32Array(16);
 /** World to a tile's [0, 1] square and depth, per tile. */
 const shadowMatrices = new Float32Array(TILES * 16);
 
@@ -70,6 +72,7 @@ atlas.clone = function (this: THREE.DepthTexture) {
 const UNIFORMS = {
   localLights: { value: data },
   localInfo: { value: info },
+  localView: { value: view },
   localShadowMatrix: { value: shadowMatrices },
   localAtlas: { value: atlas },
 };
@@ -77,6 +80,7 @@ const UNIFORMS = {
 const PARS = /* glsl */ `
   uniform vec4 localLights[${MAX_LIGHTS * 4}];
   uniform vec4 localInfo;
+  uniform mat4 localView;
   uniform mat4 localShadowMatrix[${TILES}];
   uniform sampler2DShadow localAtlas;
 
@@ -104,8 +108,9 @@ const LOOP = /* glsl */ `
   #if defined( RE_Direct )
   if ( localInfo.x > 0.0 ) {
     // World space from view space; the view matrix is a rotation and a move, or a mirror's.
-    mat3 localToWorld = transpose( mat3( viewMatrix ) );
-    vec3 localP = localToWorld * ( geometryPosition - viewMatrix[ 3 ].xyz );
+    mat4 localV = localInfo.y > 0.5 ? localView : viewMatrix;
+    mat3 localToWorld = transpose( mat3( localV ) );
+    vec3 localP = localToWorld * ( geometryPosition - localV[ 3 ].xyz );
     vec3 localN = localToWorld * geometryNormal;
     int localCount = int( localInfo.x );
     for ( int i = 0; i < ${MAX_LIGHTS}; i ++ ) {
@@ -126,7 +131,7 @@ const LOOP = /* glsl */ `
       if ( lit <= 0.0 ) continue;
       IncidentLight localLight;
       localLight.color = lc.rgb * lit;
-      localLight.direction = normalize( ( viewMatrix * vec4( l, 0.0 ) ).xyz );
+      localLight.direction = normalize( ( localV * vec4( l, 0.0 ) ).xyz );
       localLight.visible = true;
       if ( ld.z > 0.5 ) {
         reflectedLight.directDiffuse += saturate( dot( geometryNormal, localLight.direction ) ) * localLight.color * BRDF_Lambert( material.diffuseColor );
@@ -327,14 +332,17 @@ export class LocalLights {
     this.shadow.count = tiles;
   }
 
-  /** Light nothing, for a picture drawn apart from the world such as the gun in your hands; `restore` undoes it. */
-  hide(): void {
-    info[1] = info[0];
-    info[0] = 0;
+  /**
+   * Light a picture drawn apart from the world, such as the gun in your
+   * hands, as if its view space were `camera`'s; `restore` undoes it.
+   */
+  apart(camera: THREE.Camera): void {
+    camera.matrixWorldInverse.toArray(view);
+    info[1] = 1;
   }
 
   restore(): void {
-    info[0] = info[1];
+    info[1] = 0;
   }
 }
 
