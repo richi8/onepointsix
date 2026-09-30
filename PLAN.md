@@ -699,6 +699,18 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   it crossed 22% less for 9% more, but operator bots got out of fewer runs (11% and 16% against
   13% and 18% on seeds 1–6, and 13% and 16% against 13% and 18% on seeds 7–12). The search is
   weighted A* (1.4), so it doesn't always find the most covered way.
+- **The outskirts' extra cover didn't help bots** (38, after the chunk). At the user's request,
+  each outpost's outskirts (45–130 m out, `OUTSKIRTS` in `world.ts`) got 14 boulder clusters of
+  2–4 crouch-high boulders (about 240 more rocks an island, from their own random stream so
+  nothing else moved), 2.5 times the bushes and grass up to 1.7 times as tall. Ground there that
+  hides someone crouched went from 20% to 46%. In bot playtests (6 islands × 20 min) operator
+  bots came out as before within the noise: 11% and 14% by day (13% and 13%), 19% and 16% at
+  night in rain (18% and 18%): the cover hides guards from them as much, and they walk upright
+  through most of it. Making them sneak across the whole outskirts cut guard kills by about a
+  fifth but lengthened runs by a minute, with extraction the same, so it was left out. Kept for
+  people, who pick their cover; nobody has played it yet. The benchmark's frame time didn't
+  move. Every island's outskirts changed, so scores and links from before were set on slightly
+  different ground.
 - **Operators getting away are often shot in the back** (38). Fleeing 40–70 m from guards is now
   the commonest way for an operator bot to die at a guard's hands: in a 4-island × 10-minute
   diagnostic, 23 of 51 guard kills were on the way. They sprint in the open without firing back

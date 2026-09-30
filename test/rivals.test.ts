@@ -179,6 +179,7 @@ describe('bot senses and stealth', () => {
     for (let iz = -50; iz < 50 && tried < 12; iz++) {
       for (let ix = -50; ix < 50 && tried < 12; ix++) {
         for (const b of veg.bushes(ix, iz)) {
+          if (tried >= 12) break;
           if (b.height < 1.2 || !nav.dry(b.x, b.z) || world.outposts.some((o) => Math.hypot(o.x - b.x, o.z - b.z) < 120)) continue;
           const self = agent(1, 'operator', b.x + 4, b.z + 3);
           const guard = agent(2, 'operator', b.x - 40, b.z);

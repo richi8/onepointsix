@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Cover on the approaches',
+    notes: [
+      'The ground round every outpost, from about 45 to 130 m out, has more to hide behind: clusters of boulders you can crouch behind, far more bushes and grass grown up to waist height. Guards and bots see through it no better than you do.',
+      'Every island’s outskirts have changed, so best scores set before were set on slightly different ground.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Smarter rivals',
     notes: [
       'Bot operators live longer. Shot at by guards, or by two people at once, they duck out of sight straight away and get well clear, rather than trading shots in the open. If their cover doesn’t hide them, they fight back from it instead of waiting there to be shot.',

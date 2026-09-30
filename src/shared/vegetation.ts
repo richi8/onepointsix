@@ -3,7 +3,7 @@ import { clamp } from './geom.ts';
 import { GROUND_LAYERS, groundWeights } from './ground.ts';
 import { Layer } from './layers.ts';
 import { mulberry32 } from './rng.ts';
-import { inBuilding, type World } from './world.ts';
+import { inBuilding, OUTSKIRTS, type World } from './world.ts';
 
 // The bushes and grass on the ground, as far as sight is concerned. Both are
 // scattered here, tuft by tuft and bush by bush, the same on every client and
@@ -29,8 +29,15 @@ const TUFT_DENSITY = 1.6;
 const TUFT_SIZE: [number, number] = [0.3, 0.6];
 /** Of a tuft's size, how far out from its middle its blades reach. */
 const TUFT_REACH = 0.45;
+/**
+ * On an outpost's outskirts bushes grow this many times as thick, and grass up
+ * to this many times as tall, fading in and out over OUTSKIRT_FADE metres.
+ */
+const OUTSKIRT_BUSHES = 2.5;
+const OUTSKIRT_GRASS = 1.7;
+const OUTSKIRT_FADE = 15;
 /** Tallest a tuft grows, with its stretch: no sight line above this touches grass. */
-const GRASS_TOP = TUFT_SIZE[1] * 1.2;
+const GRASS_TOP = TUFT_SIZE[1] * 1.2 * OUTSKIRT_GRASS;
 /**
  * Share of a sight line a tuft stops, crossed through its middle low down.
  * Its blades thin out from halfway up to nothing near the top.
@@ -124,7 +131,8 @@ export class Vegetation {
     out = [];
     const w = this.world;
     const rand = mulberry32((ix * 73856093) ^ (iz * 19349663) ^ w.seed ^ 0x5b0f1e);
-    const tries = Math.round(VEG_CELL * VEG_CELL * BUSH_DENSITY + rand());
+    const wild = this.outskirts((ix + 0.5) * VEG_CELL, (iz + 0.5) * VEG_CELL);
+    const tries = Math.round(VEG_CELL * VEG_CELL * BUSH_DENSITY * (1 + (OUTSKIRT_BUSHES - 1) * wild) + rand());
     for (let k = 0; k < tries; k++) {
       const x = (ix + rand()) * VEG_CELL;
       const z = (iz + rand()) * VEG_CELL;
@@ -182,7 +190,7 @@ export class Vegetation {
       if (w.buildings.some((b) => inBuilding(b, x, z, 0.3))) continue;
       const leanX = (next() - 0.5) * 0.2;
       const leanZ = (next() - 0.5) * 0.2;
-      const height = size * (0.8 + next() * 0.4);
+      const height = size * (0.8 + next() * 0.4) * (1 + (OUTSKIRT_GRASS - 1) * this.outskirts(x, z));
       const dry = clamp(dryGrass / (grass + dryGrass + 1e-3), 0, 1);
       kept.push(x, y - 0.02, z, size, height, turn, leanX, leanZ, shade, dry);
       const sx = Math.min(Math.floor(x - ix * VEG_CELL), VEG_CELL - 1);
@@ -204,6 +212,12 @@ export class Vegetation {
     out = { count, data, start, draws };
     this.grass.set(key, out);
     return out;
+  }
+
+  /** How far (x, z) is into an outpost's outskirts, where the growth is wilder: 0 outside, 1 well in. */
+  outskirts(x: number, z: number): number {
+    const d = this.world.nearestOutpost(x, z)?.dist ?? Infinity;
+    return Math.min(clamp((d - OUTSKIRTS[0] + OUTSKIRT_FADE) / OUTSKIRT_FADE, 0, 1), clamp((OUTSKIRTS[1] + OUTSKIRT_FADE - d) / OUTSKIRT_FADE, 0, 1));
   }
 
   /** Index into the ground layer weights of the terrain vertex nearest (x, z). */

@@ -291,6 +291,13 @@ const GRID_CELL = 8;
 const GRID_OFFSET = 1024;
 const OUTPOST_NAMES = ['Fort Ash', 'Radio Hill', 'Quarry', 'Old Mill', 'Pinecrest', 'Lookout'];
 const EXTRACT_COUNT = 4;
+/**
+ * The outskirts of an outpost, metres from its middle: the ground its guards
+ * watch over, given boulders to crouch behind (this many clusters each), and
+ * thicker bushes and taller grass (see vegetation.ts).
+ */
+export const OUTSKIRTS: [number, number] = [45, 130];
+const OUTSKIRT_CLUSTERS = 14;
 /** Walls are split into columns about this wide. */
 const WALL_PANEL = 1.6;
 /** Tall walls are split into rows this far above the ground: crouch cover below, a window above. */
@@ -427,6 +434,7 @@ export class World {
     this.placeFences(mulberry32(this.seed ^ 0x3c6ef372));
     this.placeHuts(mulberry32(this.seed ^ 0x510e527f));
     this.placeLamps(mulberry32(this.seed ^ 0x9b05688c));
+    this.placeOutskirtRocks(mulberry32(this.seed ^ 0xa54ff53a));
   }
 
   // ---------------------------------------------------------------- queries
@@ -1839,6 +1847,41 @@ export class World {
       this.trees.push({ x, y, z, s });
       this.colliders.push({ kind: 'cyl', x, z, r: 0.3 * s + 0.05, y0: y - 1, y1: y + 7 * s, stamp: 0 });
     }
+  }
+
+  /**
+   * Clusters of boulders out on the approaches to each outpost, where its
+   * guards patrol, tall enough to crouch behind: somewhere to go to ground.
+   */
+  private placeOutskirtRocks(rng: () => number): void {
+    const start = this.colliders.length;
+    for (const o of this.outposts) {
+      for (let placed = 0, tries = 0; placed < OUTSKIRT_CLUSTERS && tries < 200; tries++) {
+        const a = rng() * Math.PI * 2;
+        const d = OUTSKIRTS[0] + rng() * (OUTSKIRTS[1] - OUTSKIRTS[0]);
+        const count = 2 + Math.floor(rng() * 3);
+        const turn = rng() * Math.PI * 2;
+        const x = o.x + Math.sin(a) * d;
+        const z = o.z + Math.cos(a) * d;
+        const y = this.terrainHeight(x, z);
+        if (y < 1.5 || y > 50 || this.nearOutpost(x, z, OUTSKIRTS[0] - 10)) continue;
+        if (this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 30)) continue;
+        if (this.buildings.some((b) => inBuilding(b, x, z, 6)) || this.blocked(x, z, 5)) continue;
+        placed++;
+        // A short row of them, roughly across the way to the outpost.
+        for (let k = 0; k < count; k++) {
+          const r = 1.1 + rng() * 0.7;
+          const h = r * (0.9 + rng() * 0.25);
+          const off = (k - (count - 1) / 2) * 1.9 + (rng() - 0.5) * 0.6;
+          const rx = x + Math.cos(turn) * off;
+          const rz = z - Math.sin(turn) * off;
+          const ry = this.terrainHeight(rx, rz);
+          this.rocks.push({ x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 });
+          this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, stamp: 0 });
+        }
+      }
+    }
+    for (let i = start; i < this.colliders.length; i++) this.insert(this.colliders[i]);
   }
 
   private placeRocks(rng: () => number): void {
