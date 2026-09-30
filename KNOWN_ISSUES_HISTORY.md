@@ -990,6 +990,26 @@ notes the chunk it came from.
   them, and it takes their shadows where it is, so a lamp behind a wall leaves it dark. Checked in
   screenshots under a lamp at night (the fore-end and sleeve catch it), behind the wall (no change)
   and by day (no change); no automated test.
+- **Local lights have a budget** (36). At most 16 lamps and others' flashlights light the world,
+  ranked by how near the camera they come; past that, the farthest go out at once rather than
+  fading. Only the six nearest that cast shadows get a tile of the atlas, 512 px each, all drawn
+  every frame; the sea's reflection reuses the last frame's atlas. Shadow offsets were tuned by
+  screenshots only. On the benchmark's rainy night (24 lit flashlights near the quarry's lamps)
+  the frame held within noise of the code before (14.6 against 14.9 ms median in one session on
+  an M3 Pro), with 120 more draw calls; a mid-range laptop wasn't measured.
+  **Resolved in part** (after 36): every light within the 16 that casts shadows now gets a tile,
+  the six nearest 512 px and the rest 256 px, so a seventh lamp or beam no longer lights through
+  walls; a light crossing the 16 fades out over 6 m, and one crossing the six lit fully loses its
+  highlight over 6 m, instead of either happening at once. Checked by unit tests and by
+  screenshots of the lamp behind a wall with six lights put ahead of it (dark, where six tiles let
+  a strip through). On the benchmark's rainy night, 15.2–15.3 against 14.9–15.2 ms median,
+  alternating runs in one session on an M3 Pro, with 199 more draw calls and 1.6M more triangles
+  in the tiles. Still left: past 16 lights the farthest are out; every tile is drawn every frame,
+  though lamps stand still; the reflection's one-frame-old atlas; offsets tuned by screenshots;
+  no mid-range laptop. Every lit material now reads 16 shadow matrices rather than six (40 more
+  uniform vectors), untried on a GPU that allows few.
+  **Accepted** (2026-09-30): the user is fine with what's left; none of it is major. Lights now
+  fade out past the 16 rather than switch off, and the rest is cost that held the benchmark.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
