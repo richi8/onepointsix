@@ -619,28 +619,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   median, 6:09 for the 87% that got out; the other 13% ran out the clock stuck in a fight. So a
   run that isn't cut short by death lands inside 3–10 minutes, but it's a bot's route and fights,
   not a person's.
-- **Operator bots still die in most runs** (12). Over 6 islands × 30 min, 19% of their runs
-  extract (up from 8%), 81% are killed, and guards do about two thirds of the killing, mostly
-  sentries and outpost guards at 40–120 m. Making guards weaker helped bots but would also make
-  PvE easier for humans, so guards were left alone until humans have played.
-  Still true after chunk 29 (see Rivals): 84% of their runs end in death by day, 82% at night in
-  rain.
-  **Resolved in part** (38): operator bots survive more runs, with the guards, the fee and
-  extraction as they were. Shot at by someone they'd rather not fight (a guard past 40 m, anyone
-  for a rat), or by two at once, or by anyone once below 40% health, they duck out of sight at
-  once; from guards, and when outgunned, they get 40–70 m away, out of sight if they can, and
-  start no fights for 20 s. Their cover must hide them from everyone lately seen or shooting,
-  not only one, and cover that turns out to show them (they can see the enemy from it, or are
-  still running for it after 2 s) is fought from instead of waited in, which before got them
-  shot without firing back. They keep low for 10 s after seeing a guard within 110 m, a guard
-  shooting at them from any range spoils the crates near it as a hit did, they crouch more in a
-  fight, and heading out with enough to pay they start no fights but a hunter's. In bot
-  playtests of 6 islands × 20 min: by day 13% of runs extracted (9% before) on seeds 1–6 and 13%
-  (10%) on seeds 7–12; at night in rain 18% (15%) and 18% (17%). Guards kill 65–77 operators an
-  hour by day instead of 123–126. Most runs still end in death, and the night gain is thin.
-  Tried and left out, as they did worse: starting fights with guards only within 15 m, no fights
-  at all once able to pay, counting enemies in sight as outgunning before they fire, escaping
-  through bushes and grass, and the nearest escape rather than the farthest.
 - **Guards were too deadly for a person** (30). The first human run log (84 runs by the
   developer on seed 1, about half of them tries with no aim to get out) had 88% of runs end in
   death, 77% of those to guards, a median 0:30 into the run, and 42% of guard kills were
@@ -693,53 +671,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   Still (38): rats now also lie low when a fight breaks out nearby and sneak through bushes and
   tall grass, and operators get away from guards; tried by bots only. Since the flights count as
   cover taken, the playtest's share of cover taken in a bush fell from 33% to about 10–18%.
-- **Hidden routes keep little off open ground** (38). Bushes and tall grass cover about a fifth of
-  the island's land in patches, and open ground costs only 1.7 times the walk, so a sneaking bot's
-  route crosses about 15% less open ground than a plain one, for 3% more walking. At 2.5 times
-  it crossed 22% less for 9% more, but operator bots got out of fewer runs (11% and 16% against
-  13% and 18% on seeds 1–6, and 13% and 16% against 13% and 18% on seeds 7–12). The search is
-  weighted A* (1.4), so it doesn't always find the most covered way.
-- **The outskirts' extra cover didn't help bots** (38, after the chunk). At the user's request,
-  each outpost's outskirts (45–130 m out, `OUTSKIRTS` in `world.ts`) got 14 boulder clusters of
-  2–4 crouch-high boulders (about 240 more rocks an island, from their own random stream so
-  nothing else moved), 2.5 times the bushes and grass up to 1.7 times as tall. Ground there that
-  hides someone crouched went from 20% to 46%. In bot playtests (6 islands × 20 min) operator
-  bots came out as before within the noise: 11% and 14% by day (13% and 13%), 19% and 16% at
-  night in rain (18% and 18%): the cover hides guards from them as much, and they walk upright
-  through most of it. Making them sneak across the whole outskirts cut guard kills by about a
-  fifth but lengthened runs by a minute, with extraction the same, so it was left out. Kept for
-  people, who pick their cover; nobody has played it yet. The benchmark's frame time didn't
-  move. Every island's outskirts changed, so scores and links from before were set on slightly
-  different ground.
-- **Weaker guards, more exits and cover at them didn't raise extraction** (38, after the chunk).
-  At the user's request, guards turn and settle 25% slower, trail a moving target a third longer
-  and start 1.6 times an operator's aim error (was 1.3; `guardSkill` in `skill.ts`); islands have
-  six extraction points, one per outpost (was four; the first four didn't move, and a name
-  already taken goes to the next nearest compass direction); and each point has five pieces of
-  cover 9–14 m out: low breakable walls and rows of boulders, from their own random stream.
-  Bot playtests (6 islands × 30 min, day, seeds 1–6): 12% of operator bot runs extracted before,
-  11% with the slower aim alone, 9% with the larger error too, 12% with six points, and 11% with
-  the cover as well. Guard kills of operators fell from 75 to 65 an hour, but more operators got
-  past the guards and killed each other (89 to 100 an hour). Most bots die fighting long before
-  they head out, so neither the exits nor the guards' aim are what limits extraction. The first
-  cover tried was crate stacks, which put about seven loot crates by every exit (every crate on
-  the ground is a loot crate, see `lootCrates`) and sent extraction to 28% with runs a minute
-  shorter; boulders replaced them. Kept for people; nobody has played it yet. Every island has
-  changed, so scores and links from before were set on slightly different ground.
-- **Most bots die with nothing to lose** (38, after the chunk). At the user's request, operator
-  bots carrying loot worth 500 or more (`LOADED` in `bot.ts`), hunters excepted, now start no
-  fights beyond touch range, whatever they're doing; before, only one heading out with the fee
-  held back. Tried first: holding back only once carrying the fee (12% and 13% extracted, against
-  11%), since few bots reach it. With 500, operator bots extract from 15% of runs by day (11%)
-  and 20% at night in rain (19%) on seeds 1–6, 6 islands × 30 min; operator kills of operators
-  fell from 100 to 89 an hour by day, and at night, when guards do most of the killing, hardly
-  changed. The playtest now shows what killed bots carried: 45% had nothing, so it can't help
-  them. Bots carrying loot now make easy targets for a person, since they won't start a fight;
-  nobody has played against it yet.
-- **Operators getting away are often shot in the back** (38). Fleeing 40–70 m from guards is now
-  the commonest way for an operator bot to die at a guard's hands: in a 4-island × 10-minute
-  diagnostic, 23 of 51 guard kills were on the way. They sprint in the open without firing back
-  until someone is within 20 m.
 - **The thorough playtest isn't a person** (29). Its bots can't be killed, play alone, don't
   notice being shot and never run dry, so it reads how long a full search and its fights take,
   not how often a person survives one. 13% of its runs still end stuck in a fight at 10:00.
@@ -836,6 +767,10 @@ extraction stays as hard as it is.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
   ambientCG, Quaternius). Chunk 9 also used a Mixamo soldier, which chunk 11 replaced to leave
   no licensing doubts.
+- **Bot extraction baseline** (2026-09-30): operator bots extracting from 15% ± 3 of their runs by
+  day in the bot playtest (`npm run playtest`, 6 islands × 30 min, seeds 1–6) is where the user
+  wants it; at night in rain it's about 20%. Changes to bots, guards, loot or the island keep it
+  within that band, and a change that moves it out says so.
 - **Leaderboards are universal across conditions** (16): one board per island and mode, whatever
   the time of day or weather. The plan had them per condition; the user asked to keep them
   universal. A link still carries its conditions, so a challenge is played as it was set.
