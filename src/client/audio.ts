@@ -11,16 +11,18 @@ import { bankLead, type SoundBanks, type SoundFormat } from './soundlist.ts';
 import type { Surface } from './surface.ts';
 import { VoicePool } from './voices.ts';
 
-// Recorded CC0 sounds (see soundlist.ts), packed in two files: the ones
-// wanted from a run's first moment load behind the loading bar, the rest
-// behind the menu, each as Opus. Sounds out
+// Recorded CC0 sounds (see soundlist.ts), packed in three files: the ones
+// wanted from a run's first moment load behind the loading bar, then the
+// ambience and the rest behind the menu, each as Opus. Sounds out
 // in the world are placed in 3D around the listener, who hears with the
 // camera: they pan, dull and fade with distance, arrive late from far off,
 // and come through, over or round what's in between (see hearing.ts). Each
 // rings with the space it's in and the one the listener is in: a room, a
-// walled yard or the open. Far fights blend into one distant-battle bed of
-// their own, so they never take voices from near sounds. Wind, the sea and
-// birds play under it all. The interface's own beeps are still synthesized.
+// walled yard or the open; the ringing of the space round it comes back
+// from where it seems to be, the listener's own from all round. Far fights
+// blend into one distant-battle bed of their own, so they never take voices
+// from near sounds. Wind, the sea and birds play under it all. The
+// interface's own beeps are still synthesized.
 
 const BASE = `${import.meta.env.BASE_URL}assets/`;
 
@@ -69,6 +71,14 @@ const RAIN_NEAR = 10;
 const RAIN_FAR = 120;
 const RAIN_QUIET = 0.45;
 const RAIN_DULL = 0.55;
+/**
+ * Seconds into a reload that the magazine comes out and a fresh one is
+ * seated, and the pistol's slide is racked, going by the hands (see
+ * handwork.ts), less how far into each recording the sound lands.
+ */
+const MAG_OUT = { rifle: 0.3, pistol: 0.08 };
+const MAG_IN = { rifle: 1.22, pistol: 0.98 };
+const SLIDE_RACK = 1.1;
 /** Voices shared by sounds out in the world. */
 const VOICES = 24;
 /**
@@ -108,8 +118,11 @@ interface Voice {
   gain: GainNode;
   filter: BiquadFilterNode;
   panner: PannerNode;
-  /** How much goes to each space's reverb, in SPACES order. */
+  /** How much goes to each space's reverb from all round, in SPACES order: the listener's space. */
   sends: GainNode[];
+  /** And from where the sound seems to be, panned there first: the space round the sound. */
+  placer: PannerNode;
+  placed: GainNode[];
   source: AudioBufferSourceNode | null;
 }
 
@@ -182,6 +195,8 @@ export class Sfx {
   private bedPool: VoicePool<BedVoice> | null = null;
   /** Your own sounds playing, to cut off when the island changes. */
   private readonly own = new Set<AudioBufferSourceNode>();
+  /** The current reload's sounds, some still to come, to cut off if it's cut short. */
+  private readonly reloading: AudioBufferSourceNode[] = [];
   private noise: AudioBuffer | null = null;
   /** Each recording's variations, once their bank is decoded. */
   readonly clips: Record<string, Clip[]> = {};
@@ -189,6 +204,7 @@ export class Sfx {
   private list: Promise<SoundBanks> | null = null;
   format: SoundFormat | null = null;
   private early: Promise<void> | null = null;
+  private beds: Promise<void> | null = null;
   private late: Promise<void> | null = null;
   /** Decodes the banks before audio is unlocked, which needs a click. */
   private decoder: BaseAudioContext | null = null;
@@ -228,9 +244,15 @@ export class Sfx {
     return this.early;
   }
 
-  /** Then the rest, behind the menu. */
+  /** Then the ambience, behind the menu: it fades in once it's in. */
+  loadAmbience(): Promise<void> {
+    this.beds ??= this.loadEarly().then(() => this.loadBank('ambience')).catch((e) => console.warn('Sounds failed to load', e));
+    return this.beds;
+  }
+
+  /** Then the rest. */
   loadLate(): Promise<void> {
-    this.late ??= this.loadEarly().then(() => this.loadBank('late')).catch((e) => console.warn('Sounds failed to load', e));
+    this.late ??= this.loadAmbience().then(() => this.loadBank('late')).catch((e) => console.warn('Sounds failed to load', e));
     return this.late;
   }
 
@@ -260,7 +282,7 @@ export class Sfx {
         this.format = f;
         const lead = bankLead(bank.length, f.priming, buffer.duration);
         for (const [k, v] of Object.entries(bank.clips)) this.clips[k] = v.map(([start, duration]) => ({ buffer, start: start + lead, duration }));
-        if (this.ctx && !this.ambience) this.startAmbience();
+        if (this.ctx && !this.ambience && this.clips.wind) this.startAmbience();
         return;
       } catch (e) {
         if (i === formats.length - 1) throw e;
@@ -319,7 +341,15 @@ export class Sfx {
         filter.connect(send).connect(reverbs[k]);
         return send;
       });
-      voices.push({ gain, filter, panner, sends, source: null });
+      // Panned by where the sound is, left or right; each ear's side of the reverb rings only with its own side.
+      const placer = new PannerNode(ctx, { panningModel: 'equalpower', distanceModel: 'linear', rolloffFactor: 0 });
+      filter.connect(placer);
+      const placed = SPACES.map((k) => {
+        const send = ctx.createGain();
+        placer.connect(send).connect(reverbs[k]);
+        return send;
+      });
+      voices.push({ gain, filter, panner, sends, placer, placed, source: null });
     }
     this.pool = new VoicePool(voices);
 
@@ -346,9 +376,8 @@ export class Sfx {
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
 
-    // Usually in by now: the loading screen waits for them.
+    // Often in by now: they load behind the menu.
     if (this.clips.wind) this.startAmbience();
-    else void this.loadEarly();
     void this.loadLate();
   }
 
@@ -450,24 +479,38 @@ export class Sfx {
     this.play('dry', { gain: 0.5 });
   }
 
-  /** The magazine out and a fresh one in; for the bolt-action, the bolt back and rounds pressed in. */
+  /**
+   * A reload's sounds, each as the hands get to it (see handwork.ts): the
+   * magazine out and a fresh one seated, and the pistol's slide racked; for
+   * the bolt-action, the bolt back and rounds pressed in.
+   */
   reload(weapon: number): void {
-    if (weapon === BOLT) {
-      this.play('boltOpen', { gain: 0.5 });
-      this.play('boltLoad', { gain: 0.5, delay: 0.7 });
-      return;
+    this.cancelReload();
+    const cues: [string, number][] = weapon === BOLT ? [['boltOpen', 0], ['boltLoad', 0.7]]
+      : weapon === PISTOL ? [['magOutPistol', MAG_OUT.pistol], ['magInPistol', MAG_IN.pistol], ['chargePistol', SLIDE_RACK]]
+      : [['magOutRifle', MAG_OUT.rifle], ['magInRifle', MAG_IN.rifle]];
+    for (const [clip, delay] of cues) {
+      const src = this.play(clip, { gain: 0.5, delay });
+      if (src) this.reloading.push(src);
     }
-    this.play(weapon === PISTOL ? 'magPistol' : 'magRifle', { gain: 0.5 });
   }
 
-  /** Chambering a round at the end of a reload. */
+  /** Chambering a round at the end of a reload: the rifle's charging handle or the bolt-action's bolt home. */
   reloaded(weapon: number): void {
-    const clip = weapon === PISTOL ? 'chargePistol' : weapon === BOLT ? 'boltClose' : 'chargeRifle';
-    this.play(clip, { gain: 0.5 });
+    this.reloading.length = 0;
+    if (weapon === PISTOL) return;
+    this.play(weapon === BOLT ? 'boltClose' : 'chargeRifle', { gain: 0.5 });
   }
 
+  /** Drawing a gun, which cuts short a reload's sounds still to come. */
   draw(): void {
+    this.cancelReload();
     this.play('draw', { gain: 0.35, rate: jitter(0.05) });
+  }
+
+  private cancelReload(): void {
+    for (const src of this.reloading) stop(src);
+    this.reloading.length = 0;
   }
 
   /** A grenade leaving the hand: the pin, then a whoosh. */
@@ -601,6 +644,7 @@ export class Sfx {
   hush(): void {
     for (const src of this.own) stop(src);
     this.own.clear();
+    this.reloading.length = 0;
     this.pool?.each((v) => {
       stop(v.source);
       v.source = null;
@@ -637,9 +681,9 @@ export class Sfx {
    * in the world at `at` on a pooled voice, on the distant-battle bed, or in
    * your head.
    */
-  private play(name: string, o: PlayOptions = {}): void {
+  private play(name: string, o: PlayOptions = {}): AudioBufferSourceNode | null {
     const variants = this.clips[name];
-    if (!this.ready || !variants?.length || (o.gain ?? 1) < MIN_GAIN) return;
+    if (!this.ready || !variants?.length || (o.gain ?? 1) < MIN_GAIN) return null;
     const ctx = this.ctx!;
     const { buffer, start, duration } = variants[Math.floor(Math.random() * variants.length)];
     const rate = o.rate ?? 1;
@@ -654,7 +698,7 @@ export class Sfx {
     let gain: GainNode;
     if (o.at && o.bed) {
       const taken = this.bedPool!.take(now, t + length + 0.05, level);
-      if (!taken) return;
+      if (!taken) return null;
       if (taken.stolen) stop(taken.voice.source);
       taken.voice.source = src;
       gain = ctx.createGain();
@@ -662,20 +706,26 @@ export class Sfx {
       src.onended = () => gain.disconnect();
     } else if (o.at) {
       const taken = this.pool!.take(now, t + length + 0.05, level);
-      if (!taken) return;
+      if (!taken) return null;
       const voice = taken.voice;
       if (taken.stolen) stop(voice.source);
       voice.source = src;
       gain = voice.gain;
-      voice.panner.positionX.value = o.at.x;
-      voice.panner.positionY.value = o.at.y;
-      voice.panner.positionZ.value = o.at.z;
+      for (const p of [voice.panner, voice.placer]) {
+        p.positionX.value = o.at.x;
+        p.positionY.value = o.at.y;
+        p.positionZ.value = o.at.z;
+      }
       set(voice.filter.frequency, o.cutoff ?? 18000);
-      // Half the ringing from the space round the sound, half from the listener's.
+      // Half the ringing from the space round the sound, coming back from
+      // where it is; half from the listener's, all round.
       const send = o.send ?? 0.2;
       const here = this.around;
       const there = o.space ?? here;
-      SPACES.forEach((k, i) => set(voice.sends[i].gain, send * (there[k] + here[k]) * 0.5));
+      SPACES.forEach((k, i) => {
+        set(voice.sends[i].gain, send * here[k] * 0.5);
+        set(voice.placed[i].gain, send * there[k] * 0.5);
+      });
     } else {
       gain = ctx.createGain();
       gain.connect(this.master!);
@@ -691,6 +741,7 @@ export class Sfx {
     set(gain.gain, level);
     src.connect(gain);
     src.start(t, start, duration);
+    return src;
   }
 
   /** Wind, the sea, birds or crickets and rain, looping from the moment the recordings are in. */

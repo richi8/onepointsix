@@ -1,6 +1,6 @@
 import { WATER_LEVEL } from '../shared/constants.ts';
 import type { Collider, PanelKind, World } from '../shared/world.ts';
-import { CORNER_HEIGHT, type SoundField } from './soundfield.ts';
+import type { SoundField } from './soundfield.ts';
 
 // How the island shapes what you hear: a sound reaches the ear through
 // whatever lies between, over the top of it, or round it through a doorway or
@@ -75,11 +75,11 @@ export function hear(world: World, field: SoundField | null, ear: Point3, at: Po
   // Over the top, if neither end has a roof over it.
   if (best.occ > OVER && Math.hypot(at.x - ear.x, at.z - ear.z) <= DETOUR_RANGE
     && clear(world, ear.x, ear.y + OVER_THE_TOP, ear.z, at.x, ay + OVER_THE_TOP, at.z)
-    && !roofed(world, ear.x, ear.y, ear.z) && !roofed(world, at.x, ay, at.z)) best.occ = OVER;
-  const route = field?.route(ear.x, ear.z, at.x, at.z);
+    && roofed(world, ear.x, ear.y, ear.z) < 0.5 && roofed(world, at.x, ay, at.z) < 0.5) best.occ = OVER;
+  const route = field?.route(ear, at);
   if (!route) return best;
-  // Every leg of the way must be open in the air too: the field is flat and doesn't know about hills.
-  const points = [ear, ...route.corners.map((c) => ({ x: c.x, y: world.floorHeight(c.x, c.z) + CORNER_HEIGHT, z: c.z })), { x: at.x, y: ay, z: at.z }];
+  // Every leg of the way must be open in the air too: on the ground, the field is flat and doesn't know about hills.
+  const points = [ear, ...route.corners, { x: at.x, y: ay, z: at.z }];
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1];
     const b = points[i];
@@ -156,6 +156,12 @@ const ENCLOSURE_RANGE = 30;
 
 /** A roof within this far overhead makes a room of the walls round the ear. */
 const ROOF_RANGE = 12;
+/**
+ * The rays looking for a roof: straight up, and round it tilted this far
+ * from upright, so a branch or an overhang covers only part of the sky.
+ */
+const ROOF_RAYS = 6;
+const ROOF_TILT = 0.5;
 /** Share of the ringing left under the open sky: a walled yard echoes a little, but doesn't ring like a room. */
 const OPEN_SKY = 0.3;
 
@@ -173,7 +179,7 @@ export interface Space {
 
 /**
  * The space round `p`: each way round counts by how near the first wall,
- * hill or tree is, and one ray straight up says whether it's roofed.
+ * hill or tree is, and rays up say how much of the sky is roofed over.
  */
 export function space(world: World, p: Point3, rays = EAR_RAYS): Space {
   let sum = 0;
@@ -184,12 +190,19 @@ export function space(world: World, p: Point3, rays = EAR_RAYS): Space {
   }
   const walls = sum / rays;
   const roof = roofed(world, p.x, p.y, p.z);
-  return { room: roof ? walls : 0, yard: roof ? 0 : walls, open: 1 - walls, walls };
+  return { room: roof * walls, yard: (1 - roof) * walls, open: 1 - walls, walls };
 }
 
-/** Whether there's a roof, or anything else, within ROOF_RANGE over (x, y, z). */
-function roofed(world: World, x: number, y: number, z: number): boolean {
-  return world.raycast(x, y, z, 0, 1, 0, ROOF_RANGE) < ROOF_RANGE;
+/** How much of the sky over (x, y, z) a roof, or anything else, covers within ROOF_RANGE: 0 to 1. */
+export function roofed(world: World, x: number, y: number, z: number): number {
+  let hits = world.raycast(x, y, z, 0, 1, 0, ROOF_RANGE) < ROOF_RANGE ? 1 : 0;
+  const s = Math.sin(ROOF_TILT);
+  const c = Math.cos(ROOF_TILT);
+  for (let i = 0; i < ROOF_RAYS - 1; i++) {
+    const a = (i / (ROOF_RAYS - 1)) * Math.PI * 2;
+    if (world.raycast(x, y, z, Math.sin(a) * s, c, Math.cos(a) * s, ROOF_RANGE) < ROOF_RANGE) hits++;
+  }
+  return hits / ROOF_RAYS;
 }
 
 /** The space round a sound, from fewer rays. */

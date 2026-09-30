@@ -41,11 +41,15 @@ export const SOUNDS: SoundSource[] = [
   { name: 'quietBolt', freesound: 737570, author: 'areniporgen', title: 'MacMillan Tac-50A1-R2 Suppressed', from: 0, to: 0.9, kind: 'shot', fade: 0.5 },
   { name: 'cycle', freesound: 204204, author: 'Danwardvs', title: '22 Bolt.wav', from: 0.2, to: 0.9, kind: 'shot' },
   { name: 'dry', freesound: 725402, author: 'serøutōnin--deprivəd', title: 'A rifle being dry fired once', from: 0, to: 0.3, kind: 'shot' },
-  // Reloads: the magazine out and in at the start, the charging handle at the end.
-  { name: 'magRifle', freesound: 432141, author: 'MaximBomba', title: 'Rifle-or-shotgun-reload.wav', from: 0, to: 1.0, kind: 'shot' },
-  { name: 'chargeRifle', freesound: 432141, author: 'MaximBomba', title: 'Rifle-or-shotgun-reload.wav', from: 1.35, to: 2.0, kind: 'shot' },
-  { name: 'magPistol', freesound: 432139, author: 'MaximBomba', title: 'PistolReloadSound.wav', from: 0, to: 1.0, kind: 'shot' },
-  { name: 'chargePistol', freesound: 432139, author: 'MaximBomba', title: 'PistolReloadSound.wav', from: 1.25, to: 1.6, kind: 'shot' },
+  // Reloads: the magazine out, a fresh one in, and at the end the charging
+  // handle or the slide. The rifle's are an AR15 being handled, the pistol's
+  // magazine a pistol's, its slide a Glock 19's.
+  { name: 'magOutRifle', freesound: 393732, author: 'jackthemurray', title: 'AR15 M4 Gun Hardware Magazine Movement Sounds', from: 18.0, to: 18.7, kind: 'shot', fade: 0.2 },
+  { name: 'magInRifle', freesound: 393732, author: 'jackthemurray', title: 'AR15 M4 Gun Hardware Magazine Movement Sounds', from: 16.1, to: 17.0, kind: 'shot', fade: 0.2 },
+  { name: 'chargeRifle', freesound: 393732, author: 'jackthemurray', title: 'AR15 M4 Gun Hardware Magazine Movement Sounds', from: 1.0, to: 1.8, kind: 'shot', fade: 0.2 },
+  { name: 'magOutPistol', freesound: 456195, author: 'e9118586020', title: 'Handgun / Pistol Removing Mag and Inserting Mag Foley', from: 11.0, to: 11.6, kind: 'shot', fade: 0.2 },
+  { name: 'magInPistol', freesound: 456195, author: 'e9118586020', title: 'Handgun / Pistol Removing Mag and Inserting Mag Foley', from: 12.2, to: 12.8, kind: 'shot', fade: 0.2 },
+  { name: 'chargePistol', freesound: 393734, author: 'jackthemurray', title: 'Glock 19 Handgun Pistol Slide Cocking Sounds', from: 20.85, to: 21.5, kind: 'shot', fade: 0.2 },
   // The bolt-action's reload: the bolt up and back, rounds pressed in from a clip, the bolt home.
   { name: 'boltOpen', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 2.9, to: 3.8, kind: 'shot', fade: 0.15 },
   { name: 'boltLoad', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 7.7, to: 9.7, kind: 'shot', fade: 0.2 },
@@ -84,16 +88,24 @@ export const SOUNDS: SoundSource[] = [
 
 /**
  * Sounds wanted from the first moment of a run, packed in a file of their
- * own that loads behind the loading bar: your own guns, steps and landing,
- * and the ambience. The rest, other people's doings heard later, load behind
- * the menu.
+ * own that loads behind the loading bar: your own guns, steps and landing.
+ * The ambience beds, long loops, come next in a file of their own, behind
+ * the menu, and fade in once they're in. The rest, other people's doings
+ * heard later, load after them.
  */
 export const EARLY: ReadonlySet<string> = new Set([
-  'rifle', 'pistol', 'bolt', 'quietRifle', 'quietPistol', 'quietBolt', 'cycle', 'dry', 'magRifle', 'chargeRifle', 'magPistol',
-  'chargePistol', 'boltOpen', 'boltLoad', 'boltClose', 'draw',
+  'rifle', 'pistol', 'bolt', 'quietRifle', 'quietPistol', 'quietBolt', 'cycle', 'dry', 'magOutRifle', 'magInRifle', 'chargeRifle',
+  'magOutPistol', 'magInPistol', 'chargePistol', 'boltOpen', 'boltLoad', 'boltClose', 'draw',
   'land', 'grass', 'dirt', 'sand', 'rock', 'concrete', 'wood', 'metal', 'water',
-  'wind', 'sea', 'birds', 'rain', 'crickets',
 ]);
+export const AMBIENCE: ReadonlySet<string> = new Set(['wind', 'sea', 'birds', 'rain', 'crickets']);
+
+/** The banks in the order they load, and which sounds each packs. */
+export const BANKS: readonly { name: string; has: (sound: string) => boolean }[] = [
+  { name: 'early', has: (s) => EARLY.has(s) },
+  { name: 'ambience', has: (s) => AMBIENCE.has(s) },
+  { name: 'late', has: (s) => !EARLY.has(s) && !AMBIENCE.has(s) },
+];
 
 /** One packed file: where each sound's variations sit in it, in seconds, and how long it is. */
 export interface PackedBank {

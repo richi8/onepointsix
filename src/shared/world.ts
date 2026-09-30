@@ -499,11 +499,15 @@ export class World {
     return ceil;
   }
 
-  /** Tops of the floors up off the ground (stairs, upper storeys, platforms) standing over the square `r` round (x, z), lowest first. */
-  floorTops(x: number, z: number, r: number): number[] {
+  /**
+   * Tops of the floors up off the ground (stairs, upper storeys, platforms)
+   * standing over the square `r` round (x, z), lowest first; with `roofs`,
+   * the tops of roofs too.
+   */
+  floorTops(x: number, z: number, r: number, roofs = false): number[] {
     const out: number[] = [];
     for (const c of this.query(x, z, r)) {
-      if (c.kind !== 'box' || !c.walk) continue;
+      if (c.kind !== 'box' || !(c.walk || (roofs && c.panel !== undefined && this.panels[c.panel].kind === 'roof'))) continue;
       if (c.maxX <= x - r || c.minX >= x + r || c.maxZ <= z - r || c.minZ >= z + r) continue;
       if (!out.includes(c.maxY)) out.push(c.maxY);
     }

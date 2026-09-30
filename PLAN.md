@@ -250,7 +250,7 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | 34 | **Ragdolls II** | Bodies collide with living soldiers; elbows and knees bend one way only; a body that died out of sight lets go of its grip; the feet turn at the ankle; a grenade pushes bodies already down; two bodies landing on each other at once play back the same in the death cam; operators' bodies stay until they come to rest | A pile of bodies near a grenade shifts, nothing bends backward, and every death cam falls as the game did | **Done** (by unit tests, pose viewer screenshots of a pile before and after a grenade and of a body against someone standing, and a browser test of a fall in play and in the death cam, bit for bit; not watched in play. Bodies left behind stay 30 s, not only until at rest. Posing 24 living bodies costs the same as before, within a noisy session's spread) |
 | 35 | **Buildings III** | A nav grid with floors, so bots take the stairs and fight upstairs (loot crates may then go upstairs); every part of a building can break, the upper floor falling once its posts go; door leaves whose colliders swing with the picture and open at once on your own screen; bots shut doors behind them and use them to block a chase; a door that someone stands in the way of says so; watchtowers and containers built with real geometry; the streaks on the ceilings | Bots clear a two-storey building room by room upstairs, and a building can be brought down whole | **Done** (by unit tests: paths walked up to the crate upstairs and back out on every seed with a two-storey building and up every watchtower, a guard going upstairs to a shot heard there, guards shutting doors behind them and an operator slamming one on a chase, four posts bringing an upper storey down whole; a browser test of a door opening at once with 400 ms of lag; screenshots of a watchtower, a container and the plain ceiling. Not watched in play. "Room by room" is a bot looking into what it heard, not a sweep of the rooms. A bot playtest came out as before, 9% of operator bots out by day, and simulated faster, 31 s against 35 s, as boxes now have one shape) |
 | 36 | **Lights and wet** | Others' flashlights and the outpost lamps cast shadows, within a budget checked by the benchmark (nearest first); more than four lights light the world, farther ones cheaply; others' beams light the rain; lamplight for bots follows the lamp's cone and is blocked by walls, operator bots keep out of it, and anyone can shoot a lamp out on purpose; the light volume darkened by hills, trees and other buildings, used for far buildings too, with no leak at the foot of walls and floors no brighter than their walls; trees, grass, bushes, bodies and debris get wet; puddles where water gathers, rippling in rain; the roof map reaching far enough that a far floor stays dry | At night a lamp behind a wall leaves the far side dark, a rainy night looks wet on everything, and the benchmark's rainy night holds its frame time | **Done** (screenshot tests outside the wall behind a lamp, now dark, the lamps' shadows over a yard and a yard under a lamp on a rainy night, wet with puddles; unit tests of the lamps' cone and walls for bots, paths round lamplight and a bot's shot meeting a lamp; the benchmark's rainy night 14.6 ms against 14.9 ms for the code before in one session on an M3 Pro. Lights past the 16 nearest and shadows past the six nearest are left out; not watched in play) |
-| 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | Not started |
+| 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | **Done** (from the ground floor, a shot upstairs comes from the foot of the stairs, muffled 0.47 against 0.97 straight through the floor; the loading screen waits for 3.97 MB, down from 4.55 MB just before: the scripts had grown since the 4.3 MB was measured; the rifle's suppressed shot stays a stand-in, since no real one was found) |
 | 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | Not started |
 | 39 | **Trees and grass** | Trees from CC0 models, or better generated ones, small enough to download, with impostors baked from them to match; grass that shows blades up close instead of three flat cards, fading to the current tufts farther off; the sight model's cover checked against the new grass; within the benchmark's frame budget | Close up, a tree and a patch of grass look real in a screenshot, and the benchmark holds its frame time | Not started |
 | 40 | **Human pass II** | What needs people and hardware: a mid-range laptop for the 5 s load, 60 fps and the adaptive resolution; runs by other people with the stats export; watching the animation, ragdolls, swaying and waves in play; listening to the recordings, reverbs and corners; fighting through the buildings and against bots hiding in bushes; tuning from what they show (guards, weapons, extraction timings and fee, loot, night) | The Playtest and tuning goals are met with human data, and every Known Issue is Resolved, Moot or listed below as left for later | Not started |
@@ -463,6 +463,16 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   and pistol magazine reloads (mixes of other recordings), and the rifle's suppressed shot is a
   sniper rifle's. The Tac-50 recording stays loud for two seconds after the shot (echo or wind on
   a phone microphone, going by the envelope), so only its first 0.9 s is used.
+  **Resolved in part** (37): the reloads are real guns: the rifle's magazine out, a fresh one
+  seated and its charging handle from an AR15 being handled, the pistol's magazine from a pistol
+  and its slide from a Glock 19. Each part plays as the hands get to it rather than as one mix at
+  the start, and a reload cut short by drawing another gun cuts its sounds short too. The cuts
+  were placed by loudness envelope, not by ear: in the AR15 recording the loud clicks alternate
+  with quieter ones about two seconds apart, taken as seating and pulling the magazine, and a
+  pair 0.3 s apart as the charging handle pulled and let go. Still a stand-in: the rifle's
+  suppressed shot, as no CC0 recording of a suppressed rifle of its kind was found (the few
+  suppressed ones on Freesound are made in an editor, an air rifle, or a blank-firing BB gun).
+  The rifle's reload still has no charging handle in the animation, though the sound plays.
 - **The reverb is one generated room** (14), the same everywhere, only louder when walled in.
   It isn't placed in 3D, and a place with no roof yet (every building so far) rings like a room
   when its walls are close.
@@ -479,17 +489,31 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   with the listener's space and half with its own (6 rays round it and one up). Your own sounds and
   footsteps ring with the listener's. The returns still aren't placed in 3D, and a roof is still
   one ray straight up.
-- **The loading screen waits for most of the sound** (20). The early bank is 150 of the 160
-  seconds, because the ambience beds are long: 700 kB of the 4.3 MB the loading screen waits
-  for. Loading locally took no longer (1.22 s against 1.26 s), but on a slow connection it adds
-  to the wait. Moving the ambience to the late bank would halve it, at the cost of the ambience
-  fading in a moment after Play.
+  **Resolved in part** (37): the half of a sound's ringing that comes from the space round it is
+  panned to where the sound seems to be before its reverb, whose two sides ring apart, so a door
+  slammed to your right rings back from the right (four times as loud there as on the left, in the
+  browser test); the listener's own half still comes from all round. A roof is found by six rays,
+  one straight up and five leaning 30° round it, as a share of the sky covered, so an overhang or
+  the eaves count for part of a roof, not all of it. What's left: the returns are panned only left
+  and right, not in front, behind or overhead, and the impulses are still generated, not
+  recorded.
 - **Sound round corners is worked out on a flat grid** (26). The grid is at ground level, so
   upstairs, on a roof or up a watchtower, routes are worked out as if on the ground below; the
   legs are checked in 3D, so a wrong route is dropped rather than heard, but a right one upstairs
   can be missed. Sound can't go round through an open window, only straight through its gap, and
   goes round only within 48 m; past that it's straight through or over. The losses per material
   and per bend were picked, not measured or heard.
+  **Resolved in part** (37): over the ground grid, each stair, upper floor, watchtower platform
+  and roof has a node in the air over it, and so has each broken window, in its gap. They're
+  joined to the nodes round them by lines checked against the world, rising or falling beside the
+  higher one when they're more than a metre apart in height, so sound goes up a stairwell, out of
+  a window upstairs and down to the ground, or over a roof's edge. A sound past the 48 m flood,
+  up to 150 m, is heard along the way out of the flood nearest to it, then straight on, so from
+  inside a house a far shot comes in through the door. What's left: that far leg is straight, so
+  a sound far off inside another building is still heard straight through or over it; a floor's
+  links are worked out the first time the flood reaches them, 1–4 ms at an outpost once; a
+  window is only a way round once its glass is broken (none open); and the losses per material
+  and per bend are still picked, not measured.
 
 ### Performance and loading
 - **Adaptive resolution is untested on slow hardware** (9) and could flip back and forth.
@@ -807,9 +831,10 @@ extraction stays as hard as it is.
   that links can be shared. It serves files only; there is still no game server.
 - **Existing scaffold:** the uncommitted setup and `src/shared` world generator get reused and
   reviewed in chunks 0 and 1.
-- **Loading** (20): the loading screen waits for the early sounds (your own guns and steps, and
-  the ambience) as well as the textures and models, so a run is never silent at the start. The
-  rest of the sound and the death cam load behind the menu. Sounds are Opus (the AAC copies were
+- **Loading** (20): the loading screen waits for the early sounds (your own guns and steps) as
+  well as the textures and models, so a run is never silent at the start. The ambience beds
+  (from 37), then the rest of the sound and the death cam load behind the menu; the beds fade in
+  once they're in. Sounds are Opus (the AAC copies were
   dropped with Chrome only); textures go through our own ETC1S-only transcoder.
 - **Replays removed** (2026-09-28): whole-run replays (chunks 17 and 28: files, a list kept in
   the browser, a viewer with scrubbing and a free camera, and the game run again exactly from its

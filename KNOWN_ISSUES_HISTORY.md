@@ -544,6 +544,15 @@ notes the chunk it came from.
   loudness envelopes, and the levels were set by rendering each sound offline in headless Chrome
   and measuring its peak and RMS. Mix, reverb amount and ambience levels need a listening pass.
   **Resolved** (30): the user has listened to it in play and it's fine.
+- **The loading screen waits for most of the sound** (20). The early bank is 150 of the 160
+  seconds, because the ambience beds are long: 700 kB of the 4.3 MB the loading screen waits
+  for. Loading locally took no longer (1.22 s against 1.26 s), but on a slow connection it adds
+  to the wait. Moving the ambience to the late bank would halve it, at the cost of the ambience
+  fading in a moment after Play.
+  **Resolved** (37): the ambience beds are a bank of their own (`sounds-ambience.ogg`, 589 kB),
+  loaded behind the menu right after the early one and before the rest; they fade in once
+  they're in. The early bank is down from 728 kB to 143 kB (29 s of sound), and the loading
+  screen waits for 3.97 MB, down from 4.55 MB.
 
 ### Performance and loading
 - **There's no loading indicator** (9). Until the assets arrive, the island quietly shows flat

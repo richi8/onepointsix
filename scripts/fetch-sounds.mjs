@@ -1,7 +1,7 @@
 // Downloads the game's CC0 sounds from Freesound (see src/client/soundlist.ts),
-// cuts them, and packs them into two files, the early sounds and the late
-// ones (see EARLY), each as Opus: public/assets/sounds-early.ogg and
-// sounds-late.ogg, with where each sound sits in
+// cuts them, and packs them into three files, the early sounds, the ambience
+// and the late ones (see BANKS), each as Opus: public/assets/sounds-early.ogg,
+// sounds-ambience.ogg and sounds-late.ogg, with where each sound sits in
 // public/assets/sounds.json. The results are committed, so this only needs
 // running again to change them. Needs ffmpeg with libopus (see tools.mjs), on
 // macOS or Linux.
@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { EARLY, SOUNDS } from '../src/client/soundlist.ts';
+import { BANKS, SOUNDS } from '../src/client/soundlist.ts';
 import { ffmpeg } from './tools.mjs';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
@@ -156,10 +156,7 @@ function opusPreSkip(file) {
 }
 
 mkdirSync(CACHE, { recursive: true });
-const banks = [
-  { name: 'early', sounds: SOUNDS.filter((s) => EARLY.has(s.name)) },
-  { name: 'late', sounds: SOUNDS.filter((s) => !EARLY.has(s.name)) },
-];
+const banks = BANKS.map(({ name, has }) => ({ name, sounds: SOUNDS.filter((s) => has(s.name)) }));
 const round = (v) => Math.round(v * 1e5) / 1e5;
 const formats = FORMATS.map(({ ext, type }) => ({ ext, type, priming: 0 }));
 const packed = [];

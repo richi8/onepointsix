@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Sound through the floors',
+    notes: [
+      'A shot upstairs is heard coming down the stairs, not muffled through the floor, and a fight on the ground is heard up the stairwell. Sound finds its way over roofs, off watchtowers and out of upstairs windows too.',
+      'Once a window’s glass is broken, sound comes round through it as through an open door.',
+      'Indoors, a fight well past 50 m away is heard coming in through the doorway it would reach you by.',
+      'A sound’s echo comes back from its own side: a door slammed on your right rings on your right. Standing under the eaves or an overhang no longer sounds like being indoors.',
+      'Reloads sound like real guns: the rifle’s and pistol’s magazines come out and go in, and the pistol’s slide is racked, each as the hands do it. Switching guns mid-reload cuts its sounds short.',
+      'The game loads faster: the wind, sea, birds, rain and crickets load behind the menu and fade in, rather than holding up the loading screen.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'Lamps, lights and the wet',
     notes: [
       'The outposts’ lamps and other people’s flashlights cast shadows: a wall between you and a lamp keeps you in the dark, and someone standing under a lamp throws a shadow. Every lamp in an outpost lights the ground now, not only the few nearest you, and so does every flashlight in view.',

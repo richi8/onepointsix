@@ -7,10 +7,11 @@ import { open } from './game.ts';
 // start where it first gets loud, so decoded as the game plays it, it should
 // get loud straight away, not the priming later.
 
-test('your own sounds are in before the menu shows', async ({ page }) => {
+test('your own sounds are in before the menu shows, and the ambience soon after', async ({ page }) => {
   await open(page);
-  const early = await page.evaluate(() => ['rifle', 'pistol', 'bolt', 'grass', 'wind'].filter((k) => window.game.sfx.clips[k]));
-  expect(early).toEqual(['rifle', 'pistol', 'bolt', 'grass', 'wind']);
+  const early = await page.evaluate(() => ['rifle', 'pistol', 'bolt', 'grass'].filter((k) => window.game.sfx.clips[k]));
+  expect(early).toEqual(['rifle', 'pistol', 'bolt', 'grass']);
+  await page.waitForFunction(() => ['wind', 'sea', 'birds', 'rain', 'crickets'].every((k) => window.game.sfx.clips[k]));
 });
 
 test('every shot starts on time in the decoded sound banks', async ({ page }) => {
@@ -65,4 +66,39 @@ test('a far firefight goes to the distant-battle bed and leaves the voices for n
   expect(heard.voices).toBe(0);
   expect(heard.bed).toBe(10);
   expect(heard.near).toBe(1);
+});
+
+test("a sound's ringing comes back from its side, not from all round", async ({ page }) => {
+  await open(page);
+  const { left, right } = await page.evaluate(async () => {
+    const game = window.game;
+    const rate = 48000;
+    const ctx = new OfflineAudioContext(2, rate * 4, rate);
+    const sfx = new (game.sfx.constructor as new (world: unknown) => typeof game.sfx)(game.world);
+    sfx.unlock(ctx);
+    await sfx.loaded();
+    game.camera.updateMatrixWorld();
+    sfx.update(game.camera, 0);
+    // The ambience hushed, so only the door is heard.
+    const beds = (sfx as unknown as { ambience: Record<string, AudioNode> }).ambience;
+    for (const node of Object.values(beds)) {
+      if (!(node instanceof GainNode)) continue;
+      node.gain.cancelScheduledValues(0);
+      node.gain.value = 0;
+    }
+    const e = game.camera.matrixWorld.elements;
+    // A door slamming 8 m off to the listener's right.
+    sfx.door(false, { x: e[12] + e[0] * 8, y: e[13] + e[1] * 8, z: e[14] + e[2] * 8 });
+    const out = await ctx.startRendering();
+    // After the slam itself is over, only its ringing is left.
+    const energy = (ch: number) => {
+      const d = out.getChannelData(ch);
+      let sum = 0;
+      for (let i = Math.round(1.3 * rate); i < Math.round(3 * rate); i++) sum += d[i] * d[i];
+      return sum;
+    };
+    return { left: energy(0), right: energy(1) };
+  });
+  expect(right).toBeGreaterThan(0);
+  expect(right / left).toBeGreaterThan(1.8);
 });

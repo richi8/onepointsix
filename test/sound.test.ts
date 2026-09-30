@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { WATER_LEVEL } from '../src/shared/constants.ts';
 import { World } from '../src/shared/world.ts';
 import { GROUND_LAYERS, groundLayerAt, groundWeights, terrainNormalsY } from '../src/shared/ground.ts';
-import { enclosure, hear, nearestWater, occlusion, space, through, woodland } from '../src/client/hearing.ts';
+import { enclosure, hear, nearestWater, occlusion, roofed, space, through, woodland } from '../src/client/hearing.ts';
 import { SoundField } from '../src/client/soundfield.ts';
 import { Layer } from '../src/shared/layers.ts';
-import { bankLead, EARLY, SOUNDS, type SoundBanks } from '../src/client/soundlist.ts';
+import { AMBIENCE, bankLead, EARLY, SOUNDS, type SoundBanks } from '../src/client/soundlist.ts';
 import packed from '../public/assets/sounds.json';
 import { Surfaces } from '../src/client/surface.ts';
 import { VoicePool } from '../src/client/voices.ts';
@@ -175,25 +175,25 @@ describe('hearing II', () => {
 
   it('floods again only once the ear moves a couple of cells, or the world changes', () => {
     const field = new SoundField(world);
-    field.route(outside.x, outside.z, inside.x, inside.z);
-    field.route(outside.x + 1, outside.z, inside.x, inside.z);
+    field.route(outside, inside);
+    field.route({ ...outside, x: outside.x + 1 }, inside);
     expect(field.floods).toBe(1);
-    field.route(outside.x + 2, outside.z, inside.x, inside.z);
+    field.route({ ...outside, x: outside.x + 2 }, inside);
     expect(field.floods).toBe(2);
     field.door(0);
-    field.route(outside.x + 2, outside.z, inside.x, inside.z);
+    field.route({ ...outside, x: outside.x + 2 }, inside);
     expect(field.floods).toBe(3);
   });
 
   it('floods the whole reach round the ear within a couple of milliseconds', () => {
     const field = new SoundField(world);
     // Warm the tiles, then time floods from fresh cells.
-    field.route(outside.x, outside.z, inside.x, inside.z);
+    field.route(outside, inside);
     // The best of three batches, so other tests running alongside don't fail it.
     let best = Infinity;
     for (let batch = 0; batch < 3; batch++) {
       const t0 = performance.now();
-      for (let i = 1; i <= 10; i++) field.route(outside.x + (batch * 10 + i) * 2, outside.z, inside.x, inside.z);
+      for (let i = 1; i <= 10; i++) field.route({ ...outside, x: outside.x + (batch * 10 + i) * 2 }, inside);
       best = Math.min(best, (performance.now() - t0) / 10);
     }
     expect(best).toBeLessThan(4);
@@ -213,6 +213,89 @@ describe('hearing II', () => {
     const sea = nearestWater(spit, 0, 0)!;
     expect(sea.dist).toBe(6);
     expect(Math.abs(sea.x)).toBeGreaterThan(4);
+  });
+});
+
+describe('hearing III', () => {
+  // Island 1's two-storey building: its floor at 16.6, the upper one at 19.6,
+  // and the stairs up its east side, x -61.6 to -60.1, from z 39.6 to 42.9 (their foot included here).
+  const tall = world.buildings.find((b) => b.plan === 'tall')!;
+  const stairs = { minX: -61.7, maxX: -60.1, minZ: 39, maxZ: 43 };
+  const down = { x: -64.8, y: tall.floor + 1.6, z: 37.2 };
+  const up = { x: -64.8, y: tall.upper! + 1.4, z: 41.8 };
+  // The one-room house of 'hearing II', its door on the east wall and a window south of it.
+  const door = world.doors[0];
+  const house = world.buildings.find((b) => b.plan === 'one' && door.x > b.minX && door.x < b.maxX + 0.5)!;
+  const window = 98;
+
+  it('finds the buildings the tests expect', () => {
+    expect(tall.floor).toBeCloseTo(16.6, 1);
+    expect(tall.upper).toBeCloseTo(19.6, 1);
+    expect(world.panels[window].kind).toBe('glass');
+    expect(world.panels[window].box.minX).toBeGreaterThan(house.maxX - 0.5);
+  });
+
+  it('hears a shot upstairs from the stairs below, not through the floor', () => {
+    const field = new SoundField(world);
+    const straight = through(world, down.x, down.y, down.z, up.x, up.y, up.z);
+    expect(straight).toBeGreaterThan(0.9);
+    for (const [ear, at] of [[down, up], [up, down]]) {
+      const h = hear(world, field, ear, at);
+      expect(h.occ).toBeLessThan(0.6);
+      // It seems to come from the stairwell, up off the ground floor.
+      expect(h.x).toBeGreaterThan(stairs.minX);
+      expect(h.x).toBeLessThan(stairs.maxX);
+      expect(h.z).toBeGreaterThan(stairs.minZ);
+      expect(h.z).toBeLessThan(stairs.maxZ);
+      expect(h.y).toBeGreaterThan(tall.floor + 1.8);
+    }
+  });
+
+  it('comes round through a broken window, and not once it is mended', () => {
+    for (const id of [0, 1]) world.setDoor(id, false);
+    const field = new SoundField(world);
+    const f = house.floor;
+    const ear = { x: -177, y: f + 1.6, z: -97.5 };
+    const at = { x: -182.5, y: f + 1.2, z: -91.5 };
+    const b = world.panels[window].box;
+    try {
+      expect(hear(world, field, ear, at).occ).toBeGreaterThan(0.9);
+      world.breakPanel(window);
+      field.changed(b.minX, b.minZ, b.maxX, b.maxZ);
+      const h = hear(world, field, ear, at);
+      expect(h.occ).toBeLessThan(0.4);
+      expect(Math.hypot(h.x - (b.minX + b.maxX) / 2, h.y - (b.minY + b.maxY) / 2, h.z - (b.minZ + b.maxZ) / 2)).toBeLessThan(0.5);
+      world.setPanel(window, true);
+      field.changed(b.minX, b.minZ, b.maxX, b.maxZ);
+      expect(hear(world, field, ear, at).occ).toBeGreaterThan(0.9);
+    } finally {
+      world.setPanel(window, true);
+      for (const id of [0, 1]) world.setDoor(id, true);
+    }
+  });
+
+  it('finds the way out of a building toward a sound far past the flood', () => {
+    const field = new SoundField(world);
+    const ear = { x: -183, y: house.floor + 1.6, z: -91.5 };
+    for (const a of [-Math.PI / 4, Math.PI / 4]) {
+      const x = ear.x + Math.cos(a) * 85;
+      const z = ear.z + Math.sin(a) * 85;
+      const at = { x, y: world.terrainHeight(x, z) + 1.5, z };
+      const h = hear(world, field, ear, at);
+      expect(Math.hypot(h.x - door.x, h.z - door.z)).toBeLessThan(2.5);
+      expect(h.d).toBeGreaterThan(85);
+      expect(h.occ).toBeLessThan(through(world, ear.x, ear.y, ear.z, at.x, at.y, at.z));
+    }
+  });
+
+  it('counts how much of the sky a roof covers', () => {
+    const c = { x: (house.minX + house.maxX) / 2, z: (house.minZ + house.maxZ) / 2 };
+    expect(roofed(world, c.x, house.floor + 1.6, c.z)).toBe(1);
+    // Just outside the eaves, only the rays leaning back over the roof find it.
+    const eave = roofed(world, house.maxX + 0.8, house.floor + 1.6, c.z);
+    expect(eave).toBeGreaterThan(0);
+    expect(eave).toBeLessThan(0.7);
+    expect(roofed(world, -world.half + 5, WATER_LEVEL + 1.6, -world.half + 5)).toBe(0);
   });
 });
 
@@ -242,13 +325,15 @@ describe('sound banks', () => {
     expect(list.banks.reduce((n, b) => n + Object.keys(b.clips).length, 0)).toBe(SOUNDS.length);
   });
 
-  it('put the early sounds in the early bank', () => {
-    const [early, late] = list.banks;
-    expect(early.name).toBe('early');
+  it('put the early sounds in the early bank, and the ambience in its own', () => {
+    const [early, ambience, late] = list.banks;
+    expect(list.banks.map((b) => b.name)).toEqual(['early', 'ambience', 'late']);
     expect(Object.keys(early.clips).sort()).toEqual([...EARLY].sort());
-    expect(Object.keys(late.clips).some((k) => EARLY.has(k))).toBe(false);
-    // Your own gun and the ambience are there from the start.
-    for (const k of ['rifle', 'pistol', 'bolt', 'wind', 'sea']) expect(early.clips[k], k).toBeDefined();
+    expect(Object.keys(ambience.clips).sort()).toEqual([...AMBIENCE].sort());
+    expect(Object.keys(late.clips).some((k) => EARLY.has(k) || AMBIENCE.has(k))).toBe(false);
+    // Your own gun is there from the start; the long beds don't hold up the loading screen.
+    for (const k of ['rifle', 'pistol', 'bolt']) expect(early.clips[k], k).toBeDefined();
+    expect(early.length).toBeLessThan(40);
   });
 
   it('keep the clips apart in each packed file', () => {
