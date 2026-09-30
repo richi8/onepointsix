@@ -1,5 +1,5 @@
-// Downloads the game's CC0 assets and packs them for the web into
-// public/assets. The results are committed, so this only needs running again
+// Downloads the game's CC0 assets (or reads them from scripts/models) and
+// packs them for the web into public/assets. The results are committed, so this only needs running again
 // to change them. Pass section names (textures, sky, models) to redo only
 // those; with none, it does them all. Runs on macOS (Apple Silicon or Intel) and Linux (x86-64 or
 // Arm): ffmpeg resizes the textures (see tools.mjs), and the KTX tools come
@@ -22,12 +22,21 @@ import { retarget } from './retarget.mjs';
 import { ffmpeg, get } from './tools.mjs';
 
 const OUT = new URL('../public/assets/', import.meta.url).pathname;
+/**
+ * The source models, committed: poly.pizza, where they come from, refuses
+ * downloads from GitHub's runners. Each file's origin is noted where it's used.
+ */
+const MODELS = new URL('models/', import.meta.url).pathname;
 const CACHE = new URL('../node_modules/.cache/fetch-assets/', import.meta.url).pathname;
 const ORIGINALS = join(CACHE, 'originals');
 const SIZE = 512;
 const HDRI = 'kloofendal_48d_partly_cloudy_puresky';
-/** Quaternius's public-domain SWAT operator, from poly.pizza, and the clips of its own the game plays. */
-const SOLDIER = 'https://static.poly.pizza/713f6535-f4f3-4367-a4c6-ced126ae0936.glb';
+/**
+ * Quaternius's public-domain SWAT operator, from
+ * https://static.poly.pizza/713f6535-f4f3-4367-a4c6-ced126ae0936.glb, and the
+ * clips of its own the game plays.
+ */
+const SOLDIER = 'soldier.glb';
 const SOLDIER_CLIPS = ['Idle', 'Walk', 'Run', 'Death', 'Gun_Shoot', 'HitRecieve', 'HitRecieve_2'];
 /**
  * Quaternius's public-domain Universal Animation Library (the free set, as
@@ -51,15 +60,15 @@ const LIBRARY_CLIPS = {
  */
 const GUNS = {
   rifle: {
-    url: 'https://static.poly.pizza/9a0e478c-de82-4773-9b70-a0219bb0057c.glb',
+    // https://static.poly.pizza/9a0e478c-de82-4773-9b70-a0219bb0057c.glb
     marks: { Grip: [0.1, 1.0], Support: [17.0, 5.0], Muzzle: [36.1, 6.3], Sight: [4.0, 8.9], Magazine: [9.6, -5.5], Bolt: [-1.5, 7.6] },
   },
   pistol: {
-    url: 'https://static.poly.pizza/7a31b522-5632-41d9-8274-031795af5d8d.glb',
+    // https://static.poly.pizza/7a31b522-5632-41d9-8274-031795af5d8d.glb
     marks: { Grip: [-0.6, 0.3], Support: [-0.9, -0.2], Muzzle: [21.1, 5.5], Sight: [4.0, 7.2], Magazine: [-1.3, -3.6], Bolt: [-1.0, 5.2] },
   },
   bolt: {
-    url: 'https://static.poly.pizza/f03e21b7-e3b7-49fd-b47d-d1908649fcee.glb',
+    // https://static.poly.pizza/f03e21b7-e3b7-49fd-b47d-d1908649fcee.glb
     marks: { Grip: [0.0, -1.0], Support: [20.0, 0.5], Muzzle: [52.5, 2.3], Sight: [4.0, 5.3], Magazine: [6.0, 2.6], Bolt: [2.0, 1.2] },
   },
 };
@@ -250,9 +259,9 @@ function writeHdr(width, height, rgbe) {
 await MeshoptEncoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
 
-/** Download a model, let `edit` change it, and write it out compressed. */
-async function model(url, path, edit = () => {}) {
-  const doc = await io.readBinary(new Uint8Array(await get(url)));
+/** Read a source model, let `edit` change it, and write it out compressed. */
+async function model(file, path, edit = () => {}) {
+  const doc = await io.read(join(MODELS, file));
   edit(doc);
   // Leaf nodes stay: the game finds where a shin ends by its end bone.
   await doc.transform(prune({ keepLeaves: true }), resample(), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
@@ -275,8 +284,8 @@ if (doing('models')) {
     retarget(clips, doc, LIBRARY_CLIPS);
   });
   mkdirSync(join(OUT, 'guns'), { recursive: true });
-  for (const [name, { url, marks }] of Object.entries(GUNS)) {
-    await model(url, join(OUT, 'guns', `${name}.glb`), (doc) => {
+  for (const [name, { marks }] of Object.entries(GUNS)) {
+    await model(`${name}.glb`, join(OUT, 'guns', `${name}.glb`), (doc) => {
       // Each mark an empty node in the mesh's own space, where the gun is side-on in x and z.
       const mesh = doc.getRoot().listNodes().find((n) => n.getMesh());
       for (const [mark, [x, z]] of Object.entries(marks)) {

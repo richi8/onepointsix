@@ -1383,6 +1383,13 @@ notes the chunk it came from.
   ground, as the bot may walk a step before it's killed; the first fix, checking only the spot
   itself, still failed 3 runs in 40. After it the test passed 180 runs in a row (the only
   failures were the browser not starting under four workers).
+- **The asset script's CI job can't download the models** (2026-09-30). On GitHub's runners,
+  static.poly.pizza answered the soldier's download with 403, though the same URL downloads fine
+  from a home connection, so its Cloudflare most likely turns away datacentre IPs.
+  **Resolved** (2026-09-30): a User-Agent of the scripts' own didn't help, so the four source
+  models (the soldier and three guns, 1.8 MB, public domain) are committed in `scripts/models`
+  with their poly.pizza URLs noted, and `fetch-assets.mjs` reads them from there. The packed
+  models came out byte for byte the same.
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops
