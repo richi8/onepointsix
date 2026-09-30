@@ -76,6 +76,11 @@ console.log(
   'so long runs are slightly undercounted.\n',
 );
 console.log(summaryText(summarize(played.map((p) => p.record))));
+const lost = played.filter((p) => p.record.outcome === 'killed').map((p) => p.record.value);
+const bands: [number, number][] = [[0, 1], [1, 500], [500, 1000], [1000, 2000], [2000, 3000], [3000, Infinity]];
+console.log(
+  `\nloot carried when killed: ${bands.map(([lo, hi]) => `${hi === 1 ? 'none' : hi === Infinity ? `${lo}+` : `${lo}–${hi - 1}`} ${Math.round((lost.filter((v) => v >= lo && v < hi).length / lost.length) * 100)}%`).join(', ')}`,
+);
 console.log(`\nbounties: ${bounty.held} (${(bounty.held / ((islands * minutes) / 60)).toFixed(0)} per hour), ${bounty.killed} killed, ${bounty.extracted} got out`);
 console.log(`kills per hour of game: ${[...kills].map(([k, n]) => `${k} ${(n / ((islands * minutes) / 60)).toFixed(0)}`).join(', ')}`);
 console.log(`in the head: ${[...kills].map(([k, n]) => `${k} ${Math.round(((heads.get(k) ?? 0) / n) * 100)}%`).join(', ')}`);

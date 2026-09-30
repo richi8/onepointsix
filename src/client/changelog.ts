@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-09-30',
+    title: 'Rivals with something to lose',
+    notes: [
+      'Bot operators carrying any real loot stop picking fights. They let you pass unless you come right up to them or shoot first, and then they fight back as before. Hunters are the exception: they still come for you.',
+    ],
+  },
+  {
+    date: '2026-09-30',
     title: 'More ways out',
     notes: [
       'Every island now has six extraction points, one for each outpost, instead of four. The four you know are where they were.',

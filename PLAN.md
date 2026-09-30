@@ -726,6 +726,16 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   the ground is a loot crate, see `lootCrates`) and sent extraction to 28% with runs a minute
   shorter; boulders replaced them. Kept for people; nobody has played it yet. Every island has
   changed, so scores and links from before were set on slightly different ground.
+- **Most bots die with nothing to lose** (38, after the chunk). At the user's request, operator
+  bots carrying loot worth 500 or more (`LOADED` in `bot.ts`), hunters excepted, now start no
+  fights beyond touch range, whatever they're doing; before, only one heading out with the fee
+  held back. Tried first: holding back only once carrying the fee (12% and 13% extracted, against
+  11%), since few bots reach it. With 500, operator bots extract from 15% of runs by day (11%)
+  and 20% at night in rain (19%) on seeds 1–6, 6 islands × 30 min; operator kills of operators
+  fell from 100 to 89 an hour by day, and at night, when guards do most of the killing, hardly
+  changed. The playtest now shows what killed bots carried: 45% had nothing, so it can't help
+  them. Bots carrying loot now make easy targets for a person, since they won't start a fight;
+  nobody has played against it yet.
 - **Operators getting away are often shot in the back** (38). Fleeing 40–70 m from guards is now
   the commonest way for an operator bot to die at a guard's hands: in a 4-island × 10-minute
   diagnostic, 23 of 51 guard kills were on the way. They sprint in the open without firing back

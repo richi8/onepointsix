@@ -210,6 +210,8 @@ const BOUNTY_SPOT = 0.7;
 const BOUNTY_LOUD = 1.6;
 /** Operators pick fights with the bounty this much farther out. */
 const BOUNTY_REACH = 1.5;
+/** Operators carrying loot worth this much start no fights with anyone not right on top of them (hunters excepted). */
+const LOADED = 500;
 /** Hunters count anyone with less than this share of their full health as wounded. */
 const WOUNDED = 0.6;
 /** Shot at with less than this share of its full health, a bot ducks into cover. */
@@ -481,6 +483,8 @@ export class Bot {
   private planned: number;
   /** Whether it carries enough to pay for extraction. */
   private paid = false;
+  /** Whether it carries enough to lose that it would rather not start a fight. */
+  private loaded = false;
   /** Gunfire heard lately, for telling where a fight is. */
   private gunfire: (Point & { source: number; at: number })[] = [];
   /** Where the bounty was last called, if it's worth going after. */
@@ -622,6 +626,7 @@ export class Bot {
     if (this.born < 0) this.born = ctx.time;
     this.health = health(self);
     this.paid = (ctx.carried?.(self) ?? Infinity) >= EXTRACT_FEE;
+    this.loaded = (ctx.carried?.(self) ?? 0) >= LOADED;
     if (this.isRoutine(this.state)) this.anchor = { x: self.x, y: self.y, z: self.z };
     this.perceive(ctx, self, dt);
     this.decide(ctx, self);
@@ -1542,16 +1547,16 @@ export class Bot {
    * Whether to fight a spotted enemy. Guards always do. Operators fight guards
    * only up close, a little farther when shot at, and get away from the rest;
    * other operators they fight back when shot at, and otherwise only within
-   * their gun's range.
+   * their gun's range, and not at all once carrying loot worth keeping.
    */
   private picksFight(ctx: BotContext, self: Agent, id: number, c: Contact, now: number): boolean {
     if (this.role.kind !== 'operator') return true;
     const d = Math.hypot(c.x - self.x, c.z - self.z);
     const threat = now - c.threatAt < THREAT_TIME;
-    // Getting away from a fight it's outgunned in, or heading out with enough to pay, it starts none;
-    // a hunter heading out still takes what comes, and anyone fights what's right on top of it.
-    const leaving = this.paid && this.state === 'extract' && this.personality !== 'hunter';
-    if (!threat && (now < this.retreatUntil || leaving) && d > TOUCH_RANGE * 2) return false;
+    // Getting away from a fight it's outgunned in, heading out with enough to pay, or carrying loot
+    // worth keeping, it starts none; a hunter still takes what comes, and anyone fights what's right on top of it.
+    const wary = (this.loaded || (this.paid && this.state === 'extract')) && this.personality !== 'hunter';
+    if (!threat && (now < this.retreatUntil || wary) && d > TOUCH_RANGE * 2) return false;
     // A guard shooting from far off is got away from, not fought.
     if (ctx.agent(id)?.team === 'guard') return d <= (threat ? GUARD_FIGHT_BACK : OPERATOR_GUARD_RANGE);
     if (threat) return true;
