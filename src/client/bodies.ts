@@ -460,6 +460,12 @@ export class Bodies {
   private model: GLTF | null = null;
   /** The soldier's merged geometry for each look: operator, guard and commander. */
   private readonly looks = new Map<string, THREE.BufferGeometry>();
+  /**
+   * One gone body's material, never freed: three.js frees a shader once no
+   * material uses it, and every body has its own, so the next one to come
+   * would compile it again, a stall on a cold shader cache.
+   */
+  private kept: THREE.Material | null = null;
   /** Scale that makes the model PLAYER_HEIGHT tall. */
   private modelScale = 1;
   /** Which way the death clip falls, as a yaw from facing, and how far the head ends up. */
@@ -694,7 +700,10 @@ export class Bodies {
 
   private dispose(f: Figure): void {
     this.scene.remove(f.group, f.gun);
-    for (const m of f.materials) m.dispose();
+    for (const m of f.materials) {
+      if (!this.kept && f.soldier) this.kept = m;
+      else m.dispose();
+    }
     f.soldier?.mixer.stopAllAction();
   }
 

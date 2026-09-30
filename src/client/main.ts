@@ -283,11 +283,15 @@ function gpuDone(): Promise<void> {
   });
 }
 
-/** Stand-ins drawn while warming: an operator, a guard and a commander, one with each gun and one lit. */
+/**
+ * Stand-ins drawn while warming: an operator, a guard and a commander, one
+ * with each gun and one lit, in the air just ahead of the camera, near enough
+ * to cast shadows as bodies close by do.
+ */
 function warmPlayers(): PlayerSnap[] {
-  const y = world.floorHeight(0, 0);
+  const at = camera.getWorldDirection(V_LOOK).multiplyScalar(12).add(camera.position);
   return (['operator', 'guard', 'guard'] as const).map((team, i) => ({
-    id: -1 - i, team, x: i - 1, y, z: 0, yaw: 0, pitch: 0, duck: 0, lean: 0, dead: false, weapon: i, quiet: i === 0,
+    id: -1 - i, team, x: at.x + i - 1, y: at.y - 1, z: at.z, yaw: 0, pitch: 0, duck: 0, lean: 0, dead: false, weapon: i, quiet: i === 0,
     motion: 'ground', act: 'none', actT: 0, commander: i === 2, light: i === 0,
   }));
 }

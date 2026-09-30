@@ -437,9 +437,12 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   operator, a guard and a commander with each gun, a bag, a grenade, a round, hits, a broken
   panel's debris and a blast, with everything hidden shown and nothing culled, and the gun in
   your hands; the debris is coloured from the start, as colours first given at a break changed
-  its shader. Cold, a game now starts with a 133 ms frame (the soldiers' legs, whose shader goes
-  with the stand-ins) and a window breaks with none. The cost moved to the loading screen, which
-  now goes after about 11.7 s cold instead of 8.5 s; warm, 0.93 s instead of 0.83 s.
+  its shader. The stand-ins stand just ahead of the camera, near enough to cast shadows, and one
+  gone body's material is never freed, so the soldiers' shader stays compiled after them. Cold, a
+  game now starts compiling nothing, with one frame of about 130 ms that's there warm too (the
+  game's own start), and a window breaks with no stall. The cost moved to the loading screen, which
+  now goes after about 12.2 s cold instead of 8.5 s; warm, 0.93 s instead of 0.83 s. The user
+  prefers it there.
 
 ### Day, night and weather
 - **Wet is worked out simply** (36). Bodies, bags and debris dry the moment they're under a roof,
