@@ -241,6 +241,7 @@ import('./assets.ts')
     await Promise.all([earlySounds, prepared]);
     loadingEl.querySelector('p')!.textContent = 'Preparing the island…';
     dress(assets);
+    view.warmSky();
     orbitCamera(performance.now() / 1000);
     camera.updateMatrixWorld();
     await renderer.compileAsync(scene, camera);

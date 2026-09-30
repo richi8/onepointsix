@@ -405,45 +405,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   editor, an air rifle, or a blank-firing BB gun). The rest of the recordings are real (see "Some
   recordings aren't what they stand for" in the history).
 
-### Performance and loading
-- **The 5 s load target wasn't measured on a mid-range laptop** (11). Locally on an M3 Pro, the
-  production build loads in 1.1 s cold and 0.4 s warm (3 MB transferred).
-  **Resolved in part** (after 39): the user found a load with nothing cached took over 5 s even
-  on the M3 Pro, and switching the menu to dusk or night stalled. "Cold" above meant only the
-  network cache: with Chrome's Metal shader cache empty too, as on a first visit or after an update
-  that changes a shader, the production build took about 16 s by day and 17 s at night to leave
-  the loading screen, locally in headless Chrome, and the first switch to dusk or night froze for
-  5.7 s. Nearly all of it was compiling shaders and Metal pipelines. Now nothing is drawn behind
-  the loading screen until the textures are on, so the flat colours' shaders are never compiled;
-  your own flashlight stays in the scene by day at no brightness, with its shadow map drawn once,
-  so nightfall changes no shader and no pipeline; the sea's reflection is drawn with the screen's
-  shaders (its picture flagged as three.js's XR kind, tone mapped and in sRGB, which the sea
-  undoes as it reads it); and the loading screen waits for a frame that has drawn the reflection,
-  in view or not, and for the GPU to finish. Cold, the loading screen now goes after about 8.5 s
-  by day or night, with no stall after it; warm, 0.83 s against 1.38 s; the first switch to night
-  takes 20 ms. The sea's screenshots moved by a mean of 2.6 levels in 255, the sky's reflection a
-  touch brighter, as it's never tone mapped on screen but is undone as if it had been. The
-  benchmark, in runs alternating with the code before, came out no slower, and faster for reasons
-  not looked into (24 bodies 10.2–10.3 against 12.9–14.2 ms, the empty frame 4.5–4.7 against
-  6.5–7.5 ms). Still left:
-  a cold load is still over 5 s, 5 s of it compiling about 38 programs, the lit ones each with
-  the local lights' loop, and it's unmeasured on a mid-range laptop; the first dusk or night bakes
-  its sky with two shaders three.js keeps to itself, 0.8 s cold; measured only in Chrome on Metal.
-  Once in three cold loads the old code hung in "Preparing the island…" for nearly two minutes;
-  the new code didn't in about fifteen, which doesn't rule it out.
-  **Resolved in part** (after 39): the user found the first second of a game froze on a cold
-  cache, and so did shooting a window the first time: 2.2 s at the start, compiling the soldiers,
-  the gun in your hands and the effects. The frames under the loading screen now also draw an
-  operator, a guard and a commander with each gun, a bag, a grenade, a round, hits, a broken
-  panel's debris and a blast, with everything hidden shown and nothing culled, and the gun in
-  your hands; the debris is coloured from the start, as colours first given at a break changed
-  its shader. The stand-ins stand just ahead of the camera, near enough to cast shadows, and one
-  gone body's material is never freed, so the soldiers' shader stays compiled after them. Cold, a
-  game now starts compiling nothing, with one frame of about 130 ms that's there warm too (the
-  game's own start), and a window breaks with no stall. The cost moved to the loading screen, which
-  now goes after about 12.2 s cold instead of 8.5 s; warm, 0.93 s instead of 0.83 s. The user
-  prefers it there.
-
 ### Day, night and weather
 - **Wet is worked out simply** (36). Bodies, bags and debris dry the moment they're under a roof,
   and are as wet as the ground round them in the open, how much they face up judged from their

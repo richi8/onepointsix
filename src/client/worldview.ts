@@ -244,6 +244,20 @@ export class WorldView {
     this.light();
   }
 
+  /**
+   * Bake a night sky once and throw it away, if this light doesn't bake its
+   * own: compiling the shaders that do it stalls the first dusk or night
+   * for most of a second on a cold shader cache, better done while loading.
+   */
+  warmSky(): void {
+    if (this.lighting.ownSky || !this.renderer || !this.assets) return;
+    const was = this.lighting;
+    this.lighting = lightingOf({ time: 'night', weather: 'clear' });
+    this.light();
+    this.lighting = was;
+    this.light();
+  }
+
   /** Whether the island is seen from the menu's orbit, through thinner fog, or played in. */
   set preview(on: boolean) {
     if (on === this.previewing) return;
