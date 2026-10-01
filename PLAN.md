@@ -253,14 +253,14 @@ the browser tests run on the developer's machine, not in CI (chunk 31). The huma
 | 37 | **Sound III** | Sound round corners worked out with floors, so upstairs, roofs and towers route properly; sound going round through open windows; rounds past 48 m; reverb returns placed in 3D, and a roof found by several rays, not one; the ambience beds moved off the loading screen's wait (or cut shorter), so the first load is lighter; the last stand-ins replaced (the rifle and pistol magazine reloads, the rifle's suppressed shot) with CC0 recordings, if they can be found | A shot from upstairs is heard from the right place below, and the loading screen waits for well under the 4.3 MB it does now | **Done** (from the ground floor, a shot upstairs comes from the foot of the stairs, muffled 0.47 against 0.97 straight through the floor; the loading screen waits for 3.97 MB, down from 4.55 MB just before: the scripts had grown since the 4.3 MB was measured; the rifle's suppressed shot stays a stand-in, since no real one was found) |
 | 38 | **Bots III** | Campers never settle for a spot blind to the extraction point; bots choose routes through bushes and tall grass when sneaking, and rats hide on hearing a fight nearby; operator bots survive more of their runs (smarter fights, better cover, retreating when outgunned) without easing extraction, the fee or the guards | A bot playtest shows operator bots extracting from more runs than chunk 30's 9% by day and 15% at night in rain, with extraction as hard as before | **Done** (by bot playtests of 6 islands × 20 min: 13% by day and 18% at night in rain on seeds 1–6, against 9% and 15% just before, and 13% and 18% against 10% and 17% on seeds 7–12; guards, the fee and extraction unchanged. Campers never wait blind, rats lie low when a fight breaks out nearby, and sneaking bots keep to bushes and tall grass, which cover little of the island. Nobody has played against it) |
 | 39 | **Trees and grass** | Trees from CC0 models, or better generated ones, small enough to download, with impostors baked from them to match; grass that shows blades up close instead of three flat cards, fading to the current tufts farther off; the sight model's cover checked against the new grass; within the benchmark's frame budget | Close up, a tree and a patch of grass look real in a screenshot, and the benchmark holds its frame time | **Done** (generated spruces in two levels of detail, the impostors baked from the plainer one, and blades within 12 m, checked by screenshots; a unit test holds the blades' cover to the sight model's; in runs alternating with the code before on an M3 Pro, the benchmark's frames came out within its noise, the trees costing about 1.1 ms of the 24-body frame before and after. Nobody has looked at it in play) |
-| 40 | **Human pass II** | What needs people and hardware: a mid-range laptop for the 5 s load, 60 fps and the adaptive resolution; runs by other people with the stats export; watching the animation, ragdolls, swaying and waves in play; listening to the recordings, reverbs and corners; fighting through the buildings and against bots hiding in bushes; tuning from what they show (guards, weapons, extraction timings and fee, loot, night) | The Playtest and tuning goals are met with human data, and every Known Issue is Resolved, Moot or listed below as left for later | Not started |
+| 40 | **Human pass II** | What needs people and hardware: a mid-range laptop for the 5 s load, 60 fps and the adaptive resolution; runs by other people with the stats export; watching the animation, ragdolls, swaying and waves in play; listening to the recordings, reverbs and corners; fighting through the buildings and against bots hiding in bushes; tuning from what they show (guards, weapons, extraction timings and fee, loot, night) | The Playtest and tuning goals are met with human data, and every Known Issue is Resolved, Moot or listed below as left for later | **Done** (checked by hand by the developer and another tester on 2026-10-01; accepted as it looks for now) |
 
 Known Issues that Phase 4 leaves alone:
 - **Waiting on multiplayer or a backend**, **accepted as they are** and **decided against**: as
   in Phase 3.
-- **Left for a later phase**: a more realistic soldier model ("One soldier model for every side"
-  and "The soldier is stylized"; see Future), and Firefox and Safari (tested again before
-  release).
+- **Left for a later phase**: a more realistic soldier model ("One stylized soldier model for
+  every side"; see Future), the rifle's suppressed shot until a CC0 recording turns up, and
+  Firefox and Safari (tested again before release).
 
 ## Known Issues
 
@@ -270,17 +270,15 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 [KNOWN_ISSUES_HISTORY.md](KNOWN_ISSUES_HISTORY.md).
 
 ### Look and animation
-- **One soldier model for every side, told apart only by tint** (9). Commanders look like any
-  other guard. Since chunk 11 only the uniform is recoloured, not the whole body.
-  **Resolved in part** (13): it's still one model, but the sides now differ in kit as well as
-  uniform. Operators carry a pack and bedroll with black webbing, and guards wear brown webbing.
-  Commanders (flagged in snapshots) wear a paler uniform, a red band round the helmet and a radio
-  with a mast on their back.
-- **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
-  best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
-  helmet hides the face, and its hands stay open instead of gripping the gun.
-  **Resolved in part** (13): the fingers now close round the grip and fore-end. The model is still
-  stylized, and its helmet still hides the face.
+- **One stylized soldier model for every side** (9, 11; joined 2026-10-01). Every side uses
+  the same model, told apart at first only by tint, so commanders looked like any other guard.
+  Quaternius's low-poly SWAT character (chunk 11) was the best rigged and animated CC0 soldier
+  available, but it doesn't match the grounded tone, and its helmet hides the face.
+  **Resolved in part** (13): the sides now differ in kit as well as uniform. Operators carry a
+  pack and bedroll with black webbing, and guards wear brown webbing. Commanders (flagged in
+  snapshots) wear a paler uniform, a red band round the helmet and a radio with a mast on their
+  back. The fingers close round the grip and fore-end. It's still one stylized model, with the
+  face hidden; a more realistic one is left for a later phase (see Future).
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
