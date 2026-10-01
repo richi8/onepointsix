@@ -621,6 +621,38 @@ notes the chunk it came from.
   0.03 ms a frame, the fog's edge was already the rays' rule, and a beach in view without the sea
   is rare. Letting the count also turn the reflection off where buildings and trees hide sea the
   rays find would save whole reflection passes, but the late count would make it pop in.
+- **The reflection is partial** (24): it holds the terrain, trees, props, rocks, flags and the sky,
+  not bodies, bags, grass, bushes, debris, rain, effects or the sea itself, so a soldier wading
+  has no reflection. It's a third of the screen's resolution and redrawn every frame the camera
+  is above water, whether or not any sea is in view, reusing the last frame's shadow maps. The
+  ripples bend it by a fixed share of the screen, whatever the distance. The glass in windows
+  still reflects nothing.
+  **Resolved in part** (32): bodies, bags and debris are in it, so a soldier wading is mirrored
+  (faintly, as the sea mirrors little when seen from above), and it's drawn only on frames with
+  some sea in view. Still open: grass, bushes, rain, effects and the sea itself aren't in it; it's
+  a third of the screen's resolution, reuses the last frame's shadow maps, and the ripples bend it
+  by a fixed share of the screen; the glass in windows reflects nothing.
+  **Resolved in part** (2026-10-01): the ripples bend each pixel by how far what it mirrors is
+  behind the surface, read from the reflection's depth: the sky by as much as before, a soldier
+  wading or a tree at the water's edge by hardly any, so they no longer tear apart. Bushes,
+  tracers, puffs, smoke, the explosion's fireball and others' flashlight beams are in it. The
+  picture is read no brighter than 95% white before the sea undoes its tone mapping, which had
+  turned a fireball's glow into a white disk brighter than the fireball. Window glass mirrors the
+  sky (the light it's lit by) without thinning it out with what it lets through, more toward a
+  glancing angle, and seen from indoors mirrors the room's dimmer light. Checked by screenshots
+  against the code before; on an M3 Pro the reflection pass at a bushy shore took about 0.1–0.2 ms
+  more of the GPU's 2.2–2.4 ms, all of it the bushes; the benchmark has no sea in view and came
+  out the same. Still open, and left as not worth it: grass and pebbles aren't in it (drawn twice
+  they'd cost 0.5–1 ms, and at a third of the resolution blades turn to noise); rain, impact marks
+  and the flashlights' glare (bright only toward the eye) aren't either; nor is the sea itself;
+  it's a third of the screen's resolution and reuses the last frame's shadow maps. Glass mirrors
+  only the sky, not what's round it, and only faintly face on, as glass does; its outside face
+  reads the light volume a little indoors, so outdoors it mirrors about half what it would.
+  **Accepted** (2026-10-01): the user finds it good enough for now. What's left is either too
+  costly for what it shows (grass, a higher resolution) or hardly seen (rain, impact marks, the
+  glare, the sea itself, last frame's shadow maps); mirroring what's round a window would take
+  screen-space reflections, 1–2 ms and a large job, and the half-strength outside face of glass
+  could be fixed by reading the light volume from further out.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
