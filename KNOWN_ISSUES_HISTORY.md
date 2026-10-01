@@ -777,7 +777,12 @@ notes the chunk it came from.
   Concrete walls, posts, lintels and floors and the steel roof sheets stay slabs, as they are.
   Checked by screenshots, not watched in play. Props take 10 draw calls rather than 2; the
   benchmark's frames came out within 0.3 ms of the code before in alternating runs. The fence's
-  slits and the doors' grain are listed under Look and animation.
+  slits and the doors' grain are a separate issue, accepted.
+- **Fences show slits that stop rounds, and door panels show sideways grain** (2026-10-01). A
+  fence's boards leave finger-wide gaps you can glimpse through, but bullets and bots treat the
+  section as solid. The wood texture is laid in world space and its grain runs across, so a door
+  leaf's stiles and panel all show horizontal grain.
+  **Accepted** (2026-10-01): the user is fine with both as they are.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

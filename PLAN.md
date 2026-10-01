@@ -276,10 +276,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   uniform. Operators carry a pack and bedroll with black webbing, and guards wear brown webbing.
   Commanders (flagged in snapshots) wear a paler uniform, a red band round the helmet and a radio
   with a mast on their back.
-- **Fences show slits that stop rounds, and door panels show sideways grain** (2026-10-01). A
-  fence's boards leave finger-wide gaps you can glimpse through, but bullets and bots treat the
-  section as solid. The wood texture is laid in world space and its grain runs across, so a door
-  leaf's stiles and panel all show horizontal grain.
 - **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
   best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
   helmet hides the face, and its hands stay open instead of gripping the gun.
