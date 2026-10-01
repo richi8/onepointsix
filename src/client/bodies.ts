@@ -1704,7 +1704,7 @@ export class Bodies {
     const at = pistol ? V_POCKET.copy(shoulder) : f.group.worldToLocal(b.rArm.getWorldPosition(V_POCKET)
       .addScaledVector(V_CHEST.copy(s.chest).transformDirection(b.spine2.matrixWorld), SHOULDER_DEPTH + low * LOW_OUT));
     const head = f.group.worldToLocal(this.headAt(s, V_TMP2));
-    f.gun.position.set(at.x - (pistol ? 0.1 : 0), Math.min(at.y + 0.06, head.y - GRIP_BELOW_HEAD) - low * 0.12, at.z);
+    f.gun.position.set(at.x - (pistol ? 0.1 : 0), Math.min(at.y + (pistol ? 0.06 : STOCK_LIFT), head.y - GRIP_BELOW_HEAD) - low * 0.12, at.z);
     f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip + Math.max(-p.lean, 0) * LEAN_CANT, 'YXZ');
     f.gun.translateZ((pistol ? -0.5 : -gun.butt) + kick * 0.04);
     f.gun.translateX(pistol ? -0.08 : 0);
@@ -1925,10 +1925,12 @@ const ELBOW_DOWN = 0.3;
 const GRIP_BELOW_HEAD = 0.14;
 /**
  * How far in front of the right shoulder joint a long gun's butt sits, the
- * way the chest faces: out on the front of the vest. A gun carried low across
- * the chest is held further out still.
+ * way the chest faces, on the front of the vest; how far above the joint its
+ * grip is, so the stock's toe clears the chest below; and how much further out
+ * a gun carried low across the chest is held.
  */
-const SHOULDER_DEPTH = 0.25;
+const SHOULDER_DEPTH = 0.18;
+const STOCK_LIFT = 0.1;
 const LOW_OUT = 0.1;
 /** How much of an arm's full length the hands reach to, so the elbows stay a little bent. */
 const ARM_STRETCH = 0.96;
