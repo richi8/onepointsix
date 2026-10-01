@@ -292,35 +292,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   helmet hides the face, and its hands stay open instead of gripping the gun.
   **Resolved in part** (13): the fingers now close round the grip and fore-end. The model is still
   stylized, and its helmet still hides the face.
-- **Ragdolls have gaps** (22). Bodies don't collide with living soldiers, only with the dead and
-  the world. Elbows bend either way, fingers keep the grip of a body that died out of sight, and
-  the feet only follow the shins. A grenade doesn't move bodies already down, though a panel
-  breaking next to one wakes it to fall further. Two bodies landing on each other at the same
-  moment can come out a little differently in a death cam, as their steps needn't line up. Falls
-  match only within one browser engine: the engines' `Math` functions can differ in the last
-  digit, and a fall magnifies it. Operators' bodies still go after 5 s, so most never come to rest
-  in view. It was checked with pose viewer screenshots, unit tests and a browser test; nobody has
-  watched it in play.
-  **Resolved in part** (34): bodies are pushed off the living, each an upright capsule from feet
-  to neck as the server had them at that step; knees bend only forward, elbows only back (and
-  down, so an arm held out bends up), and one bent the wrong way when it went limp is kept from
-  bending further and let straighten out. The feet turn at the ankle, between drawn up and
-  pointed, their toes kept ahead of the shin. A body that died out of sight opens its hands. A
-  grenade throws bodies and guns lying within its reach, less with distance, unless a ray from it
-  to the body's middle is blocked. Every fall now steps on one clock of the game's time, all
-  together in a fixed order, starting on the kill event's step; the living, blasts and breaks
-  come in on the step they happened, and the death cam finds each kill by its time (kill events
-  aren't replayed), so a death cam falls bit for bit as the game did, pile-ups included (a unit
-  test lands two bodies on each other the same however the frames fall; a browser test compares
-  a body's fall in play and in the death cam). A body left behind when its player is back in the
-  game, or gone, stays until it comes to rest and 30 s after dying, then until it's out of view,
-  never more than 60 s, and at most 8 of them. Still: the living aren't moved by a body, and
-  their arms and guns don't stop one. Which way a body falls is picked by rays that miss the living and the dead, so it can fall toward someone
-  and crumple at their feet. Elbows bend by a guess from the body's front and spine, as the balls
-  don't twist, and an arm lying along that guess is left free. Bodies left lying aren't in a death
-  cam and are cleared when it starts and ends, and the dropped magazines aren't thrown by a
-  blast. Checked with pose viewer screenshots (a pile before and after a grenade, a body against
-  someone standing), unit tests and browser tests; nobody has watched it in play.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
