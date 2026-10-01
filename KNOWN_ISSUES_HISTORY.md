@@ -755,7 +755,7 @@ notes the chunk it came from.
   cam and are cleared when it starts and ends, and the dropped magazines aren't thrown by a
   blast. Checked with pose viewer screenshots (a pile before and after a grenade, a body against
   someone standing), unit tests and browser tests; nobody has watched it in play.
-  **Accepted** (2026-10-01): the user has watched bodies fall, pile up and get thrown by grenades
+  **Resolved** (2026-10-01): the user has watched bodies fall, pile up and get thrown by grenades
   in play and finds them fine; the gaps left above (the living not moved by a body, elbows bent
   by a guess, bodies left lying not in a death cam, magazines not thrown) weren't noticed.
 ### Sound
