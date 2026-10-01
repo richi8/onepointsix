@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Crates, fences and doors with real shape',
+    notes: [
+      'Crates have battens along their edges and a brace across each side.',
+      'Fences are boards nailed between posts, with gaps you can glimpse through.',
+      'Doors are panelled, with a handle on each side; tables stand on four legs.',
+      'Windows have frames round the glass and a sill standing out from the wall.',
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Light bouncing round rooms',
     notes: [
       'Light inside buildings bounces off the floor, walls and crates: walls beside a window or a doorway are brighter, deep corners darker, and wooden rooms a little warmer than concrete ones.',

@@ -10,13 +10,14 @@ import { Layer } from '../shared/layers.ts';
 import { patchFog } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain, type Shelter } from './rain.ts';
-import { dimIndoors, IndoorLight } from './indoorlight.ts';
+import { IndoorLight } from './indoorlight.ts';
 import { IslandMap, LEVEL_GATHER } from './islandmap.ts';
 import { Lamps } from './lamps.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
 import { REFLECTED, Water } from './water.ts';
+import { PROP_SHADOW_SIDE, Props } from './props.ts';
 import { Structures } from './structures.ts';
 import { wind } from './wind.ts';
 
@@ -75,7 +76,7 @@ function luminance(c: THREE.Color): number {
 /** The colour lightning lights the sky, and how much flat light it adds at its brightest. */
 const FLASH_SKY = new THREE.Color(0xc8d2ff);
 const FLASH_HEMI = 1.2;
-const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
+const DOOR_MATRIX = new THREE.Matrix4();
 const SUN_LIGHT = new THREE.Color();
 const V_SCALE = new THREE.Vector3();
 
@@ -90,12 +91,8 @@ export class WorldView {
   /** Set once another island has taken this one's place. */
   private disposed = false;
   private readonly world: World;
-  private readonly props: THREE.InstancedMesh;
-  /** Each prop's matrix while it stands. */
-  private readonly propMatrices: THREE.Matrix4[];
-  /** Window glass, see-through and drawn apart from the other props; `glassOf` maps a prop to its instance here, or -1. */
-  private readonly glass: THREE.InstancedMesh;
-  private readonly glassOf: Int32Array;
+  /** The props, each drawn in its shape. */
+  private readonly props: Props;
   /** How far each door leaf had swung when last drawn, from 0 shut to 1 open. */
   private readonly drawn: Float32Array;
   private readonly terrain: Terrain;
@@ -159,15 +156,9 @@ export class WorldView {
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
     this.extractGroup = extracts.group;
-    const props = makeProps(world);
-    this.props = props.mesh;
-    this.propMatrices = props.matrices;
     // Towers and containers are drawn from their parts, not as their boxes.
     this.structures = new Structures(world);
-    for (const i of Structures.replaces(world)) props.mesh.setMatrixAt(i, GONE);
-    const glass = makeGlass(world, props.mesh);
-    this.glass = glass.mesh;
-    this.glassOf = glass.of;
+    this.props = new Props(world, (i) => pick(PROP_COLORS[world.props[i].style], world.props[i].tint), Structures.replaces(world));
     this.drawn = Float32Array.from(world.doors, (d) => d.swing);
     this.drawn.forEach((_, i) => this.placeDoor(i));
     this.terrain = new Terrain(world);
@@ -176,8 +167,8 @@ export class WorldView {
     this.water = new Water(world);
     this.lamps = new Lamps(world);
     this.lamps.setConditions(this.dark, this.fog.near, this.fog.far);
-    scene.add(this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.structures.group, this.trees.group, this.rocks, extracts.group, this.rain.group);
-    for (const o of [this.sky, this.terrain.group, this.props, this.structures.group, this.trees.group, this.rocks, extracts.group, this.lamps.group]) reflected(o);
+    scene.add(this.lamps.group, this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group, this.rain.group);
+    for (const o of [this.sky, this.terrain.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group, this.lamps.group]) reflected(o);
   }
 
   /**
@@ -209,7 +200,7 @@ export class WorldView {
   dispose(): void {
     this.disposed = true;
     const scene = this.scene;
-    const parts = [this.sky, this.hemi, this.lamps.group, this.terrain.group, this.water.group, this.props, this.glass, this.structures.group, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
+    const parts = [this.sky, this.hemi, this.lamps.group, this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
     if (this.cover) parts.push(this.cover.group);
     const materials = new Set<THREE.Material>();
     for (const part of parts) {
@@ -306,23 +297,18 @@ export class WorldView {
 
     this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true, wet: 'puddles' }));
 
-    const props = this.props;
-    const layers = new Float32Array(this.world.props.length);
-    const pools = new Float32Array(this.world.props.length);
-    const c = new THREE.Color();
-    this.world.props.forEach(({ style, tint, panel }, i) => {
+    const props = this.world.props;
+    this.props.texture(
+      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: 'puddles' }), this.world),
       // Roofs are corrugated metal only on top: underneath, a plain ceiling.
-      layers[i] = style === 'roof' ? -1 - PROP_LAYERS[style] : PROP_LAYERS[style];
+      (i) => (props[i].style === 'roof' ? -1 - PROP_LAYERS.roof : PROP_LAYERS[props[i].style]),
+      (i, c) => c.setHex(pick(PROP_TINTS[props[i].style], props[i].tint)).multiplyScalar(GAIN[props[i].style] ?? 1),
       // A concrete floor the rain reaches, once the roof over it is down, gathers puddles as level ground does.
-      pools[i] = panel >= 0 && this.world.panels[panel].kind === 'floor' ? LEVEL_GATHER : 0;
-      props.setColorAt(i, c.setHex(pick(PROP_TINTS[style], tint)).multiplyScalar(GAIN[style] ?? 1));
-    });
-    props.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers, 1));
-    props.geometry.setAttribute('pool', new THREE.InstancedBufferAttribute(pools, 1));
-    props.instanceColor!.needsUpdate = true;
-    const old = props.material as THREE.Material;
-    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE }, 1, { indoor: true, wet: 'puddles' }), this.world);
-    old.dispose();
+      (i) => (props[i].panel >= 0 && this.world.panels[props[i].panel].kind === 'floor' ? LEVEL_GATHER : 0),
+      Layer.boards,
+    );
+
+    const c = new THREE.Color();
 
     this.trees.applyAssets(assets);
     this.structures.applyAssets(assets);
@@ -346,8 +332,7 @@ export class WorldView {
   syncPanels(): void {
     this.world.panels.forEach((_, i) => this.showPanel(i));
     this.lamps.show();
-    this.props.instanceMatrix.needsUpdate = true;
-    this.glass.instanceMatrix.needsUpdate = true;
+    this.props.moved();
     this.light3d.changed();
     this.rain.roofChanged();
     this.island.roofs();
@@ -364,8 +349,7 @@ export class WorldView {
     }
     if (this.world.panels[id].kind === 'lamp') this.lamps.show();
     this.showPanel(id);
-    this.props.instanceMatrix.needsUpdate = true;
-    this.glass.instanceMatrix.needsUpdate = true;
+    this.props.moved();
     this.light3d.changed();
     this.castersChanged = true;
   }
@@ -377,10 +361,8 @@ export class WorldView {
 
   private showPanel(id: number): void {
     const p = this.world.panels[id];
-    const g = this.glassOf[p.prop];
-    if (g >= 0) this.glass.setMatrixAt(g, p.box.gone ? GONE : this.propMatrices[p.prop]);
-    else if (p.box.door !== undefined) this.placeDoor(p.box.door);
-    else this.props.setMatrixAt(p.prop, p.box.gone ? GONE : this.propMatrices[p.prop]);
+    if (p.box.door !== undefined) this.placeDoor(p.box.door);
+    else this.props.show(p.prop, !p.box.gone);
   }
 
   /** Set a door leaf's matrix from how far it has swung. */
@@ -388,7 +370,7 @@ export class WorldView {
     const d = this.world.doors[id];
     const p = this.world.panels[d.panel];
     if (p.box.gone) {
-      this.props.setMatrixAt(p.prop, GONE);
+      this.props.place(p.prop, null);
       return;
     }
     this.drawn[id] = d.swing;
@@ -397,17 +379,17 @@ export class WorldView {
     const dz = d.shutZ * Math.cos(a) + d.openZ * Math.sin(a);
     const [x0, z0, x1, z1] = leafRect(d, false);
     const thick = Math.min(x1 - x0, z1 - z0);
-    const m = this.propMatrices[p.prop];
+    const m = DOOR_MATRIX;
     m.makeRotationY(Math.atan2(-dz, dx));
     m.scale(V_SCALE.set(d.length, d.y1 - d.y0, thick));
     m.setPosition(d.x + (dx * d.length) / 2, (d.y0 + d.y1) / 2, d.z + (dz * d.length) / 2);
-    this.props.setMatrixAt(p.prop, m);
+    this.props.place(p.prop, m);
   }
 
   /** A panel's colour, for its debris: flat, or a tint over its texture once textured. */
   panelColor(id: number, out: THREE.Color): THREE.Color {
     const p = this.world.panels[id];
-    if (p) this.props.getColorAt(p.prop, out);
+    if (p) this.props.colorAt(p.prop, out);
     return out;
   }
 
@@ -543,7 +525,7 @@ export class WorldView {
       // Come to rest, the leaf's shadow moves in the island's map too.
       if (d.swing === 0 || d.swing === 1) this.castersChanged = true;
     });
-    if (moved) this.props.instanceMatrix.needsUpdate = true;
+    if (moved) this.props.moved();
   }
 }
 
@@ -616,88 +598,6 @@ function makeSky(): THREE.Mesh {
 
 function pick(palette: number[], t: number): number {
   return palette[Math.min(palette.length - 1, Math.floor(t * palette.length))];
-}
-
-/**
- * The window glass: pale, shiny and mostly see-through. It casts no shadow,
- * so sunlight falls through a window. Its props are hidden from `props`.
- */
-function makeGlass(world: World, props: THREE.InstancedMesh): { mesh: THREE.InstancedMesh; of: Int32Array } {
-  const of = new Int32Array(world.props.length).fill(-1);
-  let n = 0;
-  world.props.forEach((p, i) => p.style === 'glass' && (of[i] = n++));
-  const mesh = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    onTiles(glassMaterial(), world),
-    n,
-  );
-  const m = new THREE.Matrix4();
-  world.props.forEach((_, i) => {
-    if (of[i] < 0) return;
-    props.getMatrixAt(i, m);
-    mesh.setMatrixAt(of[i], m);
-    props.setMatrixAt(i, GONE);
-  });
-  mesh.receiveShadow = true;
-  // Drawn after the solid world, so what's behind it shows through.
-  mesh.renderOrder = 1;
-  return { mesh, of };
-}
-
-/**
- * Pale and mostly see-through, but mirroring the sky as glass does: what it
- * reflects isn't thinned out with what it lets through, and toward a glancing
- * angle it lets less through and mirrors more (Schlick's Fresnel). Seen from
- * indoors it mirrors the room's dimmer light rather than the sky.
- */
-function glassMaterial(): THREE.MeshStandardMaterial {
-  const material = new THREE.MeshStandardMaterial({
-    color: PROP_COLORS.glass[0], roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
-  });
-  material.onBeforeCompile = (shader) => {
-    if (!shader.fragmentShader.includes('#include <opaque_fragment>')) throw new Error('Shader anchor #include <opaque_fragment> is missing');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', /* glsl */ `
-      {
-        // Blended by alpha, the colour is thinned out by it: what's let
-        // through is, what's mirrored is divided back up.
-        float glassMirror = pow(1.0 - saturate(dot(geometryNormal, geometryViewDir)), 5.0);
-        float glassAlpha = mix(diffuseColor.a, 1.0, glassMirror);
-        outgoingLight = ((totalDiffuse + totalEmissiveRadiance) * diffuseColor.a * (1.0 - glassMirror) + totalSpecular) / glassAlpha;
-        diffuseColor.a = glassAlpha;
-      }
-      #include <opaque_fragment>`);
-  };
-  material.customProgramCacheKey = () => 'glass';
-  dimIndoors(material);
-  return material;
-}
-
-/**
- * Props cast shadows from both sides of their boxes, not only the faces turned
- * from the sun as three.js has it. A building's walls meet its corner posts
- * box to box, and where a wall's inner face is lit, a shadow-map texel on the
- * inside corner could hold the far side of the post behind it and read as lit:
- * a line of sun down the corner. The shadows' bias keeps the lit faces clear.
- */
-const PROP_SHADOW_SIDE = THREE.DoubleSide;
-
-function makeProps(world: World): { mesh: THREE.InstancedMesh; matrices: THREE.Matrix4[] } {
-  const props = world.props;
-  const mesh = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    onTiles(new THREE.MeshStandardMaterial({ roughness: 0.85, shadowSide: PROP_SHADOW_SIDE }), world),
-    props.length,
-  );
-  const c = new THREE.Color();
-  const matrices = props.map(({ box, style, tint }, i) => {
-    const m = new THREE.Matrix4().makeScale(box.maxX - box.minX, box.maxY - box.minY, box.maxZ - box.minZ);
-    m.setPosition((box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2, (box.minZ + box.maxZ) / 2);
-    mesh.setMatrixAt(i, box.gone ? GONE : m);
-    mesh.setColorAt(i, c.setHex(pick(PROP_COLORS[style], tint)));
-    return m;
-  });
-  mesh.castShadow = mesh.receiveShadow = true;
-  return { mesh, matrices };
 }
 
 /** A tall pole with a bright flag at each extraction point, visible from far off. */

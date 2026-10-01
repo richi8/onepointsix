@@ -287,6 +287,16 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   joists, a boarded parapet and stairs with treads and risers, and the shipping containers from
   corner posts, rails, ribbed steel walls and roof and a pair of doors with locking bars (see
   below for what they collide as). Buildings, crates and walls are still boxes.
+  **Resolved in part** (2026-10-01): props are drawn in their shapes over the same colliders:
+  crates with edge battens and side braces, fences of boards between posts, panelled door leaves
+  with handles, tables on legs, window frames round the glass and sills standing out of the wall.
+  Parts keep their size in metres however the box stretches (an `inset` offset per vertex in
+  `src/client/props.ts`). Checked by screenshots, not watched in play. Still boxes: concrete walls,
+  posts, lintels, roofs, floors, steps and the lamp heads. The fence boards leave slits you can
+  see through, but bullets and bots still treat the section as solid. The wood texture runs
+  across, so door panels show horizontal grain. Props now take 8 draw calls rather than 2 (about
+  +18 a frame with shadows); the benchmark's frames came out within 0.3 ms of the code before in
+  alternating runs.
 - **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
   best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
   helmet hides the face, and its hands stay open instead of gripping the gun.
