@@ -540,6 +540,21 @@ notes the chunk it came from.
   a rifleman stands, and the neck turns the head back to the aim; it eases square again for the
   pistol and for a climb. The left hand now reaches the rifle's fore-end, and comes within 5 cm
   of the bolt-action's mark (from 21 cm short).
+- **The low run is the run clip lowered** (33): the hips tipped and dropped over the run's feet,
+  not a crouched run of its own. A foot on a step's edge stands at the step's height, as the
+  ground's height counts anything under a player's width.
+  **Resolved** (2026-10-01): neither of Quaternius's free animation sets (the first library's, nor
+  the second's, out in January 2026) has a crouched run, so one is keyed by hand when the soldier
+  loads (`crouchRun` in clips.ts): hips 0.6 m up and 0.42 m behind the feet's middle, bent
+  forward 0.65 rad and 0.25 more down the spine with the head turned back up, dipping as each foot
+  lands, swaying over it and twisting with the legs while the chest stays square; short strides
+  (0.66 s, 2.1 m/s) with the feet on the ground 42% of the time, pushing off on the toe, kicking
+  only 0.2 m up behind, coming through with the knee up and landing on the heel. The crouch
+  hitbox's head at 1 m keeps it low: higher hips would need a flatter back. A foot now stands on
+  what's within 5 cm of it (a boot's half width) rather than a player's footing, so one off a
+  step's edge goes down to the ground, though its tilt is still taken from the wider footing so
+  the edge doesn't tip it. Checked in the pose viewer, with a screenshot test of four points in
+  the stride; not watched in play.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

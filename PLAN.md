@@ -386,9 +386,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   and in view (within 90 m), where they saw them fall; they don't land on bodies, go after 90 s,
   and no more than 40 lie about. The rifle's charging handle doesn't move, and the pistol's
   magazine body is a plain box inside the grip.
-- **The low run is the run clip lowered** (33): the hips tipped and dropped over the run's feet,
-  not a crouched run of its own. A foot on a step's edge stands at the step's height, as the
-  ground's height counts anything under a player's width.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

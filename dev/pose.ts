@@ -138,6 +138,7 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
     case 'run': move(5.5); break;
     case 'crouch': base.duck = 1; break;
     case 'crouchwalk': base.duck = 1; move(2.2); break;
+    case 'crouchrun': base.duck = 1; move(2.4); break;
     case 'sneak': base.duck = 1; move(0.8); break;
     case 'jump': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * -3; break;
     case 'fall': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * 5; break;

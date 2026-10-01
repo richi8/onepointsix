@@ -92,6 +92,14 @@ describe('World', () => {
     const z = (crate.minZ + crate.maxZ) / 2;
     expect(w1.groundHeight(x, z, crate.maxY)).toBe(crate.maxY);
   });
+
+  it('counts a crate under a player just off its edge, but not under a foot there', () => {
+    const crate = w1.props.find((p) => p.style === 'crate')!.box;
+    const x = crate.maxX + 0.1;
+    const z = (crate.minZ + crate.maxZ) / 2;
+    expect(w1.groundHeight(x, z, crate.maxY)).toBe(crate.maxY);
+    expect(w1.groundHeight(x, z, crate.maxY, 0.05)).toBeLessThan(crate.maxY);
+  });
 });
 
 describe('applyCmd with collision', () => {

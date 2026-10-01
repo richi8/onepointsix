@@ -7,7 +7,7 @@ import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitb
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
 import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
 import { mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
-import { clip, gaitSpeed, Reaction } from './clips.ts';
+import { clip, crouchRun, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
 import { FAR_SHADOWS } from './cascades.ts';
@@ -84,21 +84,12 @@ const LAND_TIME = 0.8;
 const LAND_AFTER = 0.2;
 /** How much longer than the clip's a crouched stride can get at speed, so the legs don't scurry. */
 const CROUCH_STRIDE = 1.3;
-/**
- * Crouched, the speeds over which the crouch-walk gives way to the run
- * played low: how much shorter its strides are, how far the hips drop and
- * the chest bends over.
- */
+/** Crouched, the speeds over which the crouch-walk gives way to the crouched run. */
 const CROUCH_FAST = [1, 1.7];
-const CROUCH_RUN_STRIDE = 1;
-const CROUCH_RUN_DROP = 0.28;
-const CROUCH_RUN_BEND = 0.45;
-const CROUCH_RUN_BACK = 0.22;
-/** How much of the run's foot lift, over a planted foot's height, the low run keeps. */
-const CROUCH_RUN_LIFT = 0.4;
-const FOOT_REST = 0.12;
 /** How far a foot reaches up or down to the ground under it, how far the hips drop to a low one, and how far an ankle turns. */
 const FOOT_REACH = 0.35;
+/** How far round a foot the ground under it counts: the boot's half width, so one over a step's edge goes down. */
+const FOOT_PAD = 0.05;
 const FOOT_DROP = 0.25;
 const ANKLE_TURN = 0.45;
 /** How long a shot's kick lasts. */
@@ -182,7 +173,7 @@ const ROUND_GEO = new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6).rotateX(Math
 
 /** What a body stands on and falls against, and the buildings it may be inside. */
 export interface Ground extends Solid {
-  groundHeight(x: number, z: number, feetY: number): number;
+  groundHeight(x: number, z: number, feetY: number, pad?: number): number;
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number;
   readonly buildings: readonly Building[];
 }
@@ -327,7 +318,7 @@ interface Figure {
   /** Seconds in the air, and since it last landed. */
   airFor: number;
   landedFor: number;
-  /** How much longer its crouched strides are than the clip's, and how far it has gone from the crouch-walk to the low run. */
+  /** How much longer its crouched strides are than the clip's, and how far it has gone from the crouch-walk to the crouched run. */
   crouchStride: number;
   crouchFast: number;
   /** How far it's turned side-on behind a long gun, 0 to 1, smoothed. */
@@ -493,8 +484,8 @@ export class Bodies {
   private modelScale = 1;
   /** Which way the death clip falls, as a yaw from facing, and how far the head ends up. */
   private deathYaw = Math.PI;
-  /** How fast the walk, run and crouch-walk clips carry the body, in m/s, measured from their feet. */
-  private gait = { walk: 1.3, run: 3.2, crouch: 0.5 };
+  /** How fast the walk, run, crouch-walk and crouched run clips carry the body, in m/s, measured from their feet. */
+  private gait = { walk: 1.3, run: 3.2, crouch: 0.5, crouchRun: 2.1 };
   private reactions: Reactions | null = null;
   /** The death clip's pose where the ragdoll takes over. */
   private slump: Slump | null = null;
@@ -527,6 +518,11 @@ export class Bodies {
   /** Swap the placeholder figures for animated soldiers carrying `guns`, in WEAPONS order. */
   setModel(gltf: GLTF, guns: GLTF[]): void {
     this.model = gltf;
+    // Keyed by hand, as no library has one.
+    if (!THREE.AnimationClip.findByName(gltf.animations, 'CrouchRun')) {
+      const others = ['CrouchWalk', 'CrouchIdle'].map((n) => clip(gltf.animations, n));
+      gltf.animations.push(crouchRun(gltf.scene, clip(gltf.animations, 'Run'), others));
+    }
     GUNS = guns.map((g, i) => {
       const { object, frame, magazinePart, actionPart, ...points } = fitGun(g, i);
       object.updateMatrixWorld(true);
@@ -543,7 +539,7 @@ export class Bodies {
     this.deathYaw = deathDirection(gltf);
     this.slump = slump(gltf, this.modelScale, HANDOFF);
     const speed = (name: string): number => gaitSpeed(gltf.scene, clip(gltf.animations, name)) * this.modelScale;
-    this.gait = { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk') };
+    this.gait = { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk'), crouchRun: speed('CrouchRun') };
     this.reactions = {
       shot: new Reaction(clip(gltf.animations, 'Gun_Shoot')),
       hit: new Reaction(clip(gltf.animations, 'HitRecieve')),
@@ -855,10 +851,7 @@ export class Bodies {
     const run = action('Run');
     const crouchIdle = action('CrouchIdle');
     const crouchWalk = action('CrouchWalk');
-    // Its own copy of the run, so it plays at its own pace and weight.
-    const crouchRun = mixer.clipAction(clip(gltf.animations, 'Run').clone());
-    crouchRun.weight = 0;
-    crouchRun.play();
+    const crouchRun = action('CrouchRun');
     const jump = action('JumpStart', true);
     const airborne = action('JumpLoop');
     const land = action('JumpLand', true);
@@ -1322,7 +1315,7 @@ export class Bodies {
     s.walk.weight = alive * ground * (1 - duck) * moving * (1 - running);
     s.run.weight = alive * ground * (1 - duck) * moving * running;
     s.crouchIdle.weight = alive * ground * duck * (1 - moving);
-    // Crouched and fast, the crouch-walk (a slow sneak) gives way to the run, played low.
+    // Crouched and fast, the crouch-walk (a slow sneak) gives way to the crouched run.
     const fast = smoothstep(CROUCH_FAST[0], CROUCH_FAST[1], speed);
     f.crouchFast = fast;
     s.crouchWalk.weight = alive * ground * duck * moving * (1 - fast);
@@ -1339,10 +1332,10 @@ export class Bodies {
     s.walk.timeScale = sign * clamp(speed / this.gait.walk, 0.6, 2);
     s.run.timeScale = sign * clamp(speed / this.gait.run, 0.6, 1.8);
     // The crouch-walk clip is a slow sneak: faster, its strides lengthen a little and its pace quickens,
-    // until the low run takes over, its strides shortened.
+    // until the crouched run takes over.
     f.crouchStride = clamp(speed / (this.gait.crouch * 2), 1, CROUCH_STRIDE);
     s.crouchWalk.timeScale = sign * clamp(speed / (this.gait.crouch * f.crouchStride), 0.6, 2.4);
-    s.crouchRun.timeScale = sign * clamp(speed / (this.gait.run * CROUCH_RUN_STRIDE), 0.5, 1.5);
+    s.crouchRun.timeScale = sign * clamp(speed / this.gait.crouchRun, 0.6, 1.5);
     for (const a of s.animated) {
       a.bone.position.copy(a.position);
       a.bone.quaternion.copy(a.quaternion);
@@ -1371,13 +1364,8 @@ export class Bodies {
 
     // Leaning, the hips move out over the feet.
     if (Math.abs(p.lean) > 1e-3) moveWorld(b.body, V_TMP2.copy(right).multiplyScalar(p.lean * LEAN_HIPS));
-    // Running crouched, low and bent over: the head's put on its hitbox below, the legs bend to the feet.
+    // Running crouched, the clip holds its legs only as a rest pose: they bend to its feet even far off.
     const low = f.crouchFast * duck * moving;
-    if (low > 0.01) {
-      // Tipped over at the hips, which go back to keep the head over the feet.
-      rotateWorld(b.body, right, -CROUCH_RUN_BEND * low);
-      moveWorld(b.body, V_TMP2.set(0, -CROUCH_RUN_DROP * low, 0).addScaledVector(forward, -CROUCH_RUN_BACK * low));
-    }
     // Side-on behind a long gun, as a rifleman stands, the left shoulder forward and the head turned back to the aim;
     // square on to climb.
     const blade = BLADE * f.blade * (1 - f.mantle);
@@ -1393,8 +1381,8 @@ export class Bodies {
     rotateWorld(b.neck, right, p.pitch * 0.35);
     this.headOnHitbox(f, s, p, step, right, forward, near);
     this.react(f, s, forward, right);
-    // Far off the legs keep the clips' pose, unless the hips were dropped for a low run.
-    if (near || low > 0.01) this.legs(f, s, legYaw, step, low);
+    // Far off the legs keep the clips' pose, unless it's running crouched.
+    if (near || low > 0.01) this.legs(f, s, legYaw, step);
     this.arms(f, s, p, near, running, right, forward);
   }
 
@@ -1502,12 +1490,12 @@ export class Bodies {
    * along a slope. If a foot is then out of reach, the hips drop to it. The
    * legs then bend to reach them.
    */
-  private legs(f: Figure, s: Soldier, legYaw: number, step: number, low: number): void {
+  private legs(f: Figure, s: Soldier, legYaw: number, step: number): void {
     const b = s.bones;
     const origin = f.group.position;
     const forward = V_TMP4.set(0, 0, -1).applyQuaternion(f.group.quaternion).applyAxisAngle(V_UP, legYaw);
     const right = V_TMP5.crossVectors(forward, V_UP);
-    const stride = lerp(1, lerp(f.crouchStride, CROUCH_RUN_STRIDE, f.crouchFast), f.duck);
+    const stride = lerp(1, lerp(f.crouchStride, 1, f.crouchFast), f.duck);
     const grounded = f.air < 0.1 && f.mantle < 0.1;
     // How much the ground under each foot counts: not in the air or climbing.
     const onGround = (1 - f.air) * (1 - f.mantle);
@@ -1517,9 +1505,7 @@ export class Bodies {
       const at = foot.getWorldPosition(V_TMP3).sub(origin);
       // In the legs' frame: x right, y up, z forward.
       let x = at.dot(right);
-      // Running low, the feet lift less, or the run's kick behind would reach the lowered hips.
       let y = at.dot(V_UP);
-      if (y > FOOT_REST) y = FOOT_REST + (y - FOOT_REST) * lerp(1, CROUCH_RUN_LIFT, low);
       let z = at.dot(forward) * stride;
       // Crouched still, a foot the body's step left behind the legs' hitbox is drawn in under it.
       const tuck = f.duck * (1 - smoothstep(0.3, 1.2, f.speed));
@@ -1594,16 +1580,19 @@ export class Bodies {
     });
   }
 
-  /** How far the ground at (x, z) is above `y`, the body's own height, within a step either way. */
-  private footRise(x: number, z: number, y: number): number {
-    return clamp(this.ground.groundHeight(x, z, y + FOOT_REACH) - y, -FOOT_REACH, FOOT_REACH);
+  /**
+   * How far the ground at (x, z) is above `y`, the body's own height, within
+   * a step either way: under the foot alone, or over a player's footing with `wide`.
+   */
+  private footRise(x: number, z: number, y: number, wide = false): number {
+    return clamp(this.ground.groundHeight(x, z, y + FOOT_REACH, wide ? undefined : FOOT_PAD) - y, -FOOT_REACH, FOOT_REACH);
   }
 
-  /** The ground's slope at (x, z), near `y`, from the heights a little way either side. */
+  /** The ground's slope at (x, z), near `y`, from the heights a little way either side, which a step's edge doesn't tip. */
   private groundNormal(x: number, z: number, y: number, out: THREE.Vector3): THREE.Vector3 {
     const d = 0.12;
-    const dx = this.footRise(x + d, z, y) - this.footRise(x - d, z, y);
-    const dz = this.footRise(x, z + d, y) - this.footRise(x, z - d, y);
+    const dx = this.footRise(x + d, z, y, true) - this.footRise(x - d, z, y, true);
+    const dz = this.footRise(x, z + d, y, true) - this.footRise(x, z - d, y, true);
     return out.set(-dx, 2 * d, -dz).normalize();
   }
 

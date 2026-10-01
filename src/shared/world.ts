@@ -489,10 +489,13 @@ export class World {
     return Math.max(this.terrainHeight(x, z), WATER_LEVEL - WATER_FLOOR_DEPTH);
   }
 
-  /** Highest surface a player with feet at feetY can stand on (steps included). */
-  groundHeight(x: number, z: number, feetY: number): number {
+  /**
+   * Highest surface a player with feet at feetY can stand on (steps
+   * included), counting anything within `pad` of (x, z): a player's footing
+   * by default, or less for one foot.
+   */
+  groundHeight(x: number, z: number, feetY: number, pad = PLAYER_RADIUS * 0.6): number {
     let h = this.floorHeight(x, z);
-    const pad = PLAYER_RADIUS * 0.6;
     for (const c of this.query(x, z, PLAYER_RADIUS)) {
       const top = topOf(c);
       if (top > feetY + STEP_HEIGHT || top <= h) continue;

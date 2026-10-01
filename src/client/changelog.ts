@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'A real crouched run',
+    notes: [
+      'Soldiers running crouched bend forward over short, quick strides that keep their feet low, rather than playing the upright run squashed down.',
+      'A foot over the edge of a step or crate goes down to the ground rather than standing on air.',
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Side-on behind the rifle',
     notes: [
       'Soldiers holding a rifle or bolt-action stand side-on behind it, left shoulder forward, and hold it out by the fore-end rather than by the magazine.',
