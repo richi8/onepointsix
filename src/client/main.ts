@@ -878,8 +878,9 @@ function playDeathcam(): void {
   deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? noCover);
   ownDeath = killedBy.e.killer === conn?.id;
   showCover(deathcam.cover);
-  // Start the bodies afresh, as they were then.
+  // Start the bodies afresh, as they were then; the magazines they dropped already lie where they fell.
   bodies.clear();
+  bodies.replaying = true;
   runHud.hideResults();
   // The killer's health, ammo and hits.
   hudEl.hidden = false;
@@ -898,6 +899,7 @@ function stopDeathcam(results = true): void {
   hudEl.classList.remove('watching');
   showCover(conn?.cover ?? noCover);
   bodies.clear();
+  bodies.replaying = false;
   if (results) showLastResults?.();
 }
 

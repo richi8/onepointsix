@@ -16,7 +16,7 @@ import { Soak, wetMaterial, type Shelter } from './rain.ts';
 import { lensOf, lightTorch, makeTorch, mountTorch, torchMount, torchPart, type Torch } from './torch.ts';
 import type { Building } from '../shared/world.ts';
 import {
-  actionMatrix, AT_REST, BOLT_START, BOLT_TIME, boltHand, type GunPoints, magazineMatrix, type Parts, path, reloadHands, shotParts, SOME_ROUNDS,
+  actionMatrix, AT_REST, BOLT_START, BOLT_TIME, boltHand, type GunPoints, magazineMatrix, type Parts, path, reloadHands, reloadMagazine, shotParts, SOME_ROUNDS,
 } from './handwork.ts';
 import { Litter } from './litter.ts';
 import { JOINT, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, stepOf, Tumbler, type Verlet } from './ragdoll.ts';
@@ -154,13 +154,13 @@ const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
  * A carried gun's, whose look is in its vertices, and a loose round's: each
  * body's own, and each dropped magazine's, wet as `soak` says (see Soak).
  */
-function gunMaterial(soak: { value: number }): THREE.MeshStandardMaterial {
+function gunMaterial(soak: { value: number } | 'instanced'): THREE.MeshStandardMaterial {
   return metal(vertexSurfaces(new THREE.MeshStandardMaterial()), soak);
 }
 function roundMaterial(soak: { value: number }): THREE.MeshStandardMaterial {
   return metal(new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 }), soak);
 }
-function metal(m: THREE.MeshStandardMaterial, soak: { value: number }): THREE.MeshStandardMaterial {
+function metal(m: THREE.MeshStandardMaterial, soak: { value: number } | 'instanced'): THREE.MeshStandardMaterial {
   dimIndoors(m);
   return wetMaterial(m, { gloss: 0.35, soak });
 }
@@ -467,6 +467,8 @@ export class Bodies {
   private readonly figures = new Map<number, Figure>();
   /** Magazines dropped in reloads, lying where they fell. */
   readonly litter: Litter;
+  /** Whether a death cam is showing what happened again, which drops nothing new. */
+  replaying = false;
   private model: GLTF | null = null;
   /** The soldier's merged geometry for each look: operator, guard and commander. */
   private readonly looks = new Map<string, THREE.BufferGeometry>();
@@ -533,6 +535,7 @@ export class Bodies {
       };
       return { ...points, ...gunLooks(parts(frame), parts(magazinePart), parts(actionPart), i, points.muzzle, points.support) };
     });
+    for (const gun of GUNS) if (gun.mag) this.litter.prepare(gun.mag, gunMaterial('instanced'));
     this.looks.clear();
     const box = new THREE.Box3().setFromObject(gltf.scene);
     this.modelScale = PLAYER_HEIGHT / (box.max.y - box.min.y);
@@ -551,14 +554,14 @@ export class Bodies {
   /**
    * Drop a magazine of `weapon`'s, placed by `matrix` in the world (from the
    * gun's space), at `velocity`, as wet as `soak`, 0 to 1: as your own
-   * reload lets one fall.
+   * reload lets one fall. Not while a death cam shows again what fell then.
    */
   dropMagazine(weapon: number, matrix: THREE.Matrix4, velocity: THREE.Vector3, soak: number): void {
     const gun = GUNS[weapon];
-    if (!gun.mag) return;
+    if (!gun.mag || this.replaying) return;
     const base = gun.magazine;
     const points = [base.clone(), base.clone().addScaledVector(gun.well, -0.08), base.clone().setZ(base.z - 0.03)];
-    this.litter.drop(gun.mag, gunMaterial, matrix, points, velocity, soak);
+    this.litter.drop(gun.mag, matrix, points, velocity, soak);
   }
 
   /**
@@ -566,7 +569,6 @@ export class Bodies {
    * `clock` says the game's time being shown; without one, time runs on by `dt`.
    */
   update(players: readonly PlayerSnap[], dt: number, camera?: THREE.Camera, clock?: Clock): void {
-    this.litter.update(dt, this.ground, this.shelter);
     this.time = clock ? clock.time : this.time + dt;
     this.clock = clock ?? null;
     if (camera) {
@@ -603,6 +605,7 @@ export class Bodies {
     }
 
     this.stepFalls(players);
+    this.litter.update(dt, this.ground, this.rags, this.shelter);
     // Wet or drying about halfway up, standing or lying.
     for (const f of [...this.figures.values(), ...this.corpses]) f.soak.update(this.shelter, f.lastX, f.lastY + (f.deadFor >= 0 ? 0.3 : 1), f.lastZ, dt);
     for (const [f, p] of posed) this.draw(f, p, dt);
@@ -612,6 +615,9 @@ export class Bodies {
       const old = f.deadFor > CORPSE_TIME * 2 || (f.deadFor > CORPSE_TIME && !f.group.visible) || i < this.corpses.length - CORPSES;
       if (old && !this.falling(f)) {
         this.dispose(f);
+        // What lay on it falls.
+        const b = f.rag!.bounds;
+        this.litter.wake(b.x, b.y, b.z, b.r);
         return false;
       }
       this.draw(f, f.snap!, dt);
@@ -702,12 +708,18 @@ export class Bodies {
 
   /** Something broke near (x, y, z) at `time`, the game's: the dead lying against it may fall further. */
   shake(x: number, y: number, z: number, reach: number, time = this.time): void {
-    this.knocks.push({ step: stepOf(time), x, y, z, reach, force: 0 });
+    this.knockAt({ step: stepOf(time), x, y, z, reach, force: 0 });
   }
 
   /** A grenade went off at (x, y, z) at `time`, the game's: it throws the dead lying near in the open. */
   blast(x: number, y: number, z: number, time = this.time): void {
-    this.knocks.push({ step: stepOf(time), x, y, z, reach: GRENADE_RADIUS, force: BLAST_DOWN });
+    this.knockAt({ step: stepOf(time), x, y, z, reach: GRENADE_RADIUS, force: BLAST_DOWN });
+  }
+
+  /** The bodies on the step it happened; the magazines lying about at once, but not again in a death cam. */
+  private knockAt(k: Knock): void {
+    this.knocks.push(k);
+    if (!this.replaying) this.knock(k, this.litter.falls);
   }
 
   /** Where a body's muzzle is in the world, or null if it isn't drawn. */
@@ -1014,7 +1026,10 @@ export class Bodies {
       f.casters = null;
     }
     if (f.drop) this.placeGun(f);
-    if (!f.group.visible) return;
+    if (!f.group.visible) {
+      if (f.soldier && !p.dead) this.loseMagazine(f, p, p.weapon);
+      return;
+    }
     if (f.body) {
       // Each pass culls the body by its sphere, in the skinned mesh's own space.
       f.group.updateMatrix();
@@ -1632,7 +1647,7 @@ export class Bodies {
     f.gun.translateX(pistol ? -0.08 : 0);
     if (!near) {
       this.showParts(f, AT_REST);
-      f.lastMag = null;
+      this.loseMagazine(f, p, f.weapon);
       return;
     }
 
@@ -1688,11 +1703,8 @@ export class Bodies {
     // The magazine let go of: it falls from where it was, in the gun or in the hand.
     const was = f.lastMag;
     f.lastMag = parts.mag;
-    if (parts.mag === 'gone' && was !== null && was !== 'gone' && gun.mag) {
-      const from = was === 'hand' ? this.inHand(f, gun, leftAt, M_B) : M_B.multiplyMatrices(f.gun.matrixWorld, magazineMatrix(gun, was, M_C));
-      const heading = p.yaw + f.heading;
-      const velocity = V_TMP.set(-Math.sin(heading) * f.speed, -0.5, -Math.cos(heading) * f.speed);
-      this.dropMagazine(f.weapon, from, velocity, f.soak.level.value);
+    if (parts.mag === 'gone' && was !== null && was !== 'gone') {
+      this.dropFrom(f, p, was === 'hand' ? this.inHand(f, gun, leftAt, M_B) : M_B.multiplyMatrices(f.gun.matrixWorld, magazineMatrix(gun, was, M_C)));
     }
 
     // The right hand round the grip, fingers forward round its front, thumb up over it; on the bolt, fingers down over it.
@@ -1773,6 +1785,26 @@ export class Bodies {
       carried.position.copy(hand.wrist.localToWorld(V_TMP.copy(hand.knuckles).multiplyScalar(0.8)));
       f.group.worldToLocal(carried.position);
     }
+  }
+
+  /** Its magazine of `weapon`'s falls from `from`, as it goes. */
+  private dropFrom(f: Figure, p: PlayerSnap, from: THREE.Matrix4, weapon = f.weapon): void {
+    const heading = p.yaw + f.heading;
+    const velocity = V_TMP.set(-Math.sin(heading) * f.speed, -0.5, -Math.cos(heading) * f.speed);
+    this.dropMagazine(weapon, from, velocity, f.soak.level.value);
+  }
+
+  /**
+   * Too far or out of sight to pose the hands, but a reload's magazine still
+   * falls, from the gun of `weapon`'s where it was last posed on the body.
+   */
+  private loseMagazine(f: Figure, p: PlayerSnap, weapon: number): void {
+    const mag = p.act === 'reload' ? reloadMagazine(weapon, p.actT) : 0;
+    if (mag === 'gone' && typeof f.lastMag === 'number') {
+      f.gun.updateWorldMatrix(true, false);
+      this.dropFrom(f, p, M_B.multiplyMatrices(f.gun.matrixWorld, magazineMatrix(GUNS[weapon], f.lastMag, M_C)), weapon);
+    }
+    f.lastMag = mag;
   }
 
   /** Where a magazine held in the left hand at `at` is, as a matrix from the gun's space: its base in the palm, as upright as the gun. */

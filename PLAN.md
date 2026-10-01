@@ -386,6 +386,13 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   and in view (within 90 m), where they saw them fall; they don't land on bodies, go after 90 s,
   and no more than 40 lie about. The rifle's charging handle doesn't move, and the pistol's
   magazine body is a plain box inside the grip.
+  **Resolved in part** (2026-10-01): every body drops its magazines, near, far or out of sight
+  (from where its gun was last posed, so a body never yet seen drops one from its feet), and
+  they're drawn instanced, one draw a kind, so 400 lie about for the whole game, the oldest
+  going first. They land on bodies, fall when the body under them is cleared away, and are
+  thrown by grenades; a death cam drops none again. Still each player's own: they fall from
+  each screen's poses, not the server's, so two players would see them a little apart. They
+  don't land on the living, nor on dropped guns or each other.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

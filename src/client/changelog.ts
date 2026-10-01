@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Magazines that stay',
+    notes: [
+      "Every soldier's empty magazines fall where they reload, however far off or out of sight, and lie there for the rest of the game.",
+      'Magazines land on bodies lying under them, fall when a body is cleared away, and are thrown about by grenades.',
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'A real crouched run',
     notes: [
       'Soldiers running crouched bend forward over short, quick strides that keep their feet low, rather than playing the upright run squashed down.',

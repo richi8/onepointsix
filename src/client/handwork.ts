@@ -85,6 +85,13 @@ export function magazineMatrix(gun: GunPoints, out: number, m: THREE.Matrix4): T
   return m.makeTranslation(gun.well.x * out, gun.well.y * out, gun.well.z * out);
 }
 
+/** Where the magazine is `t` (0 to 1) through a reload of `weapon`: the bolt-action's never moves. */
+export function reloadMagazine(weapon: number, t: number): Parts['mag'] {
+  if (weapon === PISTOL) return t < 0.06 ? 0 : t < 0.3 ? 'gone' : t < 0.56 ? 'hand' : 0.07 * (1 - smoothstep(0.56, 0.64, t));
+  if (weapon === BOLT) return 0;
+  return t < 0.13 ? 0 : t < 0.22 ? 0.1 * smoothstep(0.13, 0.2, t) : t < 0.44 ? 'gone' : t < 0.64 ? 'hand' : 0.08 * (1 - smoothstep(0.64, 0.74, t));
+}
+
 /** The pistol's slide `firedFor` seconds after a shot: back and home again in a blink. */
 export function shotParts(weapon: number, firedFor: number): Parts {
   if (weapon !== PISTOL || firedFor > 0.07) return AT_REST;
@@ -112,7 +119,7 @@ export function reloadHands(
       [0, rest.left], [0.1, rest.left], [0.28, pouch], [0.38, pouch], [0.56, out(0.07)], [0.64, out(0)], [0.66, out(0)],
       [0.74, grab], [0.8, racked], [0.83, racked], [1, rest.left],
     ]);
-    const mag = t < 0.06 ? 0 : t < 0.3 ? 'gone' : t < 0.56 ? 'hand' : 0.07 * (1 - smoothstep(0.56, 0.64, t));
+    const mag = reloadMagazine(weapon, t);
     const slide = SLIDE_TRAVEL * smoothstep(0.74, 0.8, t) * (1 - smoothstep(0.83, 0.85, t));
     return { left, right: rest.right, rightAway: 0, holding: mag === 'hand' ? 'magazine' : null, parts: { mag, back: slide, lift: 0 } };
   }
@@ -145,7 +152,7 @@ export function reloadHands(
     [0, rest.left], [0.13, out(0)], [0.2, out(0.1)], [0.23, out(0.1)], [0.38, pouch], [0.46, pouch],
     [0.64, out(0.08)], [0.74, out(0)], [0.78, out(0)], [0.95, rest.left],
   ]);
-  const mag = t < 0.13 ? 0 : t < 0.22 ? 0.1 * smoothstep(0.13, 0.2, t) : t < 0.44 ? 'gone' : t < 0.64 ? 'hand' : 0.08 * (1 - smoothstep(0.64, 0.74, t));
+  const mag = reloadMagazine(weapon, t);
   return { left, right: rest.right, rightAway: 0, holding: mag === 'hand' ? 'magazine' : null, parts: { mag, back: 0, lift: 0 } };
 }
 
