@@ -923,6 +923,8 @@ function showCover(cover: CoverState): void {
 /** The sky's light where the gun in your hands is, and how fast it brightens which way, per metre in the world. */
 const indoors = new THREE.Color(1, 1, 1);
 const indoorTowards = new THREE.Vector3();
+/** And the sun's light bounced to it, as a share of the sun's. */
+const indoorBounce = new THREE.Color(0, 0, 0);
 /** How far ahead of the eye the gun is, metres, and the probe a step either side of it. */
 const GUN_AHEAD = 0.4;
 const PROBE = 0.5;
@@ -950,7 +952,8 @@ function lightGun(dt: number): void {
   const k = Math.min(dt * 4, 1);
   indoors.lerp(light.at(p.x, p.y, p.z, probe), k);
   indoorTowards.lerp(towards, k);
-  viewModel.shade(indoors, towards.copy(indoorTowards).applyQuaternion(unturn.copy(camera.quaternion).invert()));
+  indoorBounce.lerp(light.sunAt(p.x, p.y, p.z, probe), k);
+  viewModel.shade(indoors, towards.copy(indoorTowards).applyQuaternion(unturn.copy(camera.quaternion).invert()), indoorBounce);
 }
 
 /** The death cam, once loaded. */
