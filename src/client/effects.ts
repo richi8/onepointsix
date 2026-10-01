@@ -104,12 +104,14 @@ export class Effects {
     for (let i = 0; i < MAX_PUFFS; i++) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, transparent: true, depthWrite: false }));
       sprite.visible = false;
+      sprite.layers.enable(REFLECTED);
       scene.add(sprite);
       this.puffs.push({ sprite, age: PUFF_LIFE, size: 0 });
     }
     for (let i = 0; i < MAX_SMOKE; i++) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, transparent: true, depthWrite: false, color: 0x6b665e }));
       sprite.visible = false;
+      sprite.layers.enable(REFLECTED);
       scene.add(sprite);
       this.smoke.push({ sprite, age: SMOKE_LIFE, size: 0 });
     }
@@ -117,6 +119,7 @@ export class Effects {
       map: puffTex, color: 0xffb35c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
     }));
     this.fireball.visible = false;
+    this.fireball.layers.enable(REFLECTED);
     scene.add(this.fireball, this.boomLight);
 
     const chunkGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -226,6 +229,7 @@ export class Effects {
       if (this.tracers.length >= MAX_TRACERS) return;
       t = { mesh: new THREE.Mesh(this.tracerGeo, this.tracerMat), from: new THREE.Vector3(), dir: new THREE.Vector3(), dist: 0, age: 0 };
       t.mesh.frustumCulled = false;
+      t.mesh.layers.enable(REFLECTED);
       this.scene.add(t.mesh);
       this.tracers.push(t);
     }

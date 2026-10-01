@@ -8,6 +8,7 @@ import { clamp, smoothstep } from '../shared/geom.ts';
 import { GROUND_LAYERS, groundWeights } from '../shared/ground.ts';
 import { Layer, LAYERS } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
+import { REFLECTED } from './water.ts';
 import { wetMaterial, type WetOptions } from './rain.ts';
 import { groundTint, onTiles } from './terrain.ts';
 import { WIND_GLSL, wind } from './wind.ts';
@@ -132,6 +133,9 @@ export class GroundCover {
       }), KINDS.bush.range, this.eye, 0.4), world), BUSH_WET)),
       pebble: make('pebble', pebbleGeometry(), wetMaterial(fading(new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), KINDS.pebble.range, this.eye, 0), { gloss: 0.4, sheltered: false })),
     };
+    // Bushes stand tall enough to show in the sea's reflection; grass, blades
+    // and pebbles are too low and too fine for its third of the resolution.
+    this.layers.bush.mesh.layers.enable(REFLECTED);
   }
 
   applyAssets(assets: Assets): void {

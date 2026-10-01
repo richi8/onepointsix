@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PlayerSnap } from '../shared/protocol.ts';
 import { localLights } from './locallights.ts';
+import { REFLECTED } from './water.ts';
 
 // Flashlights after dark. Your own lights the way from just below your eye,
 // and casts shadows from a map of its own, so it doesn't light the far side
@@ -61,6 +62,8 @@ export class Flashlights {
       const beam = new THREE.Mesh(beamGeo, beamMaterial());
       beam.visible = false;
       beam.frustumCulled = false;
+      // The beam is mirrored in the sea; the glare isn't, as it's bright only toward the eye.
+      beam.layers.enable(REFLECTED);
       const glare = new THREE.Sprite(new THREE.SpriteMaterial({
         map: glareMap, color: 0xfff2de, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
       }));

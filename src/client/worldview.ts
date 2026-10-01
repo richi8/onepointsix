@@ -10,7 +10,7 @@ import { Layer } from '../shared/layers.ts';
 import { patchFog } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain, type Shelter } from './rain.ts';
-import { IndoorLight } from './indoorlight.ts';
+import { dimIndoors, IndoorLight } from './indoorlight.ts';
 import { IslandMap, LEVEL_GATHER } from './islandmap.ts';
 import { Lamps } from './lamps.ts';
 import { surfaceMaterial } from './surfaces.ts';
@@ -622,9 +622,7 @@ function makeGlass(world: World, props: THREE.InstancedMesh): { mesh: THREE.Inst
   world.props.forEach((p, i) => p.style === 'glass' && (of[i] = n++));
   const mesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
-    onTiles(new THREE.MeshStandardMaterial({
-      color: PROP_COLORS.glass[0], roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
-    }), world),
+    onTiles(glassMaterial(), world),
     n,
   );
   const m = new THREE.Matrix4();
@@ -638,6 +636,34 @@ function makeGlass(world: World, props: THREE.InstancedMesh): { mesh: THREE.Inst
   // Drawn after the solid world, so what's behind it shows through.
   mesh.renderOrder = 1;
   return { mesh, of };
+}
+
+/**
+ * Pale and mostly see-through, but mirroring the sky as glass does: what it
+ * reflects isn't thinned out with what it lets through, and toward a glancing
+ * angle it lets less through and mirrors more (Schlick's Fresnel). Seen from
+ * indoors it mirrors the room's dimmer light rather than the sky.
+ */
+function glassMaterial(): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({
+    color: PROP_COLORS.glass[0], roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
+  });
+  material.onBeforeCompile = (shader) => {
+    if (!shader.fragmentShader.includes('#include <opaque_fragment>')) throw new Error('Shader anchor #include <opaque_fragment> is missing');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', /* glsl */ `
+      {
+        // Blended by alpha, the colour is thinned out by it: what's let
+        // through is, what's mirrored is divided back up.
+        float glassMirror = pow(1.0 - saturate(dot(geometryNormal, geometryViewDir)), 5.0);
+        float glassAlpha = mix(diffuseColor.a, 1.0, glassMirror);
+        outgoingLight = ((totalDiffuse + totalEmissiveRadiance) * diffuseColor.a * (1.0 - glassMirror) + totalSpecular) / glassAlpha;
+        diffuseColor.a = glassAlpha;
+      }
+      #include <opaque_fragment>`);
+  };
+  material.customProgramCacheKey = () => 'glass';
+  dimIndoors(material);
+  return material;
 }
 
 /**

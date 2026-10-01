@@ -91,6 +91,8 @@ interface Reflection {
   camera: THREE.PerspectiveCamera;
   /** From the world to the picture's texture coordinates. */
   matrix: { value: THREE.Matrix4 };
+  /** From the picture's clip space back to the mirrored camera's view, to find how far off what's in it is. */
+  unproject: { value: THREE.Matrix4 };
   /** 1 while the picture is up to date, 0 while the sea should fall back to the sky's. */
   on: { value: number };
 }
@@ -132,6 +134,7 @@ export class Water {
       target: reflectionTarget(),
       camera: new THREE.PerspectiveCamera(),
       matrix: { value: new THREE.Matrix4() },
+      unproject: { value: new THREE.Matrix4() },
       on: { value: 0 },
     };
     this.reflection.camera.layers.set(REFLECTED);
@@ -161,6 +164,7 @@ export class Water {
 
   /** Free the reflection's picture and the GPU's counts. */
   dispose(): void {
+    this.reflection.target.depthTexture?.dispose();
     this.reflection.target.dispose();
     const p = this.probe;
     p.disk.geometry.dispose();
@@ -193,6 +197,7 @@ export class Water {
     r.matrix.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
       .multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
     clipBelow(cam, WATER_LEVEL - 0.3);
+    r.unproject.value.copy(cam.projectionMatrix).invert();
 
     const was = renderer.getRenderTarget();
     const shadows = renderer.shadowMap.autoUpdate;
@@ -348,10 +353,11 @@ export function wobble(camera: THREE.PerspectiveCamera, time: number): void {
  * with shaders of their own, in linear colour and not tone mapped, which
  * would compile every material a second time: seconds on a cold shader
  * cache. Told it's a picture for XR, it uses the screen's, tone mapped and
- * in sRGB; the sea undoes both as it reads it (seaUnmap).
+ * in sRGB; the sea undoes both as it reads it (seaUnmap). Its depth is kept
+ * for the sea to find how far behind the surface what it mirrors is.
  */
 function reflectionTarget(): THREE.WebGLRenderTarget {
-  const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, colorSpace: THREE.SRGBColorSpace });
+  const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, colorSpace: THREE.SRGBColorSpace, depthTexture: new THREE.DepthTexture(1, 1) });
   (target as { isXRRenderTarget?: boolean }).isXRRenderTarget = true;
   return target;
 }
@@ -362,9 +368,14 @@ function reflectionTarget(): THREE.WebGLRenderTarget {
  * renderer uses (see main.ts). Colours never tone mapped, like the sky's,
  * come out a little brighter, as if they had been.
  */
+/** The brightest the mirror picture is read, in sRGB, before undoing the tone mapping. */
+const UNMAP_TOP = 0.95;
 const UNMAP_GLSL = /* glsl */ `
   vec3 seaUnmap(vec3 c) {
-    c = sRGBTransferEOTF(vec4(max(c, 0.0), 1.0)).rgb;
+    // Undone, a colour at the top of the curve comes out without limit. On
+    // screen anything brighter is clipped to white, but the picture isn't, so
+    // an explosion's glow added over the sky would mirror brighter than it is.
+    c = sRGBTransferEOTF(vec4(clamp(c, 0.0, ${UNMAP_TOP}), 1.0)).rgb;
     // The compression above 0.76 and the desaturation toward the peak with it.
     const float start = 0.8 - 0.04;
     const float d = 1.0 - start;
@@ -498,6 +509,8 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
     seaMap: { value: new THREE.Vector4(1 / world.size * ((n - 1) / n), world.half, 0.5 / n, 0) },
     seaReflection: { value: reflection.target.texture },
     seaReflectionMatrix: reflection.matrix,
+    seaReflectionDepth: { value: reflection.target.depthTexture },
+    seaReflectionUnproject: reflection.unproject,
     seaReflecting: reflection.on,
   };
   const common = /* glsl */ `
@@ -507,6 +520,8 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
     uniform vec4 seaMap;
     uniform sampler2D seaReflection;
     uniform mat4 seaReflectionMatrix;
+    uniform sampler2D seaReflectionDepth;
+    uniform mat4 seaReflectionUnproject;
     uniform float seaReflecting;
     varying vec3 vSeaPos;
     float seaDepth(vec2 p) {
@@ -580,7 +595,19 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
           float grazing = pow(1.0 - facing, 4.0);
           float fresnel = min(0.02 + 0.98 * pow(1.0 - facing, 5.0), 0.6);
           vec4 at = seaReflectionMatrix * vec4(vSeaPos.x, ${WATER_LEVEL.toFixed(2)}, vSeaPos.z, 1.0);
-          vec2 uv = at.xy / at.w + seaNormal.xz * vec2(0.06, 0.1) - vec2(0.0, 0.012 * grazing);
+          vec2 still = at.xy / at.w;
+          // A tilted wave turns the mirrored ray by an angle, which moves
+          // what it meets by its distance behind the surface: the sky, as far
+          // off as can be, by the whole of it, a soldier wading by hardly any.
+          float depth = texture2D(seaReflectionDepth, still).r;
+          float bend = 1.0;
+          if (depth < 1.0) {
+            vec4 seen = seaReflectionUnproject * vec4(still * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+            float whole = length(seen.xyz / seen.w);
+            float near = distance(cameraPosition, vec3(vSeaPos.x, ${WATER_LEVEL.toFixed(2)}, vSeaPos.z));
+            bend = clamp((whole - near) / max(whole, 1e-3), 0.0, 1.0);
+          }
+          vec2 uv = still + seaNormal.xz * vec2(0.06, 0.1) * bend - vec2(0.0, 0.012 * grazing);
           vec3 mirrored = seaUnmap(texture2D(seaReflection, uv).rgb);
           float k = fresnel * (1.0 - foam);
           outgoingLight = mix(outgoingLight, mirrored, k);

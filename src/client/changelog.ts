@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Fuller reflections',
+    notes: [
+      "The sea's ripples no longer tear apart what stands at the water's edge: a soldier wading or a tree on the shore mirrors clearly, while the sky and the far island still ripple.",
+      'Bushes, tracers, smoke, explosions and flashlight beams now show in the sea.',
+      'Windows mirror the sky, more at a glancing angle.',
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Moving reflections',
     notes: [
       "Soldiers seen only in the sea's reflection, out of sight above the top of the screen, now show there and move.",
