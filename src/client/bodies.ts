@@ -373,6 +373,8 @@ interface Soldier {
    * undone by hand before each update, or they would pile up.
    */
   animated: { bone: THREE.Object3D; position: THREE.Vector3; quaternion: THREE.Quaternion }[];
+  /** Which way the chest faces, in the chest bone's own space. */
+  chest: THREE.Vector3;
   /** Upper arm, forearm, thigh and shin lengths, measured at rest. */
   arm: number;
   forearm: number;
@@ -903,6 +905,8 @@ export class Bodies {
     return {
       mixer, idle, walk, run, crouchIdle, crouchWalk, crouchRun, jump, airborne, land, death, bones, hands, nade, fresh, round, pack, animated,
       reacting: [r.shot, r.hit, r.hitHead].map((reaction) => reaction.bones(model)),
+      // The figure faces -z, as it stands at rest.
+      chest: new THREE.Vector3(0, 0, -1).transformDirection(M_A.copy(bones.spine2.matrixWorld).invert()),
       feet: [foothold(), foothold()],
       arm: span(bones.rArm, bones.rForeArm), forearm: span(bones.rForeArm, bones.rHand),
       thigh: span(bones.rUpLeg, bones.rLeg), shin: span(bones.rLeg, bones.rFoot),
@@ -1695,11 +1699,14 @@ export class Bodies {
     // The sight line runs just under the eye, a long gun's butt against the front of the shoulder, the pistol held
     // out at arm's length.
     const gun = GUNS[f.weapon];
-    // Hunched over, the shoulders ride up level with the head: the gun stays below the eye all the same.
-    const eye = f.group.worldToLocal(this.headAt(s, V_TMP2)).y - GRIP_BELOW_HEAD;
-    f.gun.position.set(shoulder.x - GUN_IN, Math.min(shoulder.y + 0.06, eye) - low * 0.12, shoulder.z);
-    f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip, 'YXZ');
-    f.gun.translateZ((pistol ? -0.5 : -(gun.butt + SHOULDER_POCKET)) + kick * 0.04);
+    // A long gun's butt sits on the front of the shoulder, which faces the way the chest does, side-on or leaning;
+    // hunched over, where the shoulders ride up level with the head, the gun stays below the eye all the same.
+    const at = pistol ? V_POCKET.copy(shoulder) : f.group.worldToLocal(b.rArm.getWorldPosition(V_POCKET)
+      .addScaledVector(V_CHEST.copy(s.chest).transformDirection(b.spine2.matrixWorld), SHOULDER_DEPTH + low * LOW_OUT));
+    const head = f.group.worldToLocal(this.headAt(s, V_TMP2));
+    f.gun.position.set(at.x - (pistol ? 0.1 : 0), Math.min(at.y + 0.06, head.y - GRIP_BELOW_HEAD) - low * 0.12, at.z);
+    f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip + Math.max(-p.lean, 0) * LEAN_CANT, 'YXZ');
+    f.gun.translateZ((pistol ? -0.5 : -gun.butt) + kick * 0.04);
     f.gun.translateX(pistol ? -0.08 : 0);
     if (!near) {
       this.showParts(f, AT_REST);
@@ -1906,14 +1913,23 @@ const CLIMB_HIGHEST = 1.6;
 /** How long a hit's flinch lasts. */
 const REACT_TIME = 0.6;
 
-/** How far in from the right shoulder joint a gun is held, and how far out the right elbow is held, against down. */
-const GUN_IN = 0.04;
+/**
+ * How far a gun is rolled with a full lean to the left, away from the right
+ * shoulder its stock is on, as the chest rolls up under it.
+ */
+const LEAN_CANT = 0.8;
+/** How far out the right elbow is held, against down. */
 const ELBOW_OUT = 1;
 const ELBOW_DOWN = 0.3;
 /** How far below the middle of the head a gun's grip is held at most, so its sight line runs under the eye. */
 const GRIP_BELOW_HEAD = 0.14;
-/** How far in front of the shoulder joint a long gun's butt sits, in its pocket. */
-const SHOULDER_POCKET = 0.07;
+/**
+ * How far in front of the right shoulder joint a long gun's butt sits, the
+ * way the chest faces: out on the front of the vest. A gun carried low across
+ * the chest is held further out still.
+ */
+const SHOULDER_DEPTH = 0.25;
+const LOW_OUT = 0.1;
 /** How much of an arm's full length the hands reach to, so the elbows stay a little bent. */
 const ARM_STRETCH = 0.96;
 /** How far behind the grip the wrist of the hand round it is, near enough. */
@@ -2122,6 +2138,8 @@ const V_BACK = new THREE.Vector3(0, 0, 1);
 const V_RIGHT = new THREE.Vector3();
 const V_FORWARD = new THREE.Vector3();
 const V_MUZZLE = new THREE.Vector3();
+const V_POCKET = new THREE.Vector3();
+const V_CHEST = new THREE.Vector3();
 const V_TMP = new THREE.Vector3();
 const V_TMP2 = new THREE.Vector3();
 const V_TMP3 = new THREE.Vector3();
