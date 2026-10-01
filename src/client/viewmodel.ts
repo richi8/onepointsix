@@ -44,6 +44,13 @@ const SLEEVE = 0x44566a;
 /** Length of a suppressor on the barrel. */
 const CAN_LENGTH = 0.15;
 const FLASH_TIME = 0.045;
+/**
+ * How far the sky's light on the gun leans toward the brighter side indoors,
+ * for each step from dark to fully lit across a metre, and at most, as a
+ * share of straight up.
+ */
+const LEAN = 2;
+const MAX_LEAN = 1.2;
 const TORCH_MAT = torchMaterial();
 
 interface Model {
@@ -147,8 +154,14 @@ export class ViewModel {
   private readonly wet = new Map<THREE.Material, THREE.MeshStandardMaterial>();
   private sky = 1;
   private sunShare = 0;
-  /** Share of the sky's light where you stand, 1 outdoors. */
-  private indoors = 1;
+  /** The sky's and the ground's colours, before the light where you stand dims and tints them. */
+  private readonly skyColor = new THREE.Color(0xcfdcea);
+  private readonly groundColor = new THREE.Color(0x5a5440);
+  /** The sky's light where the gun is, red, green and blue, white outdoors, and which way it's brighter, in the view's space. */
+  private readonly indoors = new THREE.Color(1, 1, 1);
+  private readonly towards = new THREE.Vector3();
+  /** Its share, as bright: what dims the sun and the reflections. */
+  private share = 1;
 
   constructor() {
     this.scene.add(this.hemi);
@@ -199,24 +212,34 @@ export class ViewModel {
    * day's light, `sun` the sun's or moon's colour and `sunShare` its share.
    */
   setLight(ambient: number, sun: THREE.Color, sunShare: number, sky: THREE.Color, ground: THREE.Color): void {
-    this.hemi.color.copy(sky);
-    this.hemi.groundColor.copy(ground);
+    this.skyColor.copy(sky);
+    this.groundColor.copy(ground);
     this.sun.color.copy(sun);
     this.sunShare = sunShare;
     this.sky = ambient;
-    this.shade(this.indoors);
+    this.shade(this.indoors, this.towards);
   }
 
   /**
-   * How much of the sky's light reaches where you stand, from 1 outdoors
-   * down to a dim room's: the gun is lit that much less. The sun is too, as
-   * walls and a roof mostly keep it off.
+   * How much of the sky's light reaches the gun, in red, green and blue, from
+   * white outdoors down to a dim room's, and how fast it brightens which way,
+   * per metre in the view's space: the gun is lit that much less, in that
+   * colour, and from the side of a window or a doorway. The sun is dimmed
+   * too, as walls and a roof mostly keep it off.
    */
-  shade(share: number): void {
-    this.indoors = share;
-    this.hemi.intensity = 1.4 * this.sky * share;
-    this.sun.intensity = 2 * this.sunShare * share;
-    this.scene.environmentIntensity = 0.8 * this.sky * share;
+  shade(light: THREE.Color, towards: THREE.Vector3): void {
+    this.indoors.copy(light);
+    this.towards.copy(towards);
+    this.share = 0.2126 * light.r + 0.7152 * light.g + 0.0722 * light.b;
+    this.hemi.color.copy(this.skyColor).multiply(light);
+    this.hemi.groundColor.copy(this.groundColor).multiply(light);
+    this.hemi.intensity = 1.4 * this.sky;
+    // From overhead, leaning toward the brighter side.
+    this.hemi.position.copy(towards).multiplyScalar(LEAN);
+    if (this.hemi.position.length() > MAX_LEAN) this.hemi.position.setLength(MAX_LEAN);
+    this.hemi.position.y += 1;
+    this.sun.intensity = 2 * this.sunShare * this.share;
+    this.scene.environmentIntensity = 0.8 * this.sky * this.share;
   }
 
   /** Your flashlight is on, lighting the gun from the side. */
@@ -228,7 +251,7 @@ export class ViewModel {
   /** Swap the stand-in shapes for real guns, in WEAPONS order, lit by the sky. */
   setGuns(guns: GLTF[], environment: THREE.Texture): void {
     this.scene.environment = environment;
-    this.scene.environmentIntensity = 0.8 * this.sky * this.indoors;
+    this.scene.environmentIntensity = 0.8 * this.sky * this.share;
     this.models.forEach((m, i) => {
       const gun = fitGun(guns[i], i);
       for (const part of m.body) m.group.remove(part);

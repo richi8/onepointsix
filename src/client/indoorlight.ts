@@ -2,17 +2,22 @@ import * as THREE from 'three';
 import { HOUSE_ROOF, inBuilding, type Box, type Building, type Tree, type World } from '../shared/world.ts';
 import { ISLAND_GLSL, islandUniforms, type IslandMap } from './islandmap.ts';
 
-// How much of the sky's light reaches each point inside the buildings. Each
-// building has a small grid of cells over it, and each cell holds the share of
-// directions up to the sky that leave the building through a doorway, a
-// window or a hole in the roof without meeting a wall, each counted as much
-// as the sky that way isn't hidden outside, by hills, trees and other
-// buildings. So a room is lit from its windows and doors and dark in its far
-// corners, a room facing a hill is darker than one facing the sea, and a
+// How much of the sky's light reaches each point inside the buildings, and
+// in what colour. Each building has a small grid of cells over it, and each
+// cell holds the share of directions up to the sky that leave the building
+// through a doorway, a window or a hole in the roof without meeting a wall,
+// each counted as much as the sky that way isn't hidden outside, by hills,
+// trees and other buildings. To that is added the light bounced once off the
+// floor, walls and ceiling round it, each as lit as the room is beside it and
+// in its own colour, and off the ground outside a doorway: so a room is lit
+// from its windows and doors and dark in its far corners, a floor in a pool of
+// light brightens the ceiling over it, and a wooden room is warmer than a
+// concrete one. A room facing a hill is darker than one facing the sea, and a
 // blown-out wall or a fallen roof lets the light in. The grids are stacked in
 // one 3D texture that materials sample, finding a building's grid from the
 // island's map (see islandmap.ts); a building's grid is worked out again, a
-// little each frame, when its doors or panels change.
+// little each frame, when its doors or panels change, and so is any other's
+// within reach whose sky that changed.
 
 /** Most buildings with a grid in the texture. */
 export const MAX_BUILDINGS = 16;
@@ -24,10 +29,18 @@ const CELL = 0.5;
 const VOXEL = 0.25;
 /** Directions up to the sky each cell looks along. */
 const RAYS = 40;
-/** Light inside with no sky in view, from light bouncing about. */
-const BOUNCE = 0.3;
+/** Directions all round each cell looks along for light bounced off what's round it. */
+const BOUNCE_RAYS = 32;
+/** Light inside with no sky in view and nothing lit round it, from light bounced more than once. */
+const AMBIENT = 0.15;
+/** How much the light bounced off what's round a cell is worth. */
+const BOUNCE_GAIN = 4.0;
 /** How much the share of sky seen is worth: a point beside a wall, seeing half the sky, is fully lit. */
 const GAIN = 2.6;
+/** The colour of what's round a building that's not a prop: the ground under it and outside, sRGB. */
+const GROUND = 0x6f6a52;
+/** Of anything else solid: concrete. */
+const CONCRETE = 0x8d8a82;
 /** Light in a building before its grid is worked out: the old flat share. */
 const FLAT = 0.3;
 /** Milliseconds a frame may spend working out grids. */
@@ -39,6 +52,8 @@ const TREE_REACH = 45;
 const CROWN_SHADE = 0.6;
 /** Directions outside worked out per step of a job. */
 const OUTSIDE_STEP = 8;
+/** How much the sky outside a building has to change, any way, for its cells to be worked out again. */
+const OUTSIDE_CHANGE = 0.02;
 /**
  * Indoors, a floor facing the sky's light straight on would look brighter than
  * the walls round it, though that light comes in sideways through windows: it
@@ -62,10 +77,10 @@ export const indoorUniforms = {
 
 /**
  * GLSL for a fragment shader: `indoorSky(p, n)` is the share of the sky's light
- * reaching point `p` on a surface facing `n`, both in world space, and
- * whether that's indoors, 0 to 1. It looks a little off the surface, into the
- * space it faces, so a wall's inside face and its outside face each read
- * their own side.
+ * reaching point `p` on a surface facing `n`, both in world space, in each of
+ * red, green and blue, and whether that's indoors, 0 to 1. It looks a little
+ * off the surface, into the space it faces, so a wall's inside face and its
+ * outside face each read their own side.
  */
 export const INDOOR_GLSL = /* glsl */ `
   uniform highp sampler3D indoorGrid;
@@ -73,17 +88,17 @@ export const INDOOR_GLSL = /* glsl */ `
   uniform vec4 indoorScale[${MAX_BUILDINGS}];
   uniform vec3 indoorCount[${MAX_BUILDINGS}];
   ${ISLAND_GLSL}
-  vec2 indoorSky(vec3 p, vec3 n) {
+  vec4 indoorSky(vec3 p, vec3 n) {
     vec3 q = p + n * 0.2;
     int slot = int(islandCell(q).b + 0.5) - 1;
-    if (slot < 0) return vec2(1.0, 0.0);
+    if (slot < 0) return vec4(1.0, 1.0, 1.0, 0.0);
     vec4 corner = indoorCorner[slot];
     vec3 c = (q - corner.xyz) * indoorScale[slot].xyz;
     vec3 count = indoorCount[slot];
-    if (any(lessThan(c, vec3(0.0))) || any(greaterThan(c, count))) return vec2(1.0, 0.0);
+    if (any(lessThan(c, vec3(0.0))) || any(greaterThan(c, count))) return vec4(1.0, 1.0, 1.0, 0.0);
     c = clamp(c, vec3(0.5), count - 0.5);
     vec3 uvw = vec3(c.x / ${SLOT[0]}.0, c.y / ${SLOT[1]}.0, (float(slot) * ${SLOT[2]}.0 + c.z) / (${SLOT[2] * MAX_BUILDINGS}.0));
-    return texture(indoorGrid, uvw).rg;
+    return texture(indoorGrid, uvw);
   }
 `;
 
@@ -109,9 +124,9 @@ export function addIndoor(shader: THREE.WebGLProgramParametersWithUniforms): voi
     .replace('#include <lights_fragment_end>', /* glsl */ `#include <lights_fragment_end>
       {
         vec3 indoorN = inverseTransformDirection(normal, viewMatrix);
-        vec2 indoor = indoorSky(vIndoorWorld, indoorN);
+        vec4 indoor = indoorSky(vIndoorWorld, indoorN);
         // Indoors, a floor gets no more of the sky's light than the walls round it.
-        float sky = indoor.x * mix(1.0, ${FLOOR_SHARE.toFixed(2)}, indoor.y * clamp(indoorN.y, 0.0, 1.0));
+        vec3 sky = indoor.rgb * mix(1.0, ${FLOOR_SHARE.toFixed(2)}, indoor.a * clamp(indoorN.y, 0.0, 1.0));
         reflectedLight.indirectDiffuse *= sky;
         reflectedLight.indirectSpecular *= sky;
       }`);
@@ -150,31 +165,50 @@ interface Grid {
   outside: Float32Array | null;
 }
 
-/** One building's grid being worked out: the sky outside a few directions at a time, then a layer of cells at a time. */
+/**
+ * One building's grid being worked out: the sky outside a few directions at a
+ * time, then a layer of cells at a time the sky each sees, then a layer at a
+ * time the light bounced to each.
+ */
 interface Job {
   slot: number;
-  /** The next direction outside to work out, then the next layer of cells up. */
+  /** The next direction outside to work out, then the next layer of cells up, then up again for bounced light. */
   ray: number;
   layer: number;
-  /** 1 where a block is solid, over the building and a margin round it. */
+  bounced: number;
+  /** The sky outside as it's being worked out again, to set on the grid once done. */
+  outside: Float32Array;
+  /** Only the sky outside may have changed: if it hasn't, the cells are left as they are. */
+  only: boolean;
+  /** What each block is, over the building and a margin round it: 0 open, or one more than its colour in `colours`. */
   solid: Uint8Array;
   vx: number;
   vy: number;
   vz: number;
+  /** Linear red, green and blue of each colour a block can be. */
+  colours: number[];
   /** The share of sky each cell sees, -1 in a solid block, NaN outdoors. */
   seen: Float32Array;
+  /** How lit each cell's surfaces are by the sky, to bounce: 1 outdoors. */
+  lit: Float32Array;
+  /** The light bounced to each open cell, red, green and blue. */
+  bounce: Float32Array;
 }
 
 export class IndoorLight {
   private readonly world: World;
   private readonly grids: Grid[] = [];
   private readonly texture: THREE.Data3DTexture;
-  /** Two bytes a cell: the share of sky's light, and 255 indoors or 0 outside. */
+  /** Four bytes a cell: the sky's light in red, green and blue, and 255 indoors or 0 outside. */
   private readonly data: Uint8Array;
   /** Buildings changed since they were worked out, to do first, oldest change first. */
   private readonly urgent: number[] = [];
-  /** Buildings not worked out yet, done nearest first. */
+  /** Buildings not worked out yet, or whose sky outside may have changed, done nearest first. */
   private readonly queue: number[] = [];
+  /** Buildings whose sky outside may have changed since it was worked out. */
+  private readonly stale = new Set<number>();
+  /** Of those, the ones worked out but for that, whose cells needn't be worked out again if it hasn't. */
+  private readonly recheck = new Set<number>();
   /** How each building's cover stood when it was last worked out. */
   private readonly signs: string[] = [];
   private job: Job | null = null;
@@ -182,16 +216,22 @@ export class IndoorLight {
   private readonly near = new THREE.Vector3();
   /** Unit directions over the sky, spread evenly. */
   private readonly rays: [number, number, number][];
+  /** Unit directions all round, spread evenly. */
+  private readonly round: [number, number, number][];
+  /** The colour of each box, sRGB. */
+  private readonly albedo: (box: Box) => number;
 
-  /** Buildings' slots are marked on `island`, for materials to find. */
-  constructor(world: World, island: IslandMap) {
+  /** Buildings' slots are marked on `island`, for materials to find; `albedo` is a box's colour, sRGB. */
+  constructor(world: World, island: IslandMap, albedo: (box: Box) => number = () => CONCRETE) {
     this.world = world;
+    this.albedo = albedo;
     this.rays = skyRays(RAYS);
+    this.round = roundRays(BOUNCE_RAYS);
     const [w, h, d] = SLOT;
-    this.data = new Uint8Array(w * h * d * MAX_BUILDINGS * 2);
-    for (let i = 0; i < this.data.length; i += 2) this.data[i] = 255;
+    this.data = new Uint8Array(w * h * d * MAX_BUILDINGS * 4).fill(255);
+    for (let i = 3; i < this.data.length; i += 4) this.data[i] = 0;
     this.texture = new THREE.Data3DTexture(this.data, w, h, d * MAX_BUILDINGS);
-    this.texture.format = THREE.RGFormat;
+    this.texture.format = THREE.RGBAFormat;
     this.texture.type = THREE.UnsignedByteType;
     this.texture.minFilter = this.texture.magFilter = THREE.LinearFilter;
     this.texture.unpackAlignment = 1;
@@ -215,18 +255,44 @@ export class IndoorLight {
     this.texture.needsUpdate = true;
   }
 
-  /** The share of the sky's light at a point, as materials see it but for the nearest cell. */
-  at(x: number, y: number, z: number): number {
+  /**
+   * The sky's light at a point in red, green and blue, as materials see it
+   * looking at that very point: blended between the cells round it.
+   */
+  at(x: number, y: number, z: number, out: THREE.Color): THREE.Color {
+    out.setRGB(1, 1, 1, THREE.LinearSRGBColorSpace);
     const [w, h, d] = SLOT;
     for (let slot = 0; slot < this.grids.length; slot++) {
       const g = this.grids[slot];
-      const ix = Math.floor((x - g.x0) / g.sx);
-      const iy = Math.floor((y - g.y0) / g.sy);
-      const iz = Math.floor((z - g.z0) / g.sz);
-      if (ix < 0 || iy < 0 || iz < 0 || ix >= g.nx || iy >= g.ny || iz >= g.nz) continue;
-      return this.data[(((slot * d + iz) * h + iy) * w + ix) * 2] / 255;
+      let cx = (x - g.x0) / g.sx;
+      let cy = (y - g.y0) / g.sy;
+      let cz = (z - g.z0) / g.sz;
+      if (cx < 0 || cy < 0 || cz < 0 || cx > g.nx || cy > g.ny || cz > g.nz) continue;
+      cx = Math.min(Math.max(cx, 0.5), g.nx - 0.5) - 0.5;
+      cy = Math.min(Math.max(cy, 0.5), g.ny - 0.5) - 0.5;
+      cz = Math.min(Math.max(cz, 0.5), g.nz - 0.5) - 0.5;
+      const ix = Math.min(Math.floor(cx), g.nx - 2);
+      const iy = Math.min(Math.floor(cy), g.ny - 2);
+      const iz = Math.min(Math.floor(cz), g.nz - 2);
+      const fx = cx - ix;
+      const fy = cy - iy;
+      const fz = cz - iz;
+      let r = 0;
+      let gr = 0;
+      let b = 0;
+      for (let k = 0; k < 8; k++) {
+        const ox = k & 1;
+        const oy = (k >> 1) & 1;
+        const oz = k >> 2;
+        const weight = (ox ? fx : 1 - fx) * (oy ? fy : 1 - fy) * (oz ? fz : 1 - fz);
+        const i = (((slot * d + iz + oz) * h + iy + oy) * w + ix + ox) * 4;
+        r += this.data[i] * weight;
+        gr += this.data[i + 1] * weight;
+        b += this.data[i + 2] * weight;
+      }
+      return out.setRGB(r / 255, gr / 255, b / 255, THREE.LinearSRGBColorSpace);
     }
-    return 1;
+    return out;
   }
 
   /** Where the camera is: the buildings round it are worked out first. */
@@ -234,11 +300,35 @@ export class IndoorLight {
     this.near.copy(p);
   }
 
-  /** Panels or doors may have changed: work out again each building whose cover isn't as it was. */
+  /**
+   * Panels or doors may have changed: work out again each building whose
+   * cover isn't as it was, and the sky outside every other within reach of it.
+   */
   changed(): void {
     this.grids.forEach((g, slot) => {
-      if (this.signs[slot] !== this.sign(g)) this.redo(slot);
+      if (this.signs[slot] === this.sign(g)) return;
+      this.redo(slot);
+      const b = g.building;
+      this.grids.forEach((other, o) => {
+        const ob = other.building;
+        const reach = OUTSIDE_REACH + Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + Math.hypot(ob.maxX - ob.minX, ob.maxZ - ob.minZ) / 2;
+        if (o !== slot && Math.hypot((b.minX + b.maxX - ob.minX - ob.maxX) / 2, (b.minZ + b.maxZ - ob.minZ - ob.maxZ) / 2) < reach) this.restale(o);
+      });
     });
+  }
+
+  /** The sky outside a building may have changed: work it out again, and its cells if it has. */
+  private restale(slot: number): void {
+    this.stale.add(slot);
+    // A job already past its sky outside is started over.
+    if (this.job?.slot === slot && this.job.ray >= RAYS) {
+      this.job = null;
+      if (!this.urgent.includes(slot)) this.queue.push(slot);
+      return;
+    }
+    if (this.job?.slot === slot || this.urgent.includes(slot) || this.queue.includes(slot)) return;
+    this.recheck.add(slot);
+    this.queue.push(slot);
   }
 
   /** How a building's cover stands, to tell when it changes. */
@@ -280,6 +370,7 @@ export class IndoorLight {
     if (this.job?.slot === slot) this.job = null;
     const i = this.queue.indexOf(slot);
     if (i >= 0) this.queue.splice(i, 1);
+    this.recheck.delete(slot);
     if (!this.urgent.includes(slot)) this.urgent.push(slot);
   }
 
@@ -299,30 +390,53 @@ export class IndoorLight {
   /** Fill a building's slot with the old flat cut: dim inside its walls and under its roof. */
   private flat(slot: number): void {
     const g = this.grids[slot];
-    this.fill(slot, (x, y, z) => (inside(g, x, y, z) ? FLAT : NaN));
+    this.fill(slot, (x, y, z, _i, rgb) => {
+      if (!inside(g, x, y, z)) return false;
+      rgb[0] = rgb[1] = rgb[2] = FLAT;
+      return true;
+    });
   }
 
-  /** Set every cell of a slot from `value(x, y, z)` at its centre; NaN for a cell outdoors. */
-  private fill(slot: number, value: (x: number, y: number, z: number, i: number) => number): void {
+  /**
+   * Set every cell of a slot from `value(x, y, z, i, rgb)` at its centre,
+   * which sets `rgb` and returns true for a cell indoors, false outdoors.
+   */
+  private fill(slot: number, value: (x: number, y: number, z: number, i: number, rgb: number[]) => boolean): void {
     const g = this.grids[slot];
     const [w, h, d] = SLOT;
+    const rgb = [1, 1, 1];
     for (let iz = 0; iz < g.nz; iz++) {
       for (let iy = 0; iy < g.ny; iy++) {
         for (let ix = 0; ix < g.nx; ix++) {
-          const v = value(g.x0 + (ix + 0.5) * g.sx, g.y0 + (iy + 0.5) * g.sy, g.z0 + (iz + 0.5) * g.sz, (iz * g.ny + iy) * g.nx + ix);
-          const k = (((slot * d + iz) * h + iy) * w + ix) * 2;
-          this.data[k] = Number.isNaN(v) ? 255 : Math.round(Math.min(Math.max(v, 0), 1) * 255);
-          this.data[k + 1] = Number.isNaN(v) ? 0 : 255;
+          rgb[0] = rgb[1] = rgb[2] = 1;
+          const indoors = value(g.x0 + (ix + 0.5) * g.sx, g.y0 + (iy + 0.5) * g.sy, g.z0 + (iz + 0.5) * g.sz, (iz * g.ny + iy) * g.nx + ix, rgb);
+          const k = (((slot * d + iz) * h + iy) * w + ix) * 4;
+          for (let c = 0; c < 3; c++) this.data[k + c] = Math.round(Math.min(Math.max(rgb[c], 0), 1) * 255);
+          this.data[k + 3] = indoors ? 255 : 0;
         }
       }
     }
   }
 
-  /** Start on a building: mark which blocks round it are solid. */
+  /** Start on a building: mark which blocks round it are solid, and in what colour. */
   private start(slot: number): Job {
     const g = this.grids[slot];
     this.signs[slot] = this.sign(g);
     const b = g.building;
+    const only = this.recheck.delete(slot);
+    const fresh = this.stale.delete(slot) || !g.outside;
+    const colours: number[] = [];
+    const known = new Map<number, number>();
+    const colour = (hex: number): number => {
+      let k = known.get(hex);
+      if (k === undefined) {
+        const c = new THREE.Color().setHex(hex);
+        k = colours.length / 3;
+        colours.push(c.r, c.g, c.b);
+        known.set(hex, k);
+      }
+      return k + 1;
+    };
     // The blocks reach a little past the cells, so rays leave through open air.
     const vx = Math.ceil((g.nx * g.sx) / VOXEL);
     const vy = Math.ceil((g.ny * g.sy) / VOXEL);
@@ -330,37 +444,55 @@ export class IndoorLight {
     const solid = new Uint8Array(vx * vy * vz);
     for (const box of g.boxes) {
       if (box.gone || box.clear) continue;
+      const k = colour(this.albedo(box));
       const x0 = Math.max(Math.floor((box.minX - g.x0) / VOXEL), 0);
       const x1 = Math.min(Math.ceil((box.maxX - g.x0) / VOXEL), vx);
       const y0 = Math.max(Math.floor((box.minY - g.y0) / VOXEL), 0);
       const y1 = Math.min(Math.ceil((box.maxY - g.y0) / VOXEL), vy);
       const z0 = Math.max(Math.floor((box.minZ - g.z0) / VOXEL), 0);
       const z1 = Math.min(Math.ceil((box.maxZ - g.z0) / VOXEL), vz);
-      for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) solid[(z * vy + y) * vx + x] = 1;
+      for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) solid[(z * vy + y) * vx + x] = k;
     }
     // The ground under the building.
+    const ground = colour(GROUND);
     for (let z = 0; z < vz; z++) {
       for (let x = 0; x < vx; x++) {
-        const ground = this.world.terrainHeight(g.x0 + (x + 0.5) * VOXEL, g.z0 + (z + 0.5) * VOXEL);
-        const top = Math.min(Math.ceil((Math.min(ground, b.floor) - g.y0) / VOXEL), vy);
-        for (let y = 0; y < top; y++) solid[(z * vy + y) * vx + x] = 1;
+        const h = this.world.terrainHeight(g.x0 + (x + 0.5) * VOXEL, g.z0 + (z + 0.5) * VOXEL);
+        const top = Math.min(Math.ceil((Math.min(h, b.floor) - g.y0) / VOXEL), vy);
+        for (let y = 0; y < top; y++) solid[(z * vy + y) * vx + x] ||= ground;
       }
     }
-    // What hides the sky outside is worked out once: it doesn't break.
-    return { slot, ray: g.outside ? RAYS : 0, layer: 0, solid, vx, vy, vz, seen: new Float32Array(g.nx * g.ny * g.nz) };
+    const n = g.nx * g.ny * g.nz;
+    return {
+      slot, ray: fresh ? 0 : RAYS, layer: 0, bounced: 0, outside: new Float32Array(RAYS), only: only && fresh,
+      solid, vx, vy, vz, colours, seen: new Float32Array(n), lit: new Float32Array(n), bounce: new Float32Array(n * 3),
+    };
   }
 
   /** Work out a few directions outside, or one layer of cells. Returns whether the building is done. */
   private step(job: Job): boolean {
     const g = this.grids[job.slot];
     if (job.ray < RAYS) {
-      g.outside ??= new Float32Array(RAYS);
       const end = Math.min(job.ray + OUTSIDE_STEP, RAYS);
-      for (; job.ray < end; job.ray++) g.outside[job.ray] = this.outsideSky(g, this.rays[job.ray]);
+      for (; job.ray < end; job.ray++) job.outside[job.ray] = this.outsideSky(g, this.rays[job.ray]);
+      if (job.ray < RAYS) return false;
+      const was = g.outside;
+      g.outside = job.outside;
+      // Nothing to do if the sky outside is as it was.
+      return job.only && !!was && was.every((v, k) => Math.abs(v - job.outside[k]) < OUTSIDE_CHANGE);
+    }
+    if (job.layer < g.ny) {
+      this.seeLayer(job, g, job.layer++);
+      if (job.layer === g.ny) this.light(job, g);
       return false;
     }
+    this.bounceLayer(job, g, job.bounced++);
+    return job.bounced >= g.ny;
+  }
+
+  /** The share of sky each cell of a layer sees. */
+  private seeLayer(job: Job, g: Grid, iy: number): void {
     const outside = g.outside!;
-    const iy = job.layer++;
     const y = g.y0 + (iy + 0.5) * g.sy;
     for (let iz = 0; iz < g.nz; iz++) {
       const z = g.z0 + (iz + 0.5) * g.sz;
@@ -371,21 +503,70 @@ export class IndoorLight {
           job.seen[i] = NaN;
           continue;
         }
-        const vx = Math.floor((x - g.x0) / VOXEL);
-        const vy = Math.floor((y - g.y0) / VOXEL);
-        const vz = Math.floor((z - g.z0) / VOXEL);
-        if (job.solid[(vz * job.vy + vy) * job.vx + vx]) {
+        if (job.solid[voxelAt(job, x - g.x0, y - g.y0, z - g.z0)]) {
           job.seen[i] = -1;
           continue;
         }
         let open = 0;
         this.rays.forEach(([dx, dy, dz], k) => {
-          if (escapes(job, x - g.x0, y - g.y0, z - g.z0, dx, dy, dz)) open += outside[k];
+          if (march(job, x - g.x0, y - g.y0, z - g.z0, dx, dy, dz) < 0) open += outside[k];
         });
         job.seen[i] = open / this.rays.length;
       }
     }
-    return job.layer >= g.ny;
+  }
+
+  /** Every cell's sky seen: how lit the surfaces in each are by the sky, those in walls as the room beside them. */
+  private light(job: Job, g: Grid): void {
+    const { seen, lit } = job;
+    for (let i = 0; i < seen.length; i++) {
+      const s = seen[i];
+      lit[i] = Number.isNaN(s) ? 1 : s >= 0 ? Math.min(AMBIENT + GAIN * s, 1) : -1;
+    }
+    for (let i = 0; i < seen.length; i++) {
+      if (lit[i] >= 0) continue;
+      let sum = 0;
+      let n = 0;
+      around(g, i, (j) => {
+        if (seen[j] >= 0) (sum += lit[j]), n++;
+      });
+      lit[i] = n ? sum / n : AMBIENT;
+    }
+  }
+
+  /** The light bounced to each open cell of a layer, off whatever its rays meet, as lit as the cell before it. */
+  private bounceLayer(job: Job, g: Grid, iy: number): void {
+    const { seen, lit, bounce, colours, solid } = job;
+    const [gr, gg, gb] = colours;
+    const y = g.y0 + (iy + 0.5) * g.sy;
+    for (let iz = 0; iz < g.nz; iz++) {
+      const z = g.z0 + (iz + 0.5) * g.sz;
+      for (let ix = 0; ix < g.nx; ix++) {
+        const i = (iz * g.ny + iy) * g.nx + ix;
+        if (!(seen[i] >= 0)) continue;
+        const x = g.x0 + (ix + 0.5) * g.sx;
+        let r = 0;
+        let gn = 0;
+        let b = 0;
+        for (const [dx, dy, dz] of this.round) {
+          const hit = march(job, x - g.x0, y - g.y0, z - g.z0, dx, dy, dz);
+          if (hit < 0) {
+            // Out to the sky, counted already, or down to the ground outside, in the open.
+            if (dy < 0) (r += gr), (gn += gg), (b += gb);
+            continue;
+          }
+          const c = (solid[hit] - 1) * 3;
+          const l = lit[cellOf(job, g, before)];
+          r += colours[c] * l;
+          gn += colours[c + 1] * l;
+          b += colours[c + 2] * l;
+        }
+        const k = BOUNCE_GAIN / this.round.length;
+        bounce[i * 3] = AMBIENT + r * k;
+        bounce[i * 3 + 1] = AMBIENT + gn * k;
+        bounce[i * 3 + 2] = AMBIENT + b * k;
+      }
+    }
   }
 
   /**
@@ -422,30 +603,45 @@ export class IndoorLight {
   /** A building is worked out: light its cells, and fill those in walls and under the floor from the room beside them. */
   private finish(job: Job): void {
     const g = this.grids[job.slot];
-    const seen = job.seen;
-    const at = (ix: number, iy: number, iz: number) =>
-      ix < 0 || iy < 0 || iz < 0 || ix >= g.nx || iy >= g.ny || iz >= g.nz ? NaN : seen[(iz * g.ny + iy) * g.nx + ix];
-    this.fill(job.slot, (_x, _y, _z, i) => {
+    // Its sky outside was as it was: so are its cells.
+    if (job.bounced < g.ny) return;
+    const { seen, bounce } = job;
+    this.fill(job.slot, (_x, _y, _z, i, rgb) => {
       const s = seen[i];
-      if (Number.isNaN(s)) return NaN;
-      if (s >= 0) return BOUNCE + GAIN * s;
-      // In a wall: as the open cells inside next to it, so its inside face reads the room.
-      const ix = i % g.nx;
-      const iy = Math.floor(i / g.nx) % g.ny;
-      const iz = Math.floor(i / (g.nx * g.ny));
-      let sum = 0;
-      let n = 0;
-      for (let dz = -1; dz <= 1; dz++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const v = at(ix + dx, iy + dy, iz + dz);
-            if (v >= 0) (sum += v), n++;
-          }
-        }
+      if (Number.isNaN(s)) return false;
+      if (s >= 0) {
+        for (let c = 0; c < 3; c++) rgb[c] = bounce[i * 3 + c] + GAIN * s;
+        return true;
       }
-      return n ? BOUNCE + (GAIN * sum) / n : BOUNCE;
+      // In a wall: as the open cells inside next to it, so its inside face reads the room.
+      let n = 0;
+      rgb[0] = rgb[1] = rgb[2] = 0;
+      around(g, i, (j) => {
+        if (!(seen[j] >= 0)) return;
+        for (let c = 0; c < 3; c++) rgb[c] += bounce[j * 3 + c] + GAIN * seen[j];
+        n++;
+      });
+      for (let c = 0; c < 3; c++) rgb[c] = n ? rgb[c] / n : AMBIENT;
+      return true;
     });
     this.texture.needsUpdate = true;
+  }
+}
+
+/** Call `visit` with the index of each cell next to cell `i`, corners too, and `i` itself. */
+function around(g: Grid, i: number, visit: (j: number) => void): void {
+  const ix = i % g.nx;
+  const iy = Math.floor(i / g.nx) % g.ny;
+  const iz = Math.floor(i / (g.nx * g.ny));
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = ix + dx;
+        const y = iy + dy;
+        const z = iz + dz;
+        if (x >= 0 && y >= 0 && z >= 0 && x < g.nx && y < g.ny && z < g.nz) visit((z * g.ny + y) * g.nx + x);
+      }
+    }
   }
 }
 
@@ -507,11 +703,31 @@ function inside(g: Grid, x: number, y: number, z: number): boolean {
   return y > g.building.floor - 0.3 && y < g.top && inBuilding(g.building, x, z);
 }
 
+/** The block a point is in, measured from the grid's corner. */
+function voxelAt(job: Job, x: number, y: number, z: number): number {
+  return (Math.floor(z / VOXEL) * job.vy + Math.floor(y / VOXEL)) * job.vx + Math.floor(x / VOXEL);
+}
+
+/** The cell a block is in. */
+function cellOf(job: Job, g: Grid, v: number): number {
+  const x = v % job.vx;
+  const y = Math.floor(v / job.vx) % job.vy;
+  const z = Math.floor(v / (job.vx * job.vy));
+  const ix = Math.min(Math.floor(((x + 0.5) * VOXEL) / g.sx), g.nx - 1);
+  const iy = Math.min(Math.floor(((y + 0.5) * VOXEL) / g.sy), g.ny - 1);
+  const iz = Math.min(Math.floor(((z + 0.5) * VOXEL) / g.sz), g.nz - 1);
+  return (iz * g.ny + iy) * g.nx + ix;
+}
+
+/** The last open block a ray passed through before the solid one `march` returned. */
+let before = 0;
+
 /**
- * Whether a ray from (x, y, z), measured from the grid's corner, leaves the
- * blocks without meeting a solid one: a 3D walk from block to block.
+ * Where a ray from (x, y, z), measured from the grid's corner, first meets a
+ * solid block, by a 3D walk from block to block: that block, setting
+ * `before` to the open one it came from, or -1 if it leaves the blocks.
  */
-function escapes(job: Job, x: number, y: number, z: number, dx: number, dy: number, dz: number): boolean {
+function march(job: Job, x: number, y: number, z: number, dx: number, dy: number, dz: number): number {
   let ix = Math.floor(x / VOXEL);
   let iy = Math.floor(y / VOXEL);
   let iz = Math.floor(z / VOXEL);
@@ -526,6 +742,7 @@ function escapes(job: Job, x: number, y: number, z: number, dx: number, dy: numb
   let tz = dz !== 0 ? ((dz > 0 ? (iz + 1) * VOXEL - z : z - iz * VOXEL) / Math.abs(dz)) : Infinity;
   const { solid, vx, vy, vz } = job;
   for (;;) {
+    const was = (iz * vy + iy) * vx + ix;
     if (tx < ty && tx < tz) {
       ix += stepX;
       tx += tdx;
@@ -536,8 +753,12 @@ function escapes(job: Job, x: number, y: number, z: number, dx: number, dy: numb
       iz += stepZ;
       tz += tdz;
     }
-    if (ix < 0 || iy < 0 || iz < 0 || ix >= vx || iy >= vy || iz >= vz) return true;
-    if (solid[(iz * vy + iy) * vx + ix]) return false;
+    if (ix < 0 || iy < 0 || iz < 0 || ix >= vx || iy >= vy || iz >= vz) return -1;
+    const v = (iz * vy + iy) * vx + ix;
+    if (solid[v]) {
+      before = was;
+      return v;
+    }
   }
 }
 
@@ -552,10 +773,21 @@ function skyRays(n: number): [number, number, number][] {
   });
 }
 
+/** `n` directions spread evenly all round. */
+function roundRays(n: number): [number, number, number][] {
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  return Array.from({ length: n }, (_, i) => {
+    const y = 1 - (2 * (i + 0.5)) / n;
+    const r = Math.sqrt(1 - y * y);
+    const a = i * golden;
+    return [Math.cos(a) * r, y, Math.sin(a) * r];
+  });
+}
+
 /** A texture that lights everything fully, until the real one is made. */
 function blank(): THREE.Data3DTexture {
-  const t = new THREE.Data3DTexture(new Uint8Array([255]), 1, 1, 1);
-  t.format = THREE.RedFormat;
+  const t = new THREE.Data3DTexture(new Uint8Array([255, 255, 255, 0]), 1, 1, 1);
+  t.format = THREE.RGBAFormat;
   t.needsUpdate = true;
   return t;
 }

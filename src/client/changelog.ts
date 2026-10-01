@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Light bouncing round rooms',
+    notes: [
+      'Light inside buildings bounces off the floor, walls and crates: walls beside a window or a doorway are brighter, deep corners darker, and wooden rooms a little warmer than concrete ones.',
+      'Breaking a building open now lets more sky into the rooms of the buildings beside it.',
+      'The gun in your hands is lit from the side of the nearest window or doorway, in the colour of the room.',
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Fuller reflections',
     notes: [
       "The sea's ripples no longer tear apart what stands at the water's edge: a soldier wading or a tree on the shore mirrors clearly, while the sky and the far island still ripple.",

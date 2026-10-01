@@ -151,7 +151,9 @@ export class WorldView {
 
     this.world = world;
     this.island = new IslandMap(world);
-    this.light3d = new IndoorLight(world, this.island);
+    // Light bounces off each prop in its own colour, as it's drawn untextured.
+    const colours = new Map(world.props.map(({ box, style, tint }) => [box, pick(PROP_COLORS[style], tint)]));
+    this.light3d = new IndoorLight(world, this.island, (box) => colours.get(box) ?? PROP_COLORS.wall[0]);
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
     this.extractGroup = extracts.group;

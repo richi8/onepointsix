@@ -920,8 +920,38 @@ function showCover(cover: CoverState): void {
   sfx.changed();
 }
 
-/** Share of the sky's light where the first-person camera is. */
-let indoors = 1;
+/** The sky's light where the gun in your hands is, and how fast it brightens which way, per metre in the world. */
+const indoors = new THREE.Color(1, 1, 1);
+const indoorTowards = new THREE.Vector3();
+/** How far ahead of the eye the gun is, metres, and the probe a step either side of it. */
+const GUN_AHEAD = 0.4;
+const PROBE = 0.5;
+const probe = new THREE.Color();
+const gunAt = new THREE.Vector3();
+const towards = new THREE.Vector3();
+const unturn = new THREE.Quaternion();
+
+/**
+ * Light the gun in your hands like the room it's in, from the side of a
+ * window or a doorway, easing as you go in or out.
+ */
+function lightGun(dt: number): void {
+  const light = view.light3d;
+  const p = camera.getWorldDirection(gunAt).multiplyScalar(GUN_AHEAD).add(camera.position);
+  const bright = (x: number, y: number, z: number): number => {
+    const c = light.at(x, y, z, probe);
+    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  };
+  towards.set(
+    bright(p.x + PROBE, p.y, p.z) - bright(p.x - PROBE, p.y, p.z),
+    bright(p.x, p.y + PROBE, p.z) - bright(p.x, p.y - PROBE, p.z),
+    bright(p.x, p.y, p.z + PROBE) - bright(p.x, p.y, p.z - PROBE),
+  ).divideScalar(2 * PROBE);
+  const k = Math.min(dt * 4, 1);
+  indoors.lerp(light.at(p.x, p.y, p.z, probe), k);
+  indoorTowards.lerp(towards, k);
+  viewModel.shade(indoors, towards.copy(indoorTowards).applyQuaternion(unturn.copy(camera.quaternion).invert()));
+}
 
 /** The death cam, once loaded. */
 let playback: typeof import('./playback.ts') | null = null;
@@ -1344,9 +1374,7 @@ function eyeCamera(me: Rendered, yaw: number, pitch: number, s: PlayerState, dt:
   }
   focus.set(me.x, me.y, me.z);
   view.update(camera, focus, NEAR_SHADOWS, FAR_SHADOWS, sceneTime());
-  // The gun in your hands is lit like the room you're in, easing as you go in or out.
-  indoors = lerp(indoors, view.light3d.at(camera.position.x, camera.position.y, camera.position.z), Math.min(dt * 4, 1));
-  viewModel.shade(indoors);
+  lightGun(dt);
 
   const speed = Math.hypot(s.vx, s.vz);
   const lookDx = angleDiff(lastYaw, yaw) * 600;

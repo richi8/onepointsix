@@ -358,6 +358,21 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   counted (no bounce, no colour), cells are 0.5 m, what hides the sky outside is worked out once
   per building and not again when another building breaks, and the gun in your hands reads the
   cell it's in.
+  **Resolved in part** (2026-10-01): the flat 30% is gone. Each cell also takes the light bounced
+  once off what's round it, from 32 directions all round: each block a ray meets bounces the sky's
+  light of the cell before it (walls take their room's), in its prop's colour, and rays out
+  through a doorway downward bounce off the ground outside. A floor of 15% stands for light
+  bounced more; tuned (15%, ×4) so the rooms of the default island are as bright on average as
+  before (0.32 against 0.335), with corners down to about 0.15–0.2 and walls by windows brighter.
+  The texture holds red, green and blue. When a building's cover changes, every other building
+  within 150 m works out its sky outside again (200 rays), and its cells only if that changed by
+  2% any way. The gun in your hands blends the eight cells round it, 0.4 m ahead of the eye, and
+  its sky light leans toward the side that's brighter. Working out all ten buildings takes about
+  80 ms in Node, double before, still spread at 2.5 ms a frame. Checked by still screenshots
+  against the old code (subtle: walls by windows lighter, the stairs warmer); the gun was checked
+  by its numbers, not seen in play. Still open: sunlight doesn't bounce (a sunlit patch on a floor
+  doesn't light the room round it), colours are the props' flat ones, not their textures', and
+  cells are 0.5 m.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
