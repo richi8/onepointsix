@@ -555,6 +555,25 @@ notes the chunk it came from.
   step's edge goes down to the ground, though its tilt is still taken from the wider footing so
   the edge doesn't tip it. Checked in the pose viewer, with a screenshot test of four points in
   the stride; not watched in play.
+- **Dropped magazines are only for show** (33). Each player sees only the ones dropped near them
+  and in view (within 90 m), where they saw them fall; they don't land on bodies, go after 90 s,
+  and no more than 40 lie about. The rifle's charging handle doesn't move, and the pistol's
+  magazine body is a plain box inside the grip.
+  **Resolved in part** (2026-10-01): every body drops its magazines, near, far or out of sight
+  (from where its gun was last posed, so a body never yet seen drops one from its feet), and
+  they're drawn instanced, one draw a kind, so 400 lie about for the whole game, the oldest
+  going first. They land on bodies, dropped guns and each other, fall when the body under them
+  is cleared away, and are thrown by grenades; a death cam drops none again. The rifle has a
+  charging handle, added to the model (which had none) as a latch on a stem at the back of the
+  receiver, set high enough to draw back over the stock: the left hand hooks it and draws it
+  back at the end of a reload, timed to the recording, which now plays then rather than once
+  the reload is over. The pistol's magazine body is flat at the back and round at the front,
+  and a full one shows a round between its lips; the dropped one is empty. Checked in the pose
+  viewer and a screenshot test, not watched in play; in first person the left sleeve comes up
+  close to the eye for the pull. Left: they're each player's own, falling from each screen's
+  poses rather than the server's, so two players would see them a little apart (matters only
+  with multiplayer); and the living walk through them rather than kicking them aside.
+  **Accepted** (2026-10-01): the user is fine with both of what's left.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
