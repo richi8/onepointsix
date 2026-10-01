@@ -373,6 +373,19 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   by its numbers, not seen in play. Still open: sunlight doesn't bounce (a sunlit patch on a floor
   doesn't light the room round it), colours are the props' flat ones, not their textures', and
   cells are 0.5 m.
+  **Resolved in part** (2026-10-01): sunlight bounces. Every face of a block the sun reaches
+  indoors (by a ray through the blocks, then on through the world and the trees' crowns, from
+  that very spot) is gathered into a patch for each cell; every cell takes each patch's light it
+  can see, falling off with the square of the distance; rays out of a doorway downward add the
+  sunny ground outside. It's kept as a share of the sun's light in a second texture, and
+  materials add it times the sun's light, so it follows the time of day and the weather, and
+  the gun takes it too. Physically it's faint on these dark surfaces (about 4% of the sun a metre
+  or two from a patch), so it's boosted 4× (with 0.5 for a surface not facing the patch), tuned by
+  screenshots: walls beside a sunlit window are brighter and warmer at midday; at dusk the low,
+  dim sun shows no difference in the test rooms. All ten buildings take about 125 ms in Node
+  (80 ms before), at 2.5 ms a frame; the extra texture read in every lit material wasn't
+  benchmarked. Still open: colours are the props' flat ones, not their textures', cells are 0.5 m,
+  and a patch of sun lights only the cells it sees, once.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
