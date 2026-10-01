@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Moving reflections',
+    notes: [
+      "Soldiers seen only in the sea's reflection, out of sight above the top of the screen, now show there and move.",
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Climbing like a person',
     notes: [
       'Climbing onto a ledge pulls up until your hips are at it, then a knee goes onto it and you press up and over hunched, standing once on top. It takes as long as before.',

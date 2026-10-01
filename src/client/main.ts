@@ -1449,6 +1449,7 @@ renderer.setAnimationLoop(() => {
   hud.age(bodyDt);
   const players = cam ? cam.others() : (conn?.interpolated() ?? (warming ? warmPlayers() : devStanding));
   bodies.sun.copy(view.lit.sunDir);
+  bodies.mirrored = view.reflecting;
   // Bodies fall on the game's clock, against everyone as the server had them.
   const clock = cam
     ? { time: cam.time, at: (t: number) => cam.everyoneAt(t) }

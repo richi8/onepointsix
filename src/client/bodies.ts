@@ -3,7 +3,7 @@ import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {
   GRENADE_RADIUS, LEAN_OFFSET, MANTLE_AIR_HEIGHT, MANTLE_MAX_HEIGHT, MANTLE_PRESS_HEIGHT, MANTLE_REACH, PLAYER_HEIGHT, PLAYER_RADIUS,
-  STEP_HEIGHT,
+  STEP_HEIGHT, WATER_LEVEL,
 } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
@@ -469,6 +469,8 @@ export class Bodies {
   shelter: Shelter | null = null;
   /** Toward the sun or moon, for which bodies out of view throw a shadow into it. */
   readonly sun = new THREE.Vector3(0, 1, 0);
+  /** Whether the sea mirrors the island, so bodies seen only in it are posed too. */
+  mirrored = false;
   private readonly scene: THREE.Scene;
   /** What bodies stand and fall on; another island's when that opens. */
   ground: Ground;
@@ -1026,7 +1028,7 @@ export class Bodies {
     const distance = this.camera.distanceTo(bounds.center);
     // Beyond the cascades, a body's shadow is too small to see but costs a draw in each shadow map.
     const shadow = distance < SHADOW_REACH;
-    f.group.visible = (distance < FOG_END && this.frustum.intersectsSphere(bounds)) ||
+    f.group.visible = (distance < FOG_END && (this.frustum.intersectsSphere(bounds) || this.mirrorInView(bounds))) ||
       (shadow && this.shadowInView(bounds)) || (p.light && !p.dead && distance < LIGHT_REACH);
     if (!shadow && !f.casters) {
       f.casters = [];
@@ -1098,6 +1100,17 @@ export class Bodies {
       f.climb.over = 1;
       if (f.mantle < 0.01) f.climb = null;
     }
+  }
+
+  /**
+   * Whether the sea's reflection of a body in `bounds` may be in view: seen
+   * from the camera mirrored in the surface is seeing it mirrored instead.
+   */
+  private mirrorInView(bounds: THREE.Sphere): boolean {
+    if (!this.mirrored || this.camera.y < WATER_LEVEL || bounds.center.y + bounds.radius < WATER_LEVEL) return false;
+    SHADOW_SPHERE.center.copy(bounds.center).setY(2 * WATER_LEVEL - bounds.center.y);
+    SHADOW_SPHERE.radius = bounds.radius;
+    return this.frustum.intersectsSphere(SHADOW_SPHERE);
   }
 
   /** Whether the shadow a body in `bounds` throws, away from the sun, may fall in view. */

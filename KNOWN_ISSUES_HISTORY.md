@@ -590,6 +590,16 @@ notes the chunk it came from.
   highest ledge in reach at that point), falling back on the ground's height and then 1 m only if
   that fails. Checked in the pose viewer at 1 m and 1.8 m, with the screenshot test updated, not
   watched in play.
+- **Bodies posed only for what's in view** (32): a body is posed while it's on screen, while its
+  shadow may fall on screen, or while its flashlight is on within 60 m. One seen only in the
+  sea's reflection, above the top of the screen, keeps its last pose there.
+  **Resolved** (2026-10-01): while the sea's reflection is drawn, a body whose mirror image (its
+  sphere flipped about the surface) is on screen is posed and drawn too, as seeing it from the
+  mirrored camera is the same as seeing its mirror image from the real one. It's tested against
+  the screen alone, so one whose reflection is hidden behind a hill is posed anyway. The check
+  uses whether the last frame drew the reflection, so on the first frame the sea comes into view
+  such a body is a frame behind. (Hidden, such a body was in fact left out of the reflection too,
+  not only unposed.) Typechecked and unit-tested, not watched in play.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
