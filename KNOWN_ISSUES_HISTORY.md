@@ -704,6 +704,15 @@ notes the chunk it came from.
   edges (sun through a window, a doorway's line) come from the shadow maps; 0.25 m cells would
   cost 8× the work and memory and a 3D texture past what WebGL2 promises. A second bounce of the
   sun would add about a third of the first, which the 4× already stands in for.
+- **World detail was checked by screenshots on one machine** (15). Headless Chrome on an M3 Pro
+  holds 60 fps (median 16.7 ms, 95th percentile 18.2 ms) at 1280 × 720 in a Mixed game.
+  Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A
+  mid-range laptop wasn't tried, nobody has watched the swaying and waves in motion, and the
+  ground cover's rebuild, when the camera crosses an 8 m cell, wasn't timed.
+  **Resolved in part** (19): the benchmark times the rebuild at about 1 ms a cell crossed in all
+  three engines (see "The ground cover's first fill"), and the screenshots are now compared by
+  the tests. The mid-range laptop and watching it move are left for chunk 30.
+  **Accepted** (2026-10-01): the user has played it on a slower machine and it runs fine.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.

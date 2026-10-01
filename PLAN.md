@@ -333,14 +333,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   slopes were checked by still screenshots and unit tests, not watched in play; posing 24 near
   bodies went from about 2.5 to 2.8–2.9 ms in one session on an M3 Pro, the feet asking the
   ground four more times each.
-- **World detail was checked by screenshots on one machine** (15). Headless Chrome on an M3 Pro
-  holds 60 fps (median 16.7 ms, 95th percentile 18.2 ms) at 1280 × 720 in a Mixed game.
-  Draw calls fell from 348 to 239 at the same spawn, and triangles rose from 639k to 736k. A
-  mid-range laptop wasn't tried, nobody has watched the swaying and waves in motion, and the
-  ground cover's rebuild, when the camera crosses an 8 m cell, wasn't timed.
-  **Resolved in part** (19): the benchmark times the rebuild at about 1 ms a cell crossed in all
-  three engines (see "The ground cover's first fill"), and the screenshots are now compared by
-  the tests. The mid-range laptop and watching it move are left for chunk 30.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
