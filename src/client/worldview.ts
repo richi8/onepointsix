@@ -462,6 +462,11 @@ export class WorldView {
     if (this.scene.children.every(drawnShadow)) this.water.reflect(renderer, this.scene, camera, force);
   }
 
+  /** Straight after drawing the scene from `camera`, have the GPU count whether any sea showed, for the reflections to come. */
+  lookForSea(renderer: THREE.WebGLRenderer, camera: THREE.Camera): void {
+    this.water.lookForSea(renderer, camera, this.fog.far);
+  }
+
   /**
    * Our own sky as it is now, baked into a picture for image-based light and
    * reflections, so at night shiny things and puddles show the moon and a

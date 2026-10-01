@@ -374,6 +374,16 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   errs toward drawing the reflection, but a sliver of sea narrower than the grid's spacing (about
   80 px at 1280 wide) between hills can be missed, and there the sea shows the sky's picture
   instead of the island's. It costs about 0.006 ms a frame with no sea in view.
+  **Resolved in part** (2026-10-01): after the scene is drawn, while its depth is still there, a
+  disk over the sea out to the fog, 0.35 m above still water (over the highest wave), is drawn
+  without colour inside a GPU occlusion query, which counts whether any of it showed past the
+  hills, buildings and trees in front. A count that saw sea turns the reflection on as the rays
+  do. Checked in Chromium, Firefox and WebKit at four views the rays miss: each now draws the
+  reflection, and one where the sea strip is plain now shows the island in it. It costs about
+  0.03 to 0.05 ms of CPU a frame for the extra render call. Still open: the count arrives a frame
+  or two late, so a sliver only the count finds shows the sky's picture for those frames as it
+  comes into view; the disk stands above shore that's within 0.35 m of the water, and fogged sea
+  right out at the fog's edge counts, which only err toward drawing the reflection.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

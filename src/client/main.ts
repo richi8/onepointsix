@@ -1512,6 +1512,7 @@ renderer.setAnimationLoop(() => {
   renderer.clear();
   renderer.render(scene, camera);
   if (wobbling) camera.updateProjectionMatrix();
+  view.lookForSea(renderer, camera);
   if (state || warming) {
     renderer.clearDepth();
     // The gun is drawn in a space of its own, the camera's: the world's lights are placed in it.

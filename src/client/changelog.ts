@@ -15,6 +15,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     title: 'Moving reflections',
     notes: [
       "Soldiers seen only in the sea's reflection, out of sight above the top of the screen, now show there and move.",
+      'A thin strip of sea glimpsed between hills now reflects the island too, instead of only the sky.',
     ],
   },
   {

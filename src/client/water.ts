@@ -29,6 +29,10 @@ export const REFLECTED = 1;
 /** Rays across and up the screen that look for the sea. */
 const LOOK_COLUMNS = 16;
 const LOOK_ROWS = 9;
+/** The disk counted for any sea in view stands this far above still water, over the highest wave. */
+const PROBE_LIFT = 0.35;
+/** At most this many counts wait on the GPU at once; frames past it go uncounted. */
+const PROBE_QUEUE = 4;
 
 /** Wave trains: direction (x, z), wavelength in metres, height in metres, speed in m/s. The first is a long swell. */
 const WAVES: [number, number, number, number, number][] = [
@@ -91,6 +95,24 @@ interface Reflection {
   on: { value: number };
 }
 
+/**
+ * A disk over the sea out to the fog, drawn after the scene without colour or
+ * depth while the GPU counts whether any of it showed past what's in front.
+ * The count arrives a frame or two later.
+ */
+interface Probe {
+  scene: THREE.Scene;
+  disk: THREE.Mesh;
+  gl: WebGL2RenderingContext | null;
+  /** Counts asked for, oldest first, and ones free to ask again. */
+  waiting: WebGLQuery[];
+  free: WebGLQuery[];
+  /** The query the disk's next draw is counted by. */
+  next: WebGLQuery | null;
+  /** Whether the latest count saw any sea. */
+  seen: boolean;
+}
+
 export class Water {
   readonly group = new THREE.Group();
   private readonly world: World;
@@ -100,6 +122,7 @@ export class Water {
   private readonly time = { value: 0 };
   private readonly gridCentre = { value: new THREE.Vector2() };
   private readonly reflection: Reflection;
+  private readonly probe: Probe;
   /** Fog and background as they are above water, to restore on surfacing. */
   private saved: { color: THREE.Color; near: number; far: number; background: THREE.Scene['background'] } | null = null;
 
@@ -112,6 +135,7 @@ export class Water {
       on: { value: 0 },
     };
     this.reflection.camera.layers.set(REFLECTED);
+    this.probe = seaProbe();
     const material = seaMaterial(world, this.time, this.gridCentre, this.reflection);
     const cells = GRID / SPACING;
     this.grid = new THREE.Mesh(new THREE.PlaneGeometry(GRID, GRID, cells, cells).rotateX(-Math.PI / 2), material);
@@ -135,9 +159,15 @@ export class Water {
     return this.reflection.on.value > 0;
   }
 
-  /** Free the reflection's picture. */
+  /** Free the reflection's picture and the GPU's counts. */
   dispose(): void {
     this.reflection.target.dispose();
+    const p = this.probe;
+    p.disk.geometry.dispose();
+    (p.disk.material as THREE.Material).dispose();
+    for (const q of [...p.waiting, ...p.free]) p.gl?.deleteQuery(q);
+    p.waiting.length = 0;
+    p.free.length = 0;
   }
 
   /**
@@ -148,7 +178,8 @@ export class Water {
    */
   reflect(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, force = false): void {
     const r = this.reflection;
-    if (this.under || camera.position.y < WATER_LEVEL || (!force && !this.seaInView(camera, (scene.fog as THREE.Fog | null)?.far ?? camera.far))) {
+    // The GPU's count of the sea seen a frame or two ago finds slivers the rays miss.
+    if (this.under || camera.position.y < WATER_LEVEL || (!force && !this.probe.seen && !this.seaInView(camera, (scene.fog as THREE.Fog | null)?.far ?? camera.far))) {
       r.on.value = 0;
       return;
     }
@@ -201,6 +232,32 @@ export class Water {
       }
     }
     return false;
+  }
+
+  /**
+   * Straight after the scene is drawn from `camera`, while its depth is still
+   * there, have the GPU count whether any sea within `far` metres showed,
+   * buildings and trees in front counted, for the next frames' reflect.
+   */
+  lookForSea(renderer: THREE.WebGLRenderer, camera: THREE.Camera, far: number): void {
+    const p = this.probe;
+    const gl = (p.gl ??= renderer.getContext() as WebGL2RenderingContext);
+    while (p.waiting.length && gl.getQueryParameter(p.waiting[0], gl.QUERY_RESULT_AVAILABLE)) {
+      const q = p.waiting.shift()!;
+      p.seen = gl.getQueryParameter(q, gl.QUERY_RESULT) > 0;
+      p.free.push(q);
+    }
+    if (this.under || camera.position.y < WATER_LEVEL) {
+      p.seen = false;
+      return;
+    }
+    if (p.waiting.length >= PROBE_QUEUE) return;
+    p.next = p.free.pop() ?? gl.createQuery();
+    p.disk.position.set(camera.position.x, WATER_LEVEL + PROBE_LIFT, camera.position.z);
+    p.disk.scale.setScalar(far);
+    renderer.render(p.scene, camera);
+    p.waiting.push(p.next);
+    p.next = null;
   }
 
   /** Where the sea stands over (x, z) right now. */
@@ -257,6 +314,19 @@ export class Water {
     fog.far = UNDER_FAR;
     scene.background = UNDER_FOG;
   }
+}
+
+/** The disk for counting the sea in view, its draw wrapped in the query asked for. */
+function seaProbe(): Probe {
+  const material = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  const disk = new THREE.Mesh(new THREE.CircleGeometry(1, 64).rotateX(-Math.PI / 2), material);
+  disk.frustumCulled = false;
+  const scene = new THREE.Scene();
+  scene.add(disk);
+  const probe: Probe = { scene, disk, gl: null, waiting: [], free: [], next: null, seen: false };
+  disk.onBeforeRender = () => probe.gl!.beginQuery(probe.gl!.ANY_SAMPLES_PASSED, probe.next!);
+  disk.onAfterRender = () => probe.gl!.endQuery(probe.gl!.ANY_SAMPLES_PASSED);
+  return probe;
 }
 
 /**
