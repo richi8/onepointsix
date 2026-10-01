@@ -783,6 +783,31 @@ notes the chunk it came from.
   section as solid. The wood texture is laid in world space and its grain runs across, so a door
   leaf's stiles and panel all show horizontal grain.
   **Accepted** (2026-10-01): the user is fine with both as they are.
+- **The new soldier hasn't been watched in play** (41). It was checked in the pose viewer (every
+  pose and clip, screenshot tests re-recorded) and by the benchmark, not by playing. Some things
+  were set by eye there and may want another look in motion: how far into the palm the thumb's
+  side is taken (`THUMB_TILT`), how deep the palm is (`PALM_DEPTH`), the fingers' and thumb's
+  curl, how far the chest turns side-on behind a rifle (`BLADE`, down from 0.8 to 0.5, since this
+  body's bulky vest swallowed the right arm), how far out the right elbow is held, where a long
+  gun's butt sits on the front of the shoulder (`SHOULDER_DEPTH`) and how far it's rolled
+  leaning left (`LEAN_CANT`). Those last were measured, not only looked at: a scratch probe in the
+  pose viewer put the butt pad within about 3 cm of the vest in every stance, with the rifle at
+  most 2.6 cm into it (a stock resting on a vest's pouches), standing, leaning either way,
+  walking, running, crouched or aiming up; the right forearm still dips up to about 4 cm into the vest
+  leaning left, drawing and throwing. Where the pack sits on the back, and the hand-keyed crouched run, whose numbers were made
+  for the old model and only carried over (its legs are now bent by IK each key, as the feet hang
+  off the shins).
+  **Resolved** (41, 2026-10-01): the developer played against it and reported what was wrong,
+  each reproduced in the pose viewer from the same angle and fixed. Crouched, the head dropped and
+  the rifle rode up over it: the rig hangs the collarbones off the neck, so every turn of the head
+  swung the shoulders, and `scripts/rocketbox.py` now hangs them off the chest; the gun is also
+  kept below the eye. Behind a rifle the right arm and then the stock went into the vest: the
+  chest turns side-on less, the right elbow is held out, the butt sits on the front of the
+  shoulder along the way the chest faces, raised so its toe clears the chest, and leaning left
+  the rifle rolls away from the shoulder. Pushed too far out at first, the rifle floated at arm's
+  length with the left hand short of the bolt-action's fore-end, which the probe's gap from the
+  butt pad to the vest then settled. Accepted as it looks now; the right forearm's dip of up to
+  about 4 cm into the vest leaning left, drawing and throwing is left as it is.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

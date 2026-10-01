@@ -299,20 +299,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   realistic avatar with its own textures. The side tints went with the old model, so for now
   operators and guards differ only by the operators' pack, and commanders by their red band and
   radio; chunk 42 gives each side its own avatars.
-- **The new soldier hasn't been watched in play** (41). It was checked in the pose viewer (every
-  pose and clip, screenshot tests re-recorded) and by the benchmark, not by playing. Some things
-  were set by eye there and may want another look in motion: how far into the palm the thumb's
-  side is taken (`THUMB_TILT`), how deep the palm is (`PALM_DEPTH`), the fingers' and thumb's
-  curl, how far the chest turns side-on behind a rifle (`BLADE`, down from 0.8 to 0.5, since this
-  body's bulky vest swallowed the right arm), how far out the right elbow is held, where a long
-  gun's butt sits on the front of the shoulder (`SHOULDER_DEPTH`) and how far it's rolled
-  leaning left (`LEAN_CANT`). Those last were measured, not only looked at: a scratch probe in the
-  pose viewer put the butt pad within about 3 cm of the vest in every stance, with the rifle at
-  most 2.6 cm into it (a stock resting on a vest's pouches), standing, leaning either way,
-  walking, running, crouched or aiming up; the right forearm still dips up to about 4 cm into the vest
-  leaning left, drawing and throwing. Where the pack sits on the back, and the hand-keyed crouched run, whose numbers were made
-  for the old model and only carried over (its legs are now bent by IK each key, as the feet hang
-  off the shins).
 - **The ragdoll's unit tests start from the old soldier's fall** (41). `test/slump.json` is the
   stylized soldier's death clip where the ragdoll took over, falling back; the Rocketbox body's
   death clip (the library's `Death01`) falls forward, and the tests, written round a fall back,
