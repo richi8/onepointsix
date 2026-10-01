@@ -20,6 +20,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Wet grass looks soaked and deep green rather than greyish.',
       "Soldiers' guns and dropped magazines stay wet indoors too, and so does the rubble of a broken roof.",
       'Wet trees and bushes look soaked rather than greyish.',
+      'The gun and sleeves in your hands get wet in the rain too, and dry off slowly indoors.',
     ],
   },
   {

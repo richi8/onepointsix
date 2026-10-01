@@ -198,6 +198,11 @@ export interface WetOptions {
    * the material had taken it away, as needles do against edge-on glare.
    */
   glint?: number;
+  /**
+   * For what's in your hands, drawn in a view of its own: the world's up in
+   * that view's space. Where it is doesn't count, only how soaked `soak` says.
+   */
+  held?: { value: THREE.Vector3 };
 }
 
 /**
@@ -207,13 +212,14 @@ export interface WetOptions {
  * faces up from its normal.
  */
 export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, options: WetOptions = {}): M {
-  const { gloss = 0.45, sheltered = true, soak, sky = 1, glint = 0 } = options;
+  const { gloss = 0.45, sheltered = true, soak, sky = 1, glint = 0, held } = options;
   const before = material.onBeforeCompile;
   const key = material.customProgramCacheKey.bind(material);
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     Object.assign(shader.uniforms, rainUniforms);
     if (soak && soak !== 'instanced') shader.uniforms.wetSoak = soak;
+    if (held) shader.uniforms.wetUp = held;
     const anchors = ['#include <common>', '#include <clearcoat_normal_fragment_begin>', '#include <lights_fragment_end>', '#include <aomap_fragment>'];
     for (const anchor of anchors) {
       if (!shader.fragmentShader.includes(anchor)) throw new Error(`Shader anchor ${anchor} is missing`);
@@ -223,19 +229,24 @@ export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, o
         .replace('#include <common>', '#include <common>\nattribute float soakAt;\nvarying float vWetSoak;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWetSoak = soakAt;');
     }
-    const soakDecl = soak === 'instanced' ? 'varying float vWetSoak;\n#define wetSoak vWetSoak' : soak ? 'uniform float wetSoak;' : '';
+    const soakDecl = (soak === 'instanced' ? 'varying float vWetSoak;\n#define wetSoak vWetSoak' : soak ? 'uniform float wetSoak;' : '')
+      + (held ? '\nuniform vec3 wetUp;' : '');
+    const soaking = held
+      ? 'soaked = wetness * wetSoak * mix(0.45, 1.0, clamp(dot(normal, wetUp), 0.0, 1.0));'
+      : /* glsl */ `
+          mat3 wetToWorld = transpose(mat3(viewMatrix));
+          vec3 wetP = wetToWorld * (-vViewPosition - viewMatrix[3].xyz);
+          vec3 wetN = wetToWorld * normal;
+          soaked = wetAt(wetP, wetN, 0.0).x;
+          ${soak ? '// Still wet from the rain under a roof, drying.\nsoaked = max(soaked, wetness * wetSoak * mix(0.45, 1.0, clamp(wetN.y, 0.0, 1.0)));' : ''}`;
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${sheltered ? ROOF_GLSL : OPEN_GLSL}\n${WET_GLSL}\n${soakDecl}`)
+      .replace('#include <common>', `#include <common>\n${sheltered && !held ? ROOF_GLSL : OPEN_GLSL}\n${WET_GLSL}\n${soakDecl}`)
       // Once the normal is known, whatever has replaced three.js's normal
       // chunks; the colour and roughness are only used with the lights after.
       .replace('#include <clearcoat_normal_fragment_begin>', /* glsl */ `
         float soaked = 0.0;
         if (wetness > 0.0) {
-          mat3 wetToWorld = transpose(mat3(viewMatrix));
-          vec3 wetP = wetToWorld * (-vViewPosition - viewMatrix[3].xyz);
-          vec3 wetN = wetToWorld * normal;
-          soaked = wetAt(wetP, wetN, 0.0).x;
-          ${soak ? '// Still wet from the rain under a roof, drying.\nsoaked = max(soaked, wetness * wetSoak * mix(0.45, 1.0, clamp(wetN.y, 0.0, 1.0)));' : ''}
+          ${soaking}
           diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.4 * soaked)) * (1.0 - 0.12 * soaked);
           roughnessFactor = mix(roughnessFactor, min(roughnessFactor, ${gloss.toFixed(2)}), soaked);
         }
@@ -249,7 +260,7 @@ export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, o
         #include <aomap_fragment>`);
   };
   const soakKey = soak === 'instanced' ? '-soaks' : soak ? '-soak' : '';
-  material.customProgramCacheKey = () => `${key()}-wet${sheltered ? '' : '-open'}${soakKey}-${sky}-${glint}`;
+  material.customProgramCacheKey = () => `${key()}-wet${sheltered ? '' : '-open'}${soakKey}-${sky}-${glint}${held ? '-held' : ''}`;
   return material;
 }
 

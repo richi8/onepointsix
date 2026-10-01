@@ -406,8 +406,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   recordings aren't what they stand for" in the history).
 
 ### Day, night and weather
-- **Your own gun never gets wet** (2026-10-01). The gun in your hands is drawn dry in any rain,
-  though your dropped magazines and everyone else's guns are wet.
+Nothing open: the last was resolved on 2026-10-01 (see the history).
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-09-30 (see the history).

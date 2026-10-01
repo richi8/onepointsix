@@ -1105,6 +1105,13 @@ notes the chunk it came from.
   needles get back some of the direct light's gloss they're denied dry (the full trees and
   impostors alike). Checked by unit tests, screenshots and a rainy run with no shader errors;
   the needles' glint is faint under the overcast of rain, and nobody has looked at it in play.
+- **Your own gun never gets wet** (2026-10-01). The gun in your hands is drawn dry in any rain,
+  though your dropped magazines and everyone else's guns are wet.
+  **Resolved** (2026-10-01): everything in your hands, gun, arms, grenade and loose round, gets
+  a copy of its material that is as wet as you are, soaking in the rain and drying under a roof
+  as everyone else does; the materials it shares with the world are left alone. Drawn in a view
+  of its own, it has no place in the world, so it takes the world's up turned into the view to
+  tell which of its faces are up; in a death cam it is as wet as the killer.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

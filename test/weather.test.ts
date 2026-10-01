@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { patchFog } from '../src/client/fogbanks.ts';
 import { coverCode, IslandMap, NO_ROOF, shelters, underCover } from '../src/client/islandmap.ts';
 import { OPEN_SKY, Rain, ROOF_CELL, ROOF_CELLS, roofHeights, Soak, type Shelter } from '../src/client/rain.ts';
+import { grenadeModel } from '../src/client/grenade.ts';
+import { ViewModel } from '../src/client/viewmodel.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
@@ -132,6 +134,23 @@ describe('shelter', () => {
     soak.begin(0.8);
     for (let t = 0; t < 24; t += 0.1) soak.update(shelter, 0, 0, 0, 0.1);
     expect(soak.level.value).toBeCloseTo(0.7, 2);
+  });
+});
+
+describe('the gun in hand', () => {
+  it('gets wet as you are, leaving the materials the world shares alone', () => {
+    const view = new ViewModel();
+    const lit: THREE.MeshStandardMaterial[] = [];
+    view.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (m instanceof THREE.MeshStandardMaterial) lit.push(m);
+    });
+    expect(lit.length).toBeGreaterThan(5);
+    for (const m of lit) expect(m.customProgramCacheKey()).toContain('-held');
+    grenadeModel().traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (m instanceof THREE.MeshStandardMaterial) expect(m.customProgramCacheKey()).not.toContain('-wet');
+    });
   });
 });
 

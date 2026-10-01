@@ -1468,6 +1468,9 @@ renderer.setAnimationLoop(() => {
     footsteps(state);
   } else orbitCamera(now);
   camera.updateMatrixWorld();
+  // The gun in hand, yours or the killer's in a death cam, as wet as its holder.
+  viewModel.soak.value = cam ? (bodies.soakNear(cam.state.x, cam.state.y, cam.state.z) ?? 0) : mySoak.level.value;
+  viewModel.up.value.set(0, 1, 0).transformDirection(camera.matrixWorldInverse);
   // In a death cam, the killer's own light lights their view.
   const torch = cam ? cam.lit : state ? !state.dead && input.light : devTorch;
   const beams = flashlights.update(camera, torch, players, (id, out, dir) => bodies.torch(id, out, dir), rainBeams);

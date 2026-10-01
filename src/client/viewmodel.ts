@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { clamp, lerp } from '../shared/geom.ts';
 import { BOLT } from '../shared/weapons.ts';
 import { grenadeModel } from './grenade.ts';
+import { wetMaterial } from './rain.ts';
 import { fitGun } from './guns.ts';
 import { lightTorch, makeTorch, mountTorch, torchMaterial, torchMount, type Torch } from './torch.ts';
 import {
@@ -136,6 +137,14 @@ export class ViewModel {
   private readonly sun = new THREE.DirectionalLight(0xfff1dc, 2);
   /** The spill of your own flashlight on the gun, always there so switching it never recompiles. */
   private readonly torch = new THREE.PointLight(0xfff2de, 0, 3, 2);
+  /**
+   * How soaked your hands and gun are, 0 to 1 (see Soak), and the world's up
+   * in the view's space: the view has no place in the world to get wet by.
+   */
+  readonly soak = { value: 0 };
+  readonly up = { value: new THREE.Vector3(0, 1, 0) };
+  /** The materials in the hands made to get wet, each standing in for the one it was copied from. */
+  private readonly wet = new Map<THREE.Material, THREE.MeshStandardMaterial>();
   private sky = 1;
   private sunShare = 0;
   /** Share of the sky's light where you stand, 1 outdoors. */
@@ -157,6 +166,27 @@ export class ViewModel {
       this.root.add(m.group);
     });
     this.takeShadows();
+    this.wetAll();
+  }
+
+  /**
+   * Everything in the hands gets wet as you are: each material copied once,
+   * so what it's shared with in the world is left alone, and copies shared as
+   * the materials were.
+   */
+  private wetAll(): void {
+    const made = new Set(this.wet.values());
+    this.root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      const m = mesh.material;
+      if (!mesh.isMesh || Array.isArray(m) || !(m instanceof THREE.MeshStandardMaterial) || made.has(m)) return;
+      let wet = this.wet.get(m);
+      if (!wet) {
+        wet = wetMaterial(m.clone(), { gloss: 0.4, soak: this.soak, held: this.up });
+        this.wet.set(m, wet);
+      }
+      mesh.material = wet;
+    });
   }
 
   /** Everything in the hands takes the shadows of the lamps and others' flashlights, as it would in the world. */
@@ -229,6 +259,7 @@ export class ViewModel {
       }
     });
     this.takeShadows();
+    this.wetAll();
   }
 
   /** Swap the boxes for hands for the soldier's own arms. */
@@ -279,6 +310,7 @@ export class ViewModel {
     };
     for (const m of this.models) for (const h of m.hands) h.visible = false;
     this.takeShadows();
+    this.wetAll();
   }
 
   resize(aspect: number): void {
