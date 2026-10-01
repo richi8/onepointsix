@@ -1695,7 +1695,9 @@ export class Bodies {
     // The sight line runs just under the eye, a long gun's butt against the front of the shoulder, the pistol held
     // out at arm's length.
     const gun = GUNS[f.weapon];
-    f.gun.position.set(shoulder.x - 0.1, shoulder.y + 0.06 - low * 0.12, shoulder.z);
+    // Hunched over, the shoulders ride up level with the head: the gun stays below the eye all the same.
+    const eye = f.group.worldToLocal(this.headAt(s, V_TMP2)).y - GRIP_BELOW_HEAD;
+    f.gun.position.set(shoulder.x - 0.1, Math.min(shoulder.y + 0.06, eye) - low * 0.12, shoulder.z);
     f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip, 'YXZ');
     f.gun.translateZ((pistol ? -0.5 : -(gun.butt + SHOULDER_POCKET)) + kick * 0.04);
     f.gun.translateX(pistol ? -0.08 : 0);
@@ -1904,6 +1906,8 @@ const CLIMB_HIGHEST = 1.6;
 /** How long a hit's flinch lasts. */
 const REACT_TIME = 0.6;
 
+/** How far below the middle of the head a gun's grip is held at most, so its sight line runs under the eye. */
+const GRIP_BELOW_HEAD = 0.14;
 /** How far in front of the shoulder joint a long gun's butt sits, in its pocket. */
 const SHOULDER_POCKET = 0.07;
 /** How much of an arm's full length the hands reach to, so the elbows stay a little bent. */

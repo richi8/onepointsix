@@ -12,8 +12,9 @@
 #
 # On the way: the face's bones go, their skin moving with the head; so do the
 # guns and knives some avatars carry, and the see-through goggle lens; the
-# thighs hang off the pelvis rather than the spine, so bending the spine
-# leaves the legs alone; bones are added at the top of the head and at the
+# thighs hang off the pelvis rather than the spine, and the collarbones off
+# the chest rather than the neck, so bending the spine leaves the legs alone
+# and turning the head leaves the arms; bones are added at the top of the head and at the
 # tips of the boots, for the game to measure by; and it's all scaled to
 # metres, standing at the origin facing +z in glTF.
 
@@ -147,8 +148,10 @@ inv = arm.matrix_world.inverted()
 for n in face:
     edit.remove(edit[n])
 pelvis = edit['Bip01 Pelvis']
+chest = edit['Bip01 Spine2']
 for side in 'LR':
     edit[f'Bip01 {side} Thigh'].parent = pelvis
+    edit[f'Bip01 {side} Clavicle'].parent = chest
 
 
 def nub(name, parent, at):
