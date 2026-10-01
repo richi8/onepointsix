@@ -154,8 +154,8 @@ src/
    the death cam possible.
 
 ### Assets
-- Poly Haven for PBR textures and HDRIs, Quaternius for animated characters and guns, glTF for
-  models
+- Poly Haven for PBR textures and HDRIs, Quaternius for guns and animation clips, MakeHuman
+  (MPFB2 in Blender) for soldiers from Phase 5, glTF for models
 - Budget for small downloads: KTX2 textures, meshopt-compressed glTF and level of detail (LOD)
 
 ## Implementation Roadmap
@@ -262,6 +262,20 @@ Known Issues that Phase 4 leaves alone:
   every side"; see Future), the rifle's suppressed shot until a CC0 recording turns up, and
   Firefox and Safari (tested again before release).
 
+### Phase 5: new soldiers (still local only, Chrome only)
+
+The stylized SWAT model gives way to realistic people: MakeHuman bodies built in Blender with
+MPFB2 (CC0 when exported), dressed in clothes from the MakeHuman community, some of them CC‑BY
+(see Decisions). Operators look like SWAT, guards like Counter-Strike's terrorists. Picked on
+2026-10-01 after comparing Quaternius's Universal Base Characters (only bodybuilder proportions
+free, no clothes) and MakeHuman in the pose viewer's light; the comparison's outfits came to
+37k–156k triangles and 30–70 MB each as exported, so most of the work is making them light.
+
+| # | Chunk | Scope | Done when | Status |
+|---|---|---|---|---|
+| 41 | **New soldier pipeline** | A committed build script that runs Blender and MPFB2 headless (fetched into a cache like the Linux tools, the MakeHuman assets kept in `scripts/originals`) and writes the soldiers' glTF; a MakeHuman body on MPFB's game-engine rig, with a lighter body proxy and clothes cut down to a budget (about 12k triangles a soldier; heavy pieces like the combat boots decimated or remodelled); textures at 512 px in KTX2; the Universal Animation Library's clips retargeted onto the new rig (its A-pose lined up with the library's T-pose), replacing the SWAT's own clips; `rig.ts`, hands, leg IK (feet no longer hang off the root), first-person arms, the ragdoll rig and hitboxes moved to the new bones; one outfit for every side to begin with | The pose viewer shows every pose and clip on the new body with nothing stretched, and the benchmark's 24-body frame is within chunk 39's | Planned |
+| 42 | **Outfits per side** | Operators as SWAT (dark jacket and trousers, combat boots, gloves, tactical vest, KZ45 helmet, balaclava, goggles); guards as terrorists in a few mixes picked per guard from the seed (ski mask or bandana, beanie or bare head, leather, denim or field jacket, jeans or cargo pants, sneakers or boots); commanders told apart at a glance (a cap and the radio); the code-built kit kept only where the clothes don't cover it; varied faces and skin tones; the clothes' authors credited in `CREDITS.md` and on the menu; level of detail for far bodies if the benchmark needs it | At 30 m an operator, a guard and a commander can be told apart by shape alone, and the download grows by no more than about 2 MB | Planned |
+
 ## Known Issues
 
 Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
@@ -278,7 +292,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   pack and bedroll with black webbing, and guards wear brown webbing. Commanders (flagged in
   snapshots) wear a paler uniform, a red band round the helmet and a radio with a mast on their
   back. The fingers close round the grip and fore-end. It's still one stylized model, with the
-  face hidden; a more realistic one is left for a later phase (see Future).
+  face hidden. Phase 5 (chunks 41–42) replaces it with MakeHuman bodies dressed per side.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
@@ -315,7 +329,7 @@ bot extraction baseline in Decisions).
 - **Replays** could come back from a multiplayer server, recorded there (whole-run
   replays were built locally in chunks 17 and 28 and removed; see Decisions)
 - Global leaderboards and seasonal featured islands
-- **A more realistic soldier model** to replace Quaternius's stylized one (after Phase 3)
+- **A more realistic soldier model** to replace Quaternius's stylized one: planned as Phase 5
 
 ### Future game ideas
 Layers on top of the core loop, which stays as it is: die = score 0, scores stay comparable, and
@@ -352,8 +366,8 @@ extraction stays as hard as it is.
 - **Capacity:** 8 operators (12 until chunk 12's playtest) and about 24 guards per game (tunable constant)
 - **Backend:** none for now; the game is local only. Multiplayer is a future feature.
 - **After the proof of concept:** chunks 11–18 polish and deepen the local game, and chunks
-  19–30 clear the Known Issues, and chunks 31–40 the rest of them. Multiplayer stays in Future
-  and comes after them.
+  19–30 clear the Known Issues, and chunks 31–40 the rest of them. Chunks 41–42 replace the
+  soldiers. Multiplayer stays in Future and comes after them.
 - **No squads:** operators play free-for-all. Squads were dropped because the game's pitch
   ("beat my score") is a solo challenge, and revive would soften "die = score 0".
 - **Platform:** desktop only (keyboard and mouse). Target is 60 fps on a mid-range laptop. No
@@ -371,6 +385,11 @@ extraction stays as hard as it is.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
   ambientCG, Quaternius). Chunk 9 also used a Mixamo soldier, which chunk 11 replaced to leave
   no licensing doubts.
+- **CC‑BY allowed for soldiers' clothes** (2026-10-01): the SWAT and terrorist looks need
+  pieces only published under CC‑BY (the tactical vest, KZ45 helmet, balaclava, goggles,
+  bandana mask, denim jacket, jeans and sneakers from the MakeHuman community), so the user
+  allowed CC‑BY for them. Each author is credited in `CREDITS.md` and on the menu. Everything
+  else stays CC0, and the MakeHuman bodies are CC0 when exported from MPFB2.
 - **Bot extraction baseline** (2026-09-30): operator bots extracting from 15% ± 3 of their runs by
   day in the bot playtest (`npm run playtest`, 6 islands × 30 min, seeds 1–6) is where the user
   wants it; at night in rain it's about 20%. Changes to bots, guards, loot or the island keep it
