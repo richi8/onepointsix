@@ -12,7 +12,7 @@ import { grenadeModel } from './grenade.ts';
 import { fitGun } from './guns.ts';
 import { FAR_SHADOWS } from './cascades.ts';
 import { dimIndoors } from './indoorlight.ts';
-import { wetMaterial } from './rain.ts';
+import { Soak, wetMaterial, type Shelter } from './rain.ts';
 import { lensOf, lightTorch, makeTorch, mountTorch, torchMount, torchPart, type Torch } from './torch.ts';
 import type { Building } from '../shared/world.ts';
 import {
@@ -255,6 +255,8 @@ interface Figure {
   /** Where the last round landed, in the figure's own space, and how bright its flash is. */
   hit: { value: THREE.Vector4 };
   hitAt: THREE.Vector3;
+  /** How wet it still is from the rain. */
+  soak: Soak;
   /** Holds the gun in hand, whose look is swapped on a weapon change or with the suppressor, and its flash. */
   gun: THREE.Group;
   held: THREE.Mesh;
@@ -449,6 +451,8 @@ export type StepListener = (x: number, y: number, z: number, speed: number, crou
 
 export class Bodies {
   onStep: StepListener | null = null;
+  /** Whether it's raining and where a roof keeps it off, for how wet everyone is. */
+  shelter: Shelter | null = null;
   /** Toward the sun or moon, for which bodies out of view throw a shadow into it. */
   readonly sun = new THREE.Vector3(0, 1, 0);
   private readonly scene: THREE.Scene;
@@ -583,6 +587,8 @@ export class Bodies {
     }
 
     this.stepFalls(players);
+    // Wet or drying about halfway up, standing or lying.
+    for (const f of [...this.figures.values(), ...this.corpses]) f.soak.update(this.shelter, f.lastX, f.lastY + (f.deadFor >= 0 ? 0.3 : 1), f.lastZ, dt);
     for (const [f, p] of posed) this.draw(f, p, dt);
     this.corpses = this.corpses.filter((f, i) => {
       f.deadFor = Math.max(this.time - f.diedAt, 0);
@@ -595,6 +601,19 @@ export class Bodies {
       this.draw(f, f.snap!, dt);
       return true;
     });
+  }
+
+  /** How wet the body nearest (x, y, z) is, within `reach` metres, 0 to 1; null if there's none so near. */
+  soakNear(x: number, y: number, z: number, reach = 1.5): number | null {
+    let best: number | null = null;
+    let nearest = reach * reach;
+    for (const f of [...this.figures.values(), ...this.corpses]) {
+      const d = (f.lastX - x) ** 2 + (f.lastY - y) ** 2 + (f.lastZ - z) ** 2;
+      if (d > nearest) continue;
+      nearest = d;
+      best = f.soak.level.value;
+    }
+    return best;
   }
 
   /** Every body goes, and whatever was to shake them: as a death cam starts or ends, or a game. */
@@ -729,7 +748,7 @@ export class Bodies {
     group.add(gun);
     this.scene.add(group);
     const f: Figure = {
-      group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(),
+      group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(), soak: new Soak(),
       gun, held, magMesh, actionMesh, lastMag: null, torch, flashMesh, weapon: 0, quiet: false,
       id, deadFor: -1, diedAt: 0, snap: null, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
@@ -743,7 +762,7 @@ export class Bodies {
     for (const m of f.materials) {
       flashWhereHit(m, f.hit);
       dimIndoors(m);
-      wetMaterial(m, 0.5);
+      wetMaterial(m, 0.5, true, f.soak.level);
     }
     group.traverse((o) => {
       o.layers.enable(REFLECTED);

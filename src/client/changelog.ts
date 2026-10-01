@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-10-01',
+    title: 'Wet through',
+    notes: [
+      'Coming in out of the rain, soldiers, bodies and bags stay wet and dry off slowly, rather than the moment they step under a roof.',
+      'Floors left open to the rain when a roof comes down gather puddles.',
+      'Floors inside far buildings stay dry right up to the walls.',
+      'Wet grass looks soaked and deep green rather than greyish.',
+    ],
+  },
+  {
     date: '2026-09-30',
     title: 'Faster first load',
     notes: [

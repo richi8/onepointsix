@@ -130,6 +130,8 @@ const grenades = new Grenades(scene);
 const flashlights = new Flashlights(scene);
 const bodies = new Bodies(scene, world);
 const bags = new Bags(scene);
+bodies.shelter = bags.shelter = view.shelter;
+bags.soakNear = (x, y, z) => bodies.soakNear(x, y, z);
 const hud = new Hud();
 let runHud = new RunHud(world);
 let rivalHud = new RivalHud(world);
@@ -454,6 +456,7 @@ function openIsland(next: WorldConfig): void {
   bodies.forget();
   bodies.clear();
   bodies.ground = world;
+  bodies.shelter = bags.shelter = view.shelter;
   bags.update([]);
   grenades.update([]);
   effects.clear();
@@ -1447,7 +1450,7 @@ renderer.setAnimationLoop(() => {
     : conn ? { time: conn.renderTime(), at: (t: number) => conn!.everyoneAt(t) } : undefined;
   bodies.update(players, bodyDt, camera, clock);
   const y0 = world.floorHeight(0, 0);
-  bags.update(conn?.bags ?? (warming ? [{ id: -1, x: 0, y: y0, z: 1 }] : []));
+  bags.update(conn?.bags ?? (warming ? [{ id: -1, x: 0, y: y0, z: 1 }] : []), bodyDt);
   grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? (warming ? [{ id: -1, x: 1, y: y0 + 0.5, z: 1 }] : [])));
   if (conn) view.setExtracts(conn.extracts, now);
 

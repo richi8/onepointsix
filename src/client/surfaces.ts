@@ -19,7 +19,11 @@ export interface SurfaceOptions {
    * texture moves with it: for debris flying about.
    */
   local?: boolean;
-  /** Get wet in the rain, outside; 'puddles' also gathers puddles on the flat. */
+  /**
+   * Get wet in the rain, outside; 'puddles' also gathers puddles on the flat:
+   * on the terrain where the island's map says water gathers, on instances by
+   * how much their instanced attribute `pool` says, 0 to 1.
+   */
   wet?: boolean | 'puddles';
 }
 
@@ -36,6 +40,7 @@ export function surfaceMaterial(
 ): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial(params);
   const { indoor = false, local = false, wet = false } = options;
+  const pool = wet === 'puddles' && mapping.kind === 'instanced';
   material.onBeforeCompile = (shader) => {
     shader.uniforms.surfAlbedo = { value: assets.albedo };
     shader.uniforms.surfNormal = { value: assets.normal };
@@ -52,7 +57,8 @@ export function surfaceMaterial(
         varying vec3 vSurfNormal;
         ${local ? 'varying mat3 vSurfFrame;' : ''}
         ${terrain ? 'attribute vec4 splatA; attribute float splatB; varying vec4 vSplatA; varying float vSplatB;' : ''}
-        ${mapping.kind === 'instanced' ? 'attribute float layer; varying float vSurfLayer;' : ''}`],
+        ${mapping.kind === 'instanced' ? 'attribute float layer; varying float vSurfLayer;' : ''}
+        ${pool ? 'attribute float pool; varying float vSurfPool;' : ''}`],
       ['#include <worldpos_vertex>', /* glsl */ `
         {
           vec4 p = vec4(transformed, 1.0);
@@ -73,7 +79,8 @@ export function surfaceMaterial(
           #endif` : ''}
         }
         ${terrain ? 'vSplatA = splatA; vSplatB = splatB;' : ''}
-        ${mapping.kind === 'instanced' ? 'vSurfLayer = layer;' : ''}`],
+        ${mapping.kind === 'instanced' ? 'vSurfLayer = layer;' : ''}
+        ${pool ? 'vSurfPool = pool;' : ''}`],
     ]);
 
     shader.fragmentShader = patch(shader.fragmentShader, [
@@ -88,6 +95,7 @@ export function surfaceMaterial(
         ${local ? 'varying mat3 vSurfFrame;' : ''}
         ${terrain ? 'varying vec4 vSplatA; varying float vSplatB;' : ''}
         ${mapping.kind === 'instanced' ? 'varying float vSurfLayer;' : ''}
+        ${pool ? 'varying float vSurfPool;' : ''}
         ${SURFACE_GLSL}`],
       // Replaces the colour map, which these materials don't use.
       ['#include <map_fragment>', /* glsl */ `
@@ -103,7 +111,7 @@ export function surfaceMaterial(
         ${local ? 'surfN = vSurfFrame * surfN;' : ''}
         normal = normalize((viewMatrix * vec4(normalize(surfN), 0.0)).xyz);`],
     ]);
-    if (wet) addWet(shader, 'vSurfPos', 'wn', wet === 'puddles');
+    if (wet) addWet(shader, 'vSurfPos', 'wn', wet !== 'puddles' ? null : pool ? 'vSurfPool' : terrain ? 'islandPuddle(vSurfPos)' : null);
     if (indoor) addIndoor(shader);
   };
   // Every variant compiles its own program.

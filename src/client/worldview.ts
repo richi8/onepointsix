@@ -9,9 +9,9 @@ import type { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
 import { patchFog } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
-import { Rain } from './rain.ts';
+import { Rain, type Shelter } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
-import { IslandMap } from './islandmap.ts';
+import { IslandMap, LEVEL_GATHER } from './islandmap.ts';
 import { Lamps } from './lamps.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
@@ -302,16 +302,20 @@ export class WorldView {
 
     const props = this.props;
     const layers = new Float32Array(this.world.props.length);
+    const pools = new Float32Array(this.world.props.length);
     const c = new THREE.Color();
-    this.world.props.forEach(({ style, tint }, i) => {
+    this.world.props.forEach(({ style, tint, panel }, i) => {
       // Roofs are corrugated metal only on top: underneath, a plain ceiling.
       layers[i] = style === 'roof' ? -1 - PROP_LAYERS[style] : PROP_LAYERS[style];
+      // A concrete floor the rain reaches, once the roof over it is down, gathers puddles as level ground does.
+      pools[i] = panel >= 0 && this.world.panels[panel].kind === 'floor' ? LEVEL_GATHER : 0;
       props.setColorAt(i, c.setHex(pick(PROP_TINTS[style], tint)).multiplyScalar(GAIN[style] ?? 1));
     });
     props.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers, 1));
+    props.geometry.setAttribute('pool', new THREE.InstancedBufferAttribute(pools, 1));
     props.instanceColor!.needsUpdate = true;
     const old = props.material as THREE.Material;
-    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE }, 1, { indoor: true, wet: true }), this.world);
+    props.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE }, 1, { indoor: true, wet: 'puddles' }), this.world);
     old.dispose();
 
     this.trees.applyAssets(assets);
@@ -325,6 +329,11 @@ export class WorldView {
     }
     this.rocks.instanceColor!.needsUpdate = true;
     this.sun.redraw();
+  }
+
+  /** Whether it's raining, and where it's sheltered from it. */
+  get shelter(): Shelter {
+    return this.rain;
   }
 
   /** Show panels standing or broken and doors open or shut as the world has them, at once. */
@@ -342,7 +351,8 @@ export class WorldView {
   /** Show one panel as the world has it. */
   updatePanel(id: number): void {
     if (!this.world.panels[id]) return;
-    if (this.world.panels[id].kind === 'roof') {
+    const kind = this.world.panels[id].kind;
+    if (kind === 'roof' || kind === 'floor') {
       this.rain.roofChanged();
       this.island.roofs(this.world.panels[id].box);
     }

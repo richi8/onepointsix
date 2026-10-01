@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import type { World } from '../shared/world.ts';
-import { ISLAND_GLSL, islandUniforms } from './islandmap.ts';
+import { ISLAND_GLSL, islandUniforms, shelters } from './islandmap.ts';
 
 // Rain: streaks falling through a box that follows the camera, splashes where
 // they land, wet ground, trees, grass and bodies, puddles where water
@@ -94,7 +94,7 @@ export const ROOF_GLSL = /* glsl */ `
   float underRoof(vec3 p) {
     vec2 uv = (p.xz - roofCorner.xy) * roofCorner.z;
     // Round the camera the sharp map, farther off the island's.
-    float top = any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))) ? islandCell(p).r : texture(roofMap, uv).r;
+    float top = any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))) ? islandRoof(p) : texture(roofMap, uv).r;
     return p.y < top - 0.05 ? 1.0 : 0.0;
   }
 `;
@@ -158,15 +158,16 @@ export const WET_GLSL = /* glsl */ `
 
 /**
  * Patch a surface shader to get wet in the rain. `pos` and `normal` name its
- * world position and normal; with `puddles`, flat parts of it hold puddles.
+ * world position and normal; `gather`, GLSL for how much water gathers on it,
+ * 0 to 1, lets flat parts of it hold puddles.
  */
-export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: string, normal: string, puddles: boolean): void {
+export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: string, normal: string, gather: string | null): void {
   Object.assign(shader.uniforms, rainUniforms);
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', `#include <common>\n${ROOF_GLSL}\n${WET_GLSL}`)
     .replace('#include <roughnessmap_fragment>', /* glsl */ `#include <roughnessmap_fragment>
-      vec3 wet = wetAt(${pos}, ${normal}, ${puddles ? `islandPuddle(${pos})` : '0.0'});
-      ${puddles ? '' : 'wet.y = 0.0;'}
+      vec3 wet = wetAt(${pos}, ${normal}, ${gather ?? '0.0'});
+      ${gather ? '' : 'wet.y = 0.0;'}
       // Soaking deepens a colour as well as darkening it.
       diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.5 * wet.x)) * (1.0 - 0.15 * wet.x - 0.25 * wet.y);
       // Soaked soil and grass stay mostly matte; only a thin film on the flat catches the sky.
@@ -184,33 +185,95 @@ export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: st
  * Make a material get wet in the rain, darker and a little glossier, keeping
  * whatever it already does as it compiles: for trees, grass, bodies, bags and
  * debris. Its world position is worked out from the view, and how much it
- * faces up from its triangle. `sheltered` for what can stand under a roof,
- * which then keeps it dry; `gloss` is the roughness a soaked surface goes
- * toward.
+ * faces up from its normal. `sheltered` for what can stand under a roof,
+ * which then keeps it dry, but for as soaked as `soak` says it still is
+ * (see Soak); `gloss` is the roughness a soaked surface goes toward, and
+ * `sky` how much of the sky's reflection it keeps.
  */
-export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, gloss = 0.45, sheltered = true): M {
+export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, gloss = 0.45, sheltered = true, soak?: { value: number }, sky = 1): M {
   const before = material.onBeforeCompile;
   const key = material.customProgramCacheKey.bind(material);
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     Object.assign(shader.uniforms, rainUniforms);
+    if (soak) shader.uniforms.wetSoak = soak;
+    for (const anchor of ['#include <common>', '#include <clearcoat_normal_fragment_begin>', '#include <lights_fragment_end>']) {
+      if (!shader.fragmentShader.includes(anchor)) throw new Error(`Shader anchor ${anchor} is missing`);
+    }
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${sheltered ? ROOF_GLSL : OPEN_GLSL}\n${WET_GLSL}`)
-      .replace('#include <roughnessmap_fragment>', /* glsl */ `#include <roughnessmap_fragment>
+      .replace('#include <common>', `#include <common>\n${sheltered ? ROOF_GLSL : OPEN_GLSL}\n${WET_GLSL}\n${soak ? 'uniform float wetSoak;' : ''}`)
+      // Once the normal is known, whatever has replaced three.js's normal
+      // chunks; the colour and roughness are only used with the lights after.
+      .replace('#include <clearcoat_normal_fragment_begin>', /* glsl */ `
+        float soaked = 0.0;
         if (wetness > 0.0) {
           mat3 wetToWorld = transpose(mat3(viewMatrix));
           vec3 wetP = wetToWorld * (-vViewPosition - viewMatrix[3].xyz);
-          float up = abs((wetToWorld * normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)))).y);
-          float soaked = wetAt(wetP, vec3(0.0, up, 0.0), 0.0).x;
+          vec3 wetN = wetToWorld * normal;
+          soaked = wetAt(wetP, wetN, 0.0).x;
+          ${soak ? '// Still wet from the rain under a roof, drying.\nsoaked = max(soaked, wetness * wetSoak * mix(0.45, 1.0, clamp(wetN.y, 0.0, 1.0)));' : ''}
           diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.4 * soaked)) * (1.0 - 0.12 * soaked);
           roughnessFactor = mix(roughnessFactor, min(roughnessFactor, ${gloss.toFixed(2)}), soaked);
-        }`);
+        }
+        #include <clearcoat_normal_fragment_begin>`)
+      // Less of the sky in it, which turned soaked grass grey.
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${sky < 1 ? `reflectedLight.indirectSpecular *= mix(1.0, ${sky.toFixed(2)}, soaked);` : ''}`);
   };
-  material.customProgramCacheKey = () => `${key()}-wet${sheltered ? '' : '-open'}`;
+  material.customProgramCacheKey = () => `${key()}-wet${sheltered ? '' : '-open'}${soak ? '-soak' : ''}-${sky}`;
   return material;
 }
 
-export class Rain {
+/** Seconds something soaked through takes to dry under a roof, and something dry to soak through in the rain. */
+const DRY_TIME = 240;
+const SOAK_TIME = 20;
+/** Seconds between looks at whether something soaking is under a roof. */
+const SHELTER_CHECK = 0.5;
+
+/** Whether it's raining, and whether a point is under a roof. */
+export interface Shelter {
+  readonly raining: boolean;
+  sheltered(x: number, y: number, z: number): boolean;
+}
+
+/**
+ * How soaked one thing is that comes in and out of the rain, such as a
+ * soldier: it soaks through out in it and dries slowly under a roof, rather
+ * than the moment it steps under one. Its `level` is a uniform for
+ * `wetMaterial`.
+ */
+export class Soak {
+  /** 0 dry to 1 soaked through. */
+  readonly level = { value: 0 };
+  private open = true;
+  private begun = false;
+  private wait = Math.random() * SHELTER_CHECK;
+
+  /** Start as soaked as `level`, rather than as wet as where it's first seen. */
+  begin(level: number): void {
+    this.level.value = level;
+    this.begun = true;
+  }
+
+  /** Soak or dry by `dt` seconds at (x, y, z), a point on it about halfway up. */
+  update(shelter: Shelter | null, x: number, y: number, z: number, dt: number): void {
+    if (!shelter?.raining) {
+      this.level.value = 0;
+      this.begun = false;
+      return;
+    }
+    this.wait -= dt;
+    if (this.wait <= 0 || !this.begun) {
+      this.open = !shelter.sheltered(x, y, z);
+      this.wait = SHELTER_CHECK;
+    }
+    // First seen in the rain, it's been out in it; first seen under a roof, it's dry.
+    if (!this.begun) this.begin(this.open ? 1 : 0);
+    else if (this.open) this.level.value = Math.min(this.level.value + dt / SOAK_TIME, 1);
+    else this.level.value = Math.max(this.level.value - dt / DRY_TIME, 0);
+  }
+}
+
+export class Rain implements Shelter {
   readonly group = new THREE.Group();
   private readonly material: THREE.ShaderMaterial;
   private readonly world: World;
@@ -362,6 +425,19 @@ export class Rain {
     this.splashMaterial.uniforms.color.value.copy(color).multiplyScalar(1.3);
   }
 
+  get raining(): boolean {
+    return this.on;
+  }
+
+  /** Whether a standing roof, or a floor, is over (x, y, z). */
+  sheltered(x: number, y: number, z: number): boolean {
+    for (const p of this.world.panels) {
+      const b = p.box;
+      if (b.maxY > y && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && shelters(p)) return true;
+    }
+    return false;
+  }
+
   /** The lit flashlights nearest the camera, yours first if it's on, for the drops caught in their beams. */
   torches(lit: readonly { at: THREE.Vector3; dir: THREE.Vector3 }[]): void {
     const { torchFrom, torchDir } = torchUniforms;
@@ -459,13 +535,14 @@ export class Rain {
 
 /**
  * The roof map with its corner at (x0, z0): for each cell, the top of the
- * highest standing roof over its middle, or OPEN_SKY. Rows run along z.
+ * highest standing roof over its middle, or OPEN_SKY; a floor counts, as the
+ * roof of the room under it. Rows run along z.
  */
 export function roofHeights(world: World, x0: number, z0: number, out = new Float32Array(ROOF_CELLS * ROOF_CELLS)): Float32Array {
   out.fill(OPEN_SKY);
   for (const p of world.panels) {
+    if (!shelters(p)) continue;
     const b = p.box;
-    if (p.kind !== 'roof' || b.gone) continue;
     const i0 = Math.max(Math.ceil((b.minX - x0) / ROOF_CELL - 0.5), 0);
     const i1 = Math.min(Math.floor((b.maxX - x0) / ROOF_CELL - 0.5), ROOF_CELLS - 1);
     const j0 = Math.max(Math.ceil((b.minZ - z0) / ROOF_CELL - 0.5), 0);

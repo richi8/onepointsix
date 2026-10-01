@@ -465,7 +465,7 @@ function grassMaterial(blades: THREE.Texture | null, eye: { value: THREE.Vector3
         }`);
   };
   material.customProgramCacheKey = () => `${key}-grass-${assets ? 1 : 0}-${near ? 'blades' : 'cards'}`;
-  return wetMaterial(material, 0.92, false);
+  return wetMaterial(material, 0.7, false, undefined, 0.4);
 }
 
 /**
