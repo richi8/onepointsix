@@ -341,52 +341,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   **Resolved in part** (19): the benchmark times the rebuild at about 1 ms a cell crossed in all
   three engines (see "The ground cover's first fill"), and the screenshots are now compared by
   the tests. The mid-range laptop and watching it move are left for chunk 30.
-- **The light volume is rough** (23). Cells about 0.5 m across leave a little light leaking at the
-  foot of walls; only sky light is counted (no light bounced off the floor, no colour), and only
-  what the building itself hides: hills, trees and other buildings outside don't darken a room.
-  Materials look only at the four buildings nearest the camera, so a far building's inside, seen
-  through its doorway, is lit like the outdoors. Floors under the hemisphere light still look
-  brighter than the walls round them. The first-person gun reads the cell it's in, eased over a
-  quarter of a second. Tuned (30% floor, 2.6 gain) by screenshots only.
-  **Resolved in part** (36): each way to the sky counts as much as the sky that way shows outside
-  the building, from five spots in it: hills and other buildings (by a ray out to 150 m) hide it,
-  and trees' crowns within 45 m (as cones) hide 60% of it. Materials find the building a point is
-  in from the island's map, so every building (up to 16; islands have 10 or 11) is lit inside
-  however far off. Indoors, a floor gets at most 70% of the sky's light it would facing up, so no
-  more than its walls. No leak at the foot of a wall showed in screenshots at dusk, before or
-  after; the cells under the floor are filled from the room. Still open: only sky light is
-  counted (no bounce, no colour), cells are 0.5 m, what hides the sky outside is worked out once
-  per building and not again when another building breaks, and the gun in your hands reads the
-  cell it's in.
-  **Resolved in part** (2026-10-01): the flat 30% is gone. Each cell also takes the light bounced
-  once off what's round it, from 32 directions all round: each block a ray meets bounces the sky's
-  light of the cell before it (walls take their room's), in its prop's colour, and rays out
-  through a doorway downward bounce off the ground outside. A floor of 15% stands for light
-  bounced more; tuned (15%, ×4) so the rooms of the default island are as bright on average as
-  before (0.32 against 0.335), with corners down to about 0.15–0.2 and walls by windows brighter.
-  The texture holds red, green and blue. When a building's cover changes, every other building
-  within 150 m works out its sky outside again (200 rays), and its cells only if that changed by
-  2% any way. The gun in your hands blends the eight cells round it, 0.4 m ahead of the eye, and
-  its sky light leans toward the side that's brighter. Working out all ten buildings takes about
-  80 ms in Node, double before, still spread at 2.5 ms a frame. Checked by still screenshots
-  against the old code (subtle: walls by windows lighter, the stairs warmer); the gun was checked
-  by its numbers, not seen in play. Still open: sunlight doesn't bounce (a sunlit patch on a floor
-  doesn't light the room round it), colours are the props' flat ones, not their textures', and
-  cells are 0.5 m.
-  **Resolved in part** (2026-10-01): sunlight bounces. Every face of a block the sun reaches
-  indoors (by a ray through the blocks, then on through the world and the trees' crowns, from
-  that very spot) is gathered into a patch for each cell; every cell takes each patch's light it
-  can see, falling off with the square of the distance; rays out of a doorway downward add the
-  sunny ground outside. It's kept as a share of the sun's light in a second texture, and
-  materials add it times the sun's light, so it follows the time of day and the weather, and
-  the gun takes it too. Physically it's faint on these dark surfaces (about 4% of the sun a metre
-  or two from a patch), so it's boosted 4× (with 0.5 for a surface not facing the patch), tuned by
-  screenshots: walls beside a sunlit window are brighter and warmer at midday; at dusk the low,
-  dim sun shows no difference in the test rooms. All ten buildings take about 125 ms in Node
-  (80 ms before), at 2.5 ms a frame; the extra texture read in every lit material wasn't
-  benchmarked. Still open: cells are 0.5 m, and a patch of sun lights only the cells it sees, once.
-  Left as not worth it (2026-10-01, the user's call): light bounces in the props' flat colours, not
-  their textures' averages; the difference would hardly show.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
