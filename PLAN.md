@@ -276,27 +276,10 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   uniform. Operators carry a pack and bedroll with black webbing, and guards wear brown webbing.
   Commanders (flagged in snapshots) wear a paler uniform, a red band round the helmet and a radio
   with a mast on their back.
-- **Buildings are still boxes** (9): the walls, watchtowers, containers and crates are textured,
-  but the geometry is primitive. There are no doors, windows or interiors.
-  **Resolved in part** (15): every outpost has a two-room concrete building (see below). Its walls
-  are breakable panels with doorways and window openings, and lintels over each opening rest on
-  the columns either side. Corner posts hold up an unbreakable roof, and there's a table and a
-  guarded crate in each room. Everything is still built from boxes, and the watchtowers and
-  containers are unchanged.
-  **Resolved in part** (35): the watchtowers are drawn from posts, cross braces, a plank deck on
-  joists, a boarded parapet and stairs with treads and risers, and the shipping containers from
-  corner posts, rails, ribbed steel walls and roof and a pair of doors with locking bars (see
-  below for what they collide as). Buildings, crates and walls are still boxes.
-  **Resolved in part** (2026-10-01): props are drawn in their shapes over the same colliders:
-  crates with edge battens and side braces, fences of boards between posts, panelled door leaves
-  with handles, tables on legs, window frames round the glass and sills standing out of the wall.
-  Parts keep their size in metres however the box stretches (an `inset` offset per vertex in
-  `src/client/props.ts`). Checked by screenshots, not watched in play. Still boxes: concrete walls,
-  posts, lintels, roofs, floors, steps and the lamp heads. The fence boards leave slits you can
-  see through, but bullets and bots still treat the section as solid. The wood texture runs
-  across, so door panels show horizontal grain. Props now take 8 draw calls rather than 2 (about
-  +18 a frame with shadows); the benchmark's frames came out within 0.3 ms of the code before in
-  alternating runs.
+- **Fences show slits that stop rounds, and door panels show sideways grain** (2026-10-01). A
+  fence's boards leave finger-wide gaps you can glimpse through, but bullets and bots treat the
+  section as solid. The wood texture is laid in world space and its grain runs across, so a door
+  leaf's stiles and panel all show horizontal grain.
 - **The soldier is stylized, not realistic** (11). Quaternius's low-poly SWAT character was the
   best rigged and animated CC0 soldier available, but it doesn't match the grounded tone. Its
   helmet hides the face, and its hands stay open instead of gripping the gun.

@@ -758,6 +758,27 @@ notes the chunk it came from.
   **Resolved** (2026-10-01): the user has watched bodies fall, pile up and get thrown by grenades
   in play and finds them fine; the gaps left above (the living not moved by a body, elbows bent
   by a guess, bodies left lying not in a death cam, magazines not thrown) weren't noticed.
+- **Buildings are still boxes** (9): the walls, watchtowers, containers and crates are textured,
+  but the geometry is primitive. There are no doors, windows or interiors.
+  **Resolved in part** (15): every outpost has a two-room concrete building (see below). Its walls
+  are breakable panels with doorways and window openings, and lintels over each opening rest on
+  the columns either side. Corner posts hold up an unbreakable roof, and there's a table and a
+  guarded crate in each room. Everything is still built from boxes, and the watchtowers and
+  containers are unchanged.
+  **Resolved in part** (35): the watchtowers are drawn from posts, cross braces, a plank deck on
+  joists, a boarded parapet and stairs with treads and risers, and the shipping containers from
+  corner posts, rails, ribbed steel walls and roof and a pair of doors with locking bars (see
+  below for what they collide as). Buildings, crates and walls are still boxes.
+  **Resolved** (2026-10-01): props are drawn in their shapes over the same colliders: crates with
+  edge battens and side braces, fences of boards between posts, panelled door leaves with handles,
+  tables on legs, stair steps with a tread and nosing, lamp heads with a sloped housing, and
+  window frames round the glass with sills standing out of the wall. Parts keep their size in
+  metres however the box stretches (an `inset` offset per vertex in `src/client/props.ts`).
+  Concrete walls, posts, lintels and floors and the steel roof sheets stay slabs, as they are.
+  Checked by screenshots, not watched in play. Props take 10 draw calls rather than 2; the
+  benchmark's frames came out within 0.3 ms of the code before in alternating runs. The fence's
+  slits and the doors' grain are listed under Look and animation.
+
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.

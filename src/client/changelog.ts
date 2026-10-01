@@ -17,6 +17,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Crates have battens along their edges and a brace across each side.',
       'Fences are boards nailed between posts, with gaps you can glimpse through.',
       'Doors are panelled, with a handle on each side; tables stand on four legs.',
+      'Stairs have treads with a lip, and the outpost lamps a proper sloped housing.',
       'Windows have frames round the glass and a sill standing out from the wall.',
     ],
   },
