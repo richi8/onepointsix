@@ -3,7 +3,9 @@ import { loadAssets } from '../src/client/assets.ts';
 import { Bodies } from '../src/client/bodies.ts';
 import { ViewModel } from '../src/client/viewmodel.ts';
 import { hitboxes, HEAD_RADIUS } from '../src/shared/hitbox.ts';
+import { DUCK_RATE, MANTLE_PRESS_HEIGHT } from '../src/shared/constants.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
+import { mantleStep, spawnState } from '../src/shared/sim.ts';
 import { GRENADE, WEAPONS } from '../src/shared/weapons.ts';
 
 // A dev page for looking at the soldier's poses without playing: a row of
@@ -76,6 +78,8 @@ const ground = {
   buildings: [],
   groundHeight: (x: number, z: number, feetY: number): number =>
     q.has('ledge') && z > LEDGE_Z && ledge <= feetY + 0.55 ? Math.max(ledge, floor(x)) : floor(x),
+  ledgeHeight: (_x: number, z: number, minY: number, maxY: number): number =>
+    q.has('ledge') && z > LEDGE_Z && ledge > minY && ledge <= maxY ? ledge : -Infinity,
   floorHeight: floor,
   // The wall is a box 0.2 thick, 2 high and 4 long.
   sphereOut(x: number, y: number, z: number, r: number, out: { x: number; y: number; z: number }): boolean {
@@ -143,14 +147,23 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
     case 'jump': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * -3; break;
     case 'fall': base.motion = 'air'; move(3); base.y = 0.6 + (end - s) * 5; break;
     case 'mantle': base.motion = 'mantle'; base.y = 0.3 + (s - end) * 2; break;
-    // Onto the ledge, as the game climbs: straight up to its top, then over onto it; t seconds in.
+    // Onto the ledge, as the game climbs; t seconds in.
     case 'climb': {
       const into = s - (end - t);
       if (into < 0) break;
-      const rise = ledge / 5.5;
-      base.y = Math.min(into * 5.5, ledge);
-      base.z += Math.min(Math.max(into - rise, 0) * 4, 0.6);
-      base.motion = into < rise + 0.15 ? 'mantle' : 'ground';
+      // Grabbed 0.85 m ahead and landed 0.35 m further on, as on a deep ledge.
+      const c = spawnState(base.x, base.y, base.z);
+      Object.assign(c, { mantling: true, mantleX: base.x, mantleY: ledge, mantleZ: base.z + 1.2 });
+      // Hunched pressing up over the ledge, then standing on it, as applyCmd eases it.
+      for (let k = 0; k < into * 60; k++) {
+        if (c.mantling) mantleStep(c, 1 / 60);
+        const hunch = c.mantling && c.y >= ledge - MANTLE_PRESS_HEIGHT;
+        c.duck = Math.min(Math.max(c.duck + (hunch ? 1 : -1) * DUCK_RATE / 60, 0), 1);
+      }
+      base.y = c.y;
+      base.z = c.z;
+      base.duck = c.duck;
+      base.motion = c.mantling ? 'mantle' : 'ground';
       break;
     }
     // Coming down for half a second, landing t seconds ago.

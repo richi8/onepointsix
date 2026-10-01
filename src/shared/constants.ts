@@ -64,6 +64,11 @@ export const MANTLE_REACH = 0.45;
 export const MANTLE_RISE_SPEED = 5.5;
 export const MANTLE_FORWARD_SPEED = 4;
 export const MANTLE_EXIT_SPEED = 3;
+/**
+ * How far below the ledge's top the feet are when the hips reach it: the pull
+ * up ends there, and the body presses up and over onto the ledge together.
+ */
+export const MANTLE_PRESS_HEIGHT = 0.9;
 
 // Lean (Q/E): the eye shifts sideways and rolls; blocked by walls.
 export const LEAN_OFFSET = 0.45;

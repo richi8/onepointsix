@@ -26,6 +26,7 @@ import {
   MANTLE_EXIT_SPEED,
   MANTLE_FORWARD_SPEED,
   MANTLE_MAX_HEIGHT,
+  MANTLE_PRESS_HEIGHT,
   MANTLE_REACH,
   MANTLE_RISE_SPEED,
   MAX_FALL_SPEED,
@@ -209,7 +210,8 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
   if (!p.mantling && jump && fwd > 0 && !heavy) startMantle(world, p);
   if (p.mantling) {
     mantleStep(p, dt);
-    ease(p, 0, dt);
+    // Pressing up over the ledge, hunched over the knee on it; it stands once on top.
+    ease(p, 0, dt, p.mantling && p.y >= p.mantleY - MANTLE_PRESS_HEIGHT);
     regenStamina(p, dt);
     // Both hands are on the ledge: the weapon can't fire or aim.
     stepWeapon(p, cmd, dt, true, eye, onFx);
@@ -319,22 +321,33 @@ function startMantle(world: World, p: PlayerState): void {
   p.onGround = false;
 }
 
-/** Rise straight up to the ledge, then move over onto it. */
-function mantleStep(p: PlayerState, dt: number): void {
-  if (p.y < p.mantleY) {
-    p.y = Math.min(p.y + MANTLE_RISE_SPEED * dt, p.mantleY);
+/**
+ * Pull straight up until the hips are at the ledge, then press up and over
+ * onto it at once, rising most of the way before going far over, as a person
+ * gets a knee onto it. Takes as long as rising all the way and then moving
+ * over would.
+ */
+export function mantleStep(p: PlayerState, dt: number): void {
+  if (p.y < p.mantleY - MANTLE_PRESS_HEIGHT) {
+    p.y = Math.min(p.y + MANTLE_RISE_SPEED * dt, p.mantleY - MANTLE_PRESS_HEIGHT);
     return;
   }
   const dx = p.mantleX - p.x;
   const dz = p.mantleZ - p.z;
   const d = Math.hypot(dx, dz);
-  const step = MANTLE_FORWARD_SPEED * dt;
-  if (d > step) {
-    p.x += (dx / d) * step;
-    p.z += (dz / d) * step;
+  const dy = p.mantleY - p.y;
+  // The share of the way over left that this step covers, by how long the rest takes: the rise left goes as the
+  // square of it, out of the full press up.
+  const share = dt / Math.max(d / MANTLE_FORWARD_SPEED + Math.sqrt(dy * MANTLE_PRESS_HEIGHT) / MANTLE_RISE_SPEED, 1e-6);
+  if (share < 1) {
+    p.x += dx * share;
+    p.z += dz * share;
+    // The rise left shrinks as the square of the way over left: up first, then over.
+    p.y = p.mantleY - dy * (1 - share) ** 2;
     return;
   }
   p.x = p.mantleX;
+  p.y = p.mantleY;
   p.z = p.mantleZ;
   p.mantling = false;
   p.onGround = true;
@@ -344,9 +357,9 @@ function mantleStep(p: PlayerState, dt: number): void {
   }
 }
 
-/** Ease duck toward the crouch state and lean toward `leanTarget`. */
-function ease(p: PlayerState, leanTarget: number, dt: number): void {
-  const duckTarget = p.crouched ? 1 : 0;
+/** Ease duck toward the crouch state (or a crouch anyway, with `hunch`) and lean toward `leanTarget`. */
+function ease(p: PlayerState, leanTarget: number, dt: number, hunch = false): void {
+  const duckTarget = p.crouched || hunch ? 1 : 0;
   p.duck += clamp(duckTarget - p.duck, -DUCK_RATE * dt, DUCK_RATE * dt);
   p.lean += clamp(leanTarget - p.lean, -LEAN_RATE * dt, LEAN_RATE * dt);
 }

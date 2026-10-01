@@ -574,6 +574,22 @@ notes the chunk it came from.
   poses rather than the server's, so two players would see them a little apart (matters only
   with multiplayer); and the living walk through them rather than kicking them aside.
   **Accepted** (2026-10-01): the user is fine with both of what's left.
+- **The climb follows the game's lift, not a person's** (33). The game raises the body straight
+  up to the ledge's top in about 0.2 s and then moves it on, so the hand holding the edge can only
+  reach it early on; after that the arm points down at it, straight, above it. The ledge's top is
+  looked for with the ground's height ahead of the body, which can miss a thin ledge; then it
+  guesses 1 m.
+  **Resolved** (2026-10-01): the game's lift is a person's. It pulls straight up only until the
+  hips are at the ledge (0.9 m below its top), then presses up and over together, the rise left
+  shrinking as the square of the way over left, so it's mostly up before it's far over, as a knee
+  goes onto the ledge; the hitbox hunches (ducks) while it presses and stands once on top. It
+  takes as long as before. The hand holds the ledge's edge, found by stepping out from the body
+  for where the top begins, and stays on it through the press, letting go as the feet get onto
+  it; the right foot steps onto the top past the edge and stays there as the body goes over it,
+  and the left foot keeps to the wall. The top is looked for as the game looks for it (the
+  highest ledge in reach at that point), falling back on the ground's height and then 1 m only if
+  that fails. Checked in the pose viewer at 1 m and 1.8 m, with the screenshot test updated, not
+  watched in play.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

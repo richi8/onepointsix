@@ -377,11 +377,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Bodies posed only for what's in view** (32): a body is posed while it's on screen, while its
   shadow may fall on screen, or while its flashlight is on within 60 m. One seen only in the
   sea's reflection, above the top of the screen, keeps its last pose there.
-- **The climb follows the game's lift, not a person's** (33). The game raises the body straight
-  up to the ledge's top in about 0.2 s and then moves it on, so the hand holding the edge can only
-  reach it early on; after that the arm points down at it, straight, above it. The ledge's top is
-  looked for with the ground's height ahead of the body, which can miss a thin ledge; then it
-  guesses 1 m.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

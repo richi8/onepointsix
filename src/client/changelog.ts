@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Climbing like a person',
+    notes: [
+      'Climbing onto a ledge pulls up until your hips are at it, then a knee goes onto it and you press up and over hunched, standing once on top. It takes as long as before.',
+      "Other soldiers' hands stay on the ledge's edge while they press up, and let go as their feet get onto it.",
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Magazines that stay',
     notes: [
       "Every soldier's empty magazines fall where they reload, however far off or out of sight, and lie there for the rest of the game.",

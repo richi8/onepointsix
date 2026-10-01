@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { GRENADE_RADIUS, LEAN_OFFSET, MANTLE_REACH, PLAYER_HEIGHT, PLAYER_RADIUS } from '../shared/constants.ts';
+import {
+  GRENADE_RADIUS, LEAN_OFFSET, MANTLE_AIR_HEIGHT, MANTLE_MAX_HEIGHT, MANTLE_PRESS_HEIGHT, MANTLE_REACH, PLAYER_HEIGHT, PLAYER_RADIUS,
+  STEP_HEIGHT,
+} from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
@@ -174,6 +177,7 @@ const ROUND_GEO = new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6).rotateX(Math
 /** What a body stands on and falls against, and the buildings it may be inside. */
 export interface Ground extends Solid {
   groundHeight(x: number, z: number, feetY: number, pad?: number): number;
+  ledgeHeight(x: number, z: number, minY: number, maxY: number): number;
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number;
   readonly buildings: readonly Building[];
 }
@@ -445,7 +449,8 @@ interface Drop {
 /**
  * A climb onto a ledge: the height it started from, the ledge's top, where
  * the left hand holds its edge, and how far it has got: `rise` 0 to 1 up to
- * the top, then `over` seconds on it, moving onto the ledge.
+ * the top all told, and `over` 0 to 1 of the press up and over onto it once
+ * the hips are at the ledge.
  */
 interface Climb {
   from: number;
@@ -967,7 +972,7 @@ export class Bodies {
       f.soldier.land.reset();
     }
     f.airFor = inAir ? f.airFor + dt : 0;
-    this.climbing(f, p, dt);
+    this.climbing(f, p);
     f.duck = p.duck;
     f.lastX = p.x;
     f.lastY = p.y;
@@ -1060,24 +1065,39 @@ export class Bodies {
    * snapshots don't say) and where the hand holds its edge, and then how far
    * up it the body has risen, and how long it has been on top.
    */
-  private climbing(f: Figure, p: PlayerSnap, dt: number): void {
+  private climbing(f: Figure, p: PlayerSnap): void {
     if (p.motion === 'mantle' && !p.dead) {
-      if (!f.climb || f.climb.over > 0 && p.y < f.climb.top - 0.3) {
+      if (!f.climb || f.climb.over > 0.9 && p.y < f.climb.top - 0.3) {
         const from = f.lastY;
         const fx = -Math.sin(p.yaw);
         const fz = -Math.cos(p.yaw);
-        const x = p.x + fx * CLIMB_REACH;
-        const z = p.z + fz * CLIMB_REACH;
-        let top = this.ground.groundHeight(x, z, from + CLIMB_HIGHEST);
+        let x = p.x + fx * CLIMB_REACH;
+        let z = p.z + fz * CLIMB_REACH;
+        // Where the climb looked for it, then failing that the ground ahead, then a guess.
+        const lowest = from + STEP_HEIGHT - 0.05;
+        let top = this.ground.ledgeHeight(x, z, lowest, from + (f.air > 0.5 ? MANTLE_AIR_HEIGHT : MANTLE_MAX_HEIGHT));
+        if (top === -Infinity) top = this.ground.groundHeight(x, z, from + CLIMB_HIGHEST);
         if (top < from + 0.2) top = from + 1;
+        // Held at its edge: the nearest point ahead where its top is, just past the body.
+        for (let d = PLAYER_RADIUS; d < CLIMB_REACH; d += 0.05) {
+          if (this.ground.ledgeHeight(p.x + fx * d, p.z + fz * d, top - 0.01, top + 0.01) === -Infinity) continue;
+          x = p.x + fx * (d + 0.04);
+          z = p.z + fz * (d + 0.04);
+          break;
+        }
         // The left hand on the edge, a little to the left.
         const hold = new THREE.Vector3(x + fz * 0.2 - fx * 0.05, top, z - fx * 0.2 - fz * 0.05);
         f.climb = { from, top, hold, rise: 0, over: 0 };
       }
       const c = f.climb;
       c.rise = clamp((p.y - c.from) / Math.max(c.top - c.from, 0.1), 0, 1);
-      if (p.y >= c.top - 0.01) c.over += dt;
-    } else if (f.climb && f.mantle < 0.01) f.climb = null;
+      const press = Math.max(c.top - MANTLE_PRESS_HEIGHT, c.from);
+      c.over = clamp((p.y - press) / Math.max(c.top - press, 0.05), 0, 1);
+    } else if (f.climb) {
+      // Done: on top, or off it, the climb winds down as its pose blends out.
+      f.climb.over = 1;
+      if (f.mantle < 0.01) f.climb = null;
+    }
   }
 
   /** Whether the shadow a body in `bounds` throws, away from the sun, may fall in view. */
@@ -1396,7 +1416,7 @@ export class Bodies {
       rotateWorld(b.neck, up, blade);
     }
     // Bent forward climbing; aiming, the chest and head follow the pitch.
-    const over = f.climb ? Math.sin(Math.PI * clamp(f.climb.rise * 0.7 + smoothstep(0, CLIMB_OVER, f.climb.over) * 0.3, 0, 1)) : 1;
+    const over = f.climb ? Math.sin(Math.PI * clamp(f.climb.rise * 0.7 + f.climb.over * 0.3, 0, 1)) : 1;
     rotateWorld(b.spine, right, -lerp(0.2, 0.7, over) * f.mantle);
     rotateWorld(b.spine2, right, p.pitch * 0.5);
     rotateWorld(b.neck, right, p.pitch * 0.35);
@@ -1531,16 +1551,20 @@ export class Bodies {
       // Crouched still, a foot the body's step left behind the legs' hitbox is drawn in under it.
       const tuck = f.duck * (1 - smoothstep(0.3, 1.2, f.speed));
       if (z < -FOOT_TUCK) z = lerp(z, -FOOT_TUCK, tuck);
-      // Climbing: the right knee comes up onto the ledge while the left foot pushes off below, then follows.
+      // Climbing: the feet scrabble at the wall below the edge while it pulls up, then the right knee comes up onto
+      // the ledge where it presses up and over, and the left foot follows it.
       if (f.climb && f.mantle > 0.01) {
         const c = f.climb;
         const ledge = c.top - origin.y;
         const ground = c.from - origin.y;
-        const up = smoothstep(0.25, 0.85, c.rise);
-        const after = smoothstep(0, CLIMB_OVER, c.over);
+        // The ledge's edge ahead, which the body comes up to and goes over.
+        const edge = V_TMP2.copy(c.hold).sub(origin).dot(forward);
+        const wall = Math.min(edge - 0.15, 0.05);
+        const up = smoothstep(0, 0.4, c.over);
+        const after = smoothstep(0.6, 1, c.over);
         const climb = left
-          ? [-0.12, lerp(lerp(ground, ground + 0.25, smoothstep(0.55, 1, c.rise)), 0.05, after), lerp(-0.1, 0, after)]
-          : [0.12, lerp(lerp(0.1, ledge + 0.08, up), 0.02, after), lerp(lerp(0.05, 0.4, up), 0.1, after)];
+          ? [-0.12, lerp(lerp(ground, ground + 0.25, smoothstep(0.55, 1, c.rise)), 0.05, after), lerp(Math.min(wall, -0.1), 0, after)]
+          : [0.12, lerp(lerp(0.1, ledge + 0.08, up), 0.02, after), lerp(lerp(wall, edge + 0.15, up), 0.1, after)];
         x = lerp(x, climb[0], f.mantle);
         y = lerp(y, climb[1], f.mantle);
         z = lerp(z, climb[2], f.mantle);
@@ -1639,6 +1663,8 @@ export class Bodies {
     const draw = p.act === 'draw' ? 1 - smoothstep(0, 0.9, t) : 0;
     const tossing = p.act === 'throw' ? hump(t, 0.05, 0.8) : 0;
     const climbing = f.mantle;
+    // The left hand lets go of the ledge as the feet get onto it.
+    const held = f.climb ? climbing * (1 - smoothstep(0.75, 1, f.climb.over)) : climbing;
     const low = Math.max(running * 0.7, draw, tossing, climbing * 0.8);
     const kick = f.firedFor < KICK_TIME ? (1 - f.firedFor / KICK_TIME) ** 2 * [0.6, 1, 1.6][p.weapon] : 0;
     // The bolt-action and pistol tip toward the left hand to reload; the rifle rolls its magazine out.
@@ -1757,9 +1783,9 @@ export class Bodies {
         thumb = V_TMP4.copy(up);
       }
       s.nade.visible = t < 0.3;
-    } else if (climbing > 0.01) {
-      // Palm down on the ledge's edge, where it took hold, pulling and then pushing up.
-      target = target.clone().lerp(f.climb ? f.climb.hold.clone().setY(f.climb.top + 0.03) : body(-0.2, 1.05, -0.4), climbing);
+    } else if (held > 0.01) {
+      // Palm down on the ledge's edge, where it took hold, pulling and then pressing up, until the feet are on it.
+      target = target.clone().lerp(f.climb ? f.climb.hold.clone().setY(f.climb.top + 0.03) : body(-0.2, 1.05, -0.4), held);
       along = V_TMP3.copy(forward);
       thumb = V_TMP4.copy(right);
     }
@@ -1847,13 +1873,11 @@ export class Bodies {
 }
 
 /**
- * How far ahead of a climber its hand takes hold of the ledge, the highest
- * ledge looked for over where it started, and how long it takes to get its
- * feet on top once it's up.
+ * How far ahead of a climber its hand takes hold of the ledge, and the
+ * highest ground looked for over where it started when no ledge is found.
  */
 const CLIMB_REACH = PLAYER_RADIUS + MANTLE_REACH;
 const CLIMB_HIGHEST = 1.6;
-const CLIMB_OVER = 0.25;
 
 /** How long a hit's flinch lasts. */
 const REACT_TIME = 0.6;
