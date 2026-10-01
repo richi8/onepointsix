@@ -60,36 +60,15 @@ const OUTSIDE_CHANGE = 0.02;
  * gets this share of it at most.
  */
 const FLOOR_SHARE = 0.7;
-/**
- * The sun's light bounced to a cell, as a share of the sun's own, is kept as
- * a share of this, for the bytes to hold it finely: it's never much.
- */
-const SUN_RANGE = 0.5;
-/** How much the sun's light bounced once is worth, standing in for the light bounced again. */
-const SUN_GAIN = 4;
-/** The sun no higher than this (the sine of its height) is taken to be down. */
-const SUN_LOW = 0.02;
-/** Numbers a patch of sun takes in a job's list. */
-const PATCH = 9;
-/**
- * How much of a patch's light a cell takes, as a surface there would facing
- * it: about half, as surfaces turned from it take light bounced from others.
- */
-const PATCH_FACING = 0.5;
-/** Patches are taken to be no nearer than this, metres, so one beside a cell doesn't blaze. */
-const NEAREST_PATCH = 0.5;
 
 /**
- * Uniforms shared by every material that dims indoors: the textures of the
- * sky's light and the sun's bounced, the sun's light (colour times
- * intensity), and for each building's slot the corner of its grid, cells per
- * metre along x, y and z, and the cell count each way. Which slot a point is
- * in is read from the island's map.
+ * Uniforms shared by every material that dims indoors: the texture, and for
+ * each building's slot the corner of its grid, cells per metre along x, y and
+ * z, and the cell count each way. Which slot a point is in is read from the
+ * island's map.
  */
 export const indoorUniforms = {
   indoorGrid: { value: blank() as THREE.Data3DTexture },
-  indoorSunGrid: { value: blank() as THREE.Data3DTexture },
-  indoorSun: { value: new THREE.Color(0, 0, 0) },
   indoorCorner: { value: Array.from({ length: MAX_BUILDINGS }, () => new THREE.Vector4()) },
   indoorScale: { value: Array.from({ length: MAX_BUILDINGS }, () => new THREE.Vector4()) },
   indoorCount: { value: Array.from({ length: MAX_BUILDINGS }, () => new THREE.Vector3()) },
@@ -97,23 +76,19 @@ export const indoorUniforms = {
 };
 
 /**
- * GLSL for a fragment shader: `indoorSky(p, n, sun)` is the share of the sky's
- * light reaching point `p` on a surface facing `n`, both in world space, in
- * each of red, green and blue, and whether that's indoors, 0 to 1; `sun` is
- * set to the sun's light bounced there off what's round it, 0 outdoors. It
- * looks a little off the surface, into the space it faces, so a wall's inside
- * face and its outside face each read their own side.
+ * GLSL for a fragment shader: `indoorSky(p, n)` is the share of the sky's light
+ * reaching point `p` on a surface facing `n`, both in world space, in each of
+ * red, green and blue, and whether that's indoors, 0 to 1. It looks a little
+ * off the surface, into the space it faces, so a wall's inside face and its
+ * outside face each read their own side.
  */
 export const INDOOR_GLSL = /* glsl */ `
   uniform highp sampler3D indoorGrid;
-  uniform highp sampler3D indoorSunGrid;
-  uniform vec3 indoorSun;
   uniform vec4 indoorCorner[${MAX_BUILDINGS}];
   uniform vec4 indoorScale[${MAX_BUILDINGS}];
   uniform vec3 indoorCount[${MAX_BUILDINGS}];
   ${ISLAND_GLSL}
-  vec4 indoorSky(vec3 p, vec3 n, out vec3 sun) {
-    sun = vec3(0.0);
+  vec4 indoorSky(vec3 p, vec3 n) {
     vec3 q = p + n * 0.2;
     int slot = int(islandCell(q).b + 0.5) - 1;
     if (slot < 0) return vec4(1.0, 1.0, 1.0, 0.0);
@@ -123,16 +98,14 @@ export const INDOOR_GLSL = /* glsl */ `
     if (any(lessThan(c, vec3(0.0))) || any(greaterThan(c, count))) return vec4(1.0, 1.0, 1.0, 0.0);
     c = clamp(c, vec3(0.5), count - 0.5);
     vec3 uvw = vec3(c.x / ${SLOT[0]}.0, c.y / ${SLOT[1]}.0, (float(slot) * ${SLOT[2]}.0 + c.z) / (${SLOT[2] * MAX_BUILDINGS}.0));
-    sun = texture(indoorSunGrid, uvw).rgb * ${SUN_RANGE.toFixed(2)} * indoorSun;
     return texture(indoorGrid, uvw);
   }
 `;
 
 /**
  * Patch a shader, as it's compiled, to dim the sky's light (and the
- * environment's reflections) indoors, and add the sun's light bounced in.
- * Direct light is left alone: shadows already keep the sun out, bar what
- * comes through doors and windows.
+ * environment's reflections) indoors. Direct light is left alone: shadows
+ * already keep the sun out, bar what comes through doors and windows.
  */
 export function addIndoor(shader: THREE.WebGLProgramParametersWithUniforms): void {
   Object.assign(shader.uniforms, indoorUniforms);
@@ -151,13 +124,11 @@ export function addIndoor(shader: THREE.WebGLProgramParametersWithUniforms): voi
     .replace('#include <lights_fragment_end>', /* glsl */ `#include <lights_fragment_end>
       {
         vec3 indoorN = inverseTransformDirection(normal, viewMatrix);
-        vec3 indoorBounce;
-        vec4 indoor = indoorSky(vIndoorWorld, indoorN, indoorBounce);
+        vec4 indoor = indoorSky(vIndoorWorld, indoorN);
         // Indoors, a floor gets no more of the sky's light than the walls round it.
         vec3 sky = indoor.rgb * mix(1.0, ${FLOOR_SHARE.toFixed(2)}, indoor.a * clamp(indoorN.y, 0.0, 1.0));
         reflectedLight.indirectDiffuse *= sky;
         reflectedLight.indirectSpecular *= sky;
-        reflectedLight.indirectDiffuse += indoorBounce * BRDF_Lambert(material.diffuseColor);
       }`);
 }
 
@@ -192,8 +163,6 @@ interface Grid {
   trees: Tree[];
   /** How much of the sky each ray's way shows outside the building, 0 to 1, once worked out. */
   outside: Float32Array | null;
-  /** How much of the sun shows outside it, 0 to 1: none below the horizon. */
-  sun: number;
 }
 
 /**
@@ -224,18 +193,6 @@ interface Job {
   lit: Float32Array;
   /** The light bounced to each open cell, red, green and blue. */
   bounce: Float32Array;
-  /** The sun's light bounced to each open cell, as a share of the sun's, red, green and blue. */
-  sunBounce: Float32Array;
-  /** How much of the sun each open block gets once asked, in hundredths, or -1 not yet asked. */
-  sunlit: Int8Array;
-  /**
-   * The patches of sun on the faces of the blocks, gathered cell by cell,
-   * PATCH numbers each: where they are, the way they face, and the sun's
-   * light they give back, red, green and blue, times their area.
-   */
-  patches: number[];
-  /** How much of the sun showed outside before it was worked out again. */
-  sunWas: number;
 }
 
 export class IndoorLight {
@@ -244,12 +201,6 @@ export class IndoorLight {
   private readonly texture: THREE.Data3DTexture;
   /** Four bytes a cell: the sky's light in red, green and blue, and 255 indoors or 0 outside. */
   private readonly data: Uint8Array;
-  /** And the sun's light bounced there, as a share of SUN_RANGE of the sun's, red, green and blue. */
-  private readonly sunTexture: THREE.Data3DTexture;
-  private readonly sunData: Uint8Array;
-  /** Toward the sun, or the moon, as worked out, and as last set, to work out next. */
-  private readonly sunDir = new THREE.Vector3(0, 1, 0);
-  private readonly sunNext = new THREE.Vector3(0, 1, 0);
   /** Buildings changed since they were worked out, to do first, oldest change first. */
   private readonly urgent: number[] = [];
   /** Buildings not worked out yet, or whose sky outside may have changed, done nearest first. */
@@ -285,14 +236,6 @@ export class IndoorLight {
     this.texture.minFilter = this.texture.magFilter = THREE.LinearFilter;
     this.texture.unpackAlignment = 1;
     indoorUniforms.indoorGrid.value = this.texture;
-    this.sunData = new Uint8Array(this.data.length);
-    this.sunTexture = new THREE.Data3DTexture(this.sunData, w, h, d * MAX_BUILDINGS);
-    this.sunTexture.format = THREE.RGBAFormat;
-    this.sunTexture.type = THREE.UnsignedByteType;
-    this.sunTexture.minFilter = this.sunTexture.magFilter = THREE.LinearFilter;
-    this.sunTexture.unpackAlignment = 1;
-    this.sunTexture.needsUpdate = true;
-    indoorUniforms.indoorSunGrid.value = this.sunTexture;
 
     const { indoorCorner, indoorScale, indoorCount } = indoorUniforms;
     world.buildings.slice(0, MAX_BUILDINGS).forEach((b, slot) => {
@@ -317,18 +260,7 @@ export class IndoorLight {
    * looking at that very point: blended between the cells round it.
    */
   at(x: number, y: number, z: number, out: THREE.Color): THREE.Color {
-    return this.sample(this.data, 1, x, y, z, out);
-  }
-
-  /** The sun's light bounced to a point, as a share of the sun's, red, green and blue. */
-  sunAt(x: number, y: number, z: number, out: THREE.Color): THREE.Color {
-    return this.sample(this.sunData, SUN_RANGE, x, y, z, out);
-  }
-
-  /** Blend a texture's cells round a point, as the shaders do; white times `range` outdoors, or nothing for the sun's. */
-  private sample(data: Uint8Array, range: number, x: number, y: number, z: number, out: THREE.Color): THREE.Color {
-    const none = data === this.sunData ? 0 : range;
-    out.setRGB(none, none, none, THREE.LinearSRGBColorSpace);
+    out.setRGB(1, 1, 1, THREE.LinearSRGBColorSpace);
     const [w, h, d] = SLOT;
     for (let slot = 0; slot < this.grids.length; slot++) {
       const g = this.grids[slot];
@@ -354,35 +286,13 @@ export class IndoorLight {
         const oz = k >> 2;
         const weight = (ox ? fx : 1 - fx) * (oy ? fy : 1 - fy) * (oz ? fz : 1 - fz);
         const i = (((slot * d + iz + oz) * h + iy + oy) * w + ix + ox) * 4;
-        r += data[i] * weight;
-        gr += data[i + 1] * weight;
-        b += data[i + 2] * weight;
+        r += this.data[i] * weight;
+        gr += this.data[i + 1] * weight;
+        b += this.data[i + 2] * weight;
       }
-      const k = range / 255;
-      return out.setRGB(r * k, gr * k, b * k, THREE.LinearSRGBColorSpace);
+      return out.setRGB(r / 255, gr / 255, b / 255, THREE.LinearSRGBColorSpace);
     }
     return out;
-  }
-
-  /**
-   * The sun's (or the moon's) light, colour times intensity, and the way to
-   * it: every building is worked out again if it's moved.
-   */
-  setSun(dir: THREE.Vector3, light: THREE.Color): void {
-    indoorUniforms.indoorSun.value.copy(light);
-    this.sunNext.copy(dir).normalize();
-  }
-
-  /** The sun set last has moved since the buildings were worked out: work them all out again. */
-  private sunMoved(): void {
-    if (this.sunNext.dot(this.sunDir) > 0.99996) return;
-    this.sunDir.copy(this.sunNext);
-    if (this.job) this.queue.push(this.job.slot);
-    this.job = null;
-    this.grids.forEach((_, slot) => {
-      this.recheck.delete(slot);
-      if (!this.urgent.includes(slot) && !this.queue.includes(slot)) this.queue.push(slot);
-    });
   }
 
   /** Where the camera is: the buildings round it are worked out first. */
@@ -429,7 +339,6 @@ export class IndoorLight {
 
   /** Once a frame: carry on working out grids for a couple of milliseconds. */
   update(): void {
-    this.sunMoved();
     if (!this.job && !this.pending()) return;
     const until = performance.now() + BUDGET;
     do {
@@ -444,7 +353,6 @@ export class IndoorLight {
 
   /** Work out every grid now, as a still picture needs. */
   finishAll(): void {
-    this.sunMoved();
     while (this.job || this.pending()) {
       if (!this.job) this.job = this.start(this.next());
       while (!this.step(this.job));
@@ -490,26 +398,20 @@ export class IndoorLight {
   }
 
   /**
-   * Set every cell of a slot from `value(x, y, z, i, rgb, sun)` at its
-   * centre, which sets `rgb` to the sky's light and `sun` to the sun's
-   * bounced, and returns true for a cell indoors, false outdoors.
+   * Set every cell of a slot from `value(x, y, z, i, rgb)` at its centre,
+   * which sets `rgb` and returns true for a cell indoors, false outdoors.
    */
-  private fill(slot: number, value: (x: number, y: number, z: number, i: number, rgb: number[], sun: number[]) => boolean): void {
+  private fill(slot: number, value: (x: number, y: number, z: number, i: number, rgb: number[]) => boolean): void {
     const g = this.grids[slot];
     const [w, h, d] = SLOT;
     const rgb = [1, 1, 1];
-    const sun = [0, 0, 0];
     for (let iz = 0; iz < g.nz; iz++) {
       for (let iy = 0; iy < g.ny; iy++) {
         for (let ix = 0; ix < g.nx; ix++) {
           rgb[0] = rgb[1] = rgb[2] = 1;
-          sun[0] = sun[1] = sun[2] = 0;
-          const indoors = value(g.x0 + (ix + 0.5) * g.sx, g.y0 + (iy + 0.5) * g.sy, g.z0 + (iz + 0.5) * g.sz, (iz * g.ny + iy) * g.nx + ix, rgb, sun);
+          const indoors = value(g.x0 + (ix + 0.5) * g.sx, g.y0 + (iy + 0.5) * g.sy, g.z0 + (iz + 0.5) * g.sz, (iz * g.ny + iy) * g.nx + ix, rgb);
           const k = (((slot * d + iz) * h + iy) * w + ix) * 4;
-          for (let c = 0; c < 3; c++) {
-            this.data[k + c] = Math.round(Math.min(Math.max(rgb[c], 0), 1) * 255);
-            this.sunData[k + c] = indoors ? Math.round(Math.min(Math.max(sun[c] / SUN_RANGE, 0), 1) * 255) : 0;
-          }
+          for (let c = 0; c < 3; c++) this.data[k + c] = Math.round(Math.min(Math.max(rgb[c], 0), 1) * 255);
           this.data[k + 3] = indoors ? 255 : 0;
         }
       }
@@ -561,13 +463,9 @@ export class IndoorLight {
       }
     }
     const n = g.nx * g.ny * g.nz;
-    const sunWas = g.sun;
-    const sun = this.sunDir;
-    g.sun = sun.y > SUN_LOW ? this.outsideSky(g, [sun.x, sun.y, sun.z]) : 0;
     return {
       slot, ray: fresh ? 0 : RAYS, layer: 0, bounced: 0, outside: new Float32Array(RAYS), only: only && fresh,
       solid, vx, vy, vz, colours, seen: new Float32Array(n), lit: new Float32Array(n), bounce: new Float32Array(n * 3),
-      sunBounce: new Float32Array(n * 3), sunlit: new Int8Array(vx * vy * vz).fill(-1), sunWas, patches: [],
     };
   }
 
@@ -581,14 +479,11 @@ export class IndoorLight {
       const was = g.outside;
       g.outside = job.outside;
       // Nothing to do if the sky outside is as it was.
-      return job.only && !!was && was.every((v, k) => Math.abs(v - job.outside[k]) < OUTSIDE_CHANGE) && Math.abs(g.sun - job.sunWas) < OUTSIDE_CHANGE;
+      return job.only && !!was && was.every((v, k) => Math.abs(v - job.outside[k]) < OUTSIDE_CHANGE);
     }
     if (job.layer < g.ny) {
       this.seeLayer(job, g, job.layer++);
-      if (job.layer === g.ny) {
-        this.light(job, g);
-        this.findPatches(job, g);
-      }
+      if (job.layer === g.ny) this.light(job, g);
       return false;
     }
     this.bounceLayer(job, g, job.bounced++);
@@ -639,15 +534,10 @@ export class IndoorLight {
     }
   }
 
-  /**
-   * The light bounced to each open cell of a layer, off whatever its rays
-   * meet: the sky's, as lit as the cell before it, and the sun's where that
-   * face is in the sun, as much as it faces it.
-   */
+  /** The light bounced to each open cell of a layer, off whatever its rays meet, as lit as the cell before it. */
   private bounceLayer(job: Job, g: Grid, iy: number): void {
-    const { seen, lit, bounce, sunBounce, colours, solid } = job;
+    const { seen, lit, bounce, colours, solid } = job;
     const [gr, gg, gb] = colours;
-    const sun = this.sunDir;
     const y = g.y0 + (iy + 0.5) * g.sy;
     for (let iz = 0; iz < g.nz; iz++) {
       const z = g.z0 + (iz + 0.5) * g.sz;
@@ -658,22 +548,11 @@ export class IndoorLight {
         let r = 0;
         let gn = 0;
         let b = 0;
-        let sr = 0;
-        let sg = 0;
-        let sb = 0;
         for (const [dx, dy, dz] of this.round) {
           const hit = march(job, x - g.x0, y - g.y0, z - g.z0, dx, dy, dz);
           if (hit < 0) {
-            // Out to the sky, counted already, or down to the ground outside, in the open and the sun.
-            if (dy < 0) {
-              r += gr;
-              gn += gg;
-              b += gb;
-              const shone = g.sun * Math.max(sun.y, 0);
-              sr += gr * shone;
-              sg += gg * shone;
-              sb += gb * shone;
-            }
+            // Out to the sky, counted already, or down to the ground outside, in the open.
+            if (dy < 0) (r += gr), (gn += gg), (b += gb);
             continue;
           }
           const c = (solid[hit] - 1) * 3;
@@ -686,121 +565,8 @@ export class IndoorLight {
         bounce[i * 3] = AMBIENT + r * k;
         bounce[i * 3 + 1] = AMBIENT + gn * k;
         bounce[i * 3 + 2] = AMBIENT + b * k;
-        // The ground outside, by the rays; the patches of sun inside, each by a ray to it.
-        const ks = SUN_GAIN / this.round.length;
-        sr *= ks;
-        sg *= ks;
-        sb *= ks;
-        const { patches } = job;
-        for (let p = 0; p < patches.length; p += PATCH) {
-          const ox = patches[p] - x;
-          const oy = patches[p + 1] - y;
-          const oz = patches[p + 2] - z;
-          const d = Math.hypot(ox, oy, oz);
-          // Facing the cell, and not right in it.
-          const facing = -(ox * patches[p + 3] + oy * patches[p + 4] + oz * patches[p + 5]) / d;
-          if (facing <= 0 || d < 1e-3) continue;
-          if (march(job, x - g.x0, y - g.y0, z - g.z0, ox / d, oy / d, oz / d, d - VOXEL) >= 0) continue;
-          const k = (SUN_GAIN * PATCH_FACING * facing) / (Math.PI * Math.max(d * d, NEAREST_PATCH * NEAREST_PATCH));
-          sr += patches[p + 6] * k;
-          sg += patches[p + 7] * k;
-          sb += patches[p + 8] * k;
-        }
-        sunBounce[i * 3] = sr;
-        sunBounce[i * 3 + 1] = sg;
-        sunBounce[i * 3 + 2] = sb;
       }
     }
-  }
-
-  /**
-   * Every face of a solid block the sun shines on, beside an open block,
-   * gathered into one patch for each cell they're in, as bright as they
-   * are together and placed and facing as their average.
-   */
-  private findPatches(job: Job, g: Grid): void {
-    if (this.sunDir.y <= SUN_LOW) return;
-    const { solid, vx, vy, vz, colours } = job;
-    const sun = this.sunDir;
-    const layer = vx * vy;
-    const cells = new Map<number, number[]>();
-    const area = VOXEL * VOXEL;
-    for (let z = 0; z < vz; z++) {
-      for (let y = 0; y < vy; y++) {
-        for (let x = 0; x < vx; x++) {
-          const v = (z * vy + y) * vx + x;
-          if (solid[v]) continue;
-          // Each neighbour that's solid, and the way its face toward this block looks.
-          for (let f = 0; f < 6; f++) {
-            const axis = f >> 1;
-            const sign = f & 1 ? 1 : -1;
-            const at = axis === 0 ? x - sign : axis === 1 ? y - sign : z - sign;
-            if (at < 0 || at >= (axis === 0 ? vx : axis === 1 ? vy : vz)) continue;
-            const u = v - sign * (axis === 0 ? 1 : axis === 1 ? vx : layer);
-            if (!solid[u]) continue;
-            const facing = sign * (axis === 0 ? sun.x : axis === 1 ? sun.y : sun.z);
-            if (facing <= 0) continue;
-            const cell = cellOf(job, g, v);
-            // Outdoors, the sun on the walls and the ground is counted by the rays out of doorways.
-            if (Number.isNaN(job.seen[cell])) continue;
-            const shone = facing * area * this.sunOn(job, g, v);
-            if (shone <= 0) continue;
-            const c = (solid[u] - 1) * 3;
-            let p = cells.get(cell);
-            if (!p) cells.set(cell, (p = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
-            // The face's middle, from the grid's corner as the cells are not: set below.
-            p[0] += ((axis === 0 ? x + 0.5 - sign * 0.5 : x + 0.5) * VOXEL) * shone;
-            p[1] += ((axis === 1 ? y + 0.5 - sign * 0.5 : y + 0.5) * VOXEL) * shone;
-            p[2] += ((axis === 2 ? z + 0.5 - sign * 0.5 : z + 0.5) * VOXEL) * shone;
-            p[3 + axis] += sign * shone;
-            p[6] += colours[c] * shone;
-            p[7] += colours[c + 1] * shone;
-            p[8] += colours[c + 2] * shone;
-            p[9] += shone;
-          }
-        }
-      }
-    }
-    for (const p of cells.values()) {
-      const w = p[9];
-      const n = Math.hypot(p[3], p[4], p[5]) || 1;
-      // A little off the face, so a ray to it from a cell needn't graze it.
-      const nx = p[3] / n;
-      const ny = p[4] / n;
-      const nz = p[5] / n;
-      job.patches.push(
-        g.x0 + p[0] / w + nx * 0.05, g.y0 + p[1] / w + ny * 0.05, g.z0 + p[2] / w + nz * 0.05, nx, ny, nz, p[6], p[7], p[8],
-      );
-    }
-  }
-
-  /**
-   * How much of the sun an open block gets: whether a ray from it to the sun
-   * leaves the building, and then whether a hill or a building outside is in
-   * the way and how much the trees' crowns hide.
-   */
-  private sunOn(job: Job, g: Grid, v: number): number {
-    if (job.sunlit[v] < 0) {
-      const x = (v % job.vx + 0.5) * VOXEL;
-      const y = ((Math.floor(v / job.vx) % job.vy) + 0.5) * VOXEL;
-      const z = (Math.floor(v / (job.vx * job.vy)) + 0.5) * VOXEL;
-      const { x: dx, y: dy, z: dz } = this.sunDir;
-      const keep = before;
-      let shows = 0;
-      if (march(job, x, y, z, dx, dy, dz) < 0) {
-        const t = exitBox(x, y, z, dx, dy, dz, 0, 0, 0, job.vx * VOXEL, job.vy * VOXEL, job.vz * VOXEL) + 0.05;
-        const ox = g.x0 + x + dx * t;
-        const oy = g.y0 + y + dy * t;
-        const oz = g.z0 + z + dz * t;
-        if (this.world.raycast(ox, oy, oz, dx, dy, dz, OUTSIDE_REACH) >= OUTSIDE_REACH) {
-          shows = 1;
-          for (const tree of g.trees) shows *= 1 - CROWN_SHADE * crossesCrown(tree, ox, oy, oz, dx, dy, dz);
-        }
-      }
-      before = keep;
-      job.sunlit[v] = Math.round(shows * 100);
-    }
-    return job.sunlit[v] / 100;
   }
 
   /**
@@ -839,15 +605,12 @@ export class IndoorLight {
     const g = this.grids[job.slot];
     // Its sky outside was as it was: so are its cells.
     if (job.bounced < g.ny) return;
-    const { seen, bounce, sunBounce } = job;
-    this.fill(job.slot, (_x, _y, _z, i, rgb, sun) => {
+    const { seen, bounce } = job;
+    this.fill(job.slot, (_x, _y, _z, i, rgb) => {
       const s = seen[i];
       if (Number.isNaN(s)) return false;
       if (s >= 0) {
-        for (let c = 0; c < 3; c++) {
-          rgb[c] = bounce[i * 3 + c] + GAIN * s;
-          sun[c] = sunBounce[i * 3 + c];
-        }
+        for (let c = 0; c < 3; c++) rgb[c] = bounce[i * 3 + c] + GAIN * s;
         return true;
       }
       // In a wall: as the open cells inside next to it, so its inside face reads the room.
@@ -855,20 +618,13 @@ export class IndoorLight {
       rgb[0] = rgb[1] = rgb[2] = 0;
       around(g, i, (j) => {
         if (!(seen[j] >= 0)) return;
-        for (let c = 0; c < 3; c++) {
-          rgb[c] += bounce[j * 3 + c] + GAIN * seen[j];
-          sun[c] += sunBounce[j * 3 + c];
-        }
+        for (let c = 0; c < 3; c++) rgb[c] += bounce[j * 3 + c] + GAIN * seen[j];
         n++;
       });
-      for (let c = 0; c < 3; c++) {
-        rgb[c] = n ? rgb[c] / n : AMBIENT;
-        sun[c] = n ? sun[c] / n : 0;
-      }
+      for (let c = 0; c < 3; c++) rgb[c] = n ? rgb[c] / n : AMBIENT;
       return true;
     });
     this.texture.needsUpdate = true;
-    this.sunTexture.needsUpdate = true;
   }
 }
 
@@ -939,7 +695,7 @@ function gridFor(world: World, b: Building): Grid {
   const cx = (b.minX + b.maxX) / 2;
   const cz = (b.minZ + b.maxZ) / 2;
   const trees = world.trees.filter((t) => Math.hypot(t.x - cx, t.z - cz) < TREE_REACH);
-  return { building: b, x0, y0, z0, sx, sy, sz, nx, ny, nz, top, boxes, trees, outside: null, sun: 0 };
+  return { building: b, x0, y0, z0, sx, sy, sz, nx, ny, nz, top, boxes, trees, outside: null };
 }
 
 /** Whether a point is indoors: within the walls, off the ground and under the roof. */
@@ -969,10 +725,9 @@ let before = 0;
 /**
  * Where a ray from (x, y, z), measured from the grid's corner, first meets a
  * solid block, by a 3D walk from block to block: that block, setting
- * `before` to the open one it came from, or -1 if it leaves the blocks or
- * goes `reach` metres first.
+ * `before` to the open one it came from, or -1 if it leaves the blocks.
  */
-function march(job: Job, x: number, y: number, z: number, dx: number, dy: number, dz: number, reach = Infinity): number {
+function march(job: Job, x: number, y: number, z: number, dx: number, dy: number, dz: number): number {
   let ix = Math.floor(x / VOXEL);
   let iy = Math.floor(y / VOXEL);
   let iz = Math.floor(z / VOXEL);
@@ -988,7 +743,6 @@ function march(job: Job, x: number, y: number, z: number, dx: number, dy: number
   const { solid, vx, vy, vz } = job;
   for (;;) {
     const was = (iz * vy + iy) * vx + ix;
-    if (Math.min(tx, ty, tz) > reach) return -1;
     if (tx < ty && tx < tz) {
       ix += stepX;
       tx += tdx;

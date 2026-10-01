@@ -160,9 +160,6 @@ export class ViewModel {
   /** The sky's light where the gun is, red, green and blue, white outdoors, and which way it's brighter, in the view's space. */
   private readonly indoors = new THREE.Color(1, 1, 1);
   private readonly towards = new THREE.Vector3();
-  /** The sun's light bounced to it, as a share of the sun's, red, green and blue. */
-  private readonly bounced = new THREE.Color(0, 0, 0);
-  private readonly sunBounce = new THREE.Color();
   /** Its share, as bright: what dims the sun and the reflections. */
   private share = 1;
 
@@ -220,7 +217,7 @@ export class ViewModel {
     this.sun.color.copy(sun);
     this.sunShare = sunShare;
     this.sky = ambient;
-    this.shade(this.indoors, this.towards, this.bounced);
+    this.shade(this.indoors, this.towards);
   }
 
   /**
@@ -228,18 +225,14 @@ export class ViewModel {
    * white outdoors down to a dim room's, and how fast it brightens which way,
    * per metre in the view's space: the gun is lit that much less, in that
    * colour, and from the side of a window or a doorway. The sun is dimmed
-   * too, as walls and a roof mostly keep it off. `bounced` is the sun's
-   * light bounced to the gun, as a share of the sun's, from all round.
+   * too, as walls and a roof mostly keep it off.
    */
-  shade(light: THREE.Color, towards: THREE.Vector3, bounced: THREE.Color): void {
+  shade(light: THREE.Color, towards: THREE.Vector3): void {
     this.indoors.copy(light);
     this.towards.copy(towards);
-    this.bounced.copy(bounced);
     this.share = 0.2126 * light.r + 0.7152 * light.g + 0.0722 * light.b;
-    // The sun's light bounced, as the sky's light it adds to.
-    this.sunBounce.copy(this.sun.color).multiply(bounced).multiplyScalar(this.sky > 0 ? (2 * this.sunShare) / (1.4 * this.sky) : 0);
-    this.hemi.color.copy(this.skyColor).multiply(light).add(this.sunBounce);
-    this.hemi.groundColor.copy(this.groundColor).multiply(light).add(this.sunBounce);
+    this.hemi.color.copy(this.skyColor).multiply(light);
+    this.hemi.groundColor.copy(this.groundColor).multiply(light);
     this.hemi.intensity = 1.4 * this.sky;
     // From overhead, leaning toward the brighter side.
     this.hemi.position.copy(towards).multiplyScalar(LEAN);

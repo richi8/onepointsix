@@ -76,7 +76,6 @@ function luminance(c: THREE.Color): number {
 const FLASH_SKY = new THREE.Color(0xc8d2ff);
 const FLASH_HEMI = 1.2;
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
-const SUN_LIGHT = new THREE.Color();
 const V_SCALE = new THREE.Vector3();
 
 /** The rendered island: terrain, water, sky, props, vegetation and lighting. */
@@ -155,7 +154,6 @@ export class WorldView {
     // Light bounces off each prop in its own colour, as it's drawn untextured.
     const colours = new Map(world.props.map(({ box, style, tint }) => [box, pick(PROP_COLORS[style], tint)]));
     this.light3d = new IndoorLight(world, this.island, (box) => colours.get(box) ?? PROP_COLORS.wall[0]);
-    this.light3d.setSun(this.lighting.sunDir, SUN_LIGHT.copy(this.lighting.sunColor).multiplyScalar(this.lighting.sunIntensity));
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
     this.extractGroup = extracts.group;
@@ -273,8 +271,6 @@ export class WorldView {
     const l = this.lighting;
     this.flashed = 0;
     this.sun.set(l.sunColor, l.sunIntensity, l.sunDir);
-    // Built after the first lighting.
-    this.light3d?.setSun(l.sunDir, SUN_LIGHT.copy(l.sunColor).multiplyScalar(l.sunIntensity));
     this.hemi.intensity = this.textured ? l.hemiTextured : l.hemi;
     this.hemi.color.copy(l.hemiSky);
     this.hemi.groundColor.copy(l.hemiGround);

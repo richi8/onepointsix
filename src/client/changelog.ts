@@ -17,7 +17,6 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Light inside buildings bounces off the floor, walls and crates: walls beside a window or a doorway are brighter, deep corners darker, and wooden rooms a little warmer than concrete ones.',
       'Breaking a building open now lets more sky into the rooms of the buildings beside it.',
       'The gun in your hands is lit from the side of the nearest window or doorway, in the colour of the room.',
-      'Sunlight falling through a window onto the floor or a wall now lights the room round it, and so does sunny ground outside a doorway.',
     ],
   },
   {
