@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Tucked-in crouch',
+    notes: [
+      "Soldiers crouching still tuck their back foot in under them, rather than leaving it trailing behind where it can't be hit.",
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Wet through',
     notes: [
       'Coming in out of the rain, soldiers, bodies and bags stay wet and dry off slowly, rather than the moment they step under a roof.',

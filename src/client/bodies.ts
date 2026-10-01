@@ -110,6 +110,8 @@ const HIPS_SHIFT = 0.12;
 const HEAD_SLACK = 0.04;
 /** How far the whole body, feet and all, may move back or forward to bring the head over its middle first. */
 const ROOT_SHIFT = 0.3;
+/** How far behind the middle of the legs' hitbox a crouching foot may stand. */
+const FOOT_TUCK = LEGS_RADIUS;
 /** How far the hips move out with a full lean; the upper body rolls the rest of the way. */
 const LEAN_HIPS = 0.14;
 /** Length of a suppressor on the barrel, as in first person. */
@@ -1506,6 +1508,9 @@ export class Bodies {
       let y = at.dot(V_UP);
       if (y > FOOT_REST) y = FOOT_REST + (y - FOOT_REST) * lerp(1, CROUCH_RUN_LIFT, low);
       let z = at.dot(forward) * stride;
+      // Crouched still, a foot the body's step left behind the legs' hitbox is drawn in under it.
+      const tuck = f.duck * (1 - smoothstep(0.3, 1.2, f.speed));
+      if (z < -FOOT_TUCK) z = lerp(z, -FOOT_TUCK, tuck);
       // Climbing: the right knee comes up onto the ledge while the left foot pushes off below, then follows.
       if (f.climb && f.mantle > 0.01) {
         const c = f.climb;

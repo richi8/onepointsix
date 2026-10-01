@@ -522,6 +522,16 @@ notes the chunk it came from.
   container's doors don't open. Every watchtower is the same, and the wood is a little darker
   than the boxes were.
   **Accepted** (2026-09-30): the user is fine with it for now.
+- **Bodies step under their head rather than bend to it** (grips, after chunk 35). To put the head
+  over its hitbox front to back, the whole body, feet and all, first moves up to 0.3 m, and only
+  what's left is taken by the hips and the waist. A crouch keeps the clip's hunch, but its feet
+  can stand a little behind the legs' hitbox.
+  **Resolved** (2026-10-01): the step stays, and a still crouch now draws in a foot it leaves
+  behind the legs' hitbox, up to its edge (0.2 m behind its middle), so the back knee comes in
+  under the hips. Taking more of the step with the hips over planted feet was tried, limited by
+  the legs' reach, but the crouch clip's front foot is 0.3 m ahead of the head's spot, so the
+  front shin then leaned back to it in a lunge. Standing, the step is under 0.1 m and the feet stay
+  in the hitbox. A crouch-walk's or a landing's back foot can still reach past it mid-stride.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

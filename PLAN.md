@@ -393,10 +393,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   front of the shoulder, the model's short arms can't reach the rifle's or bolt-action's fore-end,
   so the left hand slides back along the gun until it can, as far as the magazine well. The pistol
   is drawn in from 0.5 m until both wrists reach its grip. Checked in the pose viewer, not in play.
-- **Bodies step under their head rather than bend to it** (grips, after chunk 35). To put the head
-  over its hitbox front to back, the whole body, feet and all, first moves up to 0.3 m, and only
-  what's left is taken by the hips and the waist. A crouch keeps the clip's hunch, but its feet
-  can stand a little behind the legs' hitbox.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
