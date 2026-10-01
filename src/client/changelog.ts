@@ -18,6 +18,8 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Floors left open to the rain when a roof comes down gather puddles.',
       'Floors inside far buildings stay dry right up to the walls.',
       'Wet grass looks soaked and deep green rather than greyish.',
+      "Soldiers' guns and dropped magazines stay wet indoors too, and so does the rubble of a broken roof.",
+      'Wet trees and bushes look soaked rather than greyish.',
     ],
   },
   {

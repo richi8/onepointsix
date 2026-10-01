@@ -406,25 +406,8 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   recordings aren't what they stand for" in the history).
 
 ### Day, night and weather
-- **Wet is worked out simply** (36). Bodies, bags and debris dry the moment they're under a roof,
-  and are as wet as the ground round them in the open, how much they face up judged from their
-  triangles. Puddles form only on the terrain, not on floors or roofs open to the sky. Past 32 m
-  from the camera, roofs are known in 2 m cells, so a floor near a far building's wall may be wet.
-  Grass and leaves were kept nearly matte when wet, as a gloss turned them grey in screenshots.
-  Checked by screenshots only.
-  **Resolved in part** (2026-10-01): soldiers, bodies and bags carry their own wetness, soaking
-  through in 20 s in the rain and drying over four minutes under a roof; a bag left by a body
-  starts as wet as it. How much a thing faces up comes from its normal, not its triangles.
-  Floors open to the sky, as once a roof is down, gather puddles as level ground does, and a
-  floor shelters the room under it. Past 32 m each 2 m cell also keeps which part of it the
-  roofs cover, as a rectangle or a notch left open (an L's inside corner), in steps of 12.5 cm
-  rounded onto the roof, so far floors stay dry to the walls (the unit test finds no point
-  wrong round six buildings); a cell crossed by two roofs' edges apart keeps their bounds
-  together. Soaked grass is glossier and keeps less of the sky's reflection, which was what
-  greyed it. Left: needles and bushes stay matte; guns, dropped magazines and debris (which
-  lasts 4 s) still dry the moment they're under a roof; something first seen under a roof
-  starts dry, as a guard posted inside should, but so does a body rebuilt there after a death
-  cam. Checked by unit tests and screenshots, not watched in play.
+- **Your own gun never gets wet** (2026-10-01). The gun in your hands is drawn dry in any rain,
+  though your dropped magazines and everyone else's guns are wet.
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-09-30 (see the history).

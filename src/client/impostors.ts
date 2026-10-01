@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { World } from '../shared/world.ts';
 import { addGroundDrop, groundEye } from './terrain.ts';
-import { needles, SWAY, thickened, TREE_HEIGHT, treeFade, treeFadeGlsl, type TreeParts } from './trees.ts';
+import { needles, NEEDLES_WET, SWAY, thickened, TREE_HEIGHT, treeFade, treeFadeGlsl, type TreeParts } from './trees.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 import { wetMaterial } from './rain.ts';
 
@@ -105,7 +105,7 @@ export class Impostors {
     const material = this.mesh.material as THREE.MeshStandardMaterial;
     material.onBeforeCompile = (shader) => card(shader, uniforms, this.world, true);
     material.customProgramCacheKey = () => 'tree-impostor';
-    wetMaterial(needles(material, false), 0.75, false);
+    wetMaterial(needles(material, false), NEEDLES_WET);
     material.needsUpdate = true;
     const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, alphaTest: 0.5 });
     depth.onBeforeCompile = (shader) => card(shader, uniforms, this.world, false);

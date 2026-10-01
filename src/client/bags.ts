@@ -20,6 +20,8 @@ export class Bags {
   soakNear: ((x: number, y: number, z: number) => number | null) | null = null;
   private readonly scene: THREE.Scene;
   private readonly bags = new Map<number, Bag>();
+  /** One gone bag's material, never freed, so the shader they share isn't compiled again for the next. */
+  private kept: THREE.Material | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -35,7 +37,7 @@ export class Bags {
         const left = this.shelter?.raining ? this.soakNear?.(b.x, b.y, b.z) : null;
         if (left != null) soak.begin(left);
         // Each its own material, for how wet it is; they share one shader.
-        const mesh = new THREE.Mesh(geometry, wetMaterial(new THREE.MeshStandardMaterial({ color: COLOR, roughness: 0.9 }), 0.55, true, soak.level));
+        const mesh = new THREE.Mesh(geometry, wetMaterial(new THREE.MeshStandardMaterial({ color: COLOR, roughness: 0.9 }), { gloss: 0.55, soak: soak.level }));
         mesh.castShadow = mesh.receiveShadow = true;
         mesh.layers.enable(REFLECTED);
         // Each lies at its own angle.
@@ -50,7 +52,8 @@ export class Bags {
     for (const [id, bag] of this.bags) {
       if (seen.has(id)) continue;
       this.scene.remove(bag.mesh);
-      (bag.mesh.material as THREE.Material).dispose();
+      if (!this.kept) this.kept = bag.mesh.material as THREE.Material;
+      else (bag.mesh.material as THREE.Material).dispose();
       this.bags.delete(id);
     }
   }

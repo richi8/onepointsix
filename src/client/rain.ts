@@ -181,27 +181,51 @@ export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: st
       #include <lights_fragment_begin>`);
 }
 
+export interface WetOptions {
+  /** The roughness a soaked surface goes toward. */
+  gloss?: number;
+  /** For what can stand under a roof, which then keeps it dry, but for as soaked as `soak` says. */
+  sheltered?: boolean;
+  /**
+   * How soaked it still is under a roof, 0 to 1: a uniform (see Soak), or
+   * 'instanced' for each instance's in the instanced attribute `soakAt`.
+   */
+  soak?: { value: number } | 'instanced';
+  /** How much of the sky's reflection a soaked surface keeps, which turns grass and leaves grey. */
+  sky?: number;
+  /**
+   * How much of the direct light's gloss a soaked surface gets back, where
+   * the material had taken it away, as needles do against edge-on glare.
+   */
+  glint?: number;
+}
+
 /**
  * Make a material get wet in the rain, darker and a little glossier, keeping
  * whatever it already does as it compiles: for trees, grass, bodies, bags and
  * debris. Its world position is worked out from the view, and how much it
- * faces up from its normal. `sheltered` for what can stand under a roof,
- * which then keeps it dry, but for as soaked as `soak` says it still is
- * (see Soak); `gloss` is the roughness a soaked surface goes toward, and
- * `sky` how much of the sky's reflection it keeps.
+ * faces up from its normal.
  */
-export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, gloss = 0.45, sheltered = true, soak?: { value: number }, sky = 1): M {
+export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, options: WetOptions = {}): M {
+  const { gloss = 0.45, sheltered = true, soak, sky = 1, glint = 0 } = options;
   const before = material.onBeforeCompile;
   const key = material.customProgramCacheKey.bind(material);
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     Object.assign(shader.uniforms, rainUniforms);
-    if (soak) shader.uniforms.wetSoak = soak;
-    for (const anchor of ['#include <common>', '#include <clearcoat_normal_fragment_begin>', '#include <lights_fragment_end>']) {
+    if (soak && soak !== 'instanced') shader.uniforms.wetSoak = soak;
+    const anchors = ['#include <common>', '#include <clearcoat_normal_fragment_begin>', '#include <lights_fragment_end>', '#include <aomap_fragment>'];
+    for (const anchor of anchors) {
       if (!shader.fragmentShader.includes(anchor)) throw new Error(`Shader anchor ${anchor} is missing`);
     }
+    if (soak === 'instanced') {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float soakAt;\nvarying float vWetSoak;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWetSoak = soakAt;');
+    }
+    const soakDecl = soak === 'instanced' ? 'varying float vWetSoak;\n#define wetSoak vWetSoak' : soak ? 'uniform float wetSoak;' : '';
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${sheltered ? ROOF_GLSL : OPEN_GLSL}\n${WET_GLSL}\n${soak ? 'uniform float wetSoak;' : ''}`)
+      .replace('#include <common>', `#include <common>\n${sheltered ? ROOF_GLSL : OPEN_GLSL}\n${WET_GLSL}\n${soakDecl}`)
       // Once the normal is known, whatever has replaced three.js's normal
       // chunks; the colour and roughness are only used with the lights after.
       .replace('#include <clearcoat_normal_fragment_begin>', /* glsl */ `
@@ -216,10 +240,16 @@ export function wetMaterial<M extends THREE.MeshStandardMaterial>(material: M, g
           roughnessFactor = mix(roughnessFactor, min(roughnessFactor, ${gloss.toFixed(2)}), soaked);
         }
         #include <clearcoat_normal_fragment_begin>`)
-      // Less of the sky in it, which turned soaked grass grey.
-      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${sky < 1 ? `reflectedLight.indirectSpecular *= mix(1.0, ${sky.toFixed(2)}, soaked);` : ''}`);
+      // Before anything the material adds after the lights, which may take the gloss away; given back after.
+      .replace('#include <lights_fragment_end>', /* glsl */ `#include <lights_fragment_end>
+        ${glint > 0 ? 'vec3 wetGlint = reflectedLight.directSpecular;' : ''}
+        ${sky < 1 ? `reflectedLight.indirectSpecular *= mix(1.0, ${sky.toFixed(2)}, soaked);` : ''}`)
+      .replace('#include <aomap_fragment>', /* glsl */ `
+        ${glint > 0 ? `reflectedLight.directSpecular = max(reflectedLight.directSpecular, wetGlint * ${glint.toFixed(2)} * soaked);` : ''}
+        #include <aomap_fragment>`);
   };
-  material.customProgramCacheKey = () => `${key()}-wet${sheltered ? '' : '-open'}${soak ? '-soak' : ''}-${sky}`;
+  const soakKey = soak === 'instanced' ? '-soaks' : soak ? '-soak' : '';
+  material.customProgramCacheKey = () => `${key()}-wet${sheltered ? '' : '-open'}${soakKey}-${sky}-${glint}`;
   return material;
 }
 
@@ -252,6 +282,8 @@ export class Soak {
   begin(level: number): void {
     this.level.value = level;
     this.begun = true;
+    // Look at once whether it's under a roof.
+    this.wait = 0;
   }
 
   /** Soak or dry by `dt` seconds at (x, y, z), a point on it about halfway up. */
@@ -267,8 +299,10 @@ export class Soak {
       this.wait = SHELTER_CHECK;
     }
     // First seen in the rain, it's been out in it; first seen under a roof, it's dry.
-    if (!this.begun) this.begin(this.open ? 1 : 0);
-    else if (this.open) this.level.value = Math.min(this.level.value + dt / SOAK_TIME, 1);
+    if (!this.begun) {
+      this.level.value = this.open ? 1 : 0;
+      this.begun = true;
+    } else if (this.open) this.level.value = Math.min(this.level.value + dt / SOAK_TIME, 1);
     else this.level.value = Math.max(this.level.value - dt / DRY_TIME, 0);
   }
 }

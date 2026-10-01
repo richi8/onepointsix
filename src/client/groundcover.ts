@@ -8,7 +8,7 @@ import { clamp, smoothstep } from '../shared/geom.ts';
 import { GROUND_LAYERS, groundWeights } from '../shared/ground.ts';
 import { Layer, LAYERS } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
-import { wetMaterial } from './rain.ts';
+import { wetMaterial, type WetOptions } from './rain.ts';
 import { groundTint, onTiles } from './terrain.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 import { filled } from './cardtexture.ts';
@@ -46,6 +46,8 @@ const BLADES_END = 12;
 /** Tufts are gathered to draw blade by blade once the camera has moved this far, from this much past BLADES_END. */
 const BLADES_SLACK = 2;
 
+/** How bushes' leaves get wet: glossier, keeping less of the sky's reflection, which turned them grey. */
+const BUSH_WET: WetOptions = { gloss: 0.6, sheltered: false, sky: 0.4 };
 const KINDS = {
   // Placed by Vegetation.
   grass: { range: 42, density: 1.6, keep: () => 0, size: [0, 0] },
@@ -127,8 +129,8 @@ export class GroundCover {
       blades: make('blades', bladesGeometry(), grassMaterial(null, this.eye, null)),
       bush: make('bush', bushGeometry(), wetMaterial(onTiles(fading(new THREE.MeshStandardMaterial({
         map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1, envMapIntensity: 0.55,
-      }), KINDS.bush.range, this.eye, 0.4), world), 0.9, false)),
-      pebble: make('pebble', pebbleGeometry(), wetMaterial(fading(new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), KINDS.pebble.range, this.eye, 0), 0.4, false)),
+      }), KINDS.bush.range, this.eye, 0.4), world), BUSH_WET)),
+      pebble: make('pebble', pebbleGeometry(), wetMaterial(fading(new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), KINDS.pebble.range, this.eye, 0), { gloss: 0.4, sheltered: false })),
     };
   }
 
@@ -465,7 +467,7 @@ function grassMaterial(blades: THREE.Texture | null, eye: { value: THREE.Vector3
         }`);
   };
   material.customProgramCacheKey = () => `${key}-grass-${assets ? 1 : 0}-${near ? 'blades' : 'cards'}`;
-  return wetMaterial(material, 0.7, false, undefined, 0.4);
+  return wetMaterial(material, { gloss: 0.7, sheltered: false, sky: 0.4 });
 }
 
 /**

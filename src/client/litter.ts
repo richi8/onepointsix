@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { RAGDOLL_STEP, type Solid, Tumbler } from './ragdoll.ts';
+import { Soak, type Shelter } from './rain.ts';
 
 // Empty magazines dropped in reloads. Each falls, bounces and comes to rest
 // as three balls held rigid (see ragdoll.ts), stepped on its own fixed clock,
 // and lies where it fell for a while. They're only for show: nobody else
-// sees them where you do, and they don't land on bodies.
+// sees them where you do, and they don't land on bodies. Each stays as wet
+// as whoever dropped it, drying under a roof.
 
 /** How many lie about at most, the oldest going first, and how long each lies. */
 const MOST = 40;
@@ -14,6 +16,7 @@ const RADIUS = 0.012;
 
 interface Piece {
   mesh: THREE.Mesh;
+  soak: Soak;
   tumbler: Tumbler;
   /** The balls' frame when dropped, inverted, and the mesh's matrix then. */
   from: THREE.Matrix4;
@@ -25,18 +28,26 @@ interface Piece {
 export class Litter {
   private readonly pieces: Piece[] = [];
   private readonly scene: THREE.Scene;
+  /** One gone piece's material, never freed, so the shader they share isn't compiled again for the next. */
+  private kept: THREE.Material | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
 
   /**
-   * Drop `geometry`, drawn in `material` where `matrix` puts it in the world,
-   * at `velocity`. `points` are three points on it, in the geometry's own
-   * space, far enough apart to tell how it turns: its balls.
+   * Drop `geometry`, drawn in a `material` of its own, where `matrix` puts it
+   * in the world, at `velocity`, as wet as `wet`, 0 to 1. `points` are three
+   * points on it, in the geometry's own space, far enough apart to tell how
+   * it turns: its balls.
    */
-  drop(geometry: THREE.BufferGeometry, material: THREE.Material, matrix: THREE.Matrix4, points: THREE.Vector3[], velocity: THREE.Vector3): void {
-    const mesh = new THREE.Mesh(geometry, material);
+  drop(
+    geometry: THREE.BufferGeometry, material: (soak: { value: number }) => THREE.Material, matrix: THREE.Matrix4,
+    points: THREE.Vector3[], velocity: THREE.Vector3, wet: number,
+  ): void {
+    const soak = new Soak();
+    soak.begin(wet);
+    const mesh = new THREE.Mesh(geometry, material(soak.level));
     mesh.matrixAutoUpdate = false;
     mesh.matrix.copy(matrix);
     mesh.castShadow = mesh.receiveShadow = true;
@@ -45,12 +56,12 @@ export class Litter {
     const before = now.map((v, i) => v - velocity.getComponent(i % 3) * RAGDOLL_STEP);
     const tumbler = new Tumbler(now, before, RADIUS);
     const from = frameOf(tumbler, new THREE.Matrix4()).invert();
-    this.pieces.push({ mesh, tumbler, from, start: matrix.clone(), age: 0, steps: 0 });
+    this.pieces.push({ mesh, soak, tumbler, from, start: matrix.clone(), age: 0, steps: 0 });
     if (this.pieces.length > MOST) this.remove(0);
   }
 
-  /** Step what's falling up to now, onto `ground`, and clear what has lain long enough. */
-  update(dt: number, ground: Solid): void {
+  /** Step what's falling up to now, onto `ground`, and clear what has lain long enough; wet or dry as `shelter` says. */
+  update(dt: number, ground: Solid, shelter: Shelter | null): void {
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const p = this.pieces[i];
       p.age += dt;
@@ -58,6 +69,8 @@ export class Litter {
         this.remove(i);
         continue;
       }
+      const e = p.mesh.matrix.elements;
+      p.soak.update(shelter, e[12], e[13] + 0.05, e[14], dt);
       if (p.tumbler.asleep) continue;
       const due = Math.floor(p.age / RAGDOLL_STEP);
       for (; p.steps < due; p.steps++) p.tumbler.step(ground, []);
@@ -72,7 +85,10 @@ export class Litter {
   }
 
   private remove(i: number): void {
-    this.scene.remove(this.pieces[i].mesh);
+    const { mesh } = this.pieces[i];
+    this.scene.remove(mesh);
+    if (!this.kept) this.kept = mesh.material as THREE.Material;
+    else (mesh.material as THREE.Material).dispose();
     this.pieces.splice(i, 1);
   }
 }

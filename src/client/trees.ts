@@ -8,7 +8,7 @@ import { Layer } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { WIND_GLSL, wind } from './wind.ts';
 import { filled } from './cardtexture.ts';
-import { wetMaterial } from './rain.ts';
+import { wetMaterial, type WetOptions } from './rain.ts';
 
 // Spruces: a trunk, whorls of limbs and sprays of needles along them (see
 // fir()), generated here rather than loaded, as real tree models are far too
@@ -177,10 +177,10 @@ export class Trees {
     // Bark and needles darken and shine a little in the rain.
     const wood = assets
       ? full(swaying(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.bark }, { roughness: 0.95 }, 1.5, { wet: true })), world, lod)
-      : wetMaterial(full(swaying(new THREE.MeshStandardMaterial({ color: TRUNK, roughness: 1 })), world, lod), 0.6, false);
+      : wetMaterial(full(swaying(new THREE.MeshStandardMaterial({ color: TRUNK, roughness: 1 })), world, lod), { gloss: 0.6, sheltered: false });
     const foliage = wetMaterial(full(swaying(needles(thickened(new THREE.MeshStandardMaterial({
       map: this.map, vertexColors: true, alphaTest: 0.4, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.9, envMapIntensity: 0.55,
-    })))), world, lod), 0.75, false);
+    })))), world, lod), NEEDLES_WET);
     // Shadows sway with the crowns, and hand over whole halfway through each fade.
     const depth = (map?: THREE.Texture) => full(swaying(new THREE.MeshDepthMaterial({
       depthPacking: THREE.RGBADepthPacking, ...(map ? { map, alphaTest: 0.4 } : {}),
@@ -350,6 +350,13 @@ export function thickened<M extends THREE.MeshStandardMaterial>(material: M, boo
   material.customProgramCacheKey = () => `${key}-thick-${boost}`;
   return material;
 }
+
+/**
+ * How needles get wet, the same on the full trees and their impostors: a
+ * little of the sun's gloss given back, which `needles` takes away dry, and
+ * less of the sky's reflection, which turned them grey.
+ */
+export const NEEDLES_WET: WetOptions = { gloss: 0.5, sheltered: false, sky: 0.5, glint: 0.4 };
 
 /**
  * Shaded as a mass of needles rather than as the cards they're drawn on. Both

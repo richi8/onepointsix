@@ -125,6 +125,14 @@ describe('shelter', () => {
     soak.update({ raining: false, sheltered: () => false }, 0, 0, 0, 0.1);
     expect(soak.level.value).toBe(0);
   });
+
+  it('keeps how wet something was brought under a roof, drying from there', () => {
+    const shelter: Shelter = { raining: true, sheltered: () => true };
+    const soak = new Soak();
+    soak.begin(0.8);
+    for (let t = 0; t < 24; t += 0.1) soak.update(shelter, 0, 0, 0, 0.1);
+    expect(soak.level.value).toBeCloseTo(0.7, 2);
+  });
 });
 
 describe('fog banks', () => {

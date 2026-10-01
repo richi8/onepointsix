@@ -25,7 +25,7 @@ import type { Deathcam, DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
 import { Flashlights } from './flashlights.ts';
 import { localLights } from './locallights.ts';
-import { wetMaterial } from './rain.ts';
+import { Soak, wetMaterial } from './rain.ts';
 import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
 import { Input } from './input.ts';
@@ -130,7 +130,9 @@ const grenades = new Grenades(scene);
 const flashlights = new Flashlights(scene);
 const bodies = new Bodies(scene, world);
 const bags = new Bags(scene);
-bodies.shelter = bags.shelter = view.shelter;
+/** How wet you are, for the magazines you drop. */
+let mySoak = new Soak();
+bodies.shelter = bags.shelter = effects.shelter = view.shelter;
 bags.soakNear = (x, y, z) => bodies.soakNear(x, y, z);
 const hud = new Hud();
 let runHud = new RunHud(world);
@@ -199,7 +201,7 @@ let dressed: Assets | null = null;
 function dress(assets: Assets): void {
   dressed = assets;
   view.applyAssets(assets);
-  effects.setDebrisMaterial(wetMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }), 0.5));
+  effects.setDebrisMaterial(wetMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }), { gloss: 0.5, soak: 'instanced' }));
   bodies.setModel(assets.soldier, assets.guns);
   viewModel.setGuns(assets.guns, assets.environment);
   viewModel.setArms(assets.soldier);
@@ -208,7 +210,7 @@ function dress(assets: Assets): void {
     const s = deathcam ? null : conn?.predictor.state;
     if (!s) return;
     camera.updateMatrixWorld();
-    bodies.dropMagazine(weapon, matrix.premultiply(camera.matrixWorld), new THREE.Vector3(s.vx, -0.5, s.vz));
+    bodies.dropMagazine(weapon, matrix.premultiply(camera.matrixWorld), new THREE.Vector3(s.vx, -0.5, s.vz), mySoak.level.value);
   };
   if (import.meta.env.DEV) Object.assign(window, { assets });
 }
@@ -456,7 +458,7 @@ function openIsland(next: WorldConfig): void {
   bodies.forget();
   bodies.clear();
   bodies.ground = world;
-  bodies.shelter = bags.shelter = view.shelter;
+  bodies.shelter = bags.shelter = effects.shelter = view.shelter;
   bags.update([]);
   grenades.update([]);
   effects.clear();
@@ -759,6 +761,7 @@ function join(): void {
   stopDeathcam(false);
   killedBy = null;
   bodies.forget();
+  mySoak = new Soak();
   conn = new Connection(config, world, mode, playerName(), transport);
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
   conn.onEvents = (events, time) => events.forEach((e) => onEvent(e, time));
@@ -1455,6 +1458,7 @@ renderer.setAnimationLoop(() => {
   if (conn) view.setExtracts(conn.extracts, now);
 
   const me = conn?.predictor.render(inputLoop.alpha);
+  if (me && !cam) mySoak.update(view.shelter, me.x, me.y + 1, me.z, dt);
   /** Whose view is shown: the killer's in a death cam, else ours. */
   const state = cam ? cam.state : (conn?.predictor.state ?? null);
   const eye = cam?.view();

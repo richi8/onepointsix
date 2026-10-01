@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { wetMaterial } from './rain.ts';
+import { wetMaterial, type Shelter } from './rain.ts';
 import { GRAVITY } from '../shared/constants.ts';
 import type { Box } from '../shared/world.ts';
 import { REFLECTED } from './water.ts';
@@ -74,6 +74,10 @@ export class Effects {
   private readonly debris: THREE.InstancedMesh;
   /** Each chunk's texture layer, once the debris is textured. */
   private readonly debrisLayer = new THREE.InstancedBufferAttribute(new Float32Array(MAX_DEBRIS), 1);
+  /** How wet each chunk is, as wet as the panel it broke from looked: it doesn't lie long enough to dry. */
+  private readonly debrisSoak = new THREE.InstancedBufferAttribute(new Float32Array(MAX_DEBRIS), 1);
+  /** Whether it's raining and where a roof keeps it off, for how wet a panel breaking was. */
+  shelter: Shelter | null = null;
   private readonly chunks: Chunk[] = [];
   private nextChunk = 0;
   private readonly smoke: Puff[] = [];
@@ -117,7 +121,8 @@ export class Effects {
 
     const chunkGeo = new THREE.BoxGeometry(1, 1, 1);
     chunkGeo.setAttribute('layer', this.debrisLayer);
-    this.debris = new THREE.InstancedMesh(chunkGeo, wetMaterial(new THREE.MeshStandardMaterial({ roughness: 0.9 }), 0.5), MAX_DEBRIS);
+    chunkGeo.setAttribute('soakAt', this.debrisSoak);
+    this.debris = new THREE.InstancedMesh(chunkGeo, wetMaterial(new THREE.MeshStandardMaterial({ roughness: 0.9 }), { gloss: 0.5, soak: 'instanced' }), MAX_DEBRIS);
     this.debris.count = 0;
     // Coloured from the start: colours first given as a panel breaks would recompile its material.
     this.debris.setColorAt(0, new THREE.Color());
@@ -148,6 +153,8 @@ export class Effects {
     const cz = (box.minZ + box.maxZ) / 2;
     const push = THREE.MathUtils.clamp(14 / (1 + Math.hypot(cx - fx, cy - fy, cz - fz)), 1.5, 9);
     const piece = Math.max(Math.cbrt((sx * sy * sz) / n), 0.12);
+    // Wet if nothing is over its top, as it was drawn (a roof's own top is out in the rain).
+    const wet = this.shelter?.raining && !this.shelter.sheltered(cx, box.maxY + 0.01, cz) ? 1 : 0;
     for (let i = 0; i < n; i++) {
       const x = box.minX + Math.random() * sx;
       const y = box.minY + Math.random() * sy;
@@ -178,10 +185,12 @@ export class Effects {
       this.debris.setMatrixAt(idx, HIDDEN);
       this.debris.setColorAt(idx, color);
       this.debrisLayer.setX(idx, layer);
+      this.debrisSoak.setX(idx, wet);
       this.debris.count = Math.max(this.debris.count, idx + 1);
     }
     if (this.debris.instanceColor) this.debris.instanceColor.needsUpdate = true;
     this.debrisLayer.needsUpdate = true;
+    this.debrisSoak.needsUpdate = true;
     this.dust(cx, cy, cz, Math.max(sx, sy, sz));
   }
 

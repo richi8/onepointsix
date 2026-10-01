@@ -155,12 +155,19 @@ const CORPSES = 8;
 
 const sphere = new THREE.SphereGeometry(1, 16, 12);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 14).translate(0, 0.5, 0);
-/** Every carried gun's: the look is in its vertices. */
-const GUN_MAT = vertexSurfaces(new THREE.MeshStandardMaterial());
-const ROUND_MAT = new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 });
-for (const m of [GUN_MAT, ROUND_MAT]) {
+/**
+ * A carried gun's, whose look is in its vertices, and a loose round's: each
+ * body's own, and each dropped magazine's, wet as `soak` says (see Soak).
+ */
+function gunMaterial(soak: { value: number }): THREE.MeshStandardMaterial {
+  return metal(vertexSurfaces(new THREE.MeshStandardMaterial()), soak);
+}
+function roundMaterial(soak: { value: number }): THREE.MeshStandardMaterial {
+  return metal(new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 }), soak);
+}
+function metal(m: THREE.MeshStandardMaterial, soak: { value: number }): THREE.MeshStandardMaterial {
   dimIndoors(m);
-  wetMaterial(m, 0.35);
+  return wetMaterial(m, { gloss: 0.35, soak });
 }
 const FLASH_MAT = new THREE.SpriteMaterial({
   map: flashTexture(), color: 0xffc070, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
@@ -257,6 +264,8 @@ interface Figure {
   hitAt: THREE.Vector3;
   /** How wet it still is from the rain. */
   soak: Soak;
+  /** Its gun's material and a loose round's, wet as it is. */
+  gunMats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial];
   /** Holds the gun in hand, whose look is swapped on a weapon change or with the suppressor, and its flash. */
   gun: THREE.Group;
   held: THREE.Mesh;
@@ -470,6 +479,10 @@ export class Bodies {
    * would compile it again, a stall on a cold shader cache.
    */
   private kept: THREE.Material | null = null;
+  /** The same for a gun's and a round's. */
+  private keptGun: THREE.Material[] | null = null;
+  /** How wet each body was as it went, so one drawn again, as a death cam starts or ends, is as wet. */
+  private readonly soaked = new Map<number, number>();
   /** Scale that makes the model PLAYER_HEIGHT tall. */
   private modelScale = 1;
   /** Which way the death clip falls, as a yaw from facing, and how far the head ends up. */
@@ -535,14 +548,15 @@ export class Bodies {
 
   /**
    * Drop a magazine of `weapon`'s, placed by `matrix` in the world (from the
-   * gun's space), at `velocity`: as your own reload lets one fall.
+   * gun's space), at `velocity`, as wet as `soak`, 0 to 1: as your own
+   * reload lets one fall.
    */
-  dropMagazine(weapon: number, matrix: THREE.Matrix4, velocity: THREE.Vector3): void {
+  dropMagazine(weapon: number, matrix: THREE.Matrix4, velocity: THREE.Vector3, soak: number): void {
     const gun = GUNS[weapon];
     if (!gun.mag) return;
     const base = gun.magazine;
     const points = [base.clone(), base.clone().addScaledVector(gun.well, -0.08), base.clone().setZ(base.z - 0.03)];
-    this.litter.drop(gun.mag, GUN_MAT, matrix, points, velocity);
+    this.litter.drop(gun.mag, gunMaterial, matrix, points, velocity, soak);
   }
 
   /**
@@ -550,7 +564,7 @@ export class Bodies {
    * `clock` says the game's time being shown; without one, time runs on by `dt`.
    */
   update(players: readonly PlayerSnap[], dt: number, camera?: THREE.Camera, clock?: Clock): void {
-    this.litter.update(dt, this.ground);
+    this.litter.update(dt, this.ground, this.shelter);
     this.time = clock ? clock.time : this.time + dt;
     this.clock = clock ?? null;
     if (camera) {
@@ -680,6 +694,7 @@ export class Bodies {
   /** A new game: nobody's deaths carry over, and the dropped magazines are cleared away. */
   forget(): void {
     this.deaths.clear();
+    this.soaked.clear();
     this.litter.clear();
   }
 
@@ -719,20 +734,27 @@ export class Bodies {
 
   private dispose(f: Figure): void {
     this.scene.remove(f.group, f.gun);
+    if (this.shelter?.raining) this.soaked.set(f.id, f.soak.level.value);
     for (const m of f.materials) {
       if (!this.kept && f.soldier) this.kept = m;
       else m.dispose();
     }
+    if (!this.keptGun) this.keptGun = f.gunMats;
+    else for (const m of f.gunMats) m.dispose();
     f.soldier?.mixer.stopAllAction();
   }
 
   private create(id: number, team: Team, commander: boolean): Figure {
     const group = new THREE.Group();
     const gun = new THREE.Group();
-    const held = new THREE.Mesh(GUNS[0].looks[0], GUN_MAT);
+    const soak = new Soak();
+    const was = this.soaked.get(id);
+    if (was !== undefined) soak.begin(was);
+    const gunMats: Figure['gunMats'] = [gunMaterial(soak.level), roundMaterial(soak.level)];
+    const held = new THREE.Mesh(GUNS[0].looks[0], gunMats[0]);
     gun.add(held);
     const [magMesh, actionMesh] = [0, 1].map(() => {
-      const m = new THREE.Mesh(undefined, GUN_MAT);
+      const m = new THREE.Mesh(undefined, gunMats[0]);
       m.matrixAutoUpdate = false;
       m.visible = false;
       gun.add(m);
@@ -748,7 +770,7 @@ export class Bodies {
     group.add(gun);
     this.scene.add(group);
     const f: Figure = {
-      group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(), soak: new Soak(),
+      group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(), soak, gunMats,
       gun, held, magMesh, actionMesh, lastMag: null, torch, flashMesh, weapon: 0, quiet: false,
       id, deadFor: -1, diedAt: 0, snap: null, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
@@ -762,7 +784,7 @@ export class Bodies {
     for (const m of f.materials) {
       flashWhereHit(m, f.hit);
       dimIndoors(m);
-      wetMaterial(m, 0.5, true, f.soak.level);
+      wetMaterial(m, { gloss: 0.5, soak: f.soak.level });
     }
     group.traverse((o) => {
       o.layers.enable(REFLECTED);
@@ -844,9 +866,9 @@ export class Bodies {
     const nade = grenadeModel();
     nade.visible = false;
     f.group.add(nade);
-    const fresh = new THREE.Mesh(undefined, GUN_MAT);
+    const fresh = new THREE.Mesh(undefined, f.gunMats[0]);
     fresh.matrixAutoUpdate = false;
-    const round = new THREE.Mesh(ROUND_GEO, ROUND_MAT);
+    const round = new THREE.Mesh(ROUND_GEO, f.gunMats[1]);
     for (const m of [fresh, round]) {
       m.visible = false;
       f.group.add(m);
@@ -1663,7 +1685,7 @@ export class Bodies {
       const from = was === 'hand' ? this.inHand(f, gun, leftAt, M_B) : M_B.multiplyMatrices(f.gun.matrixWorld, magazineMatrix(gun, was, M_C));
       const heading = p.yaw + f.heading;
       const velocity = V_TMP.set(-Math.sin(heading) * f.speed, -0.5, -Math.cos(heading) * f.speed);
-      this.dropMagazine(f.weapon, from, velocity);
+      this.dropMagazine(f.weapon, from, velocity, f.soak.level.value);
     }
 
     // The right hand round the grip, fingers forward round its front, thumb up over it; on the bolt, fingers down over it.
