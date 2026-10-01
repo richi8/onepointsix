@@ -321,18 +321,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   cam and are cleared when it starts and ends, and the dropped magazines aren't thrown by a
   blast. Checked with pose viewer screenshots (a pile before and after a grenade, a body against
   someone standing), unit tests and browser tests; nobody has watched it in play.
-- **The animation was checked by still screenshots** (13) of chosen moments in the new pose viewer
-  (`dev/pose.html`), plus one screenshot of a real game in first person. Nobody has watched it
-  moving at full speed in play, and its cost per frame with many bodies near wasn't measured.
-  Each near body now also runs leg IK when crouched, sliding, airborne or leaning, and hand
-  orientation and finger curl every update.
-  **Resolved in part** (19, 21): the benchmark measures it (see "Chunk 21's cost"). The new clips
-  were again checked by still screenshots in the pose viewer (now also showing landings, hits,
-  shots, the bolt being worked and each gun's reload); nobody has watched them in play.
-  Still (33): the climb, hits from each side, the moving gun parts, dropped magazines and feet on
-  slopes were checked by still screenshots and unit tests, not watched in play; posing 24 near
-  bodies went from about 2.5 to 2.8–2.9 ms in one session on an M3 Pro, the feet asking the
-  ground four more times each.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

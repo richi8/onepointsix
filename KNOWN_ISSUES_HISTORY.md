@@ -713,6 +713,19 @@ notes the chunk it came from.
   three engines (see "The ground cover's first fill"), and the screenshots are now compared by
   the tests. The mid-range laptop and watching it move are left for chunk 30.
   **Accepted** (2026-10-01): the user has played it on a slower machine and it runs fine.
+- **The animation was checked by still screenshots** (13) of chosen moments in the new pose viewer
+  (`dev/pose.html`), plus one screenshot of a real game in first person. Nobody has watched it
+  moving at full speed in play, and its cost per frame with many bodies near wasn't measured.
+  Each near body now also runs leg IK when crouched, sliding, airborne or leaning, and hand
+  orientation and finger curl every update.
+  **Resolved in part** (19, 21): the benchmark measures it (see "Chunk 21's cost"). The new clips
+  were again checked by still screenshots in the pose viewer (now also showing landings, hits,
+  shots, the bolt being worked and each gun's reload); nobody has watched them in play.
+  Still (33): the climb, hits from each side, the moving gun parts, dropped magazines and feet on
+  slopes were checked by still screenshots and unit tests, not watched in play; posing 24 near
+  bodies went from about 2.5 to 2.8–2.9 ms in one session on an M3 Pro, the feet asking the
+  ground four more times each.
+  **Resolved** (2026-10-01): the user has watched the animations in play and they're fine.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
