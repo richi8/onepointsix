@@ -601,6 +601,26 @@ notes the chunk it came from.
   such a body is a frame behind. (Hidden, such a body was in fact left out of the reflection too,
   not only unposed.) Typechecked and unit-tested, not watched in play.
 
+- **The sea is looked for by 144 rays** (32): a grid of 16 by 9 across the screen, each marched
+  over the terrain to where it meets the surface. Buildings and trees aren't counted, which only
+  errs toward drawing the reflection, but a sliver of sea narrower than the grid's spacing (about
+  80 px at 1280 wide) between hills can be missed, and there the sea shows the sky's picture
+  instead of the island's. It costs about 0.006 ms a frame with no sea in view.
+  **Resolved in part** (2026-10-01): after the scene is drawn, while its depth is still there, a
+  disk over the sea out to the fog, 0.35 m above still water (over the highest wave), is drawn
+  without colour inside a GPU occlusion query, which counts whether any of it showed past the
+  hills, buildings and trees in front. A count that saw sea turns the reflection on as the rays
+  do. Checked in Chromium, Firefox and WebKit at four views the rays miss: each now draws the
+  reflection, and one where the sea strip is plain now shows the island in it. It costs about
+  0.03 to 0.05 ms of CPU a frame for the extra render call. Still open: the count arrives a frame
+  or two late, so a sliver only the count finds shows the sky's picture for those frames as it
+  comes into view; the disk stands above shore that's within 0.35 m of the water, and fogged sea
+  right out at the fog's edge counts, which only err toward drawing the reflection.
+  **Accepted** (2026-10-01): the user finds it good enough by eye. None of what's left costs
+  much: drawing the disk straight through WebGL rather than a render call would save about
+  0.03 ms a frame, the fog's edge was already the rays' rule, and a beach in view without the sea
+  is rare. Letting the count also turn the reflection off where buildings and trees hide sea the
+  rays find would save whole reflection passes, but the late count would make it pop in.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
