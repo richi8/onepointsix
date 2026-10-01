@@ -154,8 +154,8 @@ src/
    the death cam possible.
 
 ### Assets
-- Poly Haven for PBR textures and HDRIs, Quaternius for guns and animation clips, MakeHuman
-  (MPFB2 in Blender) for soldiers from Phase 5, glTF for models
+- Poly Haven for PBR textures and HDRIs, Quaternius for guns and animation clips, Microsoft
+  Rocketbox for soldiers from Phase 5, glTF for models
 - Budget for small downloads: KTX2 textures, meshopt-compressed glTF and level of detail (LOD)
 
 ## Implementation Roadmap
@@ -264,17 +264,19 @@ Known Issues that Phase 4 leaves alone:
 
 ### Phase 5: new soldiers (still local only, Chrome only)
 
-The stylized SWAT model gives way to realistic people: MakeHuman bodies built in Blender with
-MPFB2 (CC0 when exported), dressed in clothes from the MakeHuman community, some of them CC‑BY
-(see Decisions). Operators look like SWAT, guards like Counter-Strike's terrorists. Picked on
-2026-10-01 after comparing Quaternius's Universal Base Characters (only bodybuilder proportions
-free, no clothes) and MakeHuman in the pose viewer's light; the comparison's outfits came to
-37k–156k triangles and 30–70 MB each as exported, so most of the work is making them light.
+The stylized SWAT model gives way to realistic people from Microsoft's Rocketbox library (115
+rigged avatars, MIT; see Decisions). Operators are its SWAT officers, guards its soldiers in
+camouflage, and commanders its soldiers in caps, so the sides differ by shape, not tint. Picked
+on 2026-10-01 after comparing, in the pose viewer's light, Quaternius's Universal Base
+Characters (only bodybuilder proportions free, no clothes), MakeHuman bodies dressed in
+community clothes (37k–156k triangles and 30–70 MB each as exported, the SWAT pieces CC‑BY) and
+Rocketbox, whose avatars came to 10–15k triangles in uniform, share one rig with fingers, bind
+in a T-pose and took the Universal Animation Library's clips with only a table of bone names.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 41 | **New soldier pipeline** | A committed build script that runs Blender and MPFB2 headless (fetched into a cache like the Linux tools, the MakeHuman assets kept in `scripts/originals`) and writes the soldiers' glTF; a MakeHuman body on MPFB's game-engine rig, with a lighter body proxy and clothes cut down to a budget (about 12k triangles a soldier; heavy pieces like the combat boots decimated or remodelled); textures at 512 px in KTX2; the Universal Animation Library's clips retargeted onto the new rig (its A-pose lined up with the library's T-pose), replacing the SWAT's own clips; `rig.ts`, hands, leg IK (feet no longer hang off the root), first-person arms, the ragdoll rig and hitboxes moved to the new bones; one outfit for every side to begin with | The pose viewer shows every pose and clip on the new body with nothing stretched, and the benchmark's 24-body frame is within chunk 39's | Planned |
-| 42 | **Outfits per side** | Operators as SWAT (dark jacket and trousers, combat boots, gloves, tactical vest, KZ45 helmet, balaclava, goggles); guards as terrorists in a few mixes picked per guard from the seed (ski mask or bandana, beanie or bare head, leather, denim or field jacket, jeans or cargo pants, sneakers or boots); commanders told apart at a glance (a cap and the radio); the code-built kit kept only where the clothes don't cover it; varied faces and skin tones; the clothes' authors credited in `CREDITS.md` and on the menu; level of detail for far bodies if the benchmark needs it | At 30 m an operator, a guard and a commander can be told apart by shape alone, and the download grows by no more than about 2 MB | Planned |
+| 41 | **New soldier pipeline** | A committed script that turns Rocketbox's FBX avatars into the game's glTF (Blender headless, fetched into a cache like the Linux tools; the FBX files and textures shrunk to 1k kept in `scripts/originals`): facial bones, the guns and knives baked into some avatars and unused bones dropped, the meshes merged, textures at 512 px in KTX2; the Universal Animation Library's clips retargeted onto the `Bip01` rig (both bind in a T-pose), replacing the SWAT's own clips; `rig.ts`, hands, leg IK (the feet hang off the shins now, not the root), first-person arms (from the SWAT avatar), the ragdoll rig and hitboxes moved to the new bones; one avatar for every side to begin with | The pose viewer shows every pose and clip on the new body with nothing stretched, and the benchmark's 24-body frame is within chunk 39's | Planned |
+| 42 | **Avatars per side** | Operators as SWAT (`Police_Male_02`, `Police_Female_01`); guards as soldiers in helmets (`Military_Male_01`, `_03`, `_04`, `Military_Female_01`, `_02`); commanders as soldiers in caps (`Military_Male_02`, `_05`, `_06`) with the radio; each body's avatar picked from the seed, so the same island looks the same; the code-built kit (packs, webbing, helmet band) dropped where the avatars carry their own, keeping the operators' pack and the commanders' radio; the side tints dropped or kept subtle; Microsoft credited in `CREDITS.md` with the MIT text; level of detail for far bodies if the benchmark needs it | At 30 m an operator, a guard and a commander can be told apart by shape alone, and the download grows by no more than about 3 MB | Planned |
 
 ## Known Issues
 
@@ -292,7 +294,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   pack and bedroll with black webbing, and guards wear brown webbing. Commanders (flagged in
   snapshots) wear a paler uniform, a red band round the helmet and a radio with a mast on their
   back. The fingers close round the grip and fore-end. It's still one stylized model, with the
-  face hidden. Phase 5 (chunks 41–42) replaces it with MakeHuman bodies dressed per side.
+  face hidden. Phase 5 (chunks 41–42) replaces it with Rocketbox's SWAT officers and soldiers.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
@@ -385,11 +387,11 @@ extraction stays as hard as it is.
 - **Assets:** simple placeholder shapes until chunk 9. After that, only CC0 assets (Poly Haven,
   ambientCG, Quaternius). Chunk 9 also used a Mixamo soldier, which chunk 11 replaced to leave
   no licensing doubts.
-- **CC‑BY allowed for soldiers' clothes** (2026-10-01): the SWAT and terrorist looks need
-  pieces only published under CC‑BY (the tactical vest, KZ45 helmet, balaclava, goggles,
-  bandana mask, denim jacket, jeans and sneakers from the MakeHuman community), so the user
-  allowed CC‑BY for them. Each author is credited in `CREDITS.md` and on the menu. Everything
-  else stays CC0, and the MakeHuman bodies are CC0 when exported from MPFB2.
+- **Rocketbox soldiers under MIT** (2026-10-01): the soldiers come from Microsoft's Rocketbox
+  avatars, which are MIT, not CC0; MIT asks only that the licence text and Microsoft's
+  copyright go with them, in `CREDITS.md`. The user also allowed CC‑BY for soldiers' clothes
+  that day, for the MakeHuman route Rocketbox replaced; nothing CC‑BY is used now. Everything
+  else stays CC0.
 - **Bot extraction baseline** (2026-09-30): operator bots extracting from 15% ± 3 of their runs by
   day in the bot playtest (`npm run playtest`, 6 islands × 30 min, seeds 1–6) is where the user
   wants it; at night in rain it's about 20%. Changes to bots, guards, loot or the island keep it
