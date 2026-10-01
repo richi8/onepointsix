@@ -102,7 +102,7 @@ const FOOT_TUCK = LEGS_RADIUS;
 /** How far the hips move out with a full lean; the upper body rolls the rest of the way. */
 const LEAN_HIPS = 0.14;
 /** How far the chest turns, left shoulder forward, behind a long gun, so the left hand reaches the fore-end; the head turns back. */
-const BLADE = 0.8;
+const BLADE = 0.5;
 /** Length of a suppressor on the barrel, as in first person. */
 const CAN_LENGTH = 0.15;
 /** How fast poses such as a jump or a climb blend in and out, per second. */
@@ -1697,7 +1697,7 @@ export class Bodies {
     const gun = GUNS[f.weapon];
     // Hunched over, the shoulders ride up level with the head: the gun stays below the eye all the same.
     const eye = f.group.worldToLocal(this.headAt(s, V_TMP2)).y - GRIP_BELOW_HEAD;
-    f.gun.position.set(shoulder.x - 0.1, Math.min(shoulder.y + 0.06, eye) - low * 0.12, shoulder.z);
+    f.gun.position.set(shoulder.x - GUN_IN, Math.min(shoulder.y + 0.06, eye) - low * 0.12, shoulder.z);
     f.gun.rotation.set(lerp(p.pitch, -0.9, low) - reload * 0.3 + kick * 0.12, low * 0.5 * (1 - draw), tip, 'YXZ');
     f.gun.translateZ((pistol ? -0.5 : -(gun.butt + SHOULDER_POCKET)) + kick * 0.04);
     f.gun.translateX(pistol ? -0.08 : 0);
@@ -1773,7 +1773,7 @@ export class Bodies {
       thumb.lerp(gunForward, rightAway);
     }
     const wrist = wristFor('R', rightAt, along, thumb, V_TMP9);
-    const pole = V_TMP2.copy(right).multiplyScalar(0.6).addScaledVector(up, -0.8).add(wrist);
+    const pole = V_TMP2.copy(right).multiplyScalar(ELBOW_OUT).addScaledVector(up, -ELBOW_DOWN).add(wrist);
     reach(b.rArm, b.rForeArm, b.rHand, wrist, pole, s.arm, s.forearm);
     orientHand(s.hands[1], along, thumb);
     if (rightAway > 0) curl(s.hands[1], lerp(0.9, 0.6, rightAway));
@@ -1906,6 +1906,10 @@ const CLIMB_HIGHEST = 1.6;
 /** How long a hit's flinch lasts. */
 const REACT_TIME = 0.6;
 
+/** How far in from the right shoulder joint a gun is held, and how far out the right elbow is held, against down. */
+const GUN_IN = 0.04;
+const ELBOW_OUT = 1;
+const ELBOW_DOWN = 0.3;
 /** How far below the middle of the head a gun's grip is held at most, so its sight line runs under the eye. */
 const GRIP_BELOW_HEAD = 0.14;
 /** How far in front of the shoulder joint a long gun's butt sits, in its pocket. */

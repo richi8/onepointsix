@@ -303,7 +303,9 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   pose and clip, screenshot tests re-recorded) and by the benchmark, not by playing. Some things
   were set by eye there and may want another look in motion: how far into the palm the thumb's
   side is taken (`THUMB_TILT`), how deep the palm is (`PALM_DEPTH`), the fingers' and thumb's
-  curl, where the pack sits on the back, and the hand-keyed crouched run, whose numbers were made
+  curl, how far the chest turns side-on behind a rifle (`BLADE`, down from 0.8 to 0.5, since this
+  body's bulky vest swallowed the right arm) and how far out the right elbow is held, where the
+  pack sits on the back, and the hand-keyed crouched run, whose numbers were made
   for the old model and only carried over (its legs are now bent by IK each key, as the feet hang
   off the shins).
 - **The ragdoll's unit tests start from the old soldier's fall** (41). `test/slump.json` is the
