@@ -114,6 +114,8 @@ const ROOT_SHIFT = 0.3;
 const FOOT_TUCK = LEGS_RADIUS;
 /** How far the hips move out with a full lean; the upper body rolls the rest of the way. */
 const LEAN_HIPS = 0.14;
+/** How far the chest turns, left shoulder forward, behind a long gun, so the left hand reaches the fore-end; the head turns back. */
+const BLADE = 0.8;
 /** Length of a suppressor on the barrel, as in first person. */
 const CAN_LENGTH = 0.15;
 /** How fast poses such as a jump or a climb blend in and out, per second. */
@@ -328,6 +330,8 @@ interface Figure {
   /** How much longer its crouched strides are than the clip's, and how far it has gone from the crouch-walk to the low run. */
   crouchStride: number;
   crouchFast: number;
+  /** How far it's turned side-on behind a long gun, 0 to 1, smoothed. */
+  blade: number;
   /** How far its body is moved up or down to put the head on its hitbox, smoothed. */
   headFix: number;
   /** Seconds since it last fired, and since it was last hit, and whether that was in the head. */
@@ -776,7 +780,7 @@ export class Bodies {
       gun, held, magMesh, actionMesh, lastMag: null, torch, flashMesh, weapon: 0, quiet: false,
       id, deadFor: -1, diedAt: 0, snap: null, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
-      air: 0, mantle: 0, climb: null, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, crouchFast: 0, headFix: 0, duck: 0,
+      air: 0, mantle: 0, climb: null, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, crouchFast: 0, blade: 1, headFix: 0, duck: 0,
       firedFor: 1e3, hitFor: 1e3, hitHead: false, hitLow: false, hitDir: new THREE.Vector3(0, 0, 1), soldier: null, casters: null,
       // Far off, bodies take turns to be posed rather than all in one frame.
       wait: Math.random() * FAR_UPDATE,
@@ -936,6 +940,7 @@ export class Bodies {
       const k = 1 - Math.exp(-BLEND_RATE * dt);
       f.air += ((p.motion === 'air' ? 1 : 0) - f.air) * k;
       f.mantle += ((p.motion === 'mantle' ? 1 : 0) - f.mantle) * k;
+      f.blade += ((p.weapon === PISTOL ? 0 : 1) - f.blade) * k;
       f.firedFor += dt;
       f.hitFor += dt;
       f.landedFor += dt;
@@ -1372,6 +1377,14 @@ export class Bodies {
       // Tipped over at the hips, which go back to keep the head over the feet.
       rotateWorld(b.body, right, -CROUCH_RUN_BEND * low);
       moveWorld(b.body, V_TMP2.set(0, -CROUCH_RUN_DROP * low, 0).addScaledVector(forward, -CROUCH_RUN_BACK * low));
+    }
+    // Side-on behind a long gun, as a rifleman stands, the left shoulder forward and the head turned back to the aim;
+    // square on to climb.
+    const blade = BLADE * f.blade * (1 - f.mantle);
+    if (blade > 1e-3) {
+      rotateWorld(b.torso, up, -blade * 0.4);
+      rotateWorld(b.spine2, up, -blade * 0.6);
+      rotateWorld(b.neck, up, blade);
     }
     // Bent forward climbing; aiming, the chest and head follow the pitch.
     const over = f.climb ? Math.sin(Math.PI * clamp(f.climb.rise * 0.7 + smoothstep(0, CLIMB_OVER, f.climb.over) * 0.3, 0, 1)) : 1;

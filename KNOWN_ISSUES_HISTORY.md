@@ -532,6 +532,14 @@ notes the chunk it came from.
   the legs' reach, but the crouch clip's front foot is 0.3 m ahead of the head's spot, so the
   front shin then leaned back to it in a lunge. Standing, the step is under 0.1 m and the feet stay
   in the hitbox. A crouch-walk's or a landing's back foot can still reach past it mid-stride.
+- **Long guns are held short of the fore-end** (grips, after chunk 35). With the butt against the
+  front of the shoulder, the model's short arms can't reach the rifle's or bolt-action's fore-end,
+  so the left hand slides back along the gun until it can, as far as the magazine well. The pistol
+  is drawn in from 0.5 m until both wrists reach its grip. Checked in the pose viewer, not in play.
+  **Resolved** (2026-10-01): behind a long gun the chest turns side-on, left shoulder forward, as
+  a rifleman stands, and the neck turns the head back to the aim; it eases square again for the
+  pistol and for a climb. The left hand now reaches the rifle's fore-end, and comes within 5 cm
+  of the bolt-action's mark (from 21 cm short).
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

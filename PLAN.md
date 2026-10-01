@@ -389,10 +389,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **The low run is the run clip lowered** (33): the hips tipped and dropped over the run's feet,
   not a crouched run of its own. A foot on a step's edge stands at the step's height, as the
   ground's height counts anything under a player's width.
-- **Long guns are held short of the fore-end** (grips, after chunk 35). With the butt against the
-  front of the shoulder, the model's short arms can't reach the rifle's or bolt-action's fore-end,
-  so the left hand slides back along the gun until it can, as far as the magazine well. The pistol
-  is drawn in from 0.5 m until both wrists reach its grip. Checked in the pose viewer, not in play.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

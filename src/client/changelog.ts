@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Side-on behind the rifle',
+    notes: [
+      'Soldiers holding a rifle or bolt-action stand side-on behind it, left shoulder forward, and hold it out by the fore-end rather than by the magazine.',
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Tucked-in crouch',
     notes: [
       "Soldiers crouching still tuck their back foot in under them, rather than leaving it trailing behind where it can't be hit.",
