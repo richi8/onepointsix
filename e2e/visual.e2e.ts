@@ -137,6 +137,8 @@ const POSES: Record<string, string> = {
   pile: 'show=dead:1.5,dead:1.4,dead:1.3&view=side&spacing=0.7&eye=0.4,2.6,4.2&at=1.6,0.2,0',
   'pile-blast': 'show=dead:1.5,dead:1.4,dead:1.3&view=side&spacing=0.7&blast=0.8&blastat=1.4,0.6&eye=0.4,2.6,4.2&at=1.6,0.2,0',
   against: 'show=dead:1.5,stand&view=side&spacing=0.9&eye=-1.5,1.6,3&at=0.5,0.5,0',
+  // The rifle's charging handle drawn back at the end of a reload, from over the left shoulder.
+  'charging-handle': 'show=reload:0.9:0&view=front&eye=-0.6,1.6,-0.5&at=0.05,1.3,0.1',
 };
 
 for (const [name, query] of Object.entries(POSES)) {

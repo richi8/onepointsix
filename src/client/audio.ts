@@ -73,12 +73,14 @@ const RAIN_QUIET = 0.45;
 const RAIN_DULL = 0.55;
 /**
  * Seconds into a reload that the magazine comes out and a fresh one is
- * seated, and the pistol's slide is racked, going by the hands (see
- * handwork.ts), less how far into each recording the sound lands.
+ * seated, the pistol's slide is racked and the rifle's charging handle drawn
+ * back, going by the hands (see handwork.ts), less how far into each
+ * recording the sound lands.
  */
 const MAG_OUT = { rifle: 0.3, pistol: 0.08 };
 const MAG_IN = { rifle: 1.22, pistol: 0.98 };
 const SLIDE_RACK = 1.1;
+const HANDLE_DRAWN = 1.87;
 /** Voices shared by sounds out in the world. */
 const VOICES = 24;
 /**
@@ -481,25 +483,25 @@ export class Sfx {
 
   /**
    * A reload's sounds, each as the hands get to it (see handwork.ts): the
-   * magazine out and a fresh one seated, and the pistol's slide racked; for
-   * the bolt-action, the bolt back and rounds pressed in.
+   * magazine out and a fresh one seated, then the pistol's slide racked or
+   * the rifle's charging handle drawn and let go; for the bolt-action, the
+   * bolt back and rounds pressed in.
    */
   reload(weapon: number): void {
     this.cancelReload();
     const cues: [string, number][] = weapon === BOLT ? [['boltOpen', 0], ['boltLoad', 0.7]]
       : weapon === PISTOL ? [['magOutPistol', MAG_OUT.pistol], ['magInPistol', MAG_IN.pistol], ['chargePistol', SLIDE_RACK]]
-      : [['magOutRifle', MAG_OUT.rifle], ['magInRifle', MAG_IN.rifle]];
+      : [['magOutRifle', MAG_OUT.rifle], ['magInRifle', MAG_IN.rifle], ['chargeRifle', HANDLE_DRAWN]];
     for (const [clip, delay] of cues) {
       const src = this.play(clip, { gain: 0.5, delay });
       if (src) this.reloading.push(src);
     }
   }
 
-  /** Chambering a round at the end of a reload: the rifle's charging handle or the bolt-action's bolt home. */
+  /** Chambering a round at the end of a reload: the bolt-action's bolt home. */
   reloaded(weapon: number): void {
     this.reloading.length = 0;
-    if (weapon === PISTOL) return;
-    this.play(weapon === BOLT ? 'boltClose' : 'chargeRifle', { gain: 0.5 });
+    if (weapon === BOLT) this.play('boltClose', { gain: 0.5 });
   }
 
   /** Drawing a gun, which cuts short a reload's sounds still to come. */

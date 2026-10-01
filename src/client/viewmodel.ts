@@ -396,6 +396,7 @@ export class ViewModel {
     let rightAt = grip;
     let leftAt = support;
     let rightAway = 0;
+    let leftHook = 0;
     let holding: 'magazine' | 'round' | null = null;
     let parts = shotParts(this.current, this.firedFor);
     if (s.reload > 0) {
@@ -404,6 +405,7 @@ export class ViewModel {
       leftAt = work.left;
       rightAt = work.right;
       rightAway = work.rightAway;
+      leftHook = work.leftHook;
       holding = work.holding;
       parts = work.parts;
     } else if (cycle > 0 && cycle < 1) {
@@ -438,6 +440,11 @@ export class ViewModel {
       // Wrapped round the right hand's fingers from the left, the thumb forward along the frame.
       along = new THREE.Vector3().copy(right).addScaledVector(up, -0.35).addScaledVector(forward, 0.2);
       thumb = new THREE.Vector3().copy(forward).addScaledVector(up, 0.3);
+    }
+    if (leftHook > 0) {
+      // Fingers down over the charging handle's latch, the palm back.
+      along.lerp(new THREE.Vector3().copy(up).negate().addScaledVector(forward, -0.3), leftHook);
+      thumb.lerp(right, leftHook);
     }
     a.nade.visible = false;
     let closed = s.reload > 0 ? 0.8 : pistol ? 0.9 : 0.8;

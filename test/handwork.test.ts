@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { pieces } from '../src/client/guns.ts';
-import { actionMatrix, boltHand, type GunPoints, type Parts, reloadHands } from '../src/client/handwork.ts';
+import { actionMatrix, boltHand, type GunPoints, HANDLE_GONE, HANDLE_PULLED, type Parts, reloadHands } from '../src/client/handwork.ts';
 import { BOLT, PISTOL, RIFLE } from '../src/shared/weapons.ts';
 
 // The hands and the gun's moving parts through a reload, in the gun's own
@@ -34,6 +34,19 @@ describe('reloads', () => {
     // The hand is on the magazine's base while it draws it out.
     const w = work(RIFLE, 0.18);
     expect(w.left.distanceTo(gun.magazine.clone().addScaledVector(gun.well, w.parts.mag as number))).toBeLessThan(1e-9);
+  });
+
+  it('draws the rifle charging handle back with the left hand on it, then lets it go', () => {
+    expect(work(RIFLE, 0.7).parts.back).toBe(0);
+    for (const t of [HANDLE_PULLED, 0.9]) {
+      const w = work(RIFLE, t);
+      expect(w.parts.back).toBeGreaterThan(0.06);
+      expect(w.leftHook).toBe(1);
+      expect(w.left.distanceTo(handle(w.parts))).toBeLessThan(1e-9);
+    }
+    expect(work(RIFLE, HANDLE_GONE + 0.02).parts.back).toBe(0);
+    expect(work(RIFLE, 1)).toMatchObject({ leftHook: 0, parts: { mag: 0, back: 0 } });
+    expect(work(RIFLE, 1).left.distanceTo(rest.left)).toBeLessThan(1e-9);
   });
 
   it('drops the pistol magazine and racks the slide', () => {

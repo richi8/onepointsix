@@ -9,8 +9,9 @@ import type { GunPoints } from './handwork.ts';
 // scripts/fetch-assets.mjs): empty nodes named Grip, Support, Muzzle, Sight,
 // Magazine and Bolt, each then snapped onto the geometry near it. Each model
 // is one mesh a material, so the parts that move in a reload (the magazine,
-// and the pistol's slide or the bolt-action's bolt handle) are found as the
-// connected pieces inside a box, and split off into their own meshes.
+// and the rifle's charging handle, the pistol's slide or the bolt-action's
+// bolt handle) are found as the connected pieces inside a box, and split off
+// into their own meshes.
 
 /** Which of a gun's pieces, by their bounds in fitted space, belong to a moving part. */
 type Picker = (box: THREE.Box3) => boolean;
@@ -31,28 +32,41 @@ interface Fit {
    * base's middle it sits.
    */
   body: [number, number, number, number] | null;
+  /**
+   * A charging handle for a model without one: where the middle of its
+   * latch's front meets the back of the receiver, in fitted space.
+   */
+  handle: THREE.Vector3 | null;
 }
+
+/** The name of the round a full magazine shows at its top, which an empty one hasn't. */
+export const ROUND = 'round';
+
+/** The charging handle's latch, across, high and deep, and the stem it draws back, deep. */
+const LATCH = [0.036, 0.007, 0.012];
+const STEM = 0.06;
 
 /** In WEAPONS order. */
 const FITS: Fit[] = [
-  // A flat-top carbine: a red dot goes on the rail. The magazine and its base plate hang under the receiver.
+  // A flat-top carbine: a red dot goes on the rail. The magazine and its base plate hang under the receiver. The
+  // model has no charging handle, so one is added at the receiver's back, high enough to draw back over the stock.
   {
     length: 0.85, raise: 0.033,
     magazine: (b) => b.max.y < -0.115 && b.min.z > -0.2 && b.max.z < -0.1, action: null,
-    well: new THREE.Vector3(0, -1, -0.15).normalize(), body: null,
+    well: new THREE.Vector3(0, -1, -0.15).normalize(), body: null, handle: new THREE.Vector3(0, -0.047, 0.025),
   },
   // Sized for the fist rather than to a real pistol's length: the model's grip is short for its slide.
   // Everything above the frame is the slide; the grip's base plate is the magazine's.
   {
     length: 0.27, raise: 0,
     magazine: (b) => b.max.y < -0.1, action: (b) => b.min.y > -0.035,
-    well: new THREE.Vector3(0, -1, 0.22).normalize(), body: [0.016, 0.07, 0.02, 0.006],
+    well: new THREE.Vector3(0, -1, 0.22).normalize(), body: [0.016, 0.07, 0.02, 0.006], handle: null,
   },
   // Scoped: the eye looks down the scope. Its bolt handle is the one piece standing out to the right.
   {
     length: 1.1, raise: 0,
     magazine: null, action: (b) => b.max.x > 0.02,
-    well: new THREE.Vector3(0, -1, 0), body: null,
+    well: new THREE.Vector3(0, -1, 0), body: null, handle: null,
   },
 ];
 
@@ -96,11 +110,12 @@ export function fitGun(gltf: GLTF, weapon: number): FittedGun {
   const object = new THREE.Group();
   const frame = new THREE.Group();
   const magazine = fit.magazine ? new THREE.Group() : null;
-  const action = fit.action ? new THREE.Group() : null;
+  const action = fit.action || fit.handle ? new THREE.Group() : null;
   object.add(frame);
   if (magazine) object.add(magazine);
   if (action) object.add(action);
   const found: { part: THREE.Group; geometry: THREE.BufferGeometry }[] = [];
+  let dark: THREE.Material | null = null;
   model.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -118,7 +133,7 @@ export function fitGun(gltf: GLTF, weapon: number): FittedGun {
     for (const tris of pieces(geometry)) {
       const bounds = new THREE.Box3();
       for (const t of tris) for (let c = 0; c < 3; c++) bounds.expandByPoint(V_A.fromBufferAttribute(position, corner(t + c)));
-      const part = magazine && fit.magazine!(bounds) ? magazine : action && fit.action!(bounds) ? action : frame;
+      const part = magazine && fit.magazine!(bounds) ? magazine : action && fit.action?.(bounds) ? action : frame;
       let list = kept.get(part);
       if (!list) kept.set(part, (list = []));
       for (const t of tris) list.push(corner(t), corner(t + 1), corner(t + 2));
@@ -126,6 +141,7 @@ export function fitGun(gltf: GLTF, weapon: number): FittedGun {
     const material = mesh.material as THREE.MeshStandardMaterial;
     material.roughness = 0.55;
     material.metalness = 0.35;
+    if (material.name === 'MainDark') dark = material;
     for (const [part, list] of kept) {
       const g = geometry.clone();
       g.setIndex(list);
@@ -136,24 +152,42 @@ export function fitGun(gltf: GLTF, weapon: number): FittedGun {
     }
   });
 
+  if (action && fit.handle) {
+    // A latch across the receiver's back, on a stem running forward into it, hidden until drawn back.
+    const [w, h, d] = LATCH;
+    const at = fit.handle;
+    const latch = new THREE.BoxGeometry(w, h, d).translate(at.x, at.y, at.z + d / 2);
+    const stem = new THREE.BoxGeometry(0.008, h * 0.8, STEM).translate(at.x, at.y, at.z - STEM / 2);
+    for (const g of [latch, stem]) {
+      const piece = new THREE.Mesh(g, dark ?? new THREE.MeshStandardMaterial());
+      piece.castShadow = true;
+      action.add(piece);
+      found.push({ part: action, geometry: g });
+    }
+  }
   const points = snap(found, fit, {
     grip: at(marks.Grip), support: at(marks.Support), muzzle: at(marks.Muzzle), magazine: at(marks.Magazine), bolt: at(marks.Bolt),
   }, frame, magazine, action);
   if (magazine && fit.body) {
-    // The magazine's body, up the well from its base, hidden in the grip when it's in.
+    // The magazine's body, up the well from its base, hidden in the grip when it's in: flat at the back, round at
+    // the front, with the top round showing between its lips.
     const [w, h, d, ahead] = fit.body;
     const base = magazine.children[0] as THREE.Mesh;
     const up = V_A.copy(fit.well).negate();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), base.material);
-    body.quaternion.setFromUnitVectors(V_B.set(0, 1, 0), up);
-    body.position.copy(points.magazine).addScaledVector(up, h / 2 + 0.004);
-    body.position.z -= ahead;
-    body.updateMatrix();
-    body.geometry.applyMatrix4(body.matrix);
-    body.position.set(0, 0, 0);
-    body.quaternion.identity();
-    body.castShadow = true;
-    magazine.add(body);
+    const turn = new THREE.Quaternion().setFromUnitVectors(V_B.set(0, 1, 0), up);
+    const at = points.magazine.clone().addScaledVector(up, h / 2 + 0.004);
+    at.z -= ahead;
+    const place = new THREE.Matrix4().compose(at, turn, V_B.set(1, 1, 1));
+    const body = new THREE.Mesh(magazineBody(w, h, d).applyMatrix4(place), base.material);
+    const round = new THREE.Mesh(
+      new THREE.CylinderGeometry(w * 0.28, w * 0.28, d * 0.8, 8).rotateX(Math.PI / 2).translate(0, h / 2 + w * 0.12, -d * 0.05).applyMatrix4(place),
+      new THREE.MeshStandardMaterial({ color: 0xb08a3e, roughness: 0.35, metalness: 0.8 }),
+    );
+    round.name = ROUND;
+    for (const m of [body, round]) {
+      m.castShadow = true;
+      magazine.add(m);
+    }
   }
   return { object, frame, magazinePart: magazine, actionPart: action, ...points };
 }
@@ -220,7 +254,7 @@ function snap(
   // What the right or left hand works: the bolt handle's end, the back of the slide, or the rifle's charging handle.
   let bolt = marks.bolt.clone().setX(mid);
   let pivot = bolt.clone();
-  if (action && fit.action) {
+  if (action) {
     const vs = all([action], () => true);
     const b = bounds(vs);
     if (b.max.x - mid > 0.02) {
@@ -236,6 +270,25 @@ function snap(
     }
   }
   return { muzzle, grip, support, magazine: base, bolt, pivot, well: fit.well.clone() };
+}
+
+/**
+ * A magazine's body, `w` across, `h` high and `d` deep, about its middle:
+ * flat at the back (+z), rounded across its front.
+ */
+function magazineBody(w: number, h: number, d: number): THREE.BufferGeometry {
+  // Drawn across (x) and front to back (y, the front up), then stood up its height.
+  const r = w / 2;
+  const shape = new THREE.Shape()
+    .moveTo(-r, -d / 2)
+    .lineTo(r, -d / 2)
+    .lineTo(r, d / 2 - r)
+    .absarc(0, d / 2 - r, r, 0, Math.PI, false)
+    .lineTo(-r, -d / 2);
+  return new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 6 })
+    .rotateX(-Math.PI / 2)
+    .translate(0, -h / 2, 0)
+    .deleteAttribute('uv');
 }
 
 /**

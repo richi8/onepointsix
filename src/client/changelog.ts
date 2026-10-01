@@ -15,7 +15,9 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     title: 'Magazines that stay',
     notes: [
       "Every soldier's empty magazines fall where they reload, however far off or out of sight, and lie there for the rest of the game.",
-      'Magazines land on bodies lying under them, fall when a body is cleared away, and are thrown about by grenades.',
+      'Magazines land on bodies, guns and each other, fall when a body is cleared away, and are thrown about by grenades.',
+      "The rifle's reload ends with the charging handle drawn back and let go, as you hear it.",
+      "The pistol's magazine is shaped like one, with a round showing at the top of a full one.",
     ],
   },
   {

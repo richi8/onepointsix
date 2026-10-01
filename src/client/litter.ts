@@ -4,10 +4,11 @@ import { Soak, type Shelter } from './rain.ts';
 
 // Empty magazines dropped in reloads, by everyone, near or far. Each falls,
 // bounces and comes to rest as three balls held rigid (see ragdoll.ts),
-// stepped on its own fixed clock, onto the ground and the bodies lying on it,
-// and lies where it fell for the rest of the game, unless too many have
-// fallen since. Each kind is drawn at once, in one instanced mesh. Each stays
-// as wet as whoever dropped it, drying under a roof.
+// stepped on its own fixed clock, onto the ground, the bodies and guns lying
+// on it and each other, and lies where it fell for the rest of the game,
+// unless too many have fallen since. Each kind is drawn at once, in one
+// instanced mesh. Each stays as wet as whoever dropped it, drying under a
+// roof.
 
 /** How many lie about at most, the oldest going first. */
 const MOST = 400;
@@ -88,8 +89,12 @@ export class Litter {
     this.draw(piece, pile.pieces.length - 1);
   }
 
-  /** Step what's falling up to now, onto `ground` and the bodies in `lying`; wet or dry as `shelter` says. */
+  /**
+   * Step what's falling up to now, onto `ground`, the bodies and guns in
+   * `lying` and each other; wet or dry as `shelter` says.
+   */
   update(dt: number, ground: Solid, lying: readonly Verlet[], shelter: Shelter | null): void {
+    const under = this.pieces.some((p) => !p.tumbler.asleep) ? [...lying, ...this.falls] : lying;
     for (const pile of this.piles.values()) {
       pile.pieces.forEach((p, slot) => {
         p.age += dt;
@@ -105,7 +110,7 @@ export class Litter {
           p.steps = due;
           return;
         }
-        for (; p.steps < due; p.steps++) p.tumbler.step(ground, lying);
+        for (; p.steps < due; p.steps++) p.tumbler.step(ground, under);
         frameOf(p.tumbler, p.matrix).multiply(p.from).multiply(p.start);
         this.draw(p, slot);
       });

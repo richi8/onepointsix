@@ -9,7 +9,7 @@ import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
 import { mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
 import { clip, crouchRun, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
-import { fitGun } from './guns.ts';
+import { fitGun, ROUND } from './guns.ts';
 import { FAR_SHADOWS } from './cascades.ts';
 import { dimIndoors } from './indoorlight.ts';
 import { Soak, wetMaterial, type Shelter } from './rain.ts';
@@ -185,6 +185,8 @@ interface GunShape extends GunPoints {
   /** The same without its moving parts, drawn on their own while they move. */
   frames: [bare: THREE.BufferGeometry, quiet: THREE.BufferGeometry];
   mag: THREE.BufferGeometry | null;
+  /** The magazine let go of in a reload: empty, without the round a full one shows at its top. */
+  spent: THREE.BufferGeometry | null;
   action: THREE.BufferGeometry | null;
   muzzle: THREE.Vector3;
   /** Where its flashlight sits. */
@@ -205,8 +207,8 @@ function buttOf(geometry: THREE.BufferGeometry): number {
  * without, and those parts on their own.
  */
 function gunLooks(
-  frame: Part[], mag: Part[], action: Part[], weapon: number, muzzle: THREE.Vector3, support: THREE.Vector3,
-): Pick<GunShape, 'looks' | 'frames' | 'mag' | 'action' | 'torch' | 'butt'> {
+  frame: Part[], mag: Part[], action: Part[], weapon: number, muzzle: THREE.Vector3, support: THREE.Vector3, spent = mag,
+): Pick<GunShape, 'looks' | 'frames' | 'mag' | 'spent' | 'action' | 'torch' | 'butt'> {
   const torch = torchMount(weapon, muzzle, support);
   const bare = [...frame, torchPart(torch)];
   const can = part(CAN_GEO.clone().translate(muzzle.x, muzzle.y, muzzle.z - CAN_LENGTH / 2), CAN, 0.6, 0.3);
@@ -216,6 +218,7 @@ function gunLooks(
     torch, looks, butt: buttOf(looks[0]),
     frames: moving.length ? [mergeParts(bare), mergeParts([...bare, can])] : looks,
     mag: mag.length ? mergeParts(mag) : null,
+    spent: spent.length ? mergeParts(spent) : null,
     action: action.length ? mergeParts(action) : null,
   };
 }
@@ -528,14 +531,15 @@ export class Bodies {
     GUNS = guns.map((g, i) => {
       const { object, frame, magazinePart, actionPart, ...points } = fitGun(g, i);
       object.updateMatrixWorld(true);
-      const parts = (from: THREE.Object3D | null): Part[] => {
+      const parts = (from: THREE.Object3D | null, keep = (_o: THREE.Object3D) => true): Part[] => {
         const out: Part[] = [];
-        from?.traverse((o) => (o as THREE.Mesh).isMesh && out.push(partOf(o as THREE.Mesh, o.matrixWorld)));
+        from?.traverse((o) => (o as THREE.Mesh).isMesh && keep(o) && out.push(partOf(o as THREE.Mesh, o.matrixWorld)));
         return out;
       };
-      return { ...points, ...gunLooks(parts(frame), parts(magazinePart), parts(actionPart), i, points.muzzle, points.support) };
+      const spent = parts(magazinePart, (o) => o.name !== ROUND);
+      return { ...points, ...gunLooks(parts(frame), parts(magazinePart), parts(actionPart), i, points.muzzle, points.support, spent) };
     });
-    for (const gun of GUNS) if (gun.mag) this.litter.prepare(gun.mag, gunMaterial('instanced'));
+    for (const gun of GUNS) if (gun.spent) this.litter.prepare(gun.spent, gunMaterial('instanced'));
     this.looks.clear();
     const box = new THREE.Box3().setFromObject(gltf.scene);
     this.modelScale = PLAYER_HEIGHT / (box.max.y - box.min.y);
@@ -558,10 +562,10 @@ export class Bodies {
    */
   dropMagazine(weapon: number, matrix: THREE.Matrix4, velocity: THREE.Vector3, soak: number): void {
     const gun = GUNS[weapon];
-    if (!gun.mag || this.replaying) return;
+    if (!gun.spent || this.replaying) return;
     const base = gun.magazine;
     const points = [base.clone(), base.clone().addScaledVector(gun.well, -0.08), base.clone().setZ(base.z - 0.03)];
-    this.litter.drop(gun.mag, matrix, points, velocity, soak);
+    this.litter.drop(gun.spent, matrix, points, velocity, soak);
   }
 
   /**
@@ -605,7 +609,9 @@ export class Bodies {
     }
 
     this.stepFalls(players);
-    this.litter.update(dt, this.ground, this.rags, this.shelter);
+    const lying: Verlet[] = [...this.rags];
+    for (const f of [...this.figures.values(), ...this.corpses]) if (f.drop) lying.push(f.drop.tumbler);
+    this.litter.update(dt, this.ground, lying, this.shelter);
     // Wet or drying about halfway up, standing or lying.
     for (const f of [...this.figures.values(), ...this.corpses]) f.soak.update(this.shelter, f.lastX, f.lastY + (f.deadFor >= 0 ? 0.3 : 1), f.lastZ, dt);
     for (const [f, p] of posed) this.draw(f, p, dt);
@@ -1680,6 +1686,7 @@ export class Bodies {
     let rightAt = grip;
     let leftAt = support;
     let rightAway = 0;
+    let leftHook = 0;
     let holding: 'magazine' | 'round' | null = null;
     let parts: Parts = p.act === 'none' ? shotParts(f.weapon, f.firedFor) : AT_REST;
     if (p.act === 'reload') {
@@ -1688,6 +1695,7 @@ export class Bodies {
       leftAt = work.left;
       rightAt = work.right;
       rightAway = work.rightAway;
+      leftHook = work.leftHook;
       holding = work.holding;
       parts = work.parts;
     } else if (f.weapon === BOLT && p.act === 'none') {
@@ -1731,6 +1739,11 @@ export class Bodies {
       closed = 0.9;
       along = V_TMP3.copy(gunRight).addScaledVector(gunUp, -0.35).addScaledVector(gunForward, 0.2);
       thumb = V_TMP4.copy(gunForward).addScaledVector(gunUp, 0.3);
+    }
+    if (leftHook > 0) {
+      // Fingers down over the charging handle's latch, the palm back.
+      along.lerp(V_TMP11.copy(gunUp).negate().addScaledVector(gunBack, 0.3), leftHook);
+      thumb.lerp(gunRight, leftHook);
     }
     if (p.act === 'throw') {
       // Back over the shoulder, over the top and down in front, then back to the gun.

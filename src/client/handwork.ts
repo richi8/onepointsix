@@ -47,6 +47,8 @@ export interface HandWork {
   right: THREE.Vector3;
   /** 0 at rest to 1 away from its hold: how far the right hand has left the grip. */
   rightAway: number;
+  /** 0 to 1: how far the left hand has its fingers hooked down over the rifle's charging handle. */
+  leftHook: number;
   holding: 'magazine' | 'round' | null;
   parts: Parts;
 }
@@ -69,6 +71,14 @@ export function path(t: number, keys: Key[]): THREE.Vector3 {
 const BOLT_LIFT = 1.2;
 const BOLT_TRAVEL = 0.075;
 const SLIDE_TRAVEL = 0.035;
+/** How far the rifle's charging handle is drawn back. */
+const HANDLE_TRAVEL = 0.07;
+/**
+ * When, through the rifle's reload, its charging handle is fully drawn and
+ * let go: 0.3 s apart in a reload of 2.3 s, as in its recording.
+ */
+export const HANDLE_PULLED = 0.84;
+export const HANDLE_GONE = 0.97;
 /** Most rounds the bolt-action's reload thumbs in, and how many when nobody says. */
 const MOST_ROUNDS = 5;
 export const SOME_ROUNDS = 3;
@@ -121,7 +131,7 @@ export function reloadHands(
     ]);
     const mag = reloadMagazine(weapon, t);
     const slide = SLIDE_TRAVEL * smoothstep(0.74, 0.8, t) * (1 - smoothstep(0.83, 0.85, t));
-    return { left, right: rest.right, rightAway: 0, holding: mag === 'hand' ? 'magazine' : null, parts: { mag, back: slide, lift: 0 } };
+    return { left, right: rest.right, rightAway: 0, leftHook: 0, holding: mag === 'hand' ? 'magazine' : null, parts: { mag, back: slide, lift: 0 } };
   }
   if (weapon === BOLT) {
     // The right hand lifts the bolt and draws it back; the left thumbs the rounds in; then the bolt closes.
@@ -145,15 +155,20 @@ export function reloadHands(
     // A round in the fingers from the pouch to the port.
     const into = ((t - 0.2) % trip) / trip;
     const holding = t > 0.2 && t < 0.72 && into > 0.35 && into < 0.9 ? 'round' : null;
-    return { left, right, rightAway: smoothstep(0, 0.08, t) * (1 - smoothstep(0.9, 1, t)), holding, parts };
+    return { left, right, rightAway: smoothstep(0, 0.08, t) * (1 - smoothstep(0.9, 1, t)), leftHook: 0, holding, parts };
   }
-  // The rifle: the left hand strips the magazine and lets it fall, then brings a full one from the belt.
+  // The rifle: the left hand strips the magazine and lets it fall, brings a full one from the belt, then draws the
+  // charging handle back over the top of the gun and lets it go.
+  const handle = toWorld(gun.bolt.clone());
+  const drawn = handle.clone().addScaledVector(back, HANDLE_TRAVEL);
   const left = path(t, [
     [0, rest.left], [0.13, out(0)], [0.2, out(0.1)], [0.23, out(0.1)], [0.38, pouch], [0.46, pouch],
-    [0.64, out(0.08)], [0.74, out(0)], [0.78, out(0)], [0.95, rest.left],
+    [0.64, out(0.08)], [0.74, out(0)], [0.76, out(0)], [0.8, handle], [HANDLE_PULLED, drawn], [HANDLE_GONE, drawn], [1, rest.left],
   ]);
   const mag = reloadMagazine(weapon, t);
-  return { left, right: rest.right, rightAway: 0, holding: mag === 'hand' ? 'magazine' : null, parts: { mag, back: 0, lift: 0 } };
+  const pulled = HANDLE_TRAVEL * smoothstep(0.8, HANDLE_PULLED, t) * (1 - smoothstep(HANDLE_GONE, HANDLE_GONE + 0.01, t));
+  const leftHook = smoothstep(0.76, 0.8, t) * (1 - smoothstep(HANDLE_GONE, 1, t));
+  return { left, right: rest.right, rightAway: 0, leftHook, holding: mag === 'hand' ? 'magazine' : null, parts: { mag, back: pulled, lift: 0 } };
 }
 
 /** Seconds after a bolt-action shot that the bolt is worked, and how long it takes. */
