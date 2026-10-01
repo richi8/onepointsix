@@ -22,7 +22,7 @@ type Driven = (typeof DRIVEN)[number];
 const D = Object.fromEntries(DRIVEN.map((name, i) => [name, i])) as Record<Driven, number>;
 
 /** Where the pack sits, from the chest bone, in the figure's space at rest (see Bodies.kit). */
-export const PACK_OFFSET = new THREE.Vector3(0, -0.06, 0.2);
+export const PACK_OFFSET = new THREE.Vector3(0, -0.18, 0.15);
 
 /**
  * The death clip's pose at the moment a ragdoll takes over, in the space of
@@ -47,8 +47,6 @@ export function slump(gltf: GLTF, scale: number, time: number): Slump {
   figure.add(turned);
   figure.updateMatrixWorld(true);
   const bones = findBones(model);
-  const toe = (side: 'L' | 'R') => model.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(`Foot.${side}_end`))!;
-  const toes = [toe('L'), toe('R')];
   const packAt = bones.spine2.worldToLocal(bones.spine2.getWorldPosition(new THREE.Vector3()).add(PACK_OFFSET));
 
   const mixer = new THREE.AnimationMixer(model);
@@ -71,12 +69,12 @@ export function slump(gltf: GLTF, scale: number, time: number): Slump {
     put(J.rHand, at(bones.rHand));
     put(J.lHip, at(bones.lUpLeg));
     put(J.lKnee, at(bones.lLeg));
-    put(J.lAnkle, at(bones.lAnkle));
+    put(J.lAnkle, at(bones.lFoot));
     put(J.rHip, at(bones.rUpLeg));
     put(J.rKnee, at(bones.rLeg));
-    put(J.rAnkle, at(bones.rAnkle));
-    put(J.lToe, at(toes[0]));
-    put(J.rToe, at(toes[1]));
+    put(J.rAnkle, at(bones.rFoot));
+    put(J.lToe, at(bones.lToeEnd));
+    put(J.rToe, at(bones.rToeEnd));
     put(J.pack, bones.spine2.localToWorld(packAt.clone()));
     return out;
   };
@@ -145,16 +143,12 @@ export class RagRig {
       const f = this.swing(fore, dFore, wrist, r, Q_C);
       this.set(hand, dHand, f);
     }
-    for (const [thigh, shin, ankle, foot, dThigh, dShin, dFoot, knee, heel, toe] of [
-      [b.lUpLeg, b.lLeg, b.lAnkle, b.lFoot, D.lUpLeg, D.lLeg, D.lFoot, J.lKnee, J.lAnkle, J.lToe],
-      [b.rUpLeg, b.rLeg, b.rAnkle, b.rFoot, D.rUpLeg, D.rLeg, D.rFoot, J.rKnee, J.rAnkle, J.rToe],
+    for (const [thigh, shin, foot, dThigh, dShin, dFoot, knee, heel, toe] of [
+      [b.lUpLeg, b.lLeg, b.lFoot, D.lUpLeg, D.lLeg, D.lFoot, J.lKnee, J.lAnkle, J.lToe],
+      [b.rUpLeg, b.rLeg, b.rFoot, D.rUpLeg, D.rLeg, D.rFoot, J.rKnee, J.rAnkle, J.rToe],
     ] as const) {
       const t = this.swing(thigh, dThigh, knee, lower, Q_B);
       const s = this.swing(shin, dShin, heel, t, Q_C);
-      refresh(ankle);
-      // The feet hang off the root: placed under the shin's end, as they were from it in the slump.
-      const at = V_A.copy(this.at[dFoot]).sub(joint(this.joints, heel, V_B)).applyQuaternion(s).add(ankle.getWorldPosition(V_C));
-      this.set(foot, dFoot, s, at);
       this.swing(foot, dFoot, toe, s, Q_D);
     }
   }

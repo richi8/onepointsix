@@ -5,13 +5,13 @@ import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { reporter } from './loading.ts';
 
-// Everything the game downloads, all CC0 (see public/assets/CREDITS.md), as
-// packed by scripts/fetch-assets.mjs. The main bundle imports this module
+// Everything the game downloads, all CC0 but the soldier, which is MIT (see
+// public/assets/CREDITS.md), as packed by scripts/fetch-assets.mjs. The main bundle imports this module
 // lazily, so the loaders it pulls in don't hold up the first frame. Textures
 // are KTX2 array textures, transcoded off the main thread; models are
 // meshopt-compressed. The Basis transcoder is a build of our own with only
 // what ETC1S needs (see scripts/build-transcoder.mjs), half the size of
-// three.js's.
+// three.js's; the soldier's textures are inside its model, in the same form.
 
 const BASE = `${import.meta.env.BASE_URL}assets/`;
 /**
@@ -35,7 +35,7 @@ export interface Assets {
 /** Everything downloaded, each reported to the loading bar as it comes in. */
 export async function loadAssets(renderer: THREE.WebGLRenderer): Promise<Assets> {
   const ktx2 = transcoder(renderer);
-  const gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).setKTX2Loader(ktx2);
   const load = <T>(loader: { loadAsync(url: string, onProgress: (e: ProgressEvent) => void): Promise<T> }, file: string) => {
     const url = `${BASE}${file}`;
     return loader.loadAsync(url, reporter(url));

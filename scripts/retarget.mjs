@@ -1,22 +1,40 @@
-// Moves clips from Quaternius's Universal Animation Library onto the soldier's
-// rig, for scripts/fetch-assets.mjs. Both rigs are bound in a T-pose facing
-// +z, so each bone takes the turn its counterpart makes away from its own
-// bind pose, in world space; the hips' movement is scaled by the ratio of hip
-// heights. The soldier's feet hang off its root rather than its shins (an IK
-// rig), so each foot moves as the library's does, and the game's leg IK
-// reaches for it.
+// Moves clips from Quaternius's Universal Animation Library onto a Rocketbox
+// avatar's `Bip01` rig, for scripts/fetch-assets.mjs. The library binds in a
+// T-pose and the avatars in an A-pose, so first the avatar's limbs are swung,
+// bone by bone, to point the way the library's do at bind. Then each bone
+// takes the turn its counterpart makes away from that pose, in world space,
+// and the pelvis moves as the library's hips do, scaled by the ratio of their
+// heights. Both rigs' feet hang off their shins, so the feet go where the
+// legs take them; the game's leg IK plants them.
 
 import { Quaternion, Matrix4, Object3D, Vector3 } from 'three';
 
-/** The soldier's bones and the library bones they follow. Fingers are posed by the game. */
+/** The avatar's bones and the library bones they follow. Fingers are posed by the game. */
 const MAP = {
-  Body: 'DEF-hips', Hips: 'DEF-hips',
-  Abdomen: 'DEF-spine.001', Torso: 'DEF-spine.002', Chest: 'DEF-spine.003', Neck: 'DEF-neck', Head: 'DEF-head',
-  'Shoulder.L': 'DEF-shoulder.L', 'UpperArm.L': 'DEF-upper_arm.L', 'LowerArm.L': 'DEF-forearm.L', 'Wrist.L': 'DEF-hand.L',
-  'Shoulder.R': 'DEF-shoulder.R', 'UpperArm.R': 'DEF-upper_arm.R', 'LowerArm.R': 'DEF-forearm.R', 'Wrist.R': 'DEF-hand.R',
-  'UpperLeg.L': 'DEF-thigh.L', 'LowerLeg.L': 'DEF-shin.L', 'Foot.L': 'DEF-foot.L',
-  'UpperLeg.R': 'DEF-thigh.R', 'LowerLeg.R': 'DEF-shin.R', 'Foot.R': 'DEF-foot.R',
+  'Bip01 Pelvis': 'DEF-hips', 'Bip01 Spine': 'DEF-spine.001', 'Bip01 Spine1': 'DEF-spine.002', 'Bip01 Spine2': 'DEF-spine.003',
+  'Bip01 Neck': 'DEF-neck', 'Bip01 Head': 'DEF-head',
 };
+for (const side of ['L', 'R']) {
+  Object.assign(MAP, {
+    [`Bip01 ${side} Clavicle`]: `DEF-shoulder.${side}`, [`Bip01 ${side} UpperArm`]: `DEF-upper_arm.${side}`,
+    [`Bip01 ${side} Forearm`]: `DEF-forearm.${side}`, [`Bip01 ${side} Hand`]: `DEF-hand.${side}`,
+    [`Bip01 ${side} Thigh`]: `DEF-thigh.${side}`, [`Bip01 ${side} Calf`]: `DEF-shin.${side}`,
+    [`Bip01 ${side} Foot`]: `DEF-foot.${side}`, [`Bip01 ${side} Toe0`]: `DEF-toe.${side}`,
+  });
+}
+/**
+ * The limbs lined up with the library's at bind: each bone and the child
+ * (the avatar's, then the library's) it points at.
+ */
+const ALIGN = ['L', 'R'].flatMap((s) => [
+  [`Bip01 ${s} Clavicle`, `Bip01 ${s} UpperArm`, `DEF-upper_arm.${s}`],
+  [`Bip01 ${s} UpperArm`, `Bip01 ${s} Forearm`, `DEF-forearm.${s}`],
+  [`Bip01 ${s} Forearm`, `Bip01 ${s} Hand`, `DEF-hand.${s}`],
+  [`Bip01 ${s} Hand`, `Bip01 ${s} Finger2`, `DEF-f_middle.01.${s}`],
+  [`Bip01 ${s} Thigh`, `Bip01 ${s} Calf`, `DEF-shin.${s}`],
+  [`Bip01 ${s} Calf`, `Bip01 ${s} Foot`, `DEF-foot.${s}`],
+  [`Bip01 ${s} Foot`, `Bip01 ${s} Toe0`, `DEF-toe.${s}`],
+]);
 /** Samples a second: resampling drops the keys a straight line would give anyway. */
 const FPS = 20;
 
@@ -59,12 +77,26 @@ function bindPose(doc, r) {
     world: new Matrix4().fromArray(ibm, i * 16).invert().premultiply(meshWorld),
   }));
   // Parents before children, so each local transform is taken against its posed parent.
-  const depth = (o) => (o.parent ? depth(o.parent) + 1 : 0);
   joints.sort((a, b) => depth(a.o) - depth(b.o));
   for (const { o, world } of joints) {
     o.parent.updateMatrixWorld(true);
     new Matrix4().copy(o.parent.matrixWorld).invert().multiply(world).decompose(o.position, o.quaternion, o.scale);
     o.updateMatrixWorld(true);
+  }
+}
+
+const depth = (o) => (o.parent ? depth(o.parent) + 1 : 0);
+const at = (o) => o.getWorldPosition(new Vector3());
+
+/** Swing the avatar's limbs, parents first, to point as the library's do at bind. */
+function align(src, dst) {
+  for (const [bone, child, toward] of ALIGN) {
+    const d = dst.named(bone);
+    const want = at(src.named(toward)).sub(at(src.named(MAP[bone]))).normalize();
+    const now = at(dst.named(child)).sub(at(d)).normalize();
+    const world = new Quaternion().setFromUnitVectors(now, want).multiply(d.getWorldQuaternion(new Quaternion()));
+    d.quaternion.copy(d.parent.getWorldQuaternion(new Quaternion()).invert().multiply(world));
+    d.updateMatrixWorld(true);
   }
 }
 
@@ -92,36 +124,31 @@ const V = new Vector3();
 
 /**
  * Copy `clips` (source name to new name) from the library document `from`
- * onto the soldier document `to`, as new animations.
+ * onto the avatar document `to`, as new animations.
  */
 export function retarget(from, to, clips) {
   const src = rig(from);
   const dst = rig(to);
+  bindPose(from, src);
   bindPose(to, dst);
+  // The pelvis and hips' heights above the feet at bind, before the legs are swung.
+  const scale = (at(dst.named('Bip01 Pelvis')).y - at(dst.named('Bip01 L Toe0')).y) /
+    (at(src.named('DEF-hips')).y - at(src.named('DEF-toe.L')).y);
+  align(src, dst);
   const srcRest = new Map([...src.objects.values()].map((o) => [o, { position: o.position.clone(), quaternion: o.quaternion.clone() }]));
   const dstRest = new Map([...dst.objects.values()].map((o) => [o, { position: o.position.clone(), quaternion: o.quaternion.clone() }]));
 
-  // Each pair: the soldier's bone, the library's, and both bind turns in world space.
+  // Each pair: the avatar's bone, the library's, and both bind turns in world space.
   const bones = Object.entries(MAP).map(([d, s]) => ({
     d: dst.named(d), s: src.named(s),
     dBind: dst.named(d).getWorldQuaternion(new Quaternion()),
     sBind: src.named(s).getWorldQuaternion(new Quaternion()),
   }));
-  const depth = (o) => (o.parent ? depth(o.parent) + 1 : 0);
   bones.sort((a, b) => depth(a.d) - depth(b.d));
-  const body = dst.named('Body');
+  const pelvis = dst.named('Bip01 Pelvis');
   const hips = src.named('DEF-hips');
-  const bodyBind = body.getWorldPosition(new Vector3());
-  const hipsBind = hips.getWorldPosition(new Vector3());
-  // Heights above the feet, in each rig's world units.
-  const scale = (bodyBind.y - dst.named('Foot.L').getWorldPosition(new Vector3()).y) /
-    (hipsBind.y - src.named('DEF-toe.L').getWorldPosition(new Vector3()).y);
-  // Each foot and the library's foot it follows, where both stand at bind.
-  const feet = ['L', 'R'].map((side) => {
-    const foot = dst.named(`Foot.${side}`);
-    const from = src.named(`DEF-foot.${side}`);
-    return { foot, from, at: foot.getWorldPosition(new Vector3()), fromAt: from.getWorldPosition(new Vector3()) };
-  });
+  const pelvisBind = at(pelvis);
+  const hipsBind = at(hips);
   const nodes = new Map([...dst.objects].map(([node, o]) => [o, node]));
 
   const root = to.getRoot();
@@ -139,7 +166,6 @@ export function retarget(from, to, clips) {
     const times = new Float32Array(frames);
     const tracks = new Map(bones.map(({ d }) => [d, new Float32Array(frames * 4)]));
     const moves = new Float32Array(frames * 3);
-    const feetAt = feet.map(() => new Float32Array(frames * 3));
     for (let f = 0; f < frames; f++) {
       const t = Math.min(f / FPS, duration);
       times[f] = t;
@@ -149,9 +175,10 @@ export function retarget(from, to, clips) {
         o.position.copy(r.position);
         o.quaternion.copy(r.quaternion);
       }
-      // The hips carry the body, scaled to the soldier's size.
-      const shift = hips.getWorldPosition(new Vector3()).sub(hipsBind).multiplyScalar(scale);
-      body.position.copy(body.parent.worldToLocal(bodyBind.clone().add(shift)));
+      // The hips carry the body, scaled to the avatar's size.
+      const shift = at(hips).sub(hipsBind).multiplyScalar(scale);
+      pelvis.parent.updateMatrixWorld(true);
+      pelvis.position.copy(pelvis.parent.worldToLocal(pelvisBind.clone().add(shift)));
       for (const { d, s, dBind, sBind } of bones) {
         // The library bone's turn away from its bind pose, applied to ours: world = turn * bind.
         const world = s.getWorldQuaternion(new Quaternion()).multiply(sBind.clone().invert()).multiply(dBind);
@@ -159,15 +186,8 @@ export function retarget(from, to, clips) {
         d.quaternion.copy(d.parent.getWorldQuaternion(new Quaternion()).invert().multiply(world));
         d.updateMatrixWorld(true);
       }
-      dst.scene.updateMatrixWorld(true);
-      // Each foot moves as the library's does, scaled; the game's leg IK reaches for it.
-      feet.forEach(({ foot, from, at, fromAt }, i) => {
-        const moved = from.getWorldPosition(new Vector3()).sub(fromAt).multiplyScalar(scale);
-        foot.position.copy(foot.parent.worldToLocal(at.clone().add(moved)));
-        foot.position.toArray(feetAt[i], f * 3);
-      });
       for (const [o, out] of tracks) o.quaternion.toArray(out, f * 4);
-      body.position.toArray(moves, f * 3);
+      pelvis.position.toArray(moves, f * 3);
     }
 
     const input = to.createAccessor().setType('SCALAR').setArray(times).setBuffer(buffer);
@@ -178,8 +198,7 @@ export function retarget(from, to, clips) {
       out.addSampler(sampler).addChannel(to.createAnimationChannel().setTargetNode(nodes.get(o)).setTargetPath(path).setSampler(sampler));
     };
     for (const [o, array] of tracks) channel(o, 'rotation', array, 'VEC4');
-    channel(body, 'translation', moves, 'VEC3');
-    feet.forEach(({ foot }, i) => channel(foot, 'translation', feetAt[i], 'VEC3'));
+    channel(pelvis, 'translation', moves, 'VEC3');
     console.log(`  ${name} → ${as}: ${duration.toFixed(2)} s`);
   }
 }

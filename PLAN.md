@@ -275,7 +275,7 @@ in a T-pose and took the Universal Animation Library's clips with only a table o
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 41 | **New soldier pipeline** | A committed script that turns Rocketbox's FBX avatars into the game's glTF (Blender headless, fetched into a cache like the Linux tools; the FBX files and textures shrunk to 1k kept in `scripts/originals`): facial bones, the guns and knives baked into some avatars and unused bones dropped, the meshes merged, textures at 512 px in KTX2; the Universal Animation Library's clips retargeted onto the `Bip01` rig (both bind in a T-pose), replacing the SWAT's own clips; `rig.ts`, hands, leg IK (the feet hang off the shins now, not the root), first-person arms (from the SWAT avatar), the ragdoll rig and hitboxes moved to the new bones; one avatar for every side to begin with | The pose viewer shows every pose and clip on the new body with nothing stretched, and the benchmark's 24-body frame is within chunk 39's | Planned |
+| 41 | **New soldier pipeline** | A committed script that turns Rocketbox's FBX avatars into the game's glTF (Blender headless, fetched into a cache like the Linux tools; the FBX files and textures shrunk to 1k kept in `scripts/originals`): facial bones, the guns and knives baked into some avatars and unused bones dropped, the meshes merged, textures at 512 px in KTX2; the Universal Animation Library's clips retargeted onto the `Bip01` rig (both bind in a T-pose), replacing the SWAT's own clips; `rig.ts`, hands, leg IK (the feet hang off the shins now, not the root), first-person arms (from the SWAT avatar), the ragdoll rig and hitboxes moved to the new bones; one avatar for every side to begin with | The pose viewer shows every pose and clip on the new body with nothing stretched, and the benchmark's 24-body frame is within chunk 39's | **Done** (`Police_Male_02` for everyone, 9,765 triangles, `soldier.glb` 0.56 MB against the old 0.60 MB; every pose-viewer screenshot re-recorded and looked over; in four runs each alternating with the code before on an M3 Pro, the 24-body frame took 9.1–10.0 ms against 9.6–10.5 ms, in the same 272 draw calls. The thighs were moved onto the pelvis; the textures are packed into one 1024 px image each, not kept apart. Nobody has watched it in play) |
 | 42 | **Avatars per side** | Operators as SWAT (`Police_Male_02`, `Police_Female_01`); guards as soldiers in helmets (`Military_Male_01`, `_03`, `_04`, `Military_Female_01`, `_02`); commanders as soldiers in caps (`Military_Male_02`, `_05`, `_06`) with the radio; each body's avatar picked from the seed, so the same island looks the same; the code-built kit (packs, webbing, helmet band) dropped where the avatars carry their own, keeping the operators' pack and the commanders' radio; the side tints dropped or kept subtle; Microsoft credited in `CREDITS.md` with the MIT text; level of detail for far bodies if the benchmark needs it | At 30 m an operator, a guard and a commander can be told apart by shape alone, and the download grows by no more than about 3 MB | Planned |
 
 ## Known Issues
@@ -295,6 +295,25 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   snapshots) wear a paler uniform, a red band round the helmet and a radio with a mast on their
   back. The fingers close round the grip and fore-end. It's still one stylized model, with the
   face hidden. Phase 5 (chunks 41–42) replaces it with Rocketbox's SWAT officers and soldiers.
+  **Resolved in part** (41): every body is now Rocketbox's SWAT officer (`Police_Male_02`), a
+  realistic avatar with its own textures. The side tints went with the old model, so for now
+  operators and guards differ only by the operators' pack, and commanders by their red band and
+  radio; chunk 42 gives each side its own avatars.
+- **The new soldier hasn't been watched in play** (41). It was checked in the pose viewer (every
+  pose and clip, screenshot tests re-recorded) and by the benchmark, not by playing. Some things
+  were set by eye there and may want another look in motion: how far into the palm the thumb's
+  side is taken (`THUMB_TILT`), how deep the palm is (`PALM_DEPTH`), the fingers' and thumb's
+  curl, where the pack sits on the back, and the hand-keyed crouched run, whose numbers were made
+  for the old model and only carried over (its legs are now bent by IK each key, as the feet hang
+  off the shins).
+- **The ragdoll's unit tests start from the old soldier's fall** (41). `test/slump.json` is the
+  stylized soldier's death clip where the ragdoll took over, falling back; the Rocketbox body's
+  death clip (the library's `Death01`) falls forward, and the tests, written round a fall back,
+  keep the old start. The browser test of a fall in play and in the death cam runs on the new body.
+- **The soldier's normal map is plain ETC1S** (41). The terrain's normal maps keep two channels
+  for quality, which needs the shader to rebuild the third; the soldier's go through three.js's
+  own material, so they're packed as an ordinary colour image, which ETC1S blurs a little. The
+  goggle lens, the one see-through part, is left out.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

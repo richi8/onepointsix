@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { lerp, TAU } from '../shared/geom.ts';
-import { placeWorld, turnWorld } from './rig.ts';
+import { boneName, placeWorld, reach, span, turnWorld } from './rig.ts';
 
 // What the game reads from the soldier's clips when it loads: how fast each
 // gait carries the body, and short reactions (a shot's recoil, being hit)
@@ -24,7 +24,7 @@ export function gaitSpeed(scene: THREE.Object3D, gait: THREE.AnimationClip): num
   const model = SkeletonUtils.clone(scene);
   const mixer = new THREE.AnimationMixer(model);
   mixer.clipAction(gait).play();
-  const feet = ['FootL', 'FootR'].map((name) => model.getObjectByName(name)!);
+  const feet = (['lFoot', 'rFoot'] as const).map((key) => model.getObjectByName(boneName(key))!);
   const steps = 120;
   const dt = gait.duration / steps;
   const path = feet.map(() => [] as THREE.Vector3[]);
@@ -83,49 +83,55 @@ const LOW_RUN = {
 /**
  * The crouched run, as a clip for the soldier in `scene`. Every bone either
  * of `others` moves is keyed, so it blends with them: the spine and feet by
- * hand (LOW_RUN), the rest held at the run's average, for the game poses the
- * arms and bends the legs to the feet.
+ * hand (LOW_RUN), the legs bent to reach the feet, and the rest held at the
+ * run's average, for the game poses the arms.
  */
 export function crouchRun(scene: THREE.Object3D, run: THREE.AnimationClip, others: THREE.AnimationClip[]): THREE.AnimationClip {
   const model = SkeletonUtils.clone(scene);
   const bone = (name: string): THREE.Object3D => model.getObjectByName(name)!;
-  // The run's average pose, upright and square, which the keys below turn from.
+  const key = (k: Parameters<typeof boneName>[0]): THREE.Object3D => bone(boneName(k));
+  const feet = [key('lFoot'), key('rFoot')];
+  const legs = [[key('lUpLeg'), key('lLeg')], [key('rUpLeg'), key('rLeg')]];
+  // The run's average pose, upright and square, which the keys below turn from; and each foot flat on the
+  // ground, as the run has it where the foot is lowest.
   const mixer = new THREE.AnimationMixer(model);
   mixer.clipAction(run).play();
   const names = [...new Set([run, ...others].flatMap((c) => c.tracks.map((t) => t.name.split('.')[0])))];
   const base = new Map(names.map((n) => [n, new THREE.Vector4()]));
+  const flat = feet.map(() => new THREE.Quaternion());
+  const lowest = feet.map(() => Infinity);
   const samples = 24;
   for (let i = 0; i < samples; i++) {
     mixer.setTime((i / samples) * run.duration);
+    model.updateMatrixWorld(true);
     for (const [n, sum] of base) {
       const q = bone(n).quaternion;
       // Kept in one hemisphere, so the average doesn't cancel out.
       const sign = sum.dot(V4.set(q.x, q.y, q.z, q.w)) < 0 ? -1 : 1;
       sum.addScaledVector(V4, sign);
     }
+    feet.forEach((foot, k) => {
+      const y = foot.getWorldPosition(V).y;
+      if (y >= lowest[k]) return;
+      lowest[k] = y;
+      foot.getWorldQuaternion(flat[k]);
+    });
   }
   mixer.stopAllAction();
   const rest = new Map([...base].map(([n, sum]) => [n, new THREE.Quaternion(sum.x, sum.y, sum.z, sum.w).normalize()]));
-  // Each foot flat on the ground: the run's when it's lowest.
-  const flat = ['FootL', 'FootR'].map((n) => {
-    const track = run.tracks.find((t) => t.name === `${n}.quaternion`)!;
-    const heights = run.tracks.find((t) => t.name === `${n}.position`)!;
-    let low = 0;
-    for (let i = 0; i < heights.times.length; i++) if (heights.values[i * 3 + 1] < heights.values[low * 3 + 1]) low = i;
-    const at = track.times.findIndex((t) => t >= heights.times[low]);
-    return new THREE.Quaternion().fromArray(track.values, Math.max(at, 0) * 4);
-  });
-  const ground = bone('FootL').getWorldPosition(new THREE.Vector3()).y;
+  // The ankle's height with the foot flat.
+  const ground = Math.min(...lowest);
+  const thigh = span(legs[0][0], legs[0][1]);
+  const shin = span(legs[0][1], feet[0]);
 
   const L = LOW_RUN;
   const frames = 30;
   const times = new Float32Array(frames + 1);
+  const body = key('body');
   const turns = new Map(names.map((n) => [n, new Float32Array((frames + 1) * 4)]));
-  const moves = new Map(['Body', 'FootL', 'FootR'].map((n) => [n, new Float32Array((frames + 1) * 3)]));
-  const body = bone('Body');
-  const spine = ['Abdomen', 'Torso', 'Chest'].map(bone);
-  const look = ['Neck', 'Head'].map(bone);
-  const feet = ['FootL', 'FootR'].map(bone);
+  const moves = new Float32Array((frames + 1) * 3);
+  const spine = [key('spine'), key('torso'), key('spine2')];
+  const look = [key('neck'), key('head')];
   const X = new THREE.Vector3(1, 0, 0);
   const Y = new THREE.Vector3(0, 1, 0);
   const Z = new THREE.Vector3(0, 0, 1);
@@ -151,20 +157,22 @@ export function crouchRun(scene: THREE.Object3D, run: THREE.AnimationClip, other
       turn(b, X, L.spine[i]);
     });
     look.forEach((b, i) => turn(b, X, L.look[i]));
-    feet.forEach((b, i) => {
+    // The legs reach for the feet, knees out front, and each foot is turned as keyed.
+    feet.forEach((foot, i) => {
       const [z, y, pitch] = footAt((u + i * 0.5) % 1);
-      b.quaternion.copy(flat[i]);
-      b.updateMatrixWorld(true);
-      turn(b, X, pitch);
-      placeWorld(b, V.set(i === 0 ? L.width : -L.width, ground + y, z));
+      const [upper, lower] = legs[i];
+      const target = V.set(i === 0 ? L.width : -L.width, ground + y, z);
+      reach(upper, lower, foot, target, V2.copy(upper.getWorldPosition(V3)).add(Z), thigh, shin);
+      foot.parent!.getWorldQuaternion(Q2);
+      foot.quaternion.copy(Q2.invert()).multiply(Q3.setFromAxisAngle(X, pitch)).multiply(flat[i]);
     });
     model.updateMatrixWorld(true);
     for (const [n, out] of turns) bone(n).quaternion.toArray(out, f * 4);
-    for (const [n, out] of moves) bone(n).position.toArray(out, f * 3);
+    body.position.toArray(moves, f * 3);
   }
   const tracks: THREE.KeyframeTrack[] = [
     ...[...turns].map(([n, v]) => new THREE.QuaternionKeyframeTrack(`${n}.quaternion`, times, v)),
-    ...[...moves].map(([n, v]) => new THREE.VectorKeyframeTrack(`${n}.position`, times, v)),
+    new THREE.VectorKeyframeTrack(`${body.name}.position`, times, moves),
   ];
   return new THREE.AnimationClip('CrouchRun', L.duration, tracks);
 }
@@ -202,14 +210,18 @@ function footAt(u: number): [number, number, number] {
 }
 
 const V = new THREE.Vector3();
+const V2 = new THREE.Vector3();
+const V3 = new THREE.Vector3();
 const V4 = new THREE.Vector4();
 const Q = new THREE.Quaternion();
+const Q2 = new THREE.Quaternion();
+const Q3 = new THREE.Quaternion();
 
 /** How far above its lowest a foot still counts as down, in the model's units. */
 const DOWN = 0.025;
 
 /** Bones a reaction moves: the spine and head, above the legs and below the arms, which the game poses. */
-const UPPER = ['Abdomen', 'Torso', 'Chest', 'Neck', 'Head'];
+const UPPER = (['spine', 'torso', 'spine2', 'neck', 'head'] as const).map(boneName);
 
 /**
  * A clip's movement of the upper body away from its first frame, to be laid

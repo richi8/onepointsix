@@ -38,9 +38,7 @@ const ARM_STRAIGHT = 0.9;
 /** Where the left hand goes for a magazine or a round, out of sight below. */
 const POUCH = new THREE.Vector3(-0.1, -0.75, -0.3);
 /** Only the parts of the soldier weighted to these bones are kept for the arms. */
-const ARM_BONES = /^(UpperArm|LowerArm|Wrist|Index|Middle|Ring|Pinky|Thumb)/;
-/** The uniform's colour on an operator, as the bodies in the world wear it. */
-const SLEEVE = 0x44566a;
+const ARM_BONES = /^Bip01_[LR]_(UpperArm|Forearm|Hand|Finger)/;
 /** Length of a suppressor on the barrel. */
 const CAN_LENGTH = 0.15;
 const FLASH_TIME = 0.045;
@@ -307,9 +305,7 @@ export class ViewModel {
         continue;
       }
       mesh.geometry = geometry;
-      const m = (mesh.material as THREE.MeshStandardMaterial).clone();
-      if (m.name === 'Swat') m.color.setHex(SLEEVE);
-      mesh.material = m;
+      mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
       mesh.frustumCulled = false;
     }
     // The model faces +z; the view looks down -z.

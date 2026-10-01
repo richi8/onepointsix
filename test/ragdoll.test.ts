@@ -3,8 +3,11 @@ import { JOINT, JOINTS, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll,
 import { World } from '../src/shared/world.ts';
 import slump from './slump.json' with { type: 'json' };
 
-// The soldier's death clip where the ragdoll takes over, standing at the
-// origin facing -z (falling back toward +z), as ragrig.ts works it out.
+// A death clip where the ragdoll takes over, standing at the origin facing
+// -z (falling back toward +z), as ragrig.ts worked it out for the stylized
+// soldier the game had until chunk 41. The Rocketbox soldier's death clip
+// falls forward; these tests keep the old start, which tries the ragdoll the
+// same way.
 
 interface Box { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
 

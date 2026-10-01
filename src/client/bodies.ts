@@ -9,7 +9,7 @@ import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
 import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
-import { mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
+import { floats, mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
 import { clip, crouchRun, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun, ROUND } from './guns.ts';
@@ -23,9 +23,9 @@ import {
 } from './handwork.ts';
 import { Litter } from './litter.ts';
 import { JOINT, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, stepOf, Tumbler, type Verlet } from './ragdoll.ts';
-import { RagRig, type Slump, slump } from './ragrig.ts';
+import { PACK_OFFSET, RagRig, type Slump, slump } from './ragrig.ts';
 import {
-  type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, placeWorld, reach, rotateWorld, span, turnWorld, wristFor,
+  type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, reach, rotateWorld, span, turnWorld, wristFor,
 } from './rig.ts';
 import { REFLECTED } from './water.ts';
 
@@ -55,13 +55,6 @@ const MUZZLE_TIME = 0.05;
 const HEAD = 0xd8c3a0;
 const TORSO: Record<Team, number> = { operator: 0x3f556e, guard: 0x5a6638 };
 const LEGS: Record<Team, number> = { operator: 0x2e3238, guard: 0x4a4636 };
-/** The soldier's uniform and webbing, per side; its skin and visor keep the model's own colours. */
-const UNIFORM: Record<Team, number> = { operator: 0x44566a, guard: 0x5c6a3a };
-const GEAR: Record<Team, number> = { operator: 0x26282b, guard: 0x4a3f2c };
-const COMMANDER_UNIFORM = 0x4f5a34;
-const COMMANDER_GEAR = 0x6b5a3a;
-const UNIFORM_MATERIAL = 'Swat';
-const GEAR_MATERIAL = 'Swat_Black';
 const PACK = 0x3a3d33;
 const RED = 0xa3201b;
 const MAST = 0x1c1c1c;
@@ -393,6 +386,9 @@ interface Soldier {
  * the offset eases away.
  */
 interface Foothold {
+  /** Where the clips put the ankle, and the foot's turn, in the root's space, before the body is posed by hand. */
+  clip: THREE.Vector3;
+  turn: THREE.Quaternion;
   at: THREE.Vector3 | null;
   offset: THREE.Vector3;
   /** How far the ground under it is above the body's own height, smoothed. */
@@ -555,9 +551,9 @@ export class Bodies {
     const speed = (name: string): number => gaitSpeed(gltf.scene, clip(gltf.animations, name)) * this.modelScale;
     this.gait = { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk'), crouchRun: speed('CrouchRun') };
     this.reactions = {
-      shot: new Reaction(clip(gltf.animations, 'Gun_Shoot')),
-      hit: new Reaction(clip(gltf.animations, 'HitRecieve')),
-      hitHead: new Reaction(clip(gltf.animations, 'HitRecieve_2')),
+      shot: new Reaction(clip(gltf.animations, 'Shoot')),
+      hit: new Reaction(clip(gltf.animations, 'Hit')),
+      hitHead: new Reaction(clip(gltf.animations, 'HitHead')),
     };
     for (const id of [...this.figures.keys()]) this.remove(id);
   }
@@ -852,7 +848,8 @@ export class Bodies {
     const body = meshes[0];
     for (const m of meshes.slice(1)) m.removeFromParent();
     body.geometry = geometry;
-    const material = vertexSurfaces(new THREE.MeshStandardMaterial());
+    const skin = body.material as THREE.MeshStandardMaterial;
+    const material = atlas(vertexSurfaces(new THREE.MeshStandardMaterial({ map: skin.map, normalMap: skin.normalMap })));
     body.material = material;
     f.materials.push(material);
     // Culled by a sphere round the body, set as it's posed.
@@ -900,13 +897,15 @@ export class Bodies {
     const pack = team === 'operator';
     const animated = Object.values(bones).map((bone) => ({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }));
     const r = this.reactions!;
-    const foothold = (): Foothold => ({ at: null, offset: new THREE.Vector3(), last: new THREE.Vector3(), rise: 0 });
+    const foothold = (): Foothold => ({
+      clip: new THREE.Vector3(), turn: new THREE.Quaternion(), at: null, offset: new THREE.Vector3(), last: new THREE.Vector3(), rise: 0,
+    });
     return {
       mixer, idle, walk, run, crouchIdle, crouchWalk, crouchRun, jump, airborne, land, death, bones, hands, nade, fresh, round, pack, animated,
       reacting: [r.shot, r.hit, r.hitHead].map((reaction) => reaction.bones(model)),
       feet: [foothold(), foothold()],
       arm: span(bones.rArm, bones.rForeArm), forearm: span(bones.rForeArm, bones.rHand),
-      thigh: span(bones.rUpLeg, bones.rLeg), shin: span(bones.rLeg, bones.rAnkle),
+      thigh: span(bones.rUpLeg, bones.rLeg), shin: span(bones.rLeg, bones.rFoot),
     };
   }
 
@@ -1406,6 +1405,12 @@ export class Bodies {
     if (dead) return;
 
     const b = s.bones;
+    // Where the clips put the feet, before the hips are moved by hand, which the legs then reach back for.
+    b.root.getWorldQuaternion(Q_A).invert();
+    for (const [i, foot] of [b.lFoot, b.rFoot].entries()) {
+      b.root.worldToLocal(foot.getWorldPosition(s.feet[i].clip));
+      foot.getWorldQuaternion(s.feet[i].turn).premultiply(Q_A);
+    }
     const up = V_UP;
     const facing = f.group.quaternion;
     const right = V_RIGHT.set(1, 0, 0).applyQuaternion(facing);
@@ -1553,10 +1558,11 @@ export class Bodies {
     const grounded = f.air < 0.1 && f.mantle < 0.1;
     // How much the ground under each foot counts: not in the air or climbing.
     const onGround = (1 - f.air) * (1 - f.mantle);
-    const legs = [[b.lUpLeg, b.lLeg, b.lAnkle, b.lFoot], [b.rUpLeg, b.rLeg, b.rAnkle, b.rFoot]] as const;
-    const targets = legs.map(([, , , foot], i) => {
+    const legs = [[b.lUpLeg, b.lLeg, b.lFoot], [b.rUpLeg, b.rLeg, b.rFoot]] as const;
+    const targets = legs.map((_, i) => {
       const left = i === 0;
-      const at = foot.getWorldPosition(V_TMP3).sub(origin);
+      // Where the clips put the ankle, carried by the root since, whatever the hips have done.
+      const at = b.root.localToWorld(V_TMP3.copy(s.feet[i].clip)).sub(origin);
       // In the legs' frame: x right, y up, z forward.
       let x = at.dot(right);
       let y = at.dot(V_UP);
@@ -1619,22 +1625,25 @@ export class Bodies {
     });
     if (drop > 1e-3 && onGround > 0.5) moveWorld(b.body, V_TMP2.set(0, -Math.min(drop, FOOT_DROP) * onGround, 0));
 
-    legs.forEach(([thigh, shin, ankle, foot], i) => {
+    b.root.getWorldQuaternion(Q_B);
+    legs.forEach(([thigh, shin, foot], i) => {
       // Still out of reach, as a climber's trailing foot: as near as the leg goes, so the boot isn't stretched.
       const target = targets[i];
       const hip = thigh.getWorldPosition(V_TMP2);
       const d = hip.distanceTo(target);
       if (d > length) target.sub(hip).multiplyScalar(length / d).add(hip);
-      placeWorld(foot, target);
-      // Along the slope: turned about the level line across it, as far as an ankle goes.
+      // Knees out front.
+      const pole = thigh.getWorldPosition(V_TMP2).addScaledVector(forward, 1);
+      reach(thigh, shin, foot, target, pole, s.thigh, s.shin);
+      // Turned as the clips had it, then along the slope: about the level line across it, as far as an ankle goes.
+      foot.parent!.getWorldQuaternion(Q_A);
+      foot.quaternion.copy(Q_A.invert()).multiply(Q_C.copy(Q_B).multiply(s.feet[i].turn));
+      foot.updateMatrixWorld(true);
       if (onGround > 0.01) {
         const n = this.groundNormal(target.x, target.z, origin.y, V_TMP6);
         const tilt = Math.min(Math.acos(clamp(n.y, -1, 1)), ANKLE_TURN) * onGround;
         if (tilt > 0.01) rotateWorld(foot, V_TMP7.crossVectors(V_UP, n).normalize(), tilt);
       }
-      // Knees out front.
-      const pole = thigh.getWorldPosition(V_TMP2).addScaledVector(forward, 1);
-      reach(thigh, shin, ankle, target, pole, s.thigh, s.shin);
     });
   }
 
@@ -1944,7 +1953,7 @@ function deathDirection(gltf: GLTF): number {
   action.play();
   mixer.update(clip.duration);
   model.updateMatrixWorld(true);
-  const head = model.getObjectByName('Head')!.getWorldPosition(new THREE.Vector3());
+  const head = findBones(model).head.getWorldPosition(new THREE.Vector3());
   // The model faces +z where bodies face -z: turn it round.
   return Math.atan2(head.x, head.z);
 }
@@ -1973,9 +1982,7 @@ function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, 
       if (other.elements.some((e, i) => Math.abs(e - into.elements[i]) > 1e-4)) throw new Error('Soldier meshes are bound differently');
     }
     const p = partOf(m, into);
-    const name = (m.material as THREE.Material).name;
-    if (name === UNIFORM_MATERIAL) p.color.setHex(commander ? COMMANDER_UNIFORM : UNIFORM[team]);
-    if (name === GEAR_MATERIAL) p.color.setHex(commander ? COMMANDER_GEAR : GEAR[team]);
+    p.geometry.setAttribute('uv', floats(m.geometry.getAttribute('uv')));
     const joints = m.geometry.getAttribute('skinIndex');
     const weights = m.geometry.getAttribute('skinWeight');
     const index = new Uint16Array(joints.count * 4);
@@ -2010,18 +2017,43 @@ function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, 
     }
     geometry.setAttribute('skinIndex', new THREE.BufferAttribute(index, 4));
     geometry.setAttribute('skinWeight', new THREE.BufferAttribute(weight, 4));
+    // Off the texture: plain colour (see atlas).
+    geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2).fill(-1), 2));
     parts.push(part(geometry, hex, roughness));
   };
   if (team === 'operator') {
-    wear(new THREE.BoxGeometry(0.3, 0.4, 0.16), PACK, 0.9, bones.spine2, chest.x, chest.y - 0.06, chest.z + 0.2);
-    wear(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10).rotateZ(Math.PI / 2), PACK, 0.9, bones.spine2, chest.x, chest.y + 0.17, chest.z + 0.22);
+    wear(new THREE.BoxGeometry(0.3, 0.4, 0.16), PACK, 0.9, bones.spine2, chest.x + PACK_OFFSET.x, chest.y + PACK_OFFSET.y, chest.z + PACK_OFFSET.z);
+    wear(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10).rotateZ(Math.PI / 2), PACK, 0.9, bones.spine2, chest.x, chest.y + PACK_OFFSET.y + 0.23, chest.z + PACK_OFFSET.z + 0.02);
   }
   if (commander) {
     wear(new THREE.TorusGeometry(0.155, 0.025, 6, 20).rotateX(Math.PI / 2), RED, 0.8, bones.head, head.x, head.y + 0.15, head.z - 0.01);
     wear(new THREE.CylinderGeometry(0.006, 0.01, 0.7, 5), MAST, 0.6, bones.spine2, chest.x - 0.1, chest.y + 0.3, chest.z + 0.2, 0.12);
     wear(new THREE.BoxGeometry(0.2, 0.28, 0.12), MAST, 0.6, bones.spine2, chest.x, chest.y - 0.05, chest.z + 0.18);
   }
-  return mergeParts(parts, ['skinIndex', 'skinWeight']);
+  return mergeParts(parts, ['skinIndex', 'skinWeight', 'uv']);
+}
+
+/**
+ * Patch a body's material, which takes the avatar's textures, to leave the
+ * kit made in code (whose UVs are negative) in its plain colours.
+ */
+export function atlas<M extends THREE.MeshStandardMaterial>(material: M): M {
+  const before = material.onBeforeCompile;
+  const key = material.customProgramCacheKey.bind(material);
+  material.onBeforeCompile = (shader, renderer) => {
+    before.call(material, shader, renderer);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace(
+        'vec4 sampledDiffuseColor = texture2D( map, vMapUv );',
+        'vec4 sampledDiffuseColor = vMapUv.x < 0.0 ? vec4( 1.0 ) : texture2D( map, vMapUv );',
+      ))
+      .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace(
+        'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
+        'vec3 mapN = vNormalMapUv.x < 0.0 ? vec3( 0.0, 0.0, 1.0 ) : texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
+      ));
+  };
+  material.customProgramCacheKey = () => `${key()}-atlas`;
+  return material;
 }
 
 /** 0 before `a`, up to 1 by a fifth of the way and down again by `b`: for an action's middle. */
@@ -2095,6 +2127,7 @@ const V_TMP10 = new THREE.Vector3();
 const V_TMP11 = new THREE.Vector3();
 const Q_A = new THREE.Quaternion();
 const Q_B = new THREE.Quaternion();
+const Q_C = new THREE.Quaternion();
 const M_A = new THREE.Matrix4();
 const M_B = new THREE.Matrix4();
 const M_C = new THREE.Matrix4();

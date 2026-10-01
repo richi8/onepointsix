@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Realistic soldiers',
+    notes: [
+      'Everyone is now a realistic SWAT officer in black, with a helmet, goggles, a balaclava and a loaded vest, in place of the cartoon soldier.',
+      'Your own arms in first person are the same officer\'s sleeves and fingerless gloves.',
+      'For now every side wears the same uniform: operators still carry a pack, and commanders a red helmet band and a radio. Guards and commanders get uniforms of their own next.',
+      'New moves for standing, walking, running, dying and flinching when hit.',
+    ],
+  },
+  {
+    date: '2026-10-01',
     title: 'Crates, fences and doors with real shape',
     notes: [
       'Crates have battens along their edges and a brace across each side.',

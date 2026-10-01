@@ -10,78 +10,101 @@ import { clamp } from '../shared/geom.ts';
 // date once after the clips have posed it.
 
 /**
- * Bones posed by hand, as named in Quaternius's rig. Its feet hang off the
- * root, not the shins: the clips place them, and the legs reach for them.
- * The body carries the pelvis, the legs and the upper body. Every bone the
- * game turns by hand is here, so it can be put back before the clips play.
+ * Bones posed by hand, as named in the Rocketbox avatars' `Bip01` rig (see
+ * scripts/rocketbox.py). The root stands on the ground under the body and
+ * carries everything; the pelvis carries the legs and the upper body. The
+ * feet hang off the shins, so the ankle is the foot bone itself; the head's
+ * and the boots' ends are bones added for the game to measure by. Every bone
+ * the game turns by hand is here, so it can be put back before the clips play.
  */
 export const BONES = {
-  root: 'Root', body: 'Body', spine: 'Abdomen', torso: 'Torso', spine2: 'Chest', neck: 'Neck', head: 'Head', headEnd: 'Head_end',
-  lShoulder: 'Shoulder.L', lArm: 'UpperArm.L', lForeArm: 'LowerArm.L', lHand: 'Wrist.L',
-  rShoulder: 'Shoulder.R', rArm: 'UpperArm.R', rForeArm: 'LowerArm.R', rHand: 'Wrist.R',
-  lUpLeg: 'UpperLeg.L', lLeg: 'LowerLeg.L', lAnkle: 'LowerLeg.L_end', lFoot: 'Foot.L',
-  rUpLeg: 'UpperLeg.R', rLeg: 'LowerLeg.R', rAnkle: 'LowerLeg.R_end', rFoot: 'Foot.R',
+  root: 'Bip01', body: 'Bip01 Pelvis', spine: 'Bip01 Spine', torso: 'Bip01 Spine1', spine2: 'Bip01 Spine2',
+  neck: 'Bip01 Neck', head: 'Bip01 Head', headEnd: 'Bip01 HeadNub',
+  lShoulder: 'Bip01 L Clavicle', lArm: 'Bip01 L UpperArm', lForeArm: 'Bip01 L Forearm', lHand: 'Bip01 L Hand',
+  rShoulder: 'Bip01 R Clavicle', rArm: 'Bip01 R UpperArm', rForeArm: 'Bip01 R Forearm', rHand: 'Bip01 R Hand',
+  lUpLeg: 'Bip01 L Thigh', lLeg: 'Bip01 L Calf', lFoot: 'Bip01 L Foot', lToe: 'Bip01 L Toe0', lToeEnd: 'Bip01 L Toe0Nub',
+  rUpLeg: 'Bip01 R Thigh', rLeg: 'Bip01 R Calf', rFoot: 'Bip01 R Foot', rToe: 'Bip01 R Toe0', rToeEnd: 'Bip01 R Toe0Nub',
 } as const;
 export type BoneName = keyof typeof BONES;
 export type Bones = Record<BoneName, THREE.Object3D>;
 
-const FINGERS = ['Index', 'Middle', 'Ring', 'Pinky'];
-
-/** The rig's bones, found by name; the loader drops the dots from node names. */
+/** The rig's bones, found by name; the loader turns the spaces in node names into underscores. */
 export function findBones(model: THREE.Object3D): Bones {
   const bones = {} as Bones;
   for (const [key, name] of Object.entries(BONES)) bones[key as BoneName] = bone(model, name);
   return bones;
 }
 
-function bone(model: THREE.Object3D, name: string): THREE.Object3D {
+/** A bone of the rig, by its name in BONES or as the rig has it. */
+export function bone(model: THREE.Object3D, name: string): THREE.Object3D {
   const b = model.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name));
   if (!b) throw new Error(`Soldier has no ${name} bone`);
   return b;
 }
 
-/**
- * The model's gloved hands are oversized for real guns (it's stylized), so
- * they're drawn smaller. Only the hands: the arms keep their length.
- */
-const HAND_SCALE = 0.8;
+/** A bone's name as the loader leaves it, for matching a clip's tracks. */
+export function boneName(key: BoneName): string {
+  return THREE.PropertyBinding.sanitizeNodeName(BONES[key]);
+}
 
 /** A hand's finger joints, to curl around a grip, with the pose they rest in. */
 export interface Hand {
   wrist: THREE.Object3D;
-  /** Knuckle to tip, finger by finger, then the thumb. */
+  /** Knuckle to tip, finger by finger from the index, then the thumb. */
   joints: THREE.Object3D[][];
   rest: THREE.Quaternion[][];
-  /** Where the fingers leave the palm, in the wrist's own space, and which way the thumb points. */
+  /** What each joint turns about to close the hand, in its own space at rest. */
+  axes: THREE.Vector3[][];
+  /** Where the fingers leave the palm, in the wrist's own space, and a point off the wrist on the thumb's side. */
   knuckles: THREE.Vector3;
   thumb: THREE.Vector3;
 }
 
+/** How far into the palm the thumb's side is taken to lean, in radians. */
+const THUMB_TILT = 0.2;
+
+/** In the rig, Finger0 is the thumb and Finger1 to Finger4 the index to the little finger, each three joints long. */
+const FINGERS = [1, 2, 3, 4, 0];
+
 export function findHand(model: THREE.Object3D, side: 'L' | 'R'): Hand {
-  const wrist = bone(model, `Wrist.${side}`);
-  // Each finger's first bone runs through the palm from the wrist to the knuckle.
-  const joints = FINGERS.map((f) => [1, 2, 3, 4].map((i) => bone(model, `${f}${i}.${side}`)));
-  joints.push([1, 2, 3].map((i) => bone(model, `Thumb${i}.${side}`)));
+  const wrist = bone(model, `Bip01 ${side} Hand`);
+  const joints = FINGERS.map((f) => ['', '1', '2'].map((k) => bone(model, `Bip01 ${side} Finger${f}${k}`)));
   model.updateMatrixWorld(true);
-  // Fingers run along their bones' y axes; the middle knuckle marks the palm's far edge.
-  const knuckles = wrist.worldToLocal(joints[1][1].getWorldPosition(new THREE.Vector3()));
-  const thumb = wrist.worldToLocal(joints[4][2].getWorldPosition(new THREE.Vector3()));
-  wrist.scale.multiplyScalar(HAND_SCALE);
-  return { wrist, joints, rest: joints.map((js) => js.map((j) => j.quaternion.clone())), knuckles, thumb };
+  const at = (o: THREE.Object3D): THREE.Vector3 => o.getWorldPosition(new THREE.Vector3());
+  // The middle knuckle marks the palm's far edge.
+  const knuckles = wrist.worldToLocal(at(joints[1][0]));
+  // The way the palm faces: square to the fingers and the line of the knuckles, mirrored for the left hand.
+  const along = at(joints[1][0]).sub(at(wrist)).normalize();
+  const across = at(joints[0][0]).sub(at(joints[3][0]));
+  across.addScaledVector(along, -across.dot(along)).normalize();
+  const palm = (side === 'R' ? across.clone().cross(along) : along.clone().cross(across)).normalize();
+  // The thumb's side of the hand, as the poses take it: across the knuckles toward the index, a little into the palm.
+  const toThumb = across.clone().multiplyScalar(Math.cos(THUMB_TILT)).addScaledVector(palm, Math.sin(THUMB_TILT));
+  const thumb = wrist.worldToLocal(at(wrist).add(toThumb));
+  // The thumb closes across the palm toward the little finger.
+  const little = at(joints[3][0]);
+  const axes = joints.map((js, f) => js.map((j, i) => {
+    const from = at(j);
+    const next = i < js.length - 1 ? at(js[i + 1]) : from.clone().sub(at(js[i - 1])).add(from);
+    const dir = next.sub(from).normalize();
+    const toward = f === 4 ? little.clone().sub(from).normalize().add(palm).normalize() : palm;
+    // Turning about dir × toward swings the finger toward the palm; in the joint's own space at rest.
+    const axis = dir.cross(toward).normalize();
+    return axis.applyQuaternion(j.getWorldQuaternion(new THREE.Quaternion()).invert());
+  }));
+  return { wrist, joints, rest: joints.map((js) => js.map((j) => j.quaternion.clone())), axes, knuckles, thumb };
 }
 
 /** How far each joint bends in a closed hand, knuckle to tip, and the thumb's. */
-const FINGER_CURL = [0.05, 1.0, 0.85, 0.5];
-const THUMB_CURL = [0.8, -0.4, -0.4];
+const FINGER_CURL = [1.0, 0.95, 0.6];
+const THUMB_CURL = [0.3, 0.35, 0.35];
 
 /** Curl the fingers by `amount`, 0 open to 1 closed around a grip. */
 export function curl(hand: Hand, amount: number): void {
   hand.joints.forEach((joints, f) => {
     const bend = f === 4 ? THUMB_CURL : FINGER_CURL;
     joints.forEach((j, i) => {
-      j.quaternion.copy(hand.rest[f][i]);
-      // Fingers close about their joints' x axes; the thumb folds in across the palm.
-      j.quaternion.multiply(Q_A.setFromAxisAngle(X_AXIS, -bend[i] * amount));
+      j.quaternion.copy(hand.rest[f][i]).multiply(Q_A.setFromAxisAngle(hand.axes[f][i], bend[i] * amount));
     });
   });
 }
@@ -148,8 +171,8 @@ export function untwist(hand: Hand, maxTwist: number): void {
 }
 
 /** How far the middle of the palm is from the wrist, along the fingers and out of the palm. */
-const PALM_LENGTH = 0.07 * HAND_SCALE;
-const PALM_DEPTH = 0.035 * HAND_SCALE;
+const PALM_LENGTH = 0.06;
+const PALM_DEPTH = 0.005;
 
 /**
  * Where a wrist goes so the palm closes on `point`, with the fingers along
@@ -231,7 +254,6 @@ export function span(a: THREE.Object3D, b: THREE.Object3D): number {
   return V_A.setFromMatrixPosition(a.matrixWorld).distanceTo(V_B.setFromMatrixPosition(b.matrixWorld));
 }
 
-const X_AXIS = new THREE.Vector3(1, 0, 0);
 const V_A = new THREE.Vector3();
 const V_B = new THREE.Vector3();
 const V_C = new THREE.Vector3();
