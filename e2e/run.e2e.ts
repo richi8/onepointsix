@@ -1,12 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { EXTRACT_FEE } from '../src/shared/constants.ts';
 import { lootValue } from '../src/shared/loot.ts';
-import { parseShareLink } from '../src/shared/share.ts';
-import { copyLinks, dev, endRun, GOLD, open, play } from './game.ts';
+import { dev, endRun, GOLD, open, play } from './game.ts';
 
 test.describe('results', () => {
-  test('extracting scores the loot, posts it and offers to share it', async ({ page }) => {
-    await copyLinks(page);
+  test('extracting scores the loot and posts it', async ({ page }) => {
     await open(page);
     await page.fill('#name', 'Tester');
     await page.locator('#name').blur();
@@ -22,13 +20,8 @@ test.describe('results', () => {
     await expect(results.locator('.items')).toHaveText('Gold bar ×2');
     // A game opens on a clear day.
     await expect(results.locator('dl')).toContainText('WeatherClear');
-    for (const id of ['again', 'to-menu', 'share-run']) await expect(page.locator(`#${id}`)).toBeVisible();
+    for (const id of ['again', 'to-menu']) await expect(page.locator(`#${id}`)).toBeVisible();
     await expect(page.locator('#watch-deathcam')).toBeHidden();
-
-    await expect(page.locator('#share-run')).toHaveText('Challenge a friend');
-    await page.click('#share-run');
-    const copied = await page.evaluate(() => window.copied);
-    expect(parseShareLink(new URL(copied[0]).search)).toMatchObject({ mode: 'offline', challenge: { name: 'Tester', score } });
 
     await page.click('#to-menu');
     await expect(page.locator('#menu')).toBeVisible();
@@ -41,7 +34,6 @@ test.describe('results', () => {
     await endRun(page, 'mia');
     await expect(page.locator('#results h2')).toHaveText('Missing in action');
     await expect(page.locator('#results .score span')).toHaveText('0');
-    await expect(page.locator('#share-run')).toHaveText('Share island');
     await page.click('#again');
     await expect(page.locator('#results')).toBeHidden();
     await expect(page.locator('#hud')).toBeVisible();

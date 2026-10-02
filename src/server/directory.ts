@@ -19,8 +19,6 @@ const IDLE_TIME = 120;
 interface Entry {
   world: WorldConfig;
   mode: Mode;
-  /** Joined only through its island's private link. */
-  private: boolean;
   server: GameServer;
   /** Seconds it has had no humans. */
   idle: number;
@@ -28,22 +26,18 @@ interface Entry {
 
 /**
  * Every game this host runs. Quick join puts a player in the first game on
- * their island, in its mode, that isn't full, or starts a new one. A private
- * link's players only ever meet each other: their games are kept apart from
- * the public ones, so nobody else takes a bot's slot there. Locally there is
+ * their island, in its mode, that isn't full, or starts a new one. Locally there is
  * one player, so this is one game; a multiplayer host runs many.
  */
 export class Directory {
   private readonly games: Entry[] = [];
 
-  quickJoin(world: WorldConfig, mode: Mode, isPrivate = false): GameServer {
+  quickJoin(world: WorldConfig, mode: Mode): GameServer {
     const { options, capacity } = MODES[mode];
-    const found = this.games.find(
-      (g) => sameWorld(g.world, world) && g.mode === mode && g.private === isPrivate && g.server.humans() < capacity,
-    );
+    const found = this.games.find((g) => sameWorld(g.world, world) && g.mode === mode && g.server.humans() < capacity);
     if (found) return found.server;
     const server = new GameServer(world.seed, options);
-    this.games.push({ world: { seed: server.seed }, mode, private: isPrivate, server, idle: 0 });
+    this.games.push({ world: { seed: server.seed }, mode, server, idle: 0 });
     return server;
   }
 

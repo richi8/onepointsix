@@ -12,10 +12,9 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
-    title: 'Private islands',
+    title: 'Sharing steps aside',
     notes: [
-      'Share link on the menu now makes a fresh island of your own and takes you there. Only players with its link can join its games, so friends you send it to take the bots\' places beside you and no strangers turn up. Shared from Offline, it opens in Online, since Offline takes nobody.',
-      'On a private island the menu says so, and Share link sends that same island again, with your best score on it to beat.',
+      'The Share link on the menu and the share button on the results are gone for now. Sharing comes back with multiplayer, as private islands for you and your friends. A link someone sent you before still opens its island with their score to beat.',
       'The menu no longer says "Default island".',
     ],
   },

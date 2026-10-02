@@ -197,8 +197,7 @@ export type GameEvent =
 export type ClientMsg =
   // `world` is the island the client wants to join; the server may ignore it.
   // Quick join: the client wants to play `mode` on this island. Sent again for another run.
-  // `private` joins only the island's private games, the ones its link leads to.
-  | { t: 'hello'; name: string; world: WorldConfig; mode: Mode; private?: boolean }
+  | { t: 'hello'; name: string; world: WorldConfig; mode: Mode }
   // Back to the menu.
   | { t: 'leave' }
   // Carries the last few unacknowledged commands so a lost packet costs nothing.

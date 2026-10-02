@@ -45,10 +45,6 @@ interface Game {
 declare global {
   interface Window {
     game: Game;
-    /** Links the page copied, with the clipboard stubbed by copyLinks. */
-    copied: string[];
-    /** What the page handed a stubbed share sheet. */
-    shared: ShareData[];
   }
 }
 
@@ -88,26 +84,6 @@ export async function face(page: Page, x: number, z: number): Promise<void> {
     window.game.input.yaw = Math.atan2(-(x - me.x), -(z - me.z));
     window.game.input.pitch = 0;
   }, [x, z]);
-}
-
-/**
- * Catch what the page copies to the clipboard in window.copied, the same in
- * every engine, or with `refuse` make copying fail as a browser may.
- */
-export async function copyLinks(page: Page, refuse = false): Promise<void> {
-  await page.addInitScript((refuse) => {
-    window.copied = [];
-    // No share sheet, so the link is copied, as in Firefox.
-    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
-    Object.defineProperty(navigator, 'clipboard', {
-      value: {
-        writeText: async (text: string) => {
-          if (refuse) throw new Error('Not allowed');
-          window.copied.push(text);
-        },
-      },
-    });
-  }, refuse);
 }
 
 /** Put scores on this browser's board before the page loads. */

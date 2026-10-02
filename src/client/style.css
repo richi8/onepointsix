@@ -50,38 +50,6 @@ canvas.fade-in {
   letter-spacing: -0.02em;
 }
 
-.menu .island {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: baseline;
-  gap: 14px;
-  margin: 0 0 4px;
-  font-size: 15px;
-}
-
-.menu .island span {
-  opacity: 0.85;
-}
-
-.menu button.link {
-  padding: 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: #e8c35a;
-  background: none;
-  box-shadow: none;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.menu button.link:hover {
-  color: #f2d27a;
-  background: none;
-}
-
 .menu .challenge {
   margin: 0;
   padding: 6px 14px;
@@ -821,10 +789,6 @@ canvas.fade-in {
 
   .menu h1 {
     font-size: clamp(36px, 12vh, 52px);
-  }
-
-  .menu .island {
-    margin: 0;
   }
 
   .menu #play {

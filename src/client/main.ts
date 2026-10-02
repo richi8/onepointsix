@@ -7,7 +7,7 @@ import { extractName } from '../shared/loot.ts';
 import { isReliable, parseMode, type ClientMsg, type CoverState, type DevCmd, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
 import { runRecord } from '../shared/runstats.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
-import { cleanName, freshWorld, parseShareLink, shareQuery, type Challenge } from '../shared/share.ts';
+import { cleanName, parseShareLink, type Challenge } from '../shared/share.ts';
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
 import { Forecast, mainWeather, parseWeather, type Weather } from '../shared/weather.ts';
@@ -346,12 +346,6 @@ try {
 }
 const board = new Leaderboard(store);
 const runLog = new RunLog(store);
-function showIsland(): void {
-  const label = document.getElementById('world-label')!;
-  label.textContent = link.private ? 'Private island' : '';
-  label.hidden = !link.private;
-}
-showIsland();
 
 // ------------------------------------------------------------------ name
 
@@ -384,74 +378,10 @@ function toast(text: string): void {
   toastTimer = window.setTimeout(() => (toastEl.hidden = true), 2500);
 }
 
-/** A toast kept to show once the page has gone to another island. */
-const TOAST_KEY = 'toast';
-try {
-  const kept = sessionStorage.getItem(TOAST_KEY);
-  sessionStorage.removeItem(TOAST_KEY);
-  if (kept) toast(kept);
-} catch {
-  // Storage blocked: the toast is lost, that's all.
-}
-
-/**
- * Share a link to this page with `query`: through the system's share sheet
- * where there is one, else copied, or failing that, shown to copy by hand.
- * Whether it went anywhere: false only when the share sheet was closed.
- */
-async function shareLink(query: string, text: string): Promise<boolean> {
-  const url = new URL(query, location.href).href;
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: 'onepointsix', text, url });
-      return true;
-    } catch (err) {
-      // Closed without sharing, and that's all; anything else falls back to copying.
-      if (err instanceof DOMException && err.name === 'AbortError') return false;
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(url);
-    toast('Link copied. Send it to a friend.');
-  } catch {
-    window.prompt('Copy this link:', url);
-  }
-  return true;
-}
-
 /** The score to beat from the link we came in on, if it's for `m`; a link without a mode counts for any. */
 function challengeFor(m: Mode): Challenge | null {
   return link.challenge && (link.mode ?? m) === m ? link.challenge : null;
 }
-
-/**
- * On a private island, share it again, with your best score on it to beat.
- * Anywhere else, make a fresh private island, share its link and go there:
- * only players with the link join its games, so they play with each other
- * and bots, never strangers. Offline takes nobody, so it's shared as Online.
- */
-async function shareIsland(): Promise<void> {
-  if (link.private) {
-    const best = board.best(config.seed, mode);
-    void shareLink(shareQuery(config, mode, best ?? undefined, true), challengeText(best));
-    return;
-  }
-  const query = shareQuery(freshWorld(), mode === 'offline' ? 'online' : mode, undefined, true);
-  if (!(await shareLink(query, 'Play a private island with me.'))) return;
-  try {
-    if (!toastEl.hidden) sessionStorage.setItem(TOAST_KEY, toastEl.textContent ?? '');
-  } catch {
-    // The toast is lost, that's all.
-  }
-  location.assign(query);
-}
-
-/** What goes with a shared link: the score to beat on it, if any. */
-function challengeText(score: { score: number } | null | undefined): string {
-  return score ? `Beat my ${score.score.toLocaleString('en-US')} on this island.` : 'Play this island with me.';
-}
-
-document.getElementById('share-island')!.onclick = () => void shareIsland();
 
 const challengeEl = document.getElementById('challenge')!;
 const boardEl = document.getElementById('board')!;
@@ -713,7 +643,7 @@ function join(): void {
   killedBy = null;
   bodies.forget();
   mySoak = new Soak();
-  conn = new Connection(config, world, mode, playerName(), transport, link.private);
+  conn = new Connection(config, world, mode, playerName(), transport);
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
   conn.onEvents = (events, time) => events.forEach((e) => onEvent(e, time));
   conn.onWelcome = (cover) => showCover(cover);
@@ -787,13 +717,6 @@ function endRun(e: RunEnd): void {
     const target = `${c.name}’s ${c.score.toLocaleString('en-US')}`;
     standing.push(e.score > c.score ? `You beat ${target}!` : `${target} still stands.`);
   }
-  const best = board.best(config.seed, mode);
-  const shareButton = document.getElementById('share-run') as HTMLButtonElement;
-  shareButton.textContent = e.score > 0 ? 'Challenge a friend' : best ? 'Share your best' : 'Share island';
-  shareButton.onclick = () => {
-    const score = e.score > 0 ? { name: playerName(), score: e.score } : best ?? undefined;
-    void shareLink(shareQuery(config, mode, score, link.private), challengeText(score));
-  };
   showLastResults = () => {
     (document.getElementById('watch-deathcam') as HTMLButtonElement).hidden = !killedBy;
     runHud.showResults(e, standing.join(' '));
