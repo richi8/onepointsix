@@ -111,7 +111,7 @@ const BLEND_RATE = 12;
 const LIE_LENGTH = 1.9;
 /** Room a body's arms need either side of it. */
 const ARM_SPAN = 0.8;
-/** Seconds into the death clip that the ragdoll takes over: the knees have gone and it's falling back. */
+/** Seconds into the death clip that the ragdoll takes over: the knees have gone and it's falling forward. */
 const HANDOFF = 0.35;
 /**
  * How long a body seen dead waits for the kill event that says how it fell,

@@ -42,8 +42,8 @@ describe('dropped magazines', () => {
   it('land on a body lying under them', () => {
     const rag = new Ragdoll(slump.now, slump.before, true);
     while (!rag.asleep) rag.step(FLAT, []);
-    // The slump lies on its side: its right shoulder is uppermost.
-    const top = JOINT.rShoulder * 3;
+    // The slump lies face down, rolled onto its right side: its left shoulder is uppermost.
+    const top = JOINT.lShoulder * 3;
     const [x, y, z] = [rag.pos[top], rag.pos[top + 1], rag.pos[top + 2]];
     const { litter: l, scene } = litter();
     // Flat, as one let go of lies in the hand.

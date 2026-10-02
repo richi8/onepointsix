@@ -299,10 +299,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   realistic avatar with its own textures. The side tints went with the old model, so for now
   operators and guards differ only by the operators' pack, and commanders by their red band and
   radio; chunk 42 gives each side its own avatars.
-- **The ragdoll's unit tests start from the old soldier's fall** (41). `test/slump.json` is the
-  stylized soldier's death clip where the ragdoll took over, falling back; the Rocketbox body's
-  death clip (the library's `Death01`) falls forward, and the tests, written round a fall back,
-  keep the old start. The browser test of a fall in play and in the death cam runs on the new body.
+- **Elbows and ankles give a little in a hard landing** (41, 2026-10-02). Started from the
+  Rocketbox body's forward fall, the ragdoll can force an elbow up to about 5 cm the wrong way, or
+  an ankle up to about 0.2 rad past its range, for a few steps as it lands, when thrown hard or
+  sliding downhill. The ground has the last word in each step, over the joints' limits. Both
+  settle back within their limits at rest, and the unit tests allow the give while it falls.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
