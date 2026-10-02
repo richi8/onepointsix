@@ -14,16 +14,16 @@ test.describe('loading screen', () => {
   });
 
   test('offers to play in flat colours while the textures hang, and fades them in when they come', async ({ page }) => {
-    // The soldier holds back until let through.
+    // The first soldier holds back until let through.
     let release = (): void => {};
-    await page.route('**/assets/soldier.glb', (route) => {
+    await page.route('**/assets/soldiers/Police_Male_02.glb', (route) => {
       release = () => void route.continue();
     });
     await page.goto('./');
     const skip = page.locator('#loading-skip');
     await expect(skip).toBeHidden();
     await expect(skip).toBeVisible({ timeout: 15_000 });
-    // Everything but the soldier is counted in (the dev server's scripts aren't listed).
+    // Everything but that soldier is counted in (the dev server's scripts aren't listed).
     const width = await page.evaluate(() => parseFloat((document.querySelector('#loading .bar div') as HTMLElement).style.width));
     expect(width).toBeGreaterThan(70);
     expect(width).toBeLessThan(100);
@@ -39,7 +39,7 @@ test.describe('loading screen', () => {
   });
 
   test('says so when the textures fail, and plays on', async ({ page }) => {
-    await page.route('**/assets/soldier.glb', (route) => route.abort());
+    await page.route('**/assets/soldiers/Police_Male_02.glb', (route) => route.abort());
     await page.goto('./');
     await expect(page.locator('#toast')).toHaveText('Textures failed to load. Playing in flat colours.', { timeout: 60_000 });
     await expect(page.locator('#loading')).toHaveCount(0);

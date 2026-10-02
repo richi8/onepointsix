@@ -5,7 +5,9 @@
 // takes the turn its counterpart makes away from that pose, in world space,
 // and the pelvis moves as the library's hips do, scaled by the ratio of their
 // heights. Both rigs' feet hang off their shins, so the feet go where the
-// legs take them; the game's leg IK plants them.
+// legs take them; the game's leg IK plants them. Only the first avatar
+// carries the clips: the others' bones are turned to play them as well (see
+// rebase).
 
 import { Quaternion, Matrix4, Object3D, Vector3 } from 'three';
 
@@ -201,4 +203,50 @@ export function retarget(from, to, clips) {
     channel(pelvis, 'translation', moves, 'VEC3');
     console.log(`  ${name} → ${as}: ${duration.toFixed(2)} s`);
   }
+}
+
+/**
+ * Turn each bone of the avatar document `to` the clips move so its frame,
+ * once its limbs are swung to the library's (`from`) bind, lies as the same
+ * bone's does in `ref`'s, keeping the skin where it is: then `ref`'s clips,
+ * retargeted onto it, pose `to` just as clips retargeted onto `to` itself
+ * would, but for the pelvis's moves, which the game scales to each avatar's
+ * size (see src/client/avatars.ts). Every bone's rest is its bind pose, as
+ * Blender exports them.
+ */
+export function rebase(from, ref, to) {
+  const src = rig(from);
+  bindPose(from, src);
+  const r = rig(ref);
+  bindPose(ref, r);
+  align(src, r);
+  const dst = rig(to);
+  bindPose(to, dst);
+  const mesh = to.getRoot().listNodes().find((n) => n.getSkin());
+  const skin = mesh.getSkin();
+  const nodes = new Map([...dst.objects].map(([node, o]) => [o, node]));
+  // Every bone's world matrix at bind, and as it's to be: turned in its own frame, in place.
+  const bind = new Map([...dst.objects.values()].map((o) => [o, o.matrixWorld.clone()]));
+  align(src, dst);
+  const want = new Map(bind);
+  for (const name of ['Bip01', ...Object.keys(MAP)]) {
+    const o = dst.named(name);
+    const turn = o.getWorldQuaternion(new Quaternion()).invert().multiply(r.named(name).getWorldQuaternion(new Quaternion()));
+    want.set(o, bind.get(o).clone().multiply(new Matrix4().makeRotationFromQuaternion(turn)));
+  }
+  // Each node's rest from its parent's, and the skin bound to the new frames.
+  const position = new Vector3();
+  const quaternion = new Quaternion();
+  const scale = new Vector3();
+  for (const [o, world] of want) {
+    new Matrix4().copy(want.get(o.parent) ?? o.parent.matrixWorld).invert().multiply(world).decompose(position, quaternion, scale);
+    nodes.get(o).setTranslation(position.toArray()).setRotation(quaternion.toArray()).setScale(scale.toArray());
+  }
+  const meshWorld = bind.get(dst.objects.get(mesh));
+  const ibm = skin.getInverseBindMatrices();
+  const array = ibm.getArray().slice();
+  skin.listJoints().forEach((j, i) => {
+    new Matrix4().copy(want.get(dst.objects.get(j))).invert().multiply(meshWorld).toArray(array, i * 16);
+  });
+  ibm.setArray(array);
 }

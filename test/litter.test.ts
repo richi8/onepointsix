@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { Litter } from '../src/client/litter.ts';
 import { JOINT, Ragdoll, type Solid } from '../src/client/ragdoll.ts';
-import slump from './slump.json' with { type: 'json' };
+import slumps from './slump.json' with { type: 'json' };
 
 const FLAT: Solid = {
   floorHeight: () => 0,
@@ -40,6 +40,8 @@ describe('dropped magazines', () => {
   });
 
   it('land on a body lying under them', () => {
+    // The first avatar's.
+    const slump = Object.values(slumps)[0];
     const rag = new Ragdoll(slump.now, slump.before, true);
     while (!rag.asleep) rag.step(FLAT, []);
     // The slump lies face down, rolled onto its right side: its left shoulder is uppermost.

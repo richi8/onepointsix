@@ -7,11 +7,12 @@
 # <textures>, at no more than 1024 px as a JPEG into <out dir> (the originals kept in
 # scripts/originals), and stops. Otherwise it writes <name>.glb, the avatar
 # without its textures, and the textures it uses packed into one image each
-# for colour and normals, <name>_color.png and <name>_normal.png, which
+# for colour and normals (at half the size), <name>_color.png and <name>_normal.png, which
 # fetch-assets.mjs compresses and puts back on the materials.
 #
 # On the way: the face's bones go, their skin moving with the head; so do the
-# guns and knives some avatars carry, and the see-through goggle lens; the
+# guns and knives some avatars carry, and the see-through goggle lens; avatars
+# of more than MAX_TRIANGLES are thinned out to it; the
 # thighs hang off the pelvis rather than the spine, and the collarbones off
 # the chest rather than the neck, so bending the spine leaves the legs alone
 # and turning the head leaves the arms; bones are added at the top of the head and at the
@@ -29,8 +30,11 @@ name = os.path.splitext(os.path.basename(fbx))[0]
 
 # Materials of the things carried, not worn: guns, knives, and the clear lens.
 DROPPED = ('pistol', 'shotgun', 'machinegun', 'rifle', 'knife', 'opacity')
-# Each texture's size in the packed image, and at most in the originals kept.
-TILE = 512
+# Each texture's size in the packed colour image, in the normals' (which show
+# only up close), and at most in the originals kept.
+TILE = {'color': 512, 'normal': 256}
+# The most triangles an avatar keeps: the soldiers in helmets have half as many again as the others.
+MAX_TRIANGLES = 10000
 ORIGINAL = 1024
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -92,6 +96,7 @@ bm.to_mesh(mesh.data)
 bm.free()
 # Each kept material's UVs moved into its tile of the packed images, filled from the bottom left.
 cols = int(np.ceil(np.sqrt(len(kept))))
+rows = int(np.ceil(len(kept) / cols))
 uv = mesh.data.uv_layers.active.data
 loops = mesh.data.loops
 for poly in mesh.data.polygons:
@@ -101,12 +106,19 @@ for poly in mesh.data.polygons:
         u, v = uv[li].uv
         if not (-0.01 <= u <= 1.01 and -0.01 <= v <= 1.01):
             raise SystemExit(f'{kept[i].name} has UVs outside its texture, which a packed image can\'t repeat')
-        uv[li].uv = ((min(max(u, 0), 1) + col) / cols, (min(max(v, 0), 1) + row) / cols)
+        uv[li].uv = ((min(max(u, 0), 1) + col) / cols, (min(max(v, 0), 1) + row) / rows)
 for i in reversed(range(len(mesh.material_slots))):
     if mesh.material_slots[i].material not in kept:
         mesh.active_material_index = i
         bpy.ops.object.material_slot_remove()
 bpy.ops.object.mode_set(mode='OBJECT')
+# Thinned out evenly, the skin weights and UVs carried along, before it's skinned.
+tris = sum(len(p.vertices) - 2 for p in mesh.data.polygons)
+if tris > MAX_TRIANGLES:
+    thin = mesh.modifiers.new('thin', 'DECIMATE')
+    thin.ratio = MAX_TRIANGLES / tris
+    bpy.ops.object.modifier_move_to_index(modifier=thin.name, index=0)
+    bpy.ops.object.modifier_apply(modifier=thin.name)
 
 # ------------------------------------------------------------ the bones
 
@@ -178,21 +190,21 @@ bpy.context.view_layer.update()
 # ------------------------------------------------------------ the images
 
 def pack(kind):
-    size = cols * TILE
-    sheet = np.zeros((size, size, 4), dtype=np.float32)
+    tile = TILE[kind]
+    sheet = np.zeros((rows * tile, cols * tile, 4), dtype=np.float32)
     sheet[..., 3] = 1
     for i, m in enumerate(kept):
         img = bpy.data.images.load(image_of(m, kind))
         img.colorspace_settings.name = 'Non-Color'
-        img.scale(TILE, TILE)
-        px = np.array(img.pixels[:], dtype=np.float32).reshape(TILE, TILE, 4)
+        img.scale(tile, tile)
+        px = np.array(img.pixels[:], dtype=np.float32).reshape(tile, tile, 4)
         col, row = i % cols, i // cols
-        sheet[row * TILE:(row + 1) * TILE, col * TILE:(col + 1) * TILE] = px
+        sheet[row * tile:(row + 1) * tile, col * tile:(col + 1) * tile] = px
     if kind == 'normal':
         # Empty tiles point straight out.
         empty = sheet[..., :3].sum(axis=2) == 0
         sheet[empty] = (0.5, 0.5, 1, 1)
-    img = bpy.data.images.new(f'{name}_{kind}', size, size, alpha=False, float_buffer=False)
+    img = bpy.data.images.new(f'{name}_{kind}', cols * tile, rows * tile, alpha=False, float_buffer=False)
     img.colorspace_settings.name = 'Non-Color'
     img.pixels[:] = sheet.ravel()
     img.filepath_raw = os.path.join(out, f'{name}_{kind}.png')
@@ -207,6 +219,7 @@ pack('normal')
 bpy.ops.export_scene.gltf(
     filepath=os.path.join(out, f'{name}.glb'), export_format='GLB', export_image_format='NONE',
     export_animations=False, export_morph=False, export_skins=True, export_yup=True, export_tangents=False,
+    export_vertex_color='NONE',
 )
 tris = sum(len(p.vertices) - 2 for p in mesh.data.polygons)
-print('AVATAR', json.dumps({'name': name, 'materials': [m.name for m in kept], 'tiles': cols, 'triangles': tris}))
+print('AVATAR', json.dumps({'name': name, 'materials': [m.name for m in kept], 'tiles': [cols, rows], 'triangles': tris}))

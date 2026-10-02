@@ -129,6 +129,7 @@ const effects = new Effects(scene, (x, z) => world.floorHeight(x, z));
 const grenades = new Grenades(scene);
 const flashlights = new Flashlights(scene);
 const bodies = new Bodies(scene, world);
+bodies.seed = world.seed;
 const bags = new Bags(scene);
 /** How wet you are, for the magazines you drop. */
 let mySoak = new Soak();
@@ -202,9 +203,16 @@ function dress(assets: Assets): void {
   dressed = assets;
   view.applyAssets(assets);
   effects.setDebrisMaterial(wetMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }), { gloss: 0.5, soak: 'instanced' }));
-  bodies.setModel(assets.soldier, assets.guns);
+  bodies.setModel(assets.soldiers, assets.guns);
+  // Every avatar's textures on the GPU now, not as each is first seen in play.
+  for (const soldier of assets.soldiers) {
+    soldier.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      for (const t of [m?.map, m?.normalMap]) if (t) renderer.initTexture(t);
+    });
+  }
   viewModel.setGuns(assets.guns, assets.environment);
-  viewModel.setArms(assets.soldier);
+  viewModel.setArms(assets.soldiers[0]);
   // Your own empty magazines fall from where your hands let go of them, into the world.
   viewModel.onDrop = (weapon, matrix) => {
     const s = deathcam ? null : conn?.predictor.state;
@@ -458,6 +466,7 @@ function openIsland(next: WorldConfig): void {
   bodies.forget();
   bodies.clear();
   bodies.ground = world;
+  bodies.seed = world.seed;
   bodies.shelter = bags.shelter = effects.shelter = view.shelter;
   bags.update([]);
   grenades.update([]);

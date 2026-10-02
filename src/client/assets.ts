@@ -3,15 +3,16 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { AVATAR_NAMES } from '../shared/avatars.ts';
 import { reporter } from './loading.ts';
 
-// Everything the game downloads, all CC0 but the soldier, which is MIT (see
+// Everything the game downloads, all CC0 but the soldiers, which are MIT (see
 // public/assets/CREDITS.md), as packed by scripts/fetch-assets.mjs. The main bundle imports this module
 // lazily, so the loaders it pulls in don't hold up the first frame. Textures
 // are KTX2 array textures, transcoded off the main thread; models are
 // meshopt-compressed. The Basis transcoder is a build of our own with only
 // what ETC1S needs (see scripts/build-transcoder.mjs), half the size of
-// three.js's; the soldier's textures are inside its model, in the same form.
+// three.js's; the soldiers' textures are inside their models, in the same form.
 
 const BASE = `${import.meta.env.BASE_URL}assets/`;
 /**
@@ -27,7 +28,8 @@ export interface Assets {
   normal: THREE.Texture;
   /** Image-based lighting from a real sky, pre-filtered. */
   environment: THREE.Texture;
-  soldier: GLTF;
+  /** The soldiers, in AVATAR_NAMES order; the first carries the clips. */
+  soldiers: GLTF[];
   /** The guns, in WEAPONS order. */
   guns: GLTF[];
 }
@@ -41,13 +43,17 @@ export async function loadAssets(renderer: THREE.WebGLRenderer): Promise<Assets>
     return loader.loadAsync(url, reporter(url));
   };
   try {
-    const [albedo, normal, sky, soldier, ...guns] = await Promise.all([
-      load<THREE.Texture>(ktx2, 'textures/color.ktx2'),
-      load<THREE.Texture>(ktx2, 'textures/normal.ktx2'),
-      load<THREE.Texture>(new HDRLoader(), 'sky.hdr'),
-      load<GLTF>(gltf, 'soldier.glb'),
-      ...['rifle', 'pistol', 'bolt'].map((name) => load<GLTF>(gltf, `guns/${name}.glb`)),
+    const [[albedo, normal, sky], models] = await Promise.all([
+      Promise.all([
+        load<THREE.Texture>(ktx2, 'textures/color.ktx2'),
+        load<THREE.Texture>(ktx2, 'textures/normal.ktx2'),
+        load<THREE.Texture>(new HDRLoader(), 'sky.hdr'),
+      ]),
+      Promise.all([...AVATAR_NAMES.map((name) => `soldiers/${name}`), ...['rifle', 'pistol', 'bolt'].map((name) => `guns/${name}`)]
+        .map((file) => load<GLTF>(gltf, `${file}.glb`))),
     ]);
+    const soldiers = models.slice(0, AVATAR_NAMES.length);
+    const guns = models.slice(AVATAR_NAMES.length);
     const anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
     for (const tex of [albedo, normal]) {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -59,7 +65,7 @@ export async function loadAssets(renderer: THREE.WebGLRenderer): Promise<Assets>
     sky.dispose();
     cube.dispose();
     pmrem.dispose();
-    return { albedo, normal, environment, soldier, guns };
+    return { albedo, normal, environment, soldiers, guns };
   } finally {
     ktx2.dispose();
   }

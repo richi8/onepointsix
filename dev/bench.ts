@@ -71,7 +71,7 @@ const flashlights = new Flashlights(scene);
 let lit = false;
 const assets = await loadAssets(renderer);
 view.applyAssets(assets);
-bodies.setModel(assets.soldier, assets.guns);
+bodies.setModel(assets.soldiers, assets.guns);
 bodies.sun.copy(view.lit.sunDir);
 
 const STATES = ['walk', 'run', 'crouchwalk', 'reload', 'lean', 'aimup', 'throw', 'stand'] as const;

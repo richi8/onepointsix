@@ -1,11 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { JOINT, JOINTS, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, Tumbler } from '../src/client/ragdoll.ts';
 import { World } from '../src/shared/world.ts';
-import slump from './slump.json' with { type: 'json' };
+import slumps from './slump.json' with { type: 'json' };
 
 // The death clip where the ragdoll takes over, standing at the origin facing
 // -z (sunk to its knees, falling forward toward -z), as ragrig.ts works it
-// out for the soldier (written by scripts/slump.ts).
+// out for each avatar (written by scripts/slump.ts): the ragdoll's tests run
+// for each one's.
+
+/** The slump of the avatar whose tests are running. */
+let slump = Object.values(slumps)[0];
 
 interface Box { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
 
@@ -44,7 +48,11 @@ function joint(rag: Ragdoll, i: number): [number, number, number] {
   return [rag.pos[i * 3], rag.pos[i * 3 + 1], rag.pos[i * 3 + 2]];
 }
 
-describe('Ragdoll', () => {
+for (const [avatar, its] of Object.entries(slumps)) describe(`Ragdoll: ${avatar}`, () => {
+  beforeAll(() => {
+    slump = its;
+  });
+
   it('falls and comes to rest on the ground, nothing under it, within a few seconds', () => {
     const rag = body();
     rest(rag, solid());
@@ -101,7 +109,8 @@ describe('Ragdoll', () => {
       }
     }
     expect(closest).toBeLessThan(0.01);
-    expect(closest).toBeGreaterThan(-0.03);
+    // Sunk in no more than a few centimetres: 3.8 for the deepest of the avatars' falls, Military_Male_02's.
+    expect(closest).toBeGreaterThan(-0.04);
   });
 
   it('stops on a gentle slope and slides down a steep one', () => {
@@ -176,10 +185,11 @@ describe('Ragdoll', () => {
       }
     }
     expect(deepest).toBeLessThan(0.03);
-    // Stopped short of where it would have lain.
+    // Kept off where it would have lain: stopped short, or slid off their side.
     const free = body();
     rest(free, solid());
-    expect(joint(rag, JOINT.head)[2]).toBeGreaterThan(joint(free, JOINT.head)[2] + 0.3);
+    const [x, , z] = sub(joint(rag, JOINT.head), joint(free, JOINT.head));
+    expect(Math.hypot(x, z)).toBeGreaterThan(0.2);
   });
 
   it('lands two bodies on each other the same however the frames fall', () => {

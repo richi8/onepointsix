@@ -1,12 +1,43 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { lerp, TAU } from '../shared/geom.ts';
-import { boneName, placeWorld, reach, span, turnWorld } from './rig.ts';
+import { bone, boneName, BONES, placeWorld, reach, span, turnWorld } from './rig.ts';
 
 // What the game reads from the soldier's clips when it loads: how fast each
 // gait carries the body, and short reactions (a shot's recoil, being hit)
 // that play over the upper body on top of whatever else it's doing. It also
 // keys one clip by hand, the crouched run, which no CC0 library has.
+
+/**
+ * `clips`, keyed for the avatar in `from`, for the one in `to`, both at rest.
+ * Every avatar's bones are turned to take the same turns (see
+ * scripts/retarget.mjs), but each one's pelvis moves as far for its height,
+ * from where it rests.
+ */
+export function clipsFor(from: THREE.Object3D, to: THREE.Object3D, clips: THREE.AnimationClip[]): THREE.AnimationClip[] {
+  if (from === to) return clips;
+  const rest = (scene: THREE.Object3D): { at: THREE.Vector3; height: number } => {
+    scene.updateMatrixWorld(true);
+    const y = (name: string): number => bone(scene, name).getWorldPosition(new THREE.Vector3()).y;
+    return { at: bone(scene, BONES.body).position.clone(), height: y(BONES.body) - y(BONES.lToe) };
+  };
+  const a = rest(from);
+  const b = rest(to);
+  const scale = b.height / a.height;
+  const track = `${boneName('body')}.position`;
+  return clips.map((c) => {
+    const out = c.clone();
+    for (const t of out.tracks) {
+      if (t.name !== track) continue;
+      for (let i = 0; i < t.values.length; i += 3) {
+        V_CLIP.fromArray(t.values, i).sub(a.at).multiplyScalar(scale).add(b.at).toArray(t.values, i);
+      }
+    }
+    return out;
+  });
+}
+
+const V_CLIP = new THREE.Vector3();
 
 export function clip(clips: THREE.AnimationClip[], name: string): THREE.AnimationClip {
   const c = THREE.AnimationClip.findByName(clips, name);

@@ -7,10 +7,11 @@ import {
 } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
+import { avatarOf, type Side } from '../shared/avatars.ts';
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
 import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
 import { atlas, floats, mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
-import { clip, crouchRun, gaitSpeed, Reaction } from './clips.ts';
+import { clip, clipsFor, crouchRun, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun, ROUND } from './guns.ts';
 import { FAR_SHADOWS } from './cascades.ts';
@@ -39,9 +40,9 @@ import { REFLECTED } from './water.ts';
 // falls from its hands. Until then, bodies are drawn from the
 // hit volumes themselves. Either way the head is kept on its hitbox, so what
 // you see is what you hit.
-// Sides are told apart by colour and kit: operators in grey-blue with a pack,
-// guards in olive with brown webbing, commanders with a red band on the helmet
-// and a radio mast.
+// Sides are told apart by shape: operators are SWAT officers with a pack,
+// guards soldiers in helmets, and commanders soldiers in caps with a radio and
+// its mast on their back, each body's avatar picked by the island's seed.
 // Each soldier is drawn in two draw calls a pass: its body with its kit as
 // one skinned mesh, and its gun with its flashlight and suppressor (see
 // baked.ts). They take the world's shadows everywhere and cast them as far as
@@ -56,7 +57,6 @@ const HEAD = 0xd8c3a0;
 const TORSO: Record<Team, number> = { operator: 0x3f556e, guard: 0x5a6638 };
 const LEGS: Record<Team, number> = { operator: 0x2e3238, guard: 0x4a4636 };
 const PACK = 0x3a3d33;
-const RED = 0xa3201b;
 const MAST = 0x1c1c1c;
 const GUN = 0x2a2c2e;
 const CAN = 0x1e2022;
@@ -342,6 +342,7 @@ interface Figure {
 }
 
 interface Soldier {
+  avatar: Avatar;
   mixer: THREE.AnimationMixer;
   idle: THREE.AnimationAction;
   walk: THREE.AnimationAction;
@@ -400,6 +401,25 @@ interface Foothold {
 }
 
 /** The short movements played over the upper body, and the clips they come from. */
+/**
+ * One of the soldiers' avatars, with what's measured from it: its own copy
+ * of the clips (see clipsFor), with the crouched run keyed for it.
+ */
+interface Avatar {
+  gltf: GLTF;
+  /** Scale that makes the model PLAYER_HEIGHT tall. */
+  scale: number;
+  /** Which way the death clip falls, as a yaw from facing, and how far the head ends up. */
+  deathYaw: number;
+  /** How fast the walk, run, crouch-walk and crouched run clips carry the body, in m/s, measured from their feet. */
+  gait: { walk: number; run: number; crouch: number; crouchRun: number };
+  reactions: Reactions;
+  /** The death clip's pose where the ragdoll takes over. */
+  slump: Slump;
+  /** Its merged geometry for each side's kit. */
+  looks: Map<Side, THREE.BufferGeometry>;
+}
+
 interface Reactions {
   shot: Reaction;
   hit: Reaction;
@@ -477,9 +497,12 @@ export class Bodies {
   readonly litter: Litter;
   /** Whether a death cam is showing what happened again, which drops nothing new. */
   replaying = false;
-  private model: GLTF | null = null;
-  /** The soldier's merged geometry for each look: operator, guard and commander. */
-  private readonly looks = new Map<string, THREE.BufferGeometry>();
+  /** The soldiers' avatars, in AVATAR_NAMES order; none until they've loaded. */
+  private avatars: Avatar[] = [];
+  /** The island's seed, which picks each body's avatar. */
+  seed = 0;
+  /** Which avatar a body wears, as an index into AVATAR_NAMES: by the seed, unless a dev page says otherwise. */
+  pick = (id: number, side: Side): number => avatarOf(this.seed, id, side);
   /**
    * One gone body's material, never freed: three.js frees a shader once no
    * material uses it, and every body has its own, so the next one to come
@@ -490,15 +513,6 @@ export class Bodies {
   private keptGun: THREE.Material[] | null = null;
   /** How wet each body was as it went, so one drawn again, as a death cam starts or ends, is as wet. */
   private readonly soaked = new Map<number, number>();
-  /** Scale that makes the model PLAYER_HEIGHT tall. */
-  private modelScale = 1;
-  /** Which way the death clip falls, as a yaw from facing, and how far the head ends up. */
-  private deathYaw = Math.PI;
-  /** How fast the walk, run, crouch-walk and crouched run clips carry the body, in m/s, measured from their feet. */
-  private gait = { walk: 1.3, run: 3.2, crouch: 0.5, crouchRun: 2.1 };
-  private reactions: Reactions | null = null;
-  /** The death clip's pose where the ragdoll takes over. */
-  private slump: Slump | null = null;
   /** The bodies lying, or falling, that others land on. */
   private rags: Verlet[] = [];
   /** Bodies left lying after their player was up again elsewhere, or gone, oldest first. */
@@ -525,14 +539,13 @@ export class Bodies {
     this.litter = new Litter(scene);
   }
 
-  /** Swap the placeholder figures for animated soldiers carrying `guns`, in WEAPONS order. */
-  setModel(gltf: GLTF, guns: GLTF[]): void {
-    this.model = gltf;
-    // Keyed by hand, as no library has one.
-    if (!THREE.AnimationClip.findByName(gltf.animations, 'CrouchRun')) {
-      const others = ['CrouchWalk', 'CrouchIdle'].map((n) => clip(gltf.animations, n));
-      gltf.animations.push(crouchRun(gltf.scene, clip(gltf.animations, 'Run'), others));
-    }
+  /**
+   * Swap the placeholder figures for animated soldiers, `soldiers` in
+   * AVATAR_NAMES order (the first carrying the clips), carrying `guns`, in
+   * WEAPONS order.
+   */
+  setModel(soldiers: GLTF[], guns: GLTF[]): void {
+    this.avatars = soldiers.map((model) => avatar(soldiers[0], model));
     GUNS = guns.map((g, i) => {
       const { object, frame, magazinePart, actionPart, ...points } = fitGun(g, i);
       object.updateMatrixWorld(true);
@@ -545,18 +558,6 @@ export class Bodies {
       return { ...points, ...gunLooks(parts(frame), parts(magazinePart), parts(actionPart), i, points.muzzle, points.support, spent) };
     });
     for (const gun of GUNS) if (gun.spent) this.litter.prepare(gun.spent, gunMaterial('instanced'));
-    this.looks.clear();
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    this.modelScale = PLAYER_HEIGHT / (box.max.y - box.min.y);
-    this.deathYaw = deathDirection(gltf);
-    this.slump = slump(gltf, this.modelScale, HANDOFF);
-    const speed = (name: string): number => gaitSpeed(gltf.scene, clip(gltf.animations, name)) * this.modelScale;
-    this.gait = { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk'), crouchRun: speed('CrouchRun') };
-    this.reactions = {
-      shot: new Reaction(clip(gltf.animations, 'Shoot')),
-      hit: new Reaction(clip(gltf.animations, 'Hit')),
-      hitHead: new Reaction(clip(gltf.animations, 'HitHead')),
-    };
     for (const id of [...this.figures.keys()]) this.remove(id);
   }
 
@@ -804,7 +805,7 @@ export class Bodies {
       // Far off, bodies take turns to be posed rather than all in one frame.
       wait: Math.random() * FAR_UPDATE,
     };
-    if (this.model) f.soldier = this.soldier(f, id, team, commander);
+    if (this.avatars.length) f.soldier = this.soldier(f, id, commander ? 'commander' : team);
     else this.placeholder(f, team);
     for (const m of f.materials) {
       flashWhereHit(m, f.hit);
@@ -829,10 +830,11 @@ export class Bodies {
     Object.assign(f, { head, torso, legs });
   }
 
-  private soldier(f: Figure, id: number, team: Team, commander: boolean): Soldier {
-    const gltf = this.model!;
+  private soldier(f: Figure, id: number, side: Side): Soldier {
+    const avatar = this.avatars[this.pick(id, side)];
+    const gltf = avatar.gltf;
     const model = SkeletonUtils.clone(gltf.scene);
-    model.scale.setScalar(this.modelScale);
+    model.scale.setScalar(avatar.scale);
     // The model faces +z; bodies face -z.
     const turned = new THREE.Group();
     turned.rotation.y = Math.PI;
@@ -844,9 +846,8 @@ export class Bodies {
     const bones = findBones(model);
     const meshes: THREE.SkinnedMesh[] = [];
     model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && meshes.push(o as THREE.SkinnedMesh));
-    const key = commander ? 'commander' : team;
-    let geometry = this.looks.get(key);
-    if (!geometry) this.looks.set(key, (geometry = look(meshes, bones, f.group, team, commander)));
+    let geometry = avatar.looks.get(side);
+    if (!geometry) avatar.looks.set(side, (geometry = look(meshes, bones, f.group, side)));
     const body = meshes[0];
     for (const m of meshes.slice(1)) m.removeFromParent();
     body.geometry = geometry;
@@ -896,14 +897,14 @@ export class Bodies {
       m.visible = false;
       f.group.add(m);
     }
-    const pack = team === 'operator';
+    const pack = side === 'operator';
     const animated = Object.values(bones).map((bone) => ({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }));
-    const r = this.reactions!;
+    const r = avatar.reactions;
     const foothold = (): Foothold => ({
       clip: new THREE.Vector3(), turn: new THREE.Quaternion(), at: null, offset: new THREE.Vector3(), last: new THREE.Vector3(), rise: 0,
     });
     return {
-      mixer, idle, walk, run, crouchIdle, crouchWalk, crouchRun, jump, airborne, land, death, bones, hands, nade, fresh, round, pack, animated,
+      avatar, mixer, idle, walk, run, crouchIdle, crouchWalk, crouchRun, jump, airborne, land, death, bones, hands, nade, fresh, round, pack, animated,
       reacting: [r.shot, r.hit, r.hitHead].map((reaction) => reaction.bones(model)),
       // The figure faces -z, as it stands at rest.
       chest: new THREE.Vector3(0, 0, -1).transformDirection(M_A.copy(bones.spine2.matrixWorld).invert()),
@@ -1138,7 +1139,7 @@ export class Bodies {
     } satisfies Death;
     f.death = d;
     const [x, y, z, yaw, duck] = d.pose;
-    const away = d.weapon >= 0 && Math.hypot(d.dir[0], d.dir[2]) > 0.1 ? Math.atan2(-d.dir[0], -d.dir[2]) : yaw + this.deathYaw;
+    const away = d.weapon >= 0 && Math.hypot(d.dir[0], d.dir[2]) > 0.1 ? Math.atan2(-d.dir[0], -d.dir[2]) : yaw + f.soldier!.avatar.deathYaw;
     let best = away;
     let room = 0;
     let score = -1;
@@ -1155,7 +1156,7 @@ export class Bodies {
     }
     const short = Math.max(LIE_LENGTH - room, 0);
     const back = short > 0 ? Math.min(short, this.room(x, y, z, best + Math.PI, short)) : 0;
-    f.fallYaw = best - this.deathYaw;
+    f.fallYaw = best - f.soldier!.avatar.deathYaw;
     f.fallAt.set(x + Math.sin(best) * back, y, z + Math.cos(best) * back);
     f.rag = f.rig = null;
 
@@ -1207,7 +1208,7 @@ export class Bodies {
    * where it struck, or thrown by a blast.
    */
   private goLimp(f: Figure): void {
-    const s = this.slump!;
+    const s = f.soldier!.avatar.slump;
     const d = f.death!;
     f.group.updateMatrixWorld(true);
     const m = f.group.matrixWorld;
@@ -1386,13 +1387,13 @@ export class Bodies {
     // Backpedalling plays the stride backward, with the legs facing the way back.
     const back = Math.abs(f.heading) > Math.PI * 0.6;
     const sign = back ? -1 : 1;
-    s.walk.timeScale = sign * clamp(speed / this.gait.walk, 0.6, 2);
-    s.run.timeScale = sign * clamp(speed / this.gait.run, 0.6, 1.8);
+    s.walk.timeScale = sign * clamp(speed / s.avatar.gait.walk, 0.6, 2);
+    s.run.timeScale = sign * clamp(speed / s.avatar.gait.run, 0.6, 1.8);
     // The crouch-walk clip is a slow sneak: faster, its strides lengthen a little and its pace quickens,
     // until the crouched run takes over.
-    f.crouchStride = clamp(speed / (this.gait.crouch * 2), 1, CROUCH_STRIDE);
-    s.crouchWalk.timeScale = sign * clamp(speed / (this.gait.crouch * f.crouchStride), 0.6, 2.4);
-    s.crouchRun.timeScale = sign * clamp(speed / this.gait.crouchRun, 0.6, 1.5);
+    f.crouchStride = clamp(speed / (s.avatar.gait.crouch * 2), 1, CROUCH_STRIDE);
+    s.crouchWalk.timeScale = sign * clamp(speed / (s.avatar.gait.crouch * f.crouchStride), 0.6, 2.4);
+    s.crouchRun.timeScale = sign * clamp(speed / s.avatar.gait.crouchRun, 0.6, 1.5);
     for (const a of s.animated) {
       a.bone.position.copy(a.position);
       a.bone.quaternion.copy(a.quaternion);
@@ -1516,7 +1517,7 @@ export class Bodies {
    * knees when it struck the legs; the model's own flinch plays under it.
    */
   private react(f: Figure, s: Soldier, forward: THREE.Vector3, right: THREE.Vector3): void {
-    const r = this.reactions!;
+    const r = s.avatar.reactions;
     const b = s.bones;
     const kick = SHOT_KICK[f.weapon] ?? SHOT_KICK[0];
     r.shot.apply(s.reacting[0], f.firedFor, kick.clip);
@@ -1965,6 +1966,27 @@ export function strideLength(speed: number): number {
   return 1.1 + speed * 0.12;
 }
 
+/** An avatar's model, `model`, playing the clips `reference` carries. */
+function avatar(reference: GLTF, model: GLTF): Avatar {
+  const animations = [...clipsFor(reference.scene, model.scene, reference.animations)];
+  // Keyed by hand, as no library has one.
+  const others = ['CrouchWalk', 'CrouchIdle'].map((n) => clip(animations, n));
+  animations.push(crouchRun(model.scene, clip(animations, 'Run'), others));
+  const gltf = { ...model, animations };
+  const box = new THREE.Box3().setFromObject(model.scene);
+  const scale = PLAYER_HEIGHT / (box.max.y - box.min.y);
+  const speed = (name: string): number => gaitSpeed(model.scene, clip(animations, name)) * scale;
+  return {
+    gltf, scale, deathYaw: deathDirection(gltf), slump: slump(gltf, scale, HANDOFF), looks: new Map(),
+    gait: { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk'), crouchRun: speed('CrouchRun') },
+    reactions: {
+      shot: new Reaction(clip(animations, 'Shoot')),
+      hit: new Reaction(clip(animations, 'Hit')),
+      hitHead: new Reaction(clip(animations, 'HitHead')),
+    },
+  };
+}
+
 /**
  * Which way the death clip lays the body down, as a yaw from where it faced:
  * where its head ends up, relative to its feet.
@@ -1985,13 +2007,12 @@ function deathDirection(gltf: GLTF): number {
 }
 
 /**
- * The soldier's `meshes` merged into the first one's geometry, in a side's
- * colours, with the kit that sets the sides apart besides colour: a pack on
- * operators, a helmet band and radio mast on commanders. The kit is placed on
- * the model at rest, standing in `frame` (a figure), each piece skinned
- * wholly to the bone that carries it.
+ * The soldier's `meshes` merged into the first one's geometry, with the kit
+ * its avatar doesn't wear: a pack on operators, and a radio with its mast on
+ * commanders. The kit is placed on the model at rest, standing in `frame` (a
+ * figure), each piece skinned wholly to the bone that carries it.
  */
-function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, team: Team, commander: boolean): THREE.BufferGeometry {
+function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, side: Side): THREE.BufferGeometry {
   const body = meshes[0];
   const skeleton = body.skeleton.bones;
   // A skinned vertex v ends up at bone.matrixWorld * boneInverse * bindMatrix * v; `bind` is the last two.
@@ -2026,7 +2047,6 @@ function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, 
 
   // Kit, placed in the figure's space at rest facing -z, then carried by a bone.
   const chest = frame.worldToLocal(bones.spine2.getWorldPosition(new THREE.Vector3()));
-  const head = frame.worldToLocal(bones.head.getWorldPosition(new THREE.Vector3()));
   const wear = (geometry: THREE.BufferGeometry, hex: number, roughness: number, bone: THREE.Object3D, x: number, y: number, z: number, roll = 0): void => {
     const j = skeleton.indexOf(bone as THREE.Bone);
     const at = new THREE.Matrix4().compose(
@@ -2047,12 +2067,11 @@ function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, 
     geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2).fill(-1), 2));
     parts.push(part(geometry, hex, roughness));
   };
-  if (team === 'operator') {
+  if (side === 'operator') {
     wear(new THREE.BoxGeometry(0.3, 0.4, 0.16), PACK, 0.9, bones.spine2, chest.x + PACK_OFFSET.x, chest.y + PACK_OFFSET.y, chest.z + PACK_OFFSET.z);
     wear(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10).rotateZ(Math.PI / 2), PACK, 0.9, bones.spine2, chest.x, chest.y + PACK_OFFSET.y + 0.23, chest.z + PACK_OFFSET.z + 0.02);
   }
-  if (commander) {
-    wear(new THREE.TorusGeometry(0.155, 0.025, 6, 20).rotateX(Math.PI / 2), RED, 0.8, bones.head, head.x, head.y + 0.15, head.z - 0.01);
+  if (side === 'commander') {
     wear(new THREE.CylinderGeometry(0.006, 0.01, 0.7, 5), MAST, 0.6, bones.spine2, chest.x - 0.1, chest.y + 0.3, chest.z + 0.2, 0.12);
     wear(new THREE.BoxGeometry(0.2, 0.28, 0.12), MAST, 0.6, bones.spine2, chest.x, chest.y - 0.05, chest.z + 0.18);
   }

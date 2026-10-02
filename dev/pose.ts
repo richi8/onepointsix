@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { loadAssets } from '../src/client/assets.ts';
 import { Bodies } from '../src/client/bodies.ts';
+import { AVATAR_NAMES, AVATARS } from '../src/shared/avatars.ts';
 import { ViewModel } from '../src/client/viewmodel.ts';
 import { hitboxes, HEAD_RADIUS } from '../src/shared/hitbox.ts';
 import { DUCK_RATE, MANTLE_PRESS_HEIGHT } from '../src/shared/constants.ts';
@@ -33,7 +34,10 @@ import { GRENADE, WEAPONS } from '../src/shared/weapons.ts';
 // `spacing=k` stands the bodies k metres apart (1.6 by default), so the dead
 // fall on each other or against the living, and `blast=t` sets off a grenade
 // t seconds before the end at `blastat=x,z` (the middle of the row, a little
-// in front, by default). The page sets document.title to "ready" once the
+// in front, by default). Each body wears its side's first avatar (see
+// src/shared/avatars.ts), or `avatar=<name>` for everyone, `avatar=each` for
+// each in turn, or `avatar=<seed>` as that island picks them; `guard` and
+// `commander` stand as one. The page sets document.title to "ready" once the
 // frame is drawn, for screenshots.
 
 const q = new URLSearchParams(location.search);
@@ -190,9 +194,15 @@ const viewModel = new ViewModel();
 const assets = await loadAssets(renderer);
 scene.environment = assets.environment;
 scene.environmentIntensity = 0.6;
-bodies.setModel(assets.soldier, assets.guns);
+bodies.setModel(assets.soldiers, assets.guns);
 viewModel.setGuns(assets.guns, assets.environment);
-viewModel.setArms(assets.soldier);
+viewModel.setArms(assets.soldiers[0]);
+// Each side's first avatar by default, or one for everyone, each in turn, or as an island's seed picks them.
+const wear = q.get('avatar');
+if (wear === 'each') bodies.pick = (id) => (id - 1) % AVATAR_NAMES.length;
+else if (wear !== null && AVATAR_NAMES.includes(wear)) bodies.pick = () => AVATAR_NAMES.indexOf(wear);
+else if (wear !== null) bodies.seed = Number(wear);
+else bodies.pick = (_id, side) => AVATAR_NAMES.indexOf(AVATARS[side][0]);
 
 if (view === 'fp') {
   viewModel.resize(innerWidth / innerHeight);

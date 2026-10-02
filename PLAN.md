@@ -276,7 +276,7 @@ in a T-pose and took the Universal Animation Library's clips with only a table o
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 41 | **New soldier pipeline** | A committed script that turns Rocketbox's FBX avatars into the game's glTF (Blender headless, fetched into a cache like the Linux tools; the FBX files and textures shrunk to 1k kept in `scripts/originals`): facial bones, the guns and knives baked into some avatars and unused bones dropped, the meshes merged, textures at 512 px in KTX2; the Universal Animation Library's clips retargeted onto the `Bip01` rig (both bind in a T-pose), replacing the SWAT's own clips; `rig.ts`, hands, leg IK (the feet hang off the shins now, not the root), first-person arms (from the SWAT avatar), the ragdoll rig and hitboxes moved to the new bones; one avatar for every side to begin with | The pose viewer shows every pose and clip on the new body with nothing stretched, and the benchmark's 24-body frame is within chunk 39's | **Done** (`Police_Male_02` for everyone, 9,765 triangles, `soldier.glb` 0.56 MB against the old 0.60 MB; every pose-viewer screenshot re-recorded and looked over; in four runs each alternating with the code before on an M3 Pro, the 24-body frame took 9.1–10.0 ms against 9.6–10.5 ms, in the same 272 draw calls. The thighs were moved onto the pelvis and the collarbones onto the chest; the textures are packed into one 1024 px image each, not kept apart. Nobody has watched it in play) |
-| 42 | **Avatars per side** | Operators as SWAT (`Police_Male_02`, `Police_Female_01`); guards as soldiers in helmets (`Military_Male_01`, `_03`, `_04`, `Military_Female_01`, `_02`); commanders as soldiers in caps (`Military_Male_02`, `_05`, `_06`) with the radio; each body's avatar picked from the seed, so the same island looks the same; the code-built kit (packs, webbing, helmet band) dropped where the avatars carry their own, keeping the operators' pack and the commanders' radio; the side tints dropped or kept subtle; Microsoft credited in `CREDITS.md` with the MIT text; level of detail for far bodies if the benchmark needs it | At 30 m an operator, a guard and a commander can be told apart by shape alone, and the download grows by no more than about 3 MB | Planned |
+| 42 | **Avatars per side** | Operators as SWAT (`Police_Male_02`, `Police_Female_01`); guards as soldiers in helmets (`Military_Male_01`, `_03`, `_04`, `Military_Female_01`, `_02`); commanders as soldiers in caps (`Military_Male_02`, `_05`, `_06`) with the radio; each body's avatar picked from the seed, so the same island looks the same; the code-built kit (packs, webbing, helmet band) dropped where the avatars carry their own, keeping the operators' pack and the commanders' radio; the side tints dropped or kept subtle; Microsoft credited in `CREDITS.md` with the MIT text; level of detail for far bodies if the benchmark needs it | At 30 m an operator, a guard and a commander can be told apart by shape alone, and the download grows by no more than about 3 MB | **Done** (all ten avatars, picked for each body by the island's seed in turn, so an outpost's guards differ; the soldiers in helmets thinned from 13–15k to 10k triangles, the normal maps halved to 256 px a part; the first avatar carries the clips and the others' bones are turned to play them, which saved about 1 MB of clips; the ten come to 3.60 MB against the one's 0.64 MB, 2.96 MB more. The operators keep their pack and the commanders their radio and mast; the red helmet band went, and there were no side tints left. Told apart at 30 m in screenshots at the game's field of view. In four runs each alternating with the code before on an M3 Pro, the 24-body frame took 8.8–9.9 ms against 8.5–10.1 ms, in the same 272 draw calls, so no level of detail; preparing the ten at load takes about 90 ms against 25. The ragdoll's unit tests now run for every avatar's fall: a body falling into someone standing slides off their side as often as it stops short, and one pile sinks 3.8 cm, so those two checks were loosened. Nobody has watched it in play) |
 
 ## Known Issues
 
@@ -286,19 +286,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 [KNOWN_ISSUES_HISTORY.md](KNOWN_ISSUES_HISTORY.md).
 
 ### Look and animation
-- **One stylized soldier model for every side** (9, 11; joined 2026-10-01). Every side uses
-  the same model, told apart at first only by tint, so commanders looked like any other guard.
-  Quaternius's low-poly SWAT character (chunk 11) was the best rigged and animated CC0 soldier
-  available, but it doesn't match the grounded tone, and its helmet hides the face.
-  **Resolved in part** (13): the sides now differ in kit as well as uniform. Operators carry a
-  pack and bedroll with black webbing, and guards wear brown webbing. Commanders (flagged in
-  snapshots) wear a paler uniform, a red band round the helmet and a radio with a mast on their
-  back. The fingers close round the grip and fore-end. It's still one stylized model, with the
-  face hidden. Phase 5 (chunks 41–42) replaces it with Rocketbox's SWAT officers and soldiers.
-  **Resolved in part** (41): every body is now Rocketbox's SWAT officer (`Police_Male_02`), a
-  realistic avatar with its own textures. The side tints went with the old model, so for now
-  operators and guards differ only by the operators' pack, and commanders by their red band and
-  radio; chunk 42 gives each side its own avatars.
+Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

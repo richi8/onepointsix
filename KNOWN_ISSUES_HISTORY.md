@@ -844,6 +844,28 @@ notes the chunk it came from.
   A step costs about 35 µs instead of 24. Bodies still stop on slopes up to about 0.5 rad and
   slide down steeper ones. The unit tests check the limits strictly all the way down again, over
   16 throws instead of 8.
+- **One stylized soldier model for every side** (9, 11; joined 2026-10-01). Every side uses
+  the same model, told apart at first only by tint, so commanders looked like any other guard.
+  Quaternius's low-poly SWAT character (chunk 11) was the best rigged and animated CC0 soldier
+  available, but it doesn't match the grounded tone, and its helmet hides the face.
+  **Resolved in part** (13): the sides now differ in kit as well as uniform. Operators carry a
+  pack and bedroll with black webbing, and guards wear brown webbing. Commanders (flagged in
+  snapshots) wear a paler uniform, a red band round the helmet and a radio with a mast on their
+  back. The fingers close round the grip and fore-end. It's still one stylized model, with the
+  face hidden. Phase 5 (chunks 41–42) replaces it with Rocketbox's SWAT officers and soldiers.
+  **Resolved in part** (41): every body is now Rocketbox's SWAT officer (`Police_Male_02`), a
+  realistic avatar with its own textures. The side tints went with the old model, so for now
+  operators and guards differ only by the operators' pack, and commanders by their red band and
+  radio; chunk 42 gives each side its own avatars.
+  **Resolved** (42, 2026-10-02): each side wears its own Rocketbox avatars, picked for each body
+  by the island's seed: operators are SWAT officers (`Police_Male_02`, `Police_Female_01`) with
+  the pack, guards soldiers in camouflage, helmets and vests (`Military_Male_01`, `_03`, `_04`,
+  `Military_Female_01`, `_02`), and commanders soldiers in caps (`Military_Male_02`, `_05`,
+  `_06`) with the radio and its mast; the red helmet band is gone. At 30 m, as the game frames it, the operator
+  is a black figure with a pack, the guard a bulky one in a helmet, and the commander a slimmer
+  one in a cap under the mast. The first avatar carries the clips, and the others' bones are
+  turned to play them (posed by them, Military_Female_01's skin lands within 0.01 mm of where
+  its own retargeted clips put it).
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

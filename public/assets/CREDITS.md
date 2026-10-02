@@ -2,7 +2,7 @@
 
 Everything here is CC0 (public domain) but two things. The originals are kept in
 `scripts/originals`, and `scripts/fetch-assets.mjs` packs them for the web. The exceptions are
-the soldier, from Microsoft's Rocketbox avatars under the MIT License (its text is below), and
+the soldiers, from Microsoft's Rocketbox avatars under the MIT License (its text is below), and
 `basis/`, the Basis Universal transcoder built from Binomial's source by
 `scripts/build-transcoder.mjs`, under the Apache License 2.0, as three.js ships it.
 
@@ -11,17 +11,20 @@ the soldier, from Microsoft's Rocketbox avatars under the MIT License (its text 
   corrugated_iron, wood_plank_wall, bark_brown_02, and the kloofendal_48d_partly_cloudy_puresky
   HDRI. The textures are resized to 512 px and stacked into the KTX2 array textures in
   `textures/`. The sky is halved to 512 × 256.
-- **Soldier** (`soldier.glb`): the `Police_Male_02` avatar from Microsoft's
+- **Soldiers** (`soldiers/`): avatars from Microsoft's
   [Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) library, Copyright (c) 2020
-  Microsoft, under the MIT License below. Converted by `scripts/rocketbox.py` in Blender: the
-  face's bones, the pistol it carries and its goggle lens taken out, and its textures shrunk to
-  512 px and packed into one KTX2 image each for colour and normals. Its clips (idle, walk, run,
-  death, shooting, two hit reactions, crouching still and walking, jump, in the air and landing)
-  come from Quaternius's
+  Microsoft, under the MIT License below: `Police_Male_02` and `Police_Female_01` (operators),
+  `Military_Male_01`, `_03`, `_04`, `Military_Female_01` and `_02` (guards), and
+  `Military_Male_02`, `_05` and `_06` (commanders). Converted by `scripts/rocketbox.py` in
+  Blender: the face's bones, the guns and knives some carry and their goggle lenses taken out,
+  the soldiers in helmets thinned to 10,000 triangles, and their textures packed into one KTX2
+  image each for colour (512 px a part) and normals (256 px a part). Their clips (idle, walk,
+  run, death, shooting, two hit reactions, crouching still and walking, jump, in the air and
+  landing) come from Quaternius's
   [Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html), CC0,
   the free set as mirrored in glTF on
-  [GitHub](https://github.com/J-Ponzo/gltf-universal-animation-library), moved onto the avatar's
-  rig by `scripts/retarget.mjs`.
+  [GitHub](https://github.com/J-Ponzo/gltf-universal-animation-library), moved onto the first
+  avatar's rig by `scripts/retarget.mjs`, which turns the others' bones to play them too.
 - **Guns** (`guns/`) by [Quaternius](https://quaternius.com), public domain (CC0), via
   [Poly Pizza](https://poly.pizza): Assault Rifle, Pistol and Sniper Rifle. Each has points marked
   on it (where the hands close, the muzzle, the sight, the magazine and the bolt) as empty nodes.

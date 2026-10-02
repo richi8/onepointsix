@@ -139,6 +139,8 @@ const POSES: Record<string, string> = {
   against: 'show=dead:1.5,stand&view=side&spacing=0.9&eye=-1.5,1.6,3&at=0.5,0.5,0',
   // The rifle's charging handle drawn back at the end of a reload, from over the left shoulder.
   'charging-handle': 'show=reload:0.9:0&view=front&eye=-0.6,1.6,-0.5&at=0.05,1.3,0.1',
+  // Chunk 42: every avatar, by side: operators, guards and commanders.
+  avatars: 'show=operator,operator,guard,guard,guard,guard,guard,commander,commander,commander&avatar=each&view=front&spacing=1.1&d=9',
 };
 
 for (const [name, query] of Object.entries(POSES)) {

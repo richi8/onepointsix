@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'Every side looks its own',
+    notes: [
+      'Operators are SWAT officers in black, men and women, with a pack on their back. Guards are soldiers in camouflage, helmets and loaded vests. Commanders are soldiers in caps, with a radio and its mast on their back.',
+      'Each side has several faces: two operators, five guards and three commanders, so an outpost\'s guards don\'t all look alike. The same island always dresses its people the same way.',
+      'The commanders\' red helmet band is gone: their caps and radio mast pick them out.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'Outposts send for help',
     notes: [
       'Clearing an outpost no longer buys you all the time you want: 15 seconds after its last guard falls, a fresh squad sets off from out of sight and runs back to retake it.',

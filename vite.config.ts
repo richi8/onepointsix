@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig, type Plugin, type Rollup } from 'vite';
+import { AVATAR_NAMES } from './src/shared/avatars.ts';
 
 type OutputChunk = Rollup.OutputChunk;
 
@@ -9,7 +10,7 @@ type OutputChunk = Rollup.OutputChunk;
 const START_FILES = [
   'assets/basis/basis_transcoder.js', 'assets/basis/basis_transcoder.wasm',
   'assets/textures/color.ktx2', 'assets/textures/normal.ktx2', 'assets/sky.hdr',
-  'assets/soldier.glb', 'assets/guns/rifle.glb', 'assets/guns/pistol.glb', 'assets/guns/bolt.glb',
+  ...AVATAR_NAMES.map((name) => `assets/soldiers/${name}.glb`), 'assets/guns/rifle.glb', 'assets/guns/pistol.glb', 'assets/guns/bolt.glb',
   'assets/sounds.json', 'assets/sounds-early.ogg',
 ];
 const ALTERNATIVES: string[] = [];
