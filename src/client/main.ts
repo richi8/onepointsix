@@ -12,7 +12,7 @@ import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
 import { leafRect, World } from '../shared/world.ts';
-import { DEFAULT_WORLD, type WorldConfig } from '../shared/worldconfig.ts';
+import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
 import type { Assets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
@@ -70,8 +70,6 @@ const RELOCK_RETRY = 2000;
 const RELOCK_COOLDOWN = 1.5;
 /** Leaderboard rows shown on the menu. */
 const BOARD_SHOWN = 5;
-/** Islands from "New island" get seeds up to this, so their numbers stay short. */
-const NEW_ISLAND_SEEDS = 999_999;
 const MODE_NOTES: Record<Mode, string> = {
   online: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators. Players who join take a bot's place.`,
   offline: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} bot operators. Nobody else joins.`,
@@ -89,19 +87,19 @@ const WEATHER_NOTES: Record<Weather, string> = {
   fog: 'Nobody sees far, you included.',
 };
 
-/** The link the page came in on, or the island opened since, which carries no challenge. */
-let link = parseShareLink(location.search);
+/** The link the page came in on. */
+const link = parseShareLink(location.search);
 /** The island from the link, in the conditions picked on the menu. */
 let config = link.world;
-let world = new World(config.seed);
-let view = new WorldView(world, config);
+const world = new World(config.seed);
+const view = new WorldView(world, config);
 /** Drawn into by every island in turn. */
 const scene = view.scene;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 localLights.prepare(renderer);
 /** The lazily loaded parts of the island. */
-let prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
+const prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
 const resolution = new Resolution(renderer);
 // Neutral keeps the colours ACES would bleach; the sun outweighs the sky light so shadows read.
 renderer.toneMapping = THREE.NeutralToneMapping;
@@ -136,18 +134,18 @@ let mySoak = new Soak();
 bodies.shelter = bags.shelter = effects.shelter = view.shelter;
 bags.soakNear = (x, y, z) => bodies.soakNear(x, y, z);
 const hud = new Hud();
-let runHud = new RunHud(world);
-let rivalHud = new RivalHud(world);
+const runHud = new RunHud(world);
+const rivalHud = new RivalHud(world);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
 sfx.conditions = config;
 view.onThunder = (distance) => sfx.thunder(distance);
 
-let surfaces = new Surfaces(world);
+const surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
-let extractNames = world.extracts.map((_, i) => extractName(world, i));
+const extractNames = world.extracts.map((_, i) => extractName(world, i));
 /** Nothing broken, and every door as the island starts with it. */
-let noCover: CoverState = { broken: [], open: world.openDoors() };
+const noCover: CoverState = { broken: [], open: world.openDoors() };
 
 // ---------------------------------------------------------------- loading
 
@@ -196,11 +194,7 @@ loadingSkip.onclick = () => {
 };
 setTimeout(() => (loadingSkip.hidden = false), SKIP_LOADING_AFTER * 1000);
 
-/** The textures and models, once loaded, for another island opened later. */
-let dressed: Assets | null = null;
-
 function dress(assets: Assets): void {
-  dressed = assets;
   view.applyAssets(assets);
   effects.setDebrisMaterial(wetMaterial(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { local: true, indoor: true }), { gloss: 0.5, soak: 'instanced' }));
   bodies.setModel(assets.soldiers, assets.guns);
@@ -443,49 +437,6 @@ function challengeText(score: { score: number } | null | undefined): string {
 }
 
 document.getElementById('share-island')!.onclick = shareIsland;
-document.getElementById('new-island')!.onclick = () => openIsland({ ...config, seed: 1 + Math.floor(Math.random() * NEW_ISLAND_SEEDS) });
-
-/**
- * Open another island in place of this one, without reloading the page: it's
- * built and drawn afresh in the same scene, and the menu, the board and the
- * address follow it, in the conditions `next` has. Only from the menu.
- */
-function openIsland(next: WorldConfig): void {
-  if (next.seed >>> 0 === config.seed >>> 0) {
-    setConditions(next);
-    return;
-  }
-  view.dispose();
-  world = new World(next.seed);
-  view = new WorldView(world, next, scene);
-  view.onThunder = (distance) => sfx.thunder(distance);
-  view.preview = !menu.hidden;
-  prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
-  if (dressed) view.applyAssets(dressed);
-  if (!Number.isNaN(still)) view.light3d.finishAll();
-  bodies.forget();
-  bodies.clear();
-  bodies.ground = world;
-  bodies.seed = world.seed;
-  bodies.shelter = bags.shelter = effects.shelter = view.shelter;
-  bags.update([]);
-  grenades.update([]);
-  effects.clear();
-  contractProps.setWorld(world);
-  sfx.setWorld(world);
-  surfaces = new Surfaces(world);
-  runHud = new RunHud(world);
-  rivalHud = new RivalHud(world);
-  extractNames = world.extracts.map((_, i) => extractName(world, i));
-  noCover = { broken: [], open: world.openDoors() };
-  // The link's challenge was for the island it came with.
-  link = { world: next, mode: null, challenge: null };
-  config = { ...next };
-  history.replaceState(null, '', `${location.pathname}${shareQuery(next)}${location.hash}`);
-  setConditions(next);
-  showIsland();
-  showBoard();
-}
 
 const challengeEl = document.getElementById('challenge')!;
 const boardEl = document.getElementById('board')!;

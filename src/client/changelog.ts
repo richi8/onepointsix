@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'No more New island',
+    notes: [
+      'The menu\'s New island button is gone. Islands will be picked for you: soon Play will put you in the first open game in your time of day and weather, on a freshly made island. Shared links still open their island.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'A truer suppressed rifle',
     notes: [
       'The suppressed rifle sounds like a suppressed automatic now, recorded outdoors, instead of a sniper rifle: shorter, with no long ring after the shot.',

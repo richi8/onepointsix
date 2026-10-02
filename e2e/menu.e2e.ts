@@ -94,16 +94,6 @@ test.describe('menu', () => {
     await expect(dot).toBeHidden();
   });
 
-  test('New island goes to another seed', async ({ page }) => {
-    await open(page);
-    await expect(page.locator('#world-label')).toHaveText('Default island');
-    await page.click('#new-island');
-    await expect(page).toHaveURL(/world=\d+/);
-    const seed = new URL(page.url()).searchParams.get('world');
-    await expect(page.locator('#loading')).toHaveCount(0, { timeout: 60_000 });
-    await expect(page.locator('#world-label')).toHaveText(`Island #${seed}`);
-  });
-
   test('Enter plays', async ({ page }) => {
     await open(page);
     await page.keyboard.press('Enter');

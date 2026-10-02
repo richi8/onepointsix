@@ -305,7 +305,9 @@ baseline in Decisions).
 - **Multiplayer**
   - Node server that reuses `server/`, with WebSocket first
   - Snapshot deltas, interpolation and lag compensation
-  - Real matchmaking: the first instance that isn't full, or a new one, for each world
+  - Real matchmaking: islands are always randomly generated (no picking one on the menu), and
+    **Play** throws you into the first game that isn't full in your time of day and weather, on
+    whatever island it runs, or starts one on a new random island
   - Bot fill that shrinks as humans join
   - Anonymous identity, basic anti-cheat, deployment
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
@@ -396,6 +398,9 @@ extraction stays as hard as it is.
 - **Operator bots' personalities are picked at random** (18), a quarter each, and a test or a
   playtest can fix them with the server's `personality` option. The bounty has no score of its
   own; killing its carrier gets you their loot.
+- **No "New island" button** (2026-10-02): removed at the user's request. Islands are to be
+  randomly generated and picked by matchmaking (see Future), not by the player; until then the
+  menu shows the default island or a linked one.
 - **Share links carry the sharer's score.** With no backend, leaderboards live in each browser,
   so the link encodes the world config plus the sharer's name and score as the target to beat.
 - **Hosting:** a static site (e.g. GitHub Pages or Cloudflare Pages) is needed in chunk 10 so
