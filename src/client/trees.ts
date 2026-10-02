@@ -6,7 +6,7 @@ import type { Impostors } from './impostors.ts';
 import { groundEye, onTiles } from './terrain.ts';
 import { Layer } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
-import { WIND_GLSL, wind } from './wind.ts';
+import { WIND_GLSL, wind, windStrength } from './wind.ts';
 import { filled } from './cardtexture.ts';
 import { wetMaterial, type WetOptions } from './rain.ts';
 
@@ -309,6 +309,7 @@ function swaying<M extends THREE.MeshStandardMaterial | THREE.MeshDepthMaterial>
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     shader.uniforms.windTime = wind;
+    shader.uniforms.windStrength = windStrength;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${WIND_GLSL}`)
       .replace('#include <begin_vertex>', /* glsl */ `

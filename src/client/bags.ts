@@ -14,7 +14,7 @@ interface Bag {
 }
 
 export class Bags {
-  /** Whether it's raining and where a roof keeps it off, for how wet the bags are. */
+  /** How wet the island is and where a roof keeps it off, for how wet the bags are. */
   shelter: Shelter | null = null;
   /** How wet the body nearest a point is, if one is near: a bag left by a body is as wet as it. */
   soakNear: ((x: number, y: number, z: number) => number | null) | null = null;
@@ -34,7 +34,7 @@ export class Bags {
       let bag = this.bags.get(b.id);
       if (!bag) {
         const soak = new Soak();
-        const left = this.shelter?.raining ? this.soakNear?.(b.x, b.y, b.z) : null;
+        const left = this.shelter?.wet ? this.soakNear?.(b.x, b.y, b.z) : null;
         if (left != null) soak.begin(left);
         // Each its own material, for how wet it is; they share one shader.
         const mesh = new THREE.Mesh(geometry, wetMaterial(new THREE.MeshStandardMaterial({ color: COLOR, roughness: 0.9 }), { gloss: 0.55, soak: soak.level }));

@@ -7,8 +7,9 @@ import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import type { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
-import { patchFog } from './fogbanks.ts';
+import { mistNear, patchFog } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
+import { outlookMoved, settledOutlook, type Outlook } from './outlook.ts';
 import { Rain, type Shelter } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
 import { IslandMap, LEVEL_GATHER } from './islandmap.ts';
@@ -18,7 +19,7 @@ import { Trees } from './trees.ts';
 import { REFLECTED, Water } from './water.ts';
 import { PROP_SHADOW_SIDE, Props } from './props.ts';
 import { Structures } from './structures.ts';
-import { wind } from './wind.ts';
+import { wind, windStrength } from './wind.ts';
 
 // The island starts out in flat colours and takes on its textures once the
 // assets have loaded: blended ground layers, props in wood, concrete and
@@ -99,7 +100,12 @@ export class WorldView {
   private readonly background = new THREE.Color();
   private readonly rain: Rain;
   private lighting: Lighting;
-  private raining: boolean;
+  /** The weather as it's seen, how wet the ground is and how full the puddles, 0 to 1. */
+  private outlook: Outlook;
+  private wet: number;
+  private puddles: number;
+  /** The colour the rain's streaks catch from the sky. */
+  private readonly rainColor = new THREE.Color();
   private textured = false;
   /** How much of the sky reaches inside each building. */
   readonly light3d: IndoorLight;
@@ -116,8 +122,10 @@ export class WorldView {
   constructor(world: World, weather: Weather, scene = new THREE.Scene()) {
     this.scene = scene;
     patchFog();
-    this.lighting = lightingOf(weather);
-    this.raining = weather === 'rain';
+    this.outlook = settledOutlook(weather);
+    this.lighting = lightingOf(this.outlook.clouds, this.outlook.air);
+    this.wet = this.puddles = this.outlook.rainfall;
+    windStrength.value = this.outlook.wind;
     this.rain = new Rain(world);
     scene.fog = this.fog;
     scene.background = this.background;
@@ -208,11 +216,21 @@ export class WorldView {
     return this.lighting;
   }
 
-  /** Light the island for another weather. */
-  setWeather(weather: Weather): void {
-    this.lighting = lightingOf(weather);
-    this.raining = weather === 'rain';
-    this.light();
+  /**
+   * Show the weather as `o` has it, the ground `wet` and the puddles as full
+   * as `puddles`, 0 to 1. Returns whether the island was lit anew.
+   */
+  setOutlook(o: Outlook, wet: number, puddles: number): boolean {
+    const moved = outlookMoved(this.outlook, o);
+    this.outlook = o;
+    this.wet = wet;
+    this.puddles = puddles;
+    windStrength.value = o.wind;
+    if (moved) {
+      this.lighting = lightingOf(o.clouds, o.air);
+      this.light();
+    } else this.rain.set(o.rainfall, o.storm, this.rainColor, wet, puddles);
+    return moved;
   }
 
   /** Whether the island is seen from the menu's orbit, through thinner fog, or played in. */
@@ -234,7 +252,7 @@ export class WorldView {
     this.scene.environmentIntensity = l.environment;
     this.fog.color.copy(l.horizon);
     this.background.copy(l.horizon);
-    this.fog.near = this.previewing ? l.previewFogNear : l.fogNear;
+    this.fog.near = mistNear(this.previewing ? l.previewFogNear : l.fogNear, this.outlook.mist);
     this.fog.far = this.previewing ? l.previewFogFar : l.fogFar;
     const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
     u.horizon.value.copy(l.horizon);
@@ -243,7 +261,8 @@ export class WorldView {
     u.sunColor.value.copy(l.sunColor).multiplyScalar(l.disc);
     if (this.assets) this.scene.environment = this.assets.environment;
     // The streaks catch the light of the sky around them.
-    this.rain.set(this.raining, l.horizon.clone().multiplyScalar(1.25));
+    this.rainColor.copy(l.horizon).multiplyScalar(1.25);
+    this.rain.set(this.outlook.rainfall, this.outlook.storm, this.rainColor, this.wet, this.puddles);
     // Built after the first lighting.
     this.water?.relit(this.scene);
   }
@@ -282,7 +301,7 @@ export class WorldView {
     this.sun.redraw();
   }
 
-  /** Whether it's raining, and where it's sheltered from it. */
+  /** How wet the island is, how hard it's raining, and where it's sheltered from it. */
   get shelter(): Shelter {
     return this.rain;
   }

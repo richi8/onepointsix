@@ -1490,6 +1490,21 @@ notes the chunk it came from.
   as everyone else does; the materials it shares with the world are left alone. Drawn in a view
   of its own, it has no place in the world, so it takes the world's up turned into the view to
   tell which of its faces are up; in a death cam it is as wet as the killer.
+- **The weather switches at once on screen** (44): the island's sky, fog, rain and sounds turned to
+  the new weather halfway through each 30–60 s change, while bots' sight and hearing blended
+  across it.
+  **Resolved** (45): `src/client/outlook.ts` works out from the forecast, at the moment shown,
+  how the clouds (sun, sky) and the air (fog reach, blended by ratio) stand between the two
+  weathers, how hard it rains (the streaks drawn, the splashes, the ripples, the rain bed, how
+  much it muffles far sounds, the birds), how hard the wind blows (the sway and its sound), and
+  the signs of the next change in the minute before it. The ground soaks in about 30 s of full
+  rain and dries over 3 minutes after (slower in fog), the puddles fill over 90 s from the deepest
+  hollows outward and drain over 6 minutes, shrinking back into them; soldiers, bags and
+  magazines dry out in the open once the rain stops, not only under a roof. Worked out afresh
+  from the forecast when the clock jumps, as into a death cam. Checked by unit tests (no jump
+  anywhere over an hour on ten islands, signs ahead of each change, wetting the same followed
+  along or after a jump), screenshot tests part way through changes, and a game in the browser
+  fed a change 70 s ahead, at 60 fps throughout.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

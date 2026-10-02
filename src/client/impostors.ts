@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { World } from '../shared/world.ts';
 import { addGroundDrop, groundEye } from './terrain.ts';
 import { needles, NEEDLES_WET, SWAY, thickened, TREE_HEIGHT, treeFade, treeFadeGlsl, type TreeParts } from './trees.ts';
-import { WIND_GLSL, wind } from './wind.ts';
+import { WIND_GLSL, wind, windStrength } from './wind.ts';
 import { wetMaterial } from './rain.ts';
 
 // Far trees as impostors: one card per tree facing the camera, showing a
@@ -101,6 +101,7 @@ export class Impostors {
       treeEye: groundEye,
       treeFade,
       windTime: wind,
+      windStrength,
     };
     const material = this.mesh.material as THREE.MeshStandardMaterial;
     material.onBeforeCompile = (shader) => card(shader, uniforms, this.world, true);

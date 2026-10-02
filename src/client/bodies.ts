@@ -471,7 +471,7 @@ export type StepListener = (x: number, y: number, z: number, speed: number, crou
 
 export class Bodies {
   onStep: StepListener | null = null;
-  /** Whether it's raining and where a roof keeps it off, for how wet everyone is. */
+  /** How wet the island is and where a roof keeps it off, for how wet everyone is. */
   shelter: Shelter | null = null;
   /** Toward the sun, for which bodies out of view throw a shadow into it. */
   readonly sun = new THREE.Vector3(0, 1, 0);
@@ -739,7 +739,7 @@ export class Bodies {
 
   private dispose(f: Figure): void {
     this.scene.remove(f.group, f.gun);
-    if (this.shelter?.raining) this.soaked.set(f.id, f.soak.level.value);
+    if (this.shelter?.wet) this.soaked.set(f.id, f.soak.level.value);
     for (const m of f.materials) {
       if (!this.kept && f.soldier) this.kept = m;
       else m.dispose();

@@ -11,7 +11,7 @@ import { surfaceMaterial } from './surfaces.ts';
 import { REFLECTED } from './water.ts';
 import { wetMaterial, type WetOptions } from './rain.ts';
 import { groundTint, onTiles } from './terrain.ts';
-import { WIND_GLSL, wind } from './wind.ts';
+import { WIND_GLSL, wind, windStrength } from './wind.ts';
 import { filled } from './cardtexture.ts';
 
 // Grass, low bushes and pebbles on the ground round the camera. Each 8 m cell
@@ -350,6 +350,7 @@ function fading(material: THREE.MeshStandardMaterial, range: number, eye: { valu
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     shader.uniforms.windTime = wind;
+    shader.uniforms.windStrength = windStrength;
     shader.uniforms.coverEye = eye;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\nuniform vec3 coverEye;\n${WIND_GLSL}`)

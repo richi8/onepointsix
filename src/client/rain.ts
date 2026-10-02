@@ -3,9 +3,10 @@ import { WATER_LEVEL } from '../shared/constants.ts';
 import type { World } from '../shared/world.ts';
 import { ISLAND_GLSL, islandUniforms, shelters } from './islandmap.ts';
 
-// Rain: streaks falling through a box that follows the camera, splashes where
-// they land, wet ground, trees, grass and bodies, puddles where water
-// gathers, rippling, and now and then lightning. Every drop has a fixed place
+// Rain: streaks falling through a box that follows the camera, as many as it's
+// raining hard, splashes where they land, wet ground, trees, grass and
+// bodies, puddles where water gathers, rippling, and now and then lightning,
+// far off ahead of the rain. Every drop has a fixed place
 // in the world that wraps round the box, so turning or walking doesn't drag
 // the rain along; the vertex shader does all the moving, so the streaks cost
 // one draw call and no work on the CPU. A sharp map of the roofs round the
@@ -36,22 +37,26 @@ const SPLASHES = 700;
 const SPLASH_LIFE = 0.22;
 const SPLASH_RANGE = 22;
 
-/** Seconds between lightning strikes, at least and at most. */
+/** Seconds between lightning strikes in a full storm, at least and at most. */
 const STRIKE_GAP: [number, number] = [18, 55];
-/** Metres off a strike lands, nearest and farthest. */
+/** Metres off a strike lands, nearest and farthest; with no rain falling yet, no nearer than STRIKE_DRY. */
 const STRIKE_NEAR = 700;
 const STRIKE_FAR = 4500;
+const STRIKE_DRY = 3200;
 
 /**
  * Uniforms shared by the rain and every material that gets wet: the roof
  * map round the camera, its corner in the world (x, z) and one over its
- * width; how wet things are, 0 dry to 1 soaked; and the seconds that ripple
- * the puddles. Past the roof map, the island's coarser one (islandmap.ts).
+ * width; how wet things are, 0 dry to 1 soaked; how full the puddles are,
+ * 0 to 1; how hard it's raining, 0 to 1, and the seconds that ripple the
+ * puddles. Past the roof map, the island's coarser one (islandmap.ts).
  */
 export const rainUniforms = {
   roofMap: { value: roofTexture(new Float32Array(ROOF_CELLS * ROOF_CELLS).fill(OPEN_SKY)) },
   roofCorner: { value: new THREE.Vector3(0, 0, 1 / (ROOF_CELLS * ROOF_CELL)) },
   wetness: { value: 0 },
+  puddles: { value: 0 },
+  rainfall: { value: 0 },
   rainTime: { value: 0 },
   ...islandUniforms,
 };
@@ -76,10 +81,14 @@ const OPEN_GLSL = 'float underRoof(vec3 p) { return 0.0; }';
  * GLSL for a surface's fragment shader, after its colour and roughness are
  * known: wet ground is darker and shinier, walls less so, and flat ground
  * gathers puddles where water would, in the hollows, which mirror the sky
- * and ripple in the rain. Needs `underRoof` and, for puddles, `ISLAND_GLSL`.
+ * and ripple in the rain. Puddles fill from the deepest hollows outward and
+ * shrink back into them as they drain. Needs `underRoof` and, for puddles,
+ * `ISLAND_GLSL`.
  */
 export const WET_GLSL = /* glsl */ `
   uniform float wetness;
+  uniform float puddles;
+  uniform float rainfall;
   uniform float rainTime;
   float wetHash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -94,12 +103,14 @@ export const WET_GLSL = /* glsl */ `
   // its film of water is, into wet.x, wet.y and wet.z; gather is how much
   // water the ground there gathers, 0 to 1.
   vec3 wetAt(vec3 p, vec3 n, float gather) {
-    if (wetness <= 0.0) return vec3(0.0);
-    float w = wetness * (1.0 - underRoof(p)) * mix(0.45, 1.0, clamp(n.y, 0.0, 1.0));
+    if (wetness <= 0.0 && puddles <= 0.0) return vec3(0.0);
+    float open = 1.0 - underRoof(p);
+    float w = wetness * open * mix(0.45, 1.0, clamp(n.y, 0.0, 1.0));
     float patches = wetNoise(p.xz * 0.35) * 0.65 + wetNoise(p.xz * 1.3) * 0.35;
-    // Water lies in the hollows, its edge ragged.
+    // Water lies in the hollows, its edge ragged, reaching farther out of them the fuller they are.
     float pool = gather * 1.3 + (patches - 0.5) * 0.6;
-    float puddle = w * smoothstep(0.985, 0.996, n.y) * smoothstep(0.5, 0.62, pool);
+    float edge = mix(0.95, 0.5, sqrt(puddles));
+    float puddle = open * min(puddles * 6.0, 1.0) * smoothstep(0.985, 0.996, n.y) * smoothstep(edge, edge + 0.12, pool);
     // A film of water comes and goes in patches, thicker toward the hollows.
     float film = w * smoothstep(0.45, 0.7, patches + gather * 0.4) * smoothstep(0.95, 0.99, n.y);
     return vec3(w, puddle, film);
@@ -119,7 +130,7 @@ export const WET_GLSL = /* glsl */ `
         float d = length(to);
         float x = (d - t * 0.3) * 60.0;
         float ring = exp(-x * x * 0.08) * (1.0 - t) * (1.0 - t);
-        slope += to / max(d, 1e-3) * cos(x) * ring * 0.3;
+        slope += to / max(d, 1e-3) * cos(x) * ring * 0.3 * rainfall;
       }
     }
     return slope;
@@ -144,7 +155,7 @@ export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: st
       roughnessFactor = mix(mix(mix(roughnessFactor, 0.9, wet.x), 0.78, wet.z), 0.03, wet.y);`)
     // A puddle lies flat, whatever the ground's bumps, but for its ripples.
     .replace('#include <lights_fragment_begin>', /* glsl */ `
-      if (wet.y > 0.0) {
+      if (wet.y > 0.0 && rainfall > 0.0) {
         vec2 ripple = rippleAt(${pos}.xz);
         normal = normalize(mix(normal, (viewMatrix * vec4(normalize(vec3(-ripple.x, 1.0, -ripple.y)), 0.0)).xyz, wet.y));
       }
@@ -240,17 +251,20 @@ const SOAK_TIME = 20;
 /** Seconds between looks at whether something soaking is under a roof. */
 const SHELTER_CHECK = 0.5;
 
-/** Whether it's raining, and whether a point is under a roof. */
+/** How wet the island is, how hard it's raining, and whether a point is under a roof. */
 export interface Shelter {
-  readonly raining: boolean;
+  /** Open ground: 0 dry to 1 soaked. */
+  readonly wet: number;
+  /** 0 to 1. */
+  readonly rainfall: number;
   sheltered(x: number, y: number, z: number): boolean;
 }
 
 /**
  * How soaked one thing is that comes in and out of the rain, such as a
- * soldier: it soaks through out in it and dries slowly under a roof, rather
- * than the moment it steps under one. Its `level` is a uniform for
- * `wetMaterial`.
+ * soldier: it soaks through out in it and dries slowly under a roof or once
+ * the rain stops, rather than the moment it does. Its `level` is a uniform
+ * for `wetMaterial`, a share of how wet the island is.
  */
 export class Soak {
   /** 0 dry to 1 soaked through. */
@@ -269,7 +283,7 @@ export class Soak {
 
   /** Soak or dry by `dt` seconds at (x, y, z), a point on it about halfway up. */
   update(shelter: Shelter | null, x: number, y: number, z: number, dt: number): void {
-    if (!shelter?.raining) {
+    if (!shelter || shelter.wet <= 0) {
       this.level.value = 0;
       this.begun = false;
       return;
@@ -279,11 +293,11 @@ export class Soak {
       this.open = !shelter.sheltered(x, y, z);
       this.wait = SHELTER_CHECK;
     }
-    // First seen in the rain, it's been out in it; first seen under a roof, it's dry.
+    // First seen out in the wet, it's been out in it; first seen under a roof, it's dry.
     if (!this.begun) {
       this.level.value = this.open ? 1 : 0;
       this.begun = true;
-    } else if (this.open) this.level.value = Math.min(this.level.value + dt / SOAK_TIME, 1);
+    } else if (this.open && shelter.rainfall > 0) this.level.value = Math.min(this.level.value + (dt * shelter.rainfall) / SOAK_TIME, 1);
     else this.level.value = Math.max(this.level.value - dt / DRY_TIME, 0);
   }
 }
@@ -299,11 +313,15 @@ export class Rain implements Shelter {
   private readonly splashMaterial: THREE.ShaderMaterial;
   private readonly splashPos: THREE.BufferAttribute;
   private readonly splashBorn: THREE.BufferAttribute;
+  private readonly streaks: THREE.InstancedBufferGeometry;
   private nextSplash = 0;
   private splashDebt = 0;
-  private on = false;
+  private fall = 0;
+  private stormy = 0;
+  private wetLevel = 0;
   private lastTime = 0;
-  private nextStrike = 0;
+  /** Storm seconds to the next strike: they pass faster the stormier it is. */
+  private toStrike = 0;
   /** When the last strike lit the sky, and how near it was, 0 far to 1 near. */
   private struckAt = -Infinity;
   private strikeNear = 0;
@@ -320,6 +338,7 @@ export class Rain implements Shelter {
     for (let i = 0; i < seeds.length; i++) seeds[i] = Math.random();
     quad.setAttribute('seed', new THREE.InstancedBufferAttribute(seeds, 3));
     quad.instanceCount = DROPS;
+    this.streaks = quad;
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         center: { value: new THREE.Vector3() },
@@ -419,17 +438,30 @@ export class Rain implements Shelter {
     this.group.visible = false;
   }
 
-  /** Rain or not, and the colour the streaks catch from the sky. */
-  set(on: boolean, color: THREE.Color): void {
-    this.on = on;
-    this.group.visible = on;
-    rainUniforms.wetness.value = on ? 1 : 0;
+  /**
+   * How hard it's raining and how stormy it is, 0 to 1, and the colour the
+   * streaks catch from the sky; how wet the ground is and how full the
+   * puddles, 0 to 1.
+   */
+  set(rainfall: number, storm: number, color: THREE.Color, wet: number, puddles: number): void {
+    this.fall = rainfall;
+    this.stormy = storm;
+    this.wetLevel = wet;
+    this.group.visible = rainfall > 0;
+    this.streaks.instanceCount = Math.ceil(DROPS * rainfall);
+    rainUniforms.wetness.value = wet;
+    rainUniforms.puddles.value = puddles;
+    rainUniforms.rainfall.value = rainfall;
     this.material.uniforms.color.value.copy(color);
     this.splashMaterial.uniforms.color.value.copy(color).multiplyScalar(1.3);
   }
 
-  get raining(): boolean {
-    return this.on;
+  get wet(): number {
+    return this.wetLevel;
+  }
+
+  get rainfall(): number {
+    return this.fall;
   }
 
   /** Whether a standing roof, or a floor, is over (x, y, z). */
@@ -450,9 +482,9 @@ export class Rain implements Shelter {
   get flash(): number {
     const t = this.lastTime - this.struckAt;
     if (t < 0 || t > 0.9) return 0;
-    // Two or three flickers, dying away.
+    // Two or three flickers, dying away; ahead of the rain, only a glow beyond the hills.
     const flicker = Math.max(Math.exp(-t * 18), 0.8 * Math.exp(-Math.abs(t - 0.18) * 30), 0.5 * Math.exp(-Math.abs(t - 0.42) * 22));
-    return flicker * (0.35 + 0.65 * this.strikeNear);
+    return flicker * (0.35 + 0.65 * this.strikeNear) * (0.3 + 0.7 * this.fall);
   }
 
   /** Fall round `eye` at `time` seconds, splash, and strike now and then. */
@@ -460,18 +492,18 @@ export class Rain implements Shelter {
     const dt = Math.min(Math.max(time - this.lastTime, 0), 0.1);
     this.lastTime = time;
     this.placeRoofs(eye);
-    if (!this.on) return;
+    if (this.stormy > 0) this.storm(time, dt);
+    if (this.fall <= 0) return;
     rainUniforms.rainTime.value = time % 1000;
     this.material.uniforms.center.value.copy(eye);
     this.material.uniforms.time.value = time % 1000;
     this.splashMaterial.uniforms.time.value = time % 1000;
     this.splash(eye, time % 1000, dt);
-    this.storm(time, dt);
   }
 
   /** Splashes on whatever the rain lands on round the camera: ground, floors in the open, roofs and the sea. */
   private splash(eye: THREE.Vector3, time: number, dt: number): void {
-    this.splashDebt += dt * (SPLASHES / SPLASH_LIFE);
+    this.splashDebt += dt * this.fall * (SPLASHES / SPLASH_LIFE);
     const n = Math.min(Math.floor(this.splashDebt), SPLASHES);
     this.splashDebt -= n;
     if (!n) return;
@@ -498,11 +530,14 @@ export class Rain implements Shelter {
 
   private storm(time: number, dt: number): void {
     if (dt <= 0) return;
-    if (!this.nextStrike || this.nextStrike < time - 120) this.nextStrike = time + gap() * 0.4;
-    if (time < this.nextStrike) return;
-    this.nextStrike = time + gap();
+    // The first comes sooner than the rest.
+    if (!this.toStrike) this.toStrike = gap() * 0.4;
+    this.toStrike -= dt * this.stormy;
+    if (this.toStrike > 0) return;
+    this.toStrike = gap();
     this.struckAt = time;
-    const distance = STRIKE_NEAR + Math.random() ** 1.5 * (STRIKE_FAR - STRIKE_NEAR);
+    const nearest = STRIKE_DRY + (STRIKE_NEAR - STRIKE_DRY) * this.fall;
+    const distance = nearest + Math.random() ** 1.5 * (STRIKE_FAR - nearest);
     this.strikeNear = 1 - (distance - STRIKE_NEAR) / (STRIKE_FAR - STRIKE_NEAR);
     this.onStrike?.(distance);
   }

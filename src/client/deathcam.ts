@@ -3,7 +3,7 @@ import type { CoverState, GameEvent, GrenadeSnap, PlayerSnap } from '../shared/p
 import type { PlayerState } from '../shared/sim.ts';
 import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
-import type { Forecast, WeatherNow } from '../shared/weather.ts';
+import type { Forecast } from '../shared/weather.ts';
 import type { World } from '../shared/world.ts';
 import { grenadesAt, playersAt, type Recording, type RecordedEvent } from './connection.ts';
 
@@ -33,7 +33,8 @@ export class Deathcam {
   private readonly kill: number;
   private readonly player: TapePlayer;
   private readonly recording: Recording;
-  private readonly forecast: Forecast;
+  /** The game's weather, for the moment shown. */
+  readonly forecast: Forecast;
   private nextEvent = 0;
 
   /** `cover` is how the cover stands now, and `forecast` the game's weather. */
@@ -51,11 +52,6 @@ export class Deathcam {
     this.player.seek(this.time);
     this.cover = coverBefore(cover, recording.events, this.time);
     while (this.nextEvent < recording.events.length && recording.events[this.nextEvent].time <= this.time) this.nextEvent++;
-  }
-
-  /** The weather at the moment shown. */
-  get weather(): WeatherNow {
-    return this.forecast.at(this.time);
   }
 
   get done(): boolean {

@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import type { Weather } from '../shared/weather.ts';
+import { WEATHERS, type Weather } from '../shared/weather.ts';
+import type { Mix } from './outlook.ts';
 
 // How the island is lit in each weather: the sun, the sky, the fog and how
 // much the sky's picture lights things. The fog is the colour of the horizon,
-// so distant hills melt into the sky.
+// so distant hills melt into the sky. Between two weathers the clouds and the
+// air each blend by their own mix (see outlook.ts).
 
 export interface Lighting {
   /** Towards the sun. */
@@ -57,9 +59,27 @@ const WEATHER: Record<Weather, Sky> = {
   fog: { light: 0.3, grey: 1, fogNear: 0, fogFar: 100, previewFogNear: 30, previewFogFar: 700 },
 };
 
-export function lightingOf(weather: Weather): Lighting {
+/** The sky under `clouds`, seen through `air`. */
+function skyOf(clouds: Mix, air: Mix): Sky {
+  const sky: Sky = { light: 0, grey: 0, fogNear: 0, fogFar: 0, previewFogNear: 0, previewFogFar: 0 };
+  for (const k of WEATHERS) {
+    const w = WEATHER[k];
+    sky.light += clouds[k] * w.light;
+    sky.grey += clouds[k] * w.grey;
+    sky.fogNear += air[k] * w.fogNear;
+    sky.previewFogNear += air[k] * w.previewFogNear;
+    // The haze closes in steadily: its reach blends by ratio, not by metres.
+    sky.fogFar += air[k] * Math.log(w.fogFar);
+    sky.previewFogFar += air[k] * Math.log(w.previewFogFar);
+  }
+  sky.fogFar = Math.exp(sky.fogFar);
+  sky.previewFogFar = Math.exp(sky.previewFogFar);
+  return sky;
+}
+
+export function lightingOf(clouds: Mix, air: Mix = clouds): Lighting {
   const t = DAY;
-  const w = WEATHER[weather];
+  const w = skyOf(clouds, air);
   const overcast = new THREE.Color(t.overcast);
   const horizon = new THREE.Color(t.horizon).lerp(overcast, w.grey);
   // In fog the whole sky is fog; under rain clouds the top is barely darker.

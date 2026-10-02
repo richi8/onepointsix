@@ -10,7 +10,7 @@ import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { cleanName, parseShareLink, type Challenge } from '../shared/share.ts';
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
-import { Forecast, mainWeather, parseWeather, type Weather } from '../shared/weather.ts';
+import { Forecast, mainWeather, parseWeather } from '../shared/weather.ts';
 import { leafRect, World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sfx } from './audio.ts';
@@ -22,6 +22,7 @@ import { ContractProps } from './contractprops.ts';
 import { Connection, WorkerTransport, type Recording, type RecordedEvent } from './connection.ts';
 import type { Deathcam, DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
+import { outlookAt, Wetting } from './outlook.ts';
 import { Soak, wetMaterial } from './rain.ts';
 import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
@@ -80,10 +81,14 @@ const config = link.world;
 const world = new World(config.seed);
 /** Its weather over a game, as the server works it out. */
 const forecast = new Forecast(config.seed);
-/** In development, `?sky=rain` holds the weather shown whatever the game's, for screenshots. */
-const heldWeather = import.meta.env.DEV ? parseWeather(new URLSearchParams(location.search).get('sky')) : undefined;
+/**
+ * In development, `?sky=` holds the weather shown whatever the game's, for
+ * screenshots: `rain` settled, `clear,rain,0.4` 40% through a change from
+ * clear to rain, or `clear,rain,-30` half a minute before it starts.
+ */
+const heldSky = import.meta.env.DEV ? parseHeldSky(new URLSearchParams(location.search).get('sky')) : null;
 /** Behind the menu, the weather a game on the island opens in. */
-const view = new WorldView(world, heldWeather ?? mainWeather(forecast.at(0)));
+const view = new WorldView(world, mainWeather(forecast.at(0)));
 /** Drawn into by every island in turn. */
 const scene = view.scene;
 
@@ -556,21 +561,34 @@ selectMode(mode);
 
 // ---------------------------------------------------------------- weather
 
-/** The weather the island is shown in. */
-let shownWeather: Weather | null = null;
+/** How wet the island is, along the clock of the weather shown. */
+const wetting = new Wetting();
 
-/** Light the island and set its sounds for weather `w`, if it isn't already. */
-function showWeather(w: Weather): void {
-  w = heldWeather ?? w;
-  if (w === shownWeather) return;
-  shownWeather = w;
-  view.setWeather(w);
+/** A weather held by `?sky=` (see heldSky), or null for anything else. */
+function parseHeldSky(q: string | null): { forecast: Forecast; time: number } | null {
+  const [from, to, at] = (q ?? '').split(',');
+  const a = parseWeather(from);
+  if (!a) return null;
+  const b = parseWeather(to) ?? a;
+  const change = 45;
+  const x = Number(at ?? 1);
+  return { forecast: Forecast.held(a, b, change), time: x >= 0 ? x * change : x };
+}
+
+/** Light the island and set its sounds for the weather in `f` at `time`, the game's clock. */
+function showWeather(f: Forecast, time: number): void {
+  if (heldSky) ({ forecast: f, time } = heldSky);
+  const o = outlookAt(f, time);
+  wetting.update(f, time);
+  sfx.outlook = o;
+  if (!view.setOutlook(o, wetting.wet, wetting.puddles)) return;
   const lit = view.lit;
   renderer.toneMappingExposure = lit.exposure;
   viewModel.setLight(lit.ambient, lit.sunColor, lit.sunIntensity / 3.3, lit.hemiSky, lit.hemiGround);
-  sfx.weather = w;
 }
-showWeather(mainWeather(forecast.at(0)));
+// Before the outlook first differs from the view's own.
+viewModel.setLight(view.lit.ambient, view.lit.sunColor, view.lit.sunIntensity / 3.3, view.lit.hemiSky, view.lit.hemiGround);
+showWeather(forecast, 0);
 
 {
   // Links from before the weather changed during a game may carry it, and older ones a time of day: both are dropped.
@@ -1356,8 +1374,8 @@ renderer.setAnimationLoop(() => {
   grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? (warming ? [{ id: -1, x: 1, y: y0 + 0.5, z: 1 }] : [])));
   if (conn) view.setExtracts(conn.extracts, now);
   // The weather of the moment shown: the kill's in a death cam. Back on the menu it stays as it was.
-  const weather = cam ? cam.weather : conn?.weather();
-  if (weather) showWeather(mainWeather(weather));
+  if (cam) showWeather(cam.forecast, cam.time);
+  else if (conn?.forecast) showWeather(conn.forecast, conn.renderTime());
 
   const me = conn?.predictor.render(inputLoop.alpha);
   if (me && !cam) mySoak.update(view.shelter, me.x, me.y + 1, me.z, dt);

@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'Weather you can see coming',
+    notes: [
+      'The weather now turns gradually, over half a minute to a minute: the sky greys or clears, the fog closes in or thins away, and rain starts as a few drops and builds to a downpour, or eases off to nothing.',
+      'About a minute before it rains, the clouds thicken, the wind picks up in the trees and the grass, the birds fall quiet and thunder rumbles far off. Before a fog, mist rolls in off the sea and gathers in the valleys.',
+      'The ground soaks as the rain sets in and dries slowly once it stops, over a few minutes. Puddles fill from the deepest hollows outward and shrink back into them as they drain. Soldiers and what they drop dry off out in the open once the rain has stopped, not only under a roof.',
+      'In fog the air is still: the trees and grass barely sway.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'Sharing steps aside',
     notes: [
       'The Share link on the menu and the share button on the results are gone for now. Sharing comes back with multiplayer, as private islands for you and your friends. A link someone sent you before still opens its island with their score to beat.',

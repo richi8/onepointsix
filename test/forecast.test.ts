@@ -180,7 +180,7 @@ describe('the weather in a game', () => {
     expect(mainWeather(server.weather)).toBe(turn.to);
     const { e, recording } = killedBy!;
     const cam = new Deathcam(new World(seed), e, recording, conn.cover, conn.forecast!);
-    expect(mainWeather(cam.weather)).toBe(turn.from);
-    expect(cam.weather).toEqual(server.forecast.at(cam.time));
+    expect(mainWeather(cam.forecast.at(cam.time))).toBe(turn.from);
+    expect(cam.forecast.at(cam.time)).toEqual(server.forecast.at(cam.time));
   });
 });

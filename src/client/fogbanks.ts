@@ -4,13 +4,24 @@ import * as THREE from 'three';
 // mist lies on low ground: thickest at the sea and in the hollows near it,
 // thinning with height, and deeper in some places than others, so banks of it
 // stand across the island and a hilltop can rise clear. How much mist there
-// is follows the fog's own reach, so it needs no uniforms of its own: none on
-// a clear day, a little under rain, a lot in fog. Patched into three.js's fog
-// chunks once, so every fogged material, the stock ones and our own, gets it.
+// is follows the fog's own reach: none on a clear day, a little under rain, a
+// lot in fog. Ahead of a fog it gathers in the hollows before the air
+// thickens; three.js sends a linear fog only its near and far, so that mist
+// rides in the near distance's whole multiples of MIST_STEP (see mistNear).
+// As there's more of it, the banks spread out from where they lie deepest.
+// Patched into three.js's fog chunks once, so every fogged material, the
+// stock ones and our own, gets it.
 
 /** Distance fog reaching this far or farther has no mist; at MIST_FULL or nearer, all of it. */
 const MIST_NONE = 1000;
 const MIST_FULL = 100;
+/** The fog's near distance carries the mist ahead of a fog in steps of this, 255 of them. */
+const MIST_STEP = 4096;
+
+/** The fog's near distance `near` carrying `mist` ahead of a fog, 0 to 1. */
+export function mistNear(near: number, mist: number): number {
+  return near + MIST_STEP * Math.round(Math.min(Math.max(mist, 0), 1) * 255);
+}
 
 const PARS_VERTEX = /* glsl */ `
 #ifdef USE_FOG
@@ -54,13 +65,16 @@ const PARS_FRAGMENT = /* glsl */ `
 		#ifdef FOG_EXP2
 			return 0.0;
 		#else
-			float amount = clamp( ( ${MIST_NONE.toFixed(1)} - fogFar ) / ${(MIST_NONE - MIST_FULL).toFixed(1)}, 0.0, 1.0 );
+			float ahead = floor( fogNear / ${MIST_STEP.toFixed(1)} ) / 255.0;
+			float amount = max( clamp( ( ${MIST_NONE.toFixed(1)} - fogFar ) / ${(MIST_NONE - MIST_FULL).toFixed(1)}, 0.0, 1.0 ), ahead );
 			if ( amount <= 0.0 ) return 0.0;
 			vec3 c = cameraPosition;
-			// The banks: where the mist stands deep, sampled along the way there.
+			// The banks: where the mist stands deep, sampled along the way there,
+			// spreading from the deepest as there's more of it.
 			vec2 mid = ( c.xz + p.xz ) * 0.5;
 			float bank = mistNoise( mid / 90.0 ) * 0.7 + mistNoise( mid / 35.0 + 7.3 ) * 0.3;
-			float depth = mix( 3.0, 22.0, smoothstep( 0.35, 0.8, bank ) );
+			// Ahead of a fog it stands deeper, up into the island's hollows.
+			float depth = mix( 3.0, 22.0, smoothstep( 0.8 - 0.45 * amount, 0.8, bank ) ) * ( 1.0 + 0.8 * ahead );
 			// Density falls off exponentially with height; integrated along the straight line.
 			float ya = max( c.y, 0.0 ) / depth;
 			float yb = max( p.y, 0.0 ) / depth;
@@ -78,7 +92,7 @@ const FRAGMENT = /* glsl */ `
 	#ifdef FOG_EXP2
 		float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
 	#else
-		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+		float fogFactor = smoothstep( mod( fogNear, ${MIST_STEP.toFixed(1)} ), fogFar, vFogDepth );
 	#endif
 	fogFactor = 1.0 - ( 1.0 - fogFactor ) * ( 1.0 - mistAlong( vFogWorld ) );
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );

@@ -76,7 +76,7 @@ export class Effects {
   private readonly debrisLayer = new THREE.InstancedBufferAttribute(new Float32Array(MAX_DEBRIS), 1);
   /** How wet each chunk is, as wet as the panel it broke from looked: it doesn't lie long enough to dry. */
   private readonly debrisSoak = new THREE.InstancedBufferAttribute(new Float32Array(MAX_DEBRIS), 1);
-  /** Whether it's raining and where a roof keeps it off, for how wet a panel breaking was. */
+  /** How wet the island is and where a roof keeps it off, for how wet a panel breaking was. */
   shelter: Shelter | null = null;
   private readonly chunks: Chunk[] = [];
   private nextChunk = 0;
@@ -157,7 +157,7 @@ export class Effects {
     const push = THREE.MathUtils.clamp(14 / (1 + Math.hypot(cx - fx, cy - fy, cz - fz)), 1.5, 9);
     const piece = Math.max(Math.cbrt((sx * sy * sz) / n), 0.12);
     // Wet if nothing is over its top, as it was drawn (a roof's own top is out in the rain).
-    const wet = this.shelter?.raining && !this.shelter.sheltered(cx, box.maxY + 0.01, cz) ? 1 : 0;
+    const wet = this.shelter && !this.shelter.sheltered(cx, box.maxY + 0.01, cz) ? this.shelter.wet : 0;
     for (let i = 0; i < n; i++) {
       const x = box.minX + Math.random() * sx;
       const y = box.minY + Math.random() * sy;

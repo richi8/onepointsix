@@ -28,6 +28,13 @@ export interface WeatherNow {
   blend: number;
 }
 
+/** The next change: the weather it brings and the seconds until it starts coming in. */
+export interface Coming {
+  weather: Weather;
+  /** Infinity when the weather never changes. */
+  in: number;
+}
+
 export function settled(w: Weather): WeatherNow {
   return { from: w, to: w, blend: 1 };
 }
@@ -62,6 +69,8 @@ export class Forecast {
   private readonly phases: Phase[] = [];
   private readonly rng: () => number;
   private readonly fixed: Weather | undefined;
+  /** Whether the phases were given rather than drawn, so there are no more. */
+  private scripted = false;
 
   constructor(seed: number, fixed?: Weather) {
     this.fixed = fixed;
@@ -73,12 +82,41 @@ export class Forecast {
     this.phases.push({ weather: 'clear', start, end: start + length, change: 0 });
   }
 
+  /**
+   * One change only, for screenshots and the benchmark: `from` until time 0,
+   * then `to` coming in over `change` seconds and staying.
+   */
+  static held(from: Weather, to: Weather, change = (CHANGE_MIN + CHANGE_MAX) / 2): Forecast {
+    const f = new Forecast(0);
+    f.scripted = true;
+    f.phases.length = 0;
+    f.phases.push({ weather: from, start: -Infinity, end: 0, change: 0 });
+    if (to !== from) f.phases.push({ weather: to, start: 0, end: Infinity, change });
+    return f;
+  }
+
   /** The weather at `time`, server seconds since the game began. */
   at(time: number): WeatherNow {
     if (this.fixed) return settled(this.fixed);
     const phases = this.phases;
-    while (phases[phases.length - 1].start <= time) this.extend();
-    // The last phase starting by `time`.
+    const lo = this.find(time);
+    const p = phases[lo];
+    const into = time - p.start;
+    if (lo === 0 || into >= p.change) return settled(p.weather);
+    return { from: phases[lo - 1].weather, to: p.weather, blend: into / p.change };
+  }
+
+  /** The next change to start after `time`: while one is coming in, the one after it. */
+  next(time: number): Coming {
+    if (this.fixed) return { weather: this.fixed, in: Infinity };
+    const after = this.phases[this.find(time) + 1];
+    return after ? { weather: after.weather, in: after.start - time } : { weather: this.phases[this.phases.length - 1].weather, in: Infinity };
+  }
+
+  /** The last phase starting by `time`, with the one after it drawn. */
+  private find(time: number): number {
+    const phases = this.phases;
+    while (!this.scripted && phases[phases.length - 1].start <= time) this.extend();
     let lo = 0;
     let hi = phases.length - 1;
     while (lo < hi) {
@@ -86,10 +124,7 @@ export class Forecast {
       if (phases[mid].start <= time) lo = mid;
       else hi = mid - 1;
     }
-    const p = phases[lo];
-    const into = time - p.start;
-    if (lo === 0 || into >= p.change) return settled(p.weather);
-    return { from: phases[lo - 1].weather, to: p.weather, blend: into / p.change };
+    return lo;
   }
 
   /** The next phase, after the last drawn. */

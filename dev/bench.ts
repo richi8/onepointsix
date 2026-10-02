@@ -4,7 +4,8 @@ import { Bodies } from '../src/client/bodies.ts';
 import { GroundCover } from '../src/client/groundcover.ts';
 import { Resolution } from '../src/client/resolution.ts';
 import { WorldView } from '../src/client/worldview.ts';
-import type { Weather } from '../src/shared/weather.ts';
+import { outlookAt, Wetting } from '../src/client/outlook.ts';
+import { Forecast, type Weather } from '../src/shared/weather.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
@@ -21,7 +22,8 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 // - The ground cover's rebuild as the eye crosses its cells: first visits,
 //   which scatter the cells, and a second pass over cells already scattered.
 // - The close-up soldiers again in the rain: the streaks, the splashes and
-//   the wet ground.
+//   the wet ground; then halfway from rain to fog, the crossover where the
+//   rain and the fog with its mist both run.
 //
 // It sets window.bench to the results and document.title to "done".
 //
@@ -268,7 +270,8 @@ async function frameCost() {
   const crowd = await measure(N);
   const distant = await measure(N, true);
   const cover = groundCover(-200, 40, 40);
-  const rain = await inWeather('rain');
+  const rain = await inWeather('rain', 'rain', 1);
+  const crossover = await inWeather('rain', 'fog', 0.5);
 
   const stats = (v: number[]) => {
     const s = [...v].sort((a, b) => a - b);
@@ -289,13 +292,17 @@ async function frameCost() {
     distant: { bodies: stats(distant.bodies), frame: stats(distant.frame), calls: distant.calls },
     groundCover: { first: stats(cover.first), again: stats(cover.again) },
     rain: { frame: stats(rain.frame), calls: rain.calls, triangles: rain.triangles },
+    crossover: { frame: stats(crossover.frame), calls: crossover.calls, triangles: crossover.triangles },
   };
   return bench;
 }
 
-/** The close-up crowd in `weather`. */
-async function inWeather(weather: Weather): Promise<Phase> {
-  view.setWeather(weather);
+/** The close-up crowd `blend` of the way through a change from `from` to `to`, over 45 s. */
+async function inWeather(from: Weather, to: Weather, blend: number): Promise<Phase> {
+  const forecast = Forecast.held(from, to, 45);
+  const wetting = new Wetting();
+  wetting.update(forecast, blend * 45);
+  view.setOutlook(outlookAt(forecast, blend * 45), wetting.wet, wetting.puddles);
   renderer.toneMappingExposure = view.lit.exposure;
   await renderer.compileAsync(scene, camera);
   return measure(N);

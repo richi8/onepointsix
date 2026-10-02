@@ -106,7 +106,7 @@ describe('shelter', () => {
 
   it('dries something slowly under a roof and soaks it quickly in the rain', () => {
     let roofed = false;
-    const shelter: Shelter = { raining: true, sheltered: () => roofed };
+    const shelter: Shelter = { wet: 1, rainfall: 1, sheltered: () => roofed };
     const soak = new Soak();
     soak.update(shelter, 0, 0, 0, 0.1);
     expect(soak.level.value).toBe(1);
@@ -124,12 +124,46 @@ describe('shelter', () => {
     roofed = true;
     inside.update(shelter, 0, 0, 0, 0.1);
     expect(inside.level.value).toBe(0);
-    soak.update({ raining: false, sheltered: () => false }, 0, 0, 0, 0.1);
+    soak.update({ wet: 0, rainfall: 0, sheltered: () => false }, 0, 0, 0, 0.1);
     expect(soak.level.value).toBe(0);
   });
 
+  it('dries slowly out in the open once the rain stops', () => {
+    const shelter = { wet: 1, rainfall: 1, sheltered: () => false };
+    const soak = new Soak();
+    soak.update(shelter, 0, 0, 0, 0.1);
+    expect(soak.level.value).toBe(1);
+    shelter.rainfall = 0;
+    for (let t = 0; t < 60; t += 0.1) soak.update(shelter, 0, 0, 0, 0.1);
+    expect(soak.level.value).toBeGreaterThan(0.7);
+    expect(soak.level.value).toBeLessThan(0.8);
+    // Light rain soaks it more slowly.
+    shelter.rainfall = 0.5;
+    for (let t = 0; t < 10; t += 0.1) soak.update(shelter, 0, 0, 0, 0.1);
+    expect(soak.level.value).toBeCloseTo(1, 1);
+  });
+
+  it('thunders far off ahead of the rain, and not at all in calm weather', () => {
+    const struck: number[] = [];
+    const rain = new Rain(world);
+    rain.onStrike = (d) => struck.push(d);
+    const eye = new THREE.Vector3();
+    const color = new THREE.Color();
+    rain.set(0, 0, color, 0, 0);
+    for (let t = 0; t < 300; t += 0.05) rain.update(eye, t);
+    expect(struck).toEqual([]);
+    // A minute or so before the rain: thunder, but no rain falling.
+    rain.set(0, 0.5, color, 0, 0);
+    for (let t = 300; t < 600; t += 0.05) rain.update(eye, t);
+    expect(struck.length).toBeGreaterThan(2);
+    expect(Math.min(...struck)).toBeGreaterThan(3000);
+    expect(rain.group.visible).toBe(false);
+    rain.set(1, 1, color, 1, 1);
+    expect(rain.group.visible).toBe(true);
+  });
+
   it('keeps how wet something was brought under a roof, drying from there', () => {
-    const shelter: Shelter = { raining: true, sheltered: () => true };
+    const shelter: Shelter = { wet: 1, rainfall: 1, sheltered: () => true };
     const soak = new Soak();
     soak.begin(0.8);
     for (let t = 0; t < 24; t += 0.1) soak.update(shelter, 0, 0, 0, 0.1);

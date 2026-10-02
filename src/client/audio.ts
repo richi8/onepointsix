@@ -1,8 +1,8 @@
 import type * as THREE from 'three';
-import type { Weather } from '../shared/weather.ts';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
+import { settledOutlook, type Outlook } from './outlook.ts';
 import type { PanelKind, World } from '../shared/world.ts';
 import { enclosure, hear, nearestWater, sourceSpace, space, woodland, type Heard, type Space } from './hearing.ts';
 import { download, swap } from './loading.ts';
@@ -214,8 +214,8 @@ export class Sfx {
   private scaredAt = -Infinity;
   /** Where the listener is, for how far sounds are. */
   private readonly ear = { x: 0, y: 0, z: 0 };
-  /** The weather, for the ambience. */
-  weather: Weather = 'clear';
+  /** The weather as it's heard: the rain, the wind, the birds and how far sounds carry. */
+  outlook: Outlook = settledOutlook('clear');
   /** Everything heard passes through this, which muffles it while the listener is under water. */
   private muffle: BiquadFilterNode | null = null;
   private submerged = false;
@@ -661,7 +661,7 @@ export class Sfx {
 
   /** How much of the rain's hiss lies between here and `d` metres off, 0 to 1: none when dry. */
   private rained(d: number): number {
-    return this.weather === 'rain' ? smoothstep(RAIN_NEAR, RAIN_FAR, d) : 0;
+    return this.outlook.rainfall * smoothstep(RAIN_NEAR, RAIN_FAR, d);
   }
 
   /** What's left of a sound's volume from `d` metres off under the rain. */
@@ -783,7 +783,8 @@ export class Sfx {
     if (!amb) return;
     const open = 1 - this.enclosed;
     const height = ear.y - Math.max(w.terrainHeight(ear.x, ear.z), WATER_LEVEL);
-    amb.wind.gain.setTargetAtTime((0.1 + 0.25 * smoothstep(0, 60, ear.y) + 0.1 * smoothstep(2, 30, height)) * (0.4 + 0.6 * open), now, 1);
+    const blow = this.outlook.wind ** 1.3;
+    amb.wind.gain.setTargetAtTime((0.1 + 0.25 * smoothstep(0, 60, ear.y) + 0.1 * smoothstep(2, 30, height)) * (0.4 + 0.6 * open) * blow, now, 1);
     const water = nearestWater(w, ear.x, ear.z);
     amb.sea.gain.setTargetAtTime(water ? 0.6 * (1 - smoothstep(0, 220, water.dist)) : 0, now, 1);
     if (water) {
@@ -793,13 +794,12 @@ export class Sfx {
     }
     const calm = clamp((now - this.scaredAt - SCARED_FOR) / CALMING, 0, 1);
     const trees = woodland(w, ear.x, ear.z);
-    const raining = this.weather === 'rain';
     const low = 1 - smoothstep(40, 90, ear.y);
-    // Birds hush in the rain, and for a while after a shot.
-    const hush = raining ? 0.25 : 1;
+    // Birds hush as rain clouds gather, and for a while after a shot.
+    const hush = 1 - 0.75 * this.outlook.clouds.rain;
     amb.birds.gain.setTargetAtTime(0.45 * hush * (0.25 + 0.75 * trees) * low * calm, now, calm < 1 ? 0.3 : 2);
     // Under a roof the rain drums on it rather than all around.
-    amb.rain.gain.setTargetAtTime(raining ? 0.55 * (0.45 + 0.55 * open) : 0, now, 1);
+    amb.rain.gain.setTargetAtTime(this.outlook.rainfall * 0.55 * (0.45 + 0.55 * open), now, 1);
   }
 
   /** Filtered noise with an instant attack and exponential fade. */
