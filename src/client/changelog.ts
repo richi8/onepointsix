@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'A snappier weapon switch',
+    notes: [
+      'Switching weapons sounds right on the draw now: the faint click before the slide is cut, so the sound no longer lags a hair behind.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'Always day',
     notes: [
       'The island is played by day only: dusk and night are gone, and the menu picks just the weather. Soon the weather will turn during a game instead, from clear to rain or fog and back.',

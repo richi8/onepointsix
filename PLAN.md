@@ -312,10 +312,7 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was found moot on 2026-10-02 (see the history).
 
 ### Code and testing
-- **The "draw" sound starts late in its bank** (found in 43): the browser test that every shot
-  starts on time fails on `draw`, loud only 63 ms in against the 45 ms allowed. It fails the same
-  at `7120c80`, before chunk 43 touched the sounds, and the early bank is unchanged since
-  `31ee20b` re-packed it with the new suppressed rifle; likely its cut point needs moving.
+Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Playtest and tuning
 Nothing open: the last was resolved on 2026-10-02 (see the history, and the bot extraction

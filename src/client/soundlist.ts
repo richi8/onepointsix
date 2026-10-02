@@ -56,7 +56,7 @@ export const SOUNDS: SoundSource[] = [
   { name: 'boltOpen', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 2.9, to: 3.8, kind: 'shot', fade: 0.15 },
   { name: 'boltLoad', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 7.7, to: 9.7, kind: 'shot', fade: 0.2 },
   { name: 'boltClose', freesound: 508747, author: 'AugustSandberg', title: 'Bolt Action Rifle Reload', from: 19.95, to: 20.8, kind: 'shot', fade: 0.15 },
-  { name: 'draw', freesound: 396331, author: 'nioczkus', title: '1911 Reload', from: 0.26, to: 0.6, kind: 'shot' },
+  { name: 'draw', freesound: 396331, author: 'nioczkus', title: '1911 Reload', from: 0.28, to: 0.6, kind: 'shot' },
   { name: 'whoosh', freesound: 60013, author: 'qubodup', title: 'Whoosh', from: 0, to: 0.43, kind: 'shot' },
   { name: 'boom', freesound: 235968, author: 'tommccann', title: 'Explosion_01.wav', from: 0, to: 5.0, kind: 'shot' },
   // Cover breaking.

@@ -1805,6 +1805,13 @@ notes the chunk it came from.
   the Poly Haven textures and sky, the animation library and the Freesound previews, 53 MB in all,
   in `scripts/originals`. The scripts download only what's missing there, and the browser test
   of the packed assets no longer skips without them.
+- **The "draw" sound starts late in its bank** (43): the browser test that every shot
+  starts on time failed on `draw`, loud only 63 ms in against the 45 ms allowed. It failed the
+  same at `7120c80`, before chunk 43 touched the sounds.
+  **Resolved** (2026-10-02): the cut started at a 5 ms click 10 ms before the slide's hit, just
+  loud enough to set the start. Opus at 40 kbps smears the click below that, so decoded the sound
+  only got loud at the hit. The cut now starts at 0.28 s in the recording, past the click, and
+  the early bank was re-packed; the draw starts on the slide itself.
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops
