@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { JOINT, JOINTS, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, Tumbler } from '../src/client/ragdoll.ts';
+import { JOINT, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, Tumbler } from '../src/client/ragdoll.ts';
 import { World } from '../src/shared/world.ts';
 import slumps from './slump.json' with { type: 'json' };
 
@@ -35,9 +35,9 @@ function solid(slope = 0, boxes: Box[] = []): Solid {
 }
 
 /** The slump moved by (dx, dy, dz). */
-function body(dx = 0, dy = 0, dz = 0, pack = true): Ragdoll {
+function body(dx = 0, dy = 0, dz = 0): Ragdoll {
   const move = (a: number[]) => a.map((v, i) => v + [dx, dy, dz][i % 3]);
-  return new Ragdoll(move(slump.now), move(slump.before), pack);
+  return new Ragdoll(move(slump.now), move(slump.before));
 }
 
 function rest(rag: Ragdoll | Tumbler, on: Solid, others: Ragdoll[] = []): void {
@@ -131,10 +131,6 @@ for (const [avatar, its] of Object.entries(slumps)) describe(`Ragdoll: ${avatar}
     rest(still, solid());
     rest(shoved, solid());
     expect(joint(shoved, JOINT.pelvis)[0] - joint(still, JOINT.pelvis)[0]).toBeGreaterThan(0.5);
-  });
-
-  it('leaves the pack out when there is none', () => {
-    expect(body(0, 0, 0, false).n).toBe(JOINTS.length - 1);
   });
 
   it('never bends a knee or an elbow backward, however it is thrown', () => {

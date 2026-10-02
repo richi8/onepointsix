@@ -42,7 +42,7 @@ describe('dropped magazines', () => {
   it('land on a body lying under them', () => {
     // The first avatar's.
     const slump = Object.values(slumps)[0];
-    const rag = new Ragdoll(slump.now, slump.before, true);
+    const rag = new Ragdoll(slump.now, slump.before);
     while (!rag.asleep) rag.step(FLAT, []);
     // The slump lies face down, rolled onto its right side: its left shoulder is uppermost.
     const top = JOINT.lShoulder * 3;

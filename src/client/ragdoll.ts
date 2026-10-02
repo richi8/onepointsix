@@ -34,8 +34,8 @@ export const JOINTS = [
   'pelvis', 'chest', 'head',
   'lShoulder', 'lElbow', 'lHand', 'rShoulder', 'rElbow', 'rHand',
   'lHip', 'lKnee', 'lAnkle', 'rHip', 'rKnee', 'rAnkle', 'lToe', 'rToe',
-  // An operator's pack.
-  'pack',
+  // Inside the back of the ribs, which keeps the chest and shoulders from folding flat.
+  'back',
 ] as const;
 export type Joint = (typeof JOINTS)[number];
 const J = Object.fromEntries(JOINTS.map((name, i) => [name, i])) as Record<Joint, number>;
@@ -46,14 +46,14 @@ const RADIUS: Record<Joint, number> = {
   pelvis: 0.13, chest: 0.13, head: 0.12,
   lShoulder: 0.08, lElbow: 0.06, lHand: 0.05, rShoulder: 0.08, rElbow: 0.06, rHand: 0.05,
   lHip: 0.09, lKnee: 0.07, lAnkle: 0.06, rHip: 0.09, rKnee: 0.07, rAnkle: 0.06, lToe: 0.04, rToe: 0.04,
-  pack: 0.1,
+  back: 0.08,
 };
 /** Heavier joints move less when a constraint pulls them: the trunk more than the hands. */
 const MASS: Record<Joint, number> = {
   pelvis: 3, chest: 3, head: 1.2,
   lShoulder: 1.5, lElbow: 0.8, lHand: 0.5, rShoulder: 1.5, rElbow: 0.8, rHand: 0.5,
   lHip: 1.5, lKnee: 1, lAnkle: 0.6, rHip: 1.5, rKnee: 1, rAnkle: 0.6, lToe: 0.3, rToe: 0.3,
-  pack: 1.5,
+  back: 1.5,
 };
 
 /** A distance between two balls: held (stiffness 0 to 1), or only kept from getting shorter or longer. */
@@ -349,15 +349,11 @@ export function stepAll(
 
 /**
  * A dead body. Starts from the joints' positions now and a moment before
- * (flat x, y, z triples in JOINTS order, the pack's left out when there's
- * none), so it carries on at the speed the death clip had it falling.
+ * (flat x, y, z triples in JOINTS order), so it carries on at the speed the death clip had it falling.
  */
 export class Ragdoll extends Verlet {
-  readonly pack: boolean;
-
-  constructor(now: ArrayLike<number>, before: ArrayLike<number>, pack: boolean) {
-    super(pack ? JOINTS.length : JOINTS.length - 1);
-    this.pack = pack;
+  constructor(now: ArrayLike<number>, before: ArrayLike<number>) {
+    super(JOINTS.length);
     this.pos.set(Array.from(now).slice(0, this.n * 3));
     this.prev.set(Array.from(before).slice(0, this.n * 3));
     for (let i = 0; i < this.n; i++) {
@@ -416,8 +412,8 @@ export class Ragdoll extends Verlet {
       apart(hand, chest, 0.17);
       apart(hand, head, 0.15);
     }
-    // The pack rides on the chest and shoulders, which hold their shape; tied to the hips too, it would fight the spine.
-    if (pack) for (const k of [chest, lShoulder, rShoulder]) this.link(J.pack, k);
+    // The back rides on the chest and shoulders, which hold their shape; tied to the hips too, it would fight the spine.
+    for (const k of [chest, lShoulder, rShoulder]) this.link(J.back, k);
     // How far the hinges are bent now: none is made to straighten further than it starts.
     const f = this.forward(new Float64Array(3));
     if (f) {

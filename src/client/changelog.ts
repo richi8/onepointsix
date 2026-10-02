@@ -14,9 +14,9 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     date: '2026-10-02',
     title: 'Every side looks its own',
     notes: [
-      'Operators are SWAT officers in black, men and women, with a pack on their back. Guards are soldiers in camouflage, helmets and loaded vests. Commanders are soldiers in caps, with a radio and its mast on their back.',
+      'Operators are SWAT officers in black, men and women. Guards are soldiers in camouflage, helmets and loaded vests. Commanders are soldiers in caps.',
       'Each side has several faces: two operators, five guards and three commanders, so an outpost\'s guards don\'t all look alike. The same island always dresses its people the same way.',
-      'The commanders\' red helmet band is gone: their caps and radio mast pick them out.',
+      'The operators\' pack and bedroll are gone, and so are the commanders\' red helmet band and the radio with its mast: their caps pick them out.',
     ],
   },
   {

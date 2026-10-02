@@ -858,12 +858,12 @@ notes the chunk it came from.
   operators and guards differ only by the operators' pack, and commanders by their red band and
   radio; chunk 42 gives each side its own avatars.
   **Resolved** (42, 2026-10-02): each side wears its own Rocketbox avatars, picked for each body
-  by the island's seed: operators are SWAT officers (`Police_Male_02`, `Police_Female_01`) with
-  the pack, guards soldiers in camouflage, helmets and vests (`Military_Male_01`, `_03`, `_04`,
+  by the island's seed: operators are SWAT officers (`Police_Male_02`, `Police_Female_01`), guards soldiers in camouflage, helmets and vests (`Military_Male_01`, `_03`, `_04`,
   `Military_Female_01`, `_02`), and commanders soldiers in caps (`Military_Male_02`, `_05`,
-  `_06`) with the radio and its mast; the red helmet band is gone. At 30 m, as the game frames it, the operator
-  is a black figure with a pack, the guard a bulky one in a helmet, and the commander a slimmer
-  one in a cap under the mast. The first avatar carries the clips, and the others' bones are
+  `_06`). The code-built kit is gone: the pack, the helmet band, the radio and its mast. At 30 m,
+  as the game frames it, the operator is a black figure, the guard a bulky one in a helmet and
+  vest, and the commander a slimmer one in a cap with a bare face; the last two are hard to tell
+  apart from the side. The first avatar carries the clips, and the others' bones are
   turned to play them (posed by them, Military_Female_01's skin lands within 0.01 mm of where
   its own retargeted clips put it).
 

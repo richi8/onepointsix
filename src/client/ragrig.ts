@@ -21,8 +21,8 @@ const DRIVEN = [
 type Driven = (typeof DRIVEN)[number];
 const D = Object.fromEntries(DRIVEN.map((name, i) => [name, i])) as Record<Driven, number>;
 
-/** Where the pack sits, from the chest bone, in the figure's space at rest (see Bodies.kit). */
-export const PACK_OFFSET = new THREE.Vector3(0, -0.18, 0.15);
+/** Where the ragdoll's back joint sits, from the chest bone, in the figure's space at rest: within the ribs. */
+const BACK_OFFSET = new THREE.Vector3(0, -0.1, 0.06);
 
 /**
  * The death clip's pose at the moment a ragdoll takes over, in the space of
@@ -47,7 +47,7 @@ export function slump(gltf: GLTF, scale: number, time: number): Slump {
   figure.add(turned);
   figure.updateMatrixWorld(true);
   const bones = findBones(model);
-  const packAt = bones.spine2.worldToLocal(bones.spine2.getWorldPosition(new THREE.Vector3()).add(PACK_OFFSET));
+  const backAt = bones.spine2.worldToLocal(bones.spine2.getWorldPosition(new THREE.Vector3()).add(BACK_OFFSET));
 
   const mixer = new THREE.AnimationMixer(model);
   const action = mixer.clipAction(clip(gltf.animations, 'Death')).setLoop(THREE.LoopOnce, 1);
@@ -75,7 +75,7 @@ export function slump(gltf: GLTF, scale: number, time: number): Slump {
     put(J.rAnkle, at(bones.rFoot));
     put(J.lToe, at(bones.lToeEnd));
     put(J.rToe, at(bones.rToeEnd));
-    put(J.pack, bones.spine2.localToWorld(packAt.clone()));
+    put(J.back, bones.spine2.localToWorld(backAt.clone()));
     return out;
   };
   mixer.update(time - RAGDOLL_STEP);

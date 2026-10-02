@@ -24,7 +24,7 @@ import {
 } from './handwork.ts';
 import { Litter } from './litter.ts';
 import { JOINT, type Living, RAGDOLL_STEP, Ragdoll, type Solid, stepAll, stepOf, Tumbler, type Verlet } from './ragdoll.ts';
-import { PACK_OFFSET, RagRig, type Slump, slump } from './ragrig.ts';
+import { RagRig, type Slump, slump } from './ragrig.ts';
 import {
   type Bones, curl, findBones, findHand, type Hand, moveWorld, orientHand, reach, rotateWorld, span, turnWorld, wristFor,
 } from './rig.ts';
@@ -40,9 +40,9 @@ import { REFLECTED } from './water.ts';
 // falls from its hands. Until then, bodies are drawn from the
 // hit volumes themselves. Either way the head is kept on its hitbox, so what
 // you see is what you hit.
-// Sides are told apart by shape: operators are SWAT officers with a pack,
-// guards soldiers in helmets, and commanders soldiers in caps with a radio and
-// its mast on their back, each body's avatar picked by the island's seed.
+// Sides are told apart by their avatars: operators are SWAT officers, guards
+// soldiers in helmets, and commanders soldiers in caps, each body's picked by
+// the island's seed.
 // Each soldier is drawn in two draw calls a pass: its body with its kit as
 // one skinned mesh, and its gun with its flashlight and suppressor (see
 // baked.ts). They take the world's shadows everywhere and cast them as far as
@@ -56,8 +56,6 @@ const MUZZLE_TIME = 0.05;
 const HEAD = 0xd8c3a0;
 const TORSO: Record<Team, number> = { operator: 0x3f556e, guard: 0x5a6638 };
 const LEGS: Record<Team, number> = { operator: 0x2e3238, guard: 0x4a4636 };
-const PACK = 0x3a3d33;
-const MAST = 0x1c1c1c;
 const GUN = 0x2a2c2e;
 const CAN = 0x1e2022;
 /** Beyond this, soldiers animate at a lower rate and skip fine posing. */
@@ -366,8 +364,6 @@ interface Soldier {
   nade: THREE.Object3D;
   fresh: THREE.Mesh;
   round: THREE.Mesh;
-  /** Whether it wears an operator's pack, kept out of the ground when it lies on it. */
-  pack: boolean;
   /**
    * The pose the animation last wrote to the bones we adjust. The mixer only
    * writes a bone when its animated value changes, so our adjustments are
@@ -416,8 +412,8 @@ interface Avatar {
   reactions: Reactions;
   /** The death clip's pose where the ragdoll takes over. */
   slump: Slump;
-  /** Its merged geometry for each side's kit. */
-  looks: Map<Side, THREE.BufferGeometry>;
+  /** Its meshes merged into one geometry, once a body has worn it. */
+  look: THREE.BufferGeometry | null;
 }
 
 interface Reactions {
@@ -846,8 +842,8 @@ export class Bodies {
     const bones = findBones(model);
     const meshes: THREE.SkinnedMesh[] = [];
     model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && meshes.push(o as THREE.SkinnedMesh));
-    let geometry = avatar.looks.get(side);
-    if (!geometry) avatar.looks.set(side, (geometry = look(meshes, bones, f.group, side)));
+    avatar.look ??= look(meshes);
+    const geometry = avatar.look;
     const body = meshes[0];
     for (const m of meshes.slice(1)) m.removeFromParent();
     body.geometry = geometry;
@@ -897,14 +893,13 @@ export class Bodies {
       m.visible = false;
       f.group.add(m);
     }
-    const pack = side === 'operator';
     const animated = Object.values(bones).map((bone) => ({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }));
     const r = avatar.reactions;
     const foothold = (): Foothold => ({
       clip: new THREE.Vector3(), turn: new THREE.Quaternion(), at: null, offset: new THREE.Vector3(), last: new THREE.Vector3(), rise: 0,
     });
     return {
-      avatar, mixer, idle, walk, run, crouchIdle, crouchWalk, crouchRun, jump, airborne, land, death, bones, hands, nade, fresh, round, pack, animated,
+      avatar, mixer, idle, walk, run, crouchIdle, crouchWalk, crouchRun, jump, airborne, land, death, bones, hands, nade, fresh, round, animated,
       reacting: [r.shot, r.hit, r.hitHead].map((reaction) => reaction.bones(model)),
       // The figure faces -z, as it stands at rest.
       chest: new THREE.Vector3(0, 0, -1).transformDirection(M_A.copy(bones.spine2.matrixWorld).invert()),
@@ -1217,7 +1212,7 @@ export class Bodies {
       for (let i = 0; i < from.length; i += 3) out.push(...V_TMP.fromArray(from, i).applyMatrix4(m).toArray());
       return out;
     };
-    const rag = new Ragdoll(place(s.now), place(s.before), !!f.soldier?.pack);
+    const rag = new Ragdoll(place(s.now), place(s.before));
     const [dx, dy, dz] = d.dir;
     if (d.weapon === GRENADE) {
       for (let i = 0; i < rag.n; i++) rag.push(i, dx * BLAST, Math.max(dy, 0) * BLAST + BLAST_LIFT, dz * BLAST);
@@ -1977,7 +1972,7 @@ function avatar(reference: GLTF, model: GLTF): Avatar {
   const scale = PLAYER_HEIGHT / (box.max.y - box.min.y);
   const speed = (name: string): number => gaitSpeed(model.scene, clip(animations, name)) * scale;
   return {
-    gltf, scale, deathYaw: deathDirection(gltf), slump: slump(gltf, scale, HANDOFF), looks: new Map(),
+    gltf, scale, deathYaw: deathDirection(gltf), slump: slump(gltf, scale, HANDOFF), look: null,
     gait: { walk: speed('Walk'), run: speed('Run'), crouch: speed('CrouchWalk'), crouchRun: speed('CrouchRun') },
     reactions: {
       shot: new Reaction(clip(animations, 'Shoot')),
@@ -2006,13 +2001,8 @@ function deathDirection(gltf: GLTF): number {
   return Math.atan2(head.x, head.z);
 }
 
-/**
- * The soldier's `meshes` merged into the first one's geometry, with the kit
- * its avatar doesn't wear: a pack on operators, and a radio with its mast on
- * commanders. The kit is placed on the model at rest, standing in `frame` (a
- * figure), each piece skinned wholly to the bone that carries it.
- */
-function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, side: Side): THREE.BufferGeometry {
+/** The soldier's `meshes` merged into the first one's geometry. */
+function look(meshes: THREE.SkinnedMesh[]): THREE.BufferGeometry {
   const body = meshes[0];
   const skeleton = body.skeleton.bones;
   // A skinned vertex v ends up at bone.matrixWorld * boneInverse * bindMatrix * v; `bind` is the last two.
@@ -2045,36 +2035,6 @@ function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, 
     parts.push(p);
   }
 
-  // Kit, placed in the figure's space at rest facing -z, then carried by a bone.
-  const chest = frame.worldToLocal(bones.spine2.getWorldPosition(new THREE.Vector3()));
-  const wear = (geometry: THREE.BufferGeometry, hex: number, roughness: number, bone: THREE.Object3D, x: number, y: number, z: number, roll = 0): void => {
-    const j = skeleton.indexOf(bone as THREE.Bone);
-    const at = new THREE.Matrix4().compose(
-      new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(V_BACK, roll), new THREE.Vector3(1, 1, 1),
-    ).premultiply(frame.matrixWorld);
-    // Solve bone.matrixWorld * bind * v = at * kit for v.
-    geometry.applyMatrix4(bind(body, j).invert().multiply(bone.matrixWorld.clone().invert()).multiply(at));
-    const n = geometry.getAttribute('position').count;
-    const index = new Uint16Array(n * 4);
-    const weight = new Float32Array(n * 4);
-    for (let i = 0; i < n; i++) {
-      index[i * 4] = j;
-      weight[i * 4] = 1;
-    }
-    geometry.setAttribute('skinIndex', new THREE.BufferAttribute(index, 4));
-    geometry.setAttribute('skinWeight', new THREE.BufferAttribute(weight, 4));
-    // Off the texture: plain colour (see atlas).
-    geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2).fill(-1), 2));
-    parts.push(part(geometry, hex, roughness));
-  };
-  if (side === 'operator') {
-    wear(new THREE.BoxGeometry(0.3, 0.4, 0.16), PACK, 0.9, bones.spine2, chest.x + PACK_OFFSET.x, chest.y + PACK_OFFSET.y, chest.z + PACK_OFFSET.z);
-    wear(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10).rotateZ(Math.PI / 2), PACK, 0.9, bones.spine2, chest.x, chest.y + PACK_OFFSET.y + 0.23, chest.z + PACK_OFFSET.z + 0.02);
-  }
-  if (side === 'commander') {
-    wear(new THREE.CylinderGeometry(0.006, 0.01, 0.7, 5), MAST, 0.6, bones.spine2, chest.x - 0.1, chest.y + 0.3, chest.z + 0.2, 0.12);
-    wear(new THREE.BoxGeometry(0.2, 0.28, 0.12), MAST, 0.6, bones.spine2, chest.x, chest.y - 0.05, chest.z + 0.18);
-  }
   return mergeParts(parts, ['skinIndex', 'skinWeight', 'uv']);
 }
 
@@ -2132,7 +2092,6 @@ function flashWhereHit(m: THREE.MeshStandardMaterial, hit: { value: THREE.Vector
 
 const SHADOW_SPHERE = new THREE.Sphere();
 const V_UP = new THREE.Vector3(0, 1, 0);
-const V_BACK = new THREE.Vector3(0, 0, 1);
 const V_RIGHT = new THREE.Vector3();
 const V_FORWARD = new THREE.Vector3();
 const V_MUZZLE = new THREE.Vector3();
