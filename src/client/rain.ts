@@ -10,8 +10,7 @@ import { ISLAND_GLSL, islandUniforms, shelters } from './islandmap.ts';
 // the rain along; the vertex shader does all the moving, so the streaks cost
 // one draw call and no work on the CPU. A sharp map of the roofs round the
 // camera, and the island's coarser one farther off, keep the rain, its
-// splashes and the wet off whatever is under one. Flashlight beams near the
-// camera light the drops in them.
+// splashes and the wet off whatever is under one.
 
 const DROPS = 9000;
 /** Metres across and high of the box of rain round the camera. */
@@ -42,35 +41,6 @@ const STRIKE_GAP: [number, number] = [18, 55];
 /** Metres off a strike lands, nearest and farthest. */
 const STRIKE_NEAR = 700;
 const STRIKE_FAR = 4500;
-
-/** Flashlight beams that light the drops in them: yours and the nearest others'. */
-export const RAIN_TORCHES = 4;
-
-/** The beams lighting the drops: where each comes from (w 1 if lit) and which way it points. */
-const torchUniforms = {
-  torchFrom: { value: Array.from({ length: RAIN_TORCHES }, () => new THREE.Vector4()) },
-  torchDir: { value: Array.from({ length: RAIN_TORCHES }, () => new THREE.Vector3(0, 0, -1)) },
-};
-
-/** GLSL: `inBeam(p)`, how brightly the flashlights light world point `p`, 0 to 1; and the beam's colour. */
-const TORCH_GLSL = /* glsl */ `
-  uniform vec4 torchFrom[${RAIN_TORCHES}];
-  uniform vec3 torchDir[${RAIN_TORCHES}];
-  float inBeam(vec3 p) {
-    float lit = 0.0;
-    for (int i = 0; i < ${RAIN_TORCHES}; i++) {
-      if (torchFrom[i].w <= 0.0) break;
-      vec3 to = p - torchFrom[i].xyz;
-      float d = length(to);
-      float cone = smoothstep(${Math.cos(0.34).toFixed(4)}, ${Math.cos(0.2).toFixed(4)}, dot(to / d, torchDir[i]));
-      lit += cone * (1.0 - smoothstep(3.0, 22.0, d));
-    }
-    return min(lit, 1.0);
-  }
-`;
-
-/** GLSL: the colour a flashlight's beam lends what it lights. */
-const BEAM_GLSL = 'const vec3 BEAM_COLOR = vec3(1.0, 0.95, 0.87);';
 
 /**
  * Uniforms shared by the rain and every material that gets wet: the roof
@@ -355,7 +325,6 @@ export class Rain implements Shelter {
         center: { value: new THREE.Vector3() },
         time: { value: 0 },
         color: { value: new THREE.Color() },
-        ...torchUniforms,
         ...rainUniforms,
       },
       vertexShader: /* glsl */ `
@@ -364,9 +333,7 @@ export class Rain implements Shelter {
         attribute vec3 seed;
         varying float vFade;
         varying float vAcross;
-        varying float vLit;
         ${ROOF_GLSL}
-        ${TORCH_GLSL}
         const vec3 box = vec3(${BOX.toFixed(1)}, ${HEIGHT.toFixed(1)}, ${BOX.toFixed(1)});
         const vec3 fall = vec3(${FALL.x.toFixed(2)}, ${FALL.y.toFixed(2)}, ${FALL.z.toFixed(2)});
         void main() {
@@ -384,19 +351,15 @@ export class Rain implements Shelter {
           // Thin out far off and right in front of the eye, and none under a roof.
           vFade = smoothstep(${(BOX / 2).toFixed(1)}, ${(BOX / 5).toFixed(1)}, d) * smoothstep(0.4, 1.8, d) * (1.0 - underRoof(p));
           vAcross = position.x;
-          vLit = inBeam(p);
           gl_Position = projectionMatrix * view;
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 color;
         varying float vFade;
         varying float vAcross;
-        varying float vLit;
-        ${BEAM_GLSL}
         void main() {
           if (vFade <= 0.0) discard;
-          // Drops in a flashlight's beam glint.
-          gl_FragColor = vec4(color + BEAM_COLOR * vLit * 1.6, (0.34 + 0.6 * vLit) * vFade * (1.0 - vAcross * vAcross));
+          gl_FragColor = vec4(color, 0.34 * vFade * (1.0 - vAcross * vAcross));
           #include <colorspace_fragment>
         }`,
       transparent: true,
@@ -414,17 +377,14 @@ export class Rain implements Shelter {
     splashGeo.setAttribute('position', this.splashPos);
     splashGeo.setAttribute('born', this.splashBorn);
     this.splashMaterial = new THREE.ShaderMaterial({
-      uniforms: { time: { value: 0 }, color: { value: new THREE.Color() }, scale: { value: 600 }, ...torchUniforms },
+      uniforms: { time: { value: 0 }, color: { value: new THREE.Color() }, scale: { value: 600 } },
       vertexShader: /* glsl */ `
         uniform float time;
         uniform float scale;
         attribute float born;
         varying float vAge;
-        varying float vLit;
-        ${TORCH_GLSL}
         void main() {
           vAge = (time - born) / ${SPLASH_LIFE.toFixed(2)};
-          vLit = inBeam(position);
           vec4 view = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * view;
           // A splash about 12 cm across, growing as it goes; scale is pixels per metre a metre off.
@@ -433,17 +393,15 @@ export class Rain implements Shelter {
       fragmentShader: /* glsl */ `
         uniform vec3 color;
         varying float vAge;
-        varying float vLit;
-        ${BEAM_GLSL}
         void main() {
           // A crown of spray: a flattened ring, brightest along its bottom edge.
           vec2 c = gl_PointCoord * 2.0 - 1.0;
           c.y *= 2.2;
           float r = length(c);
           float ring = smoothstep(0.55, 0.85, r) * smoothstep(1.0, 0.85, r) * step(-0.2, c.y);
-          float a = ring * (1.0 - vAge) * (0.55 + 0.4 * vLit);
+          float a = ring * (1.0 - vAge) * 0.55;
           if (a < 0.01) discard;
-          gl_FragColor = vec4(color + BEAM_COLOR * vLit, a);
+          gl_FragColor = vec4(color, a);
           #include <colorspace_fragment>
         }`,
       transparent: true,
@@ -481,18 +439,6 @@ export class Rain implements Shelter {
       if (b.maxY > y && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && shelters(p)) return true;
     }
     return false;
-  }
-
-  /** The lit flashlights nearest the camera, yours first if it's on, for the drops caught in their beams. */
-  torches(lit: readonly { at: THREE.Vector3; dir: THREE.Vector3 }[]): void {
-    const { torchFrom, torchDir } = torchUniforms;
-    for (let i = 0; i < RAIN_TORCHES; i++) {
-      const t = this.on ? lit[i] : undefined;
-      if (t) {
-        torchFrom.value[i].set(t.at.x, t.at.y, t.at.z, 1);
-        torchDir.value[i].copy(t.dir);
-      } else torchFrom.value[i].w = 0;
-    }
   }
 
   /** A roof may have broken: the roof map is made again. */

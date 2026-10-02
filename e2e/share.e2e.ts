@@ -6,7 +6,8 @@ import { copyLinks, open, seedBoard } from './game.ts';
 test('Share link copies the island, mode and your best to beat', async ({ page }) => {
   await copyLinks(page);
   await seedBoard(page, DEFAULT_WORLD.seed, 'offline', [{ name: 'Ana', score: 9100, date: '2026-09-20' }]);
-  await open(page, '?time=night');
+  // An old link's time of day isn't passed on.
+  await open(page, '?time=night&weather=fog');
   await page.click('#modes [data-mode=offline]');
   await page.click('#share-island');
   await expect(page.locator('#toast')).toHaveText('Link copied. Send it to a friend.');
@@ -15,7 +16,7 @@ test('Share link copies the island, mode and your best to beat', async ({ page }
   const url = new URL(copied[0]);
   expect(url.origin + url.pathname).toBe(new URL(page.url()).origin + '/');
   expect(parseShareLink(url.search)).toEqual({
-    world: { ...DEFAULT_WORLD, time: 'night' },
+    world: { ...DEFAULT_WORLD, weather: 'fog' },
     mode: 'offline',
     challenge: { name: 'Ana', score: 9100 },
   });

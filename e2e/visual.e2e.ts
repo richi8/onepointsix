@@ -50,29 +50,21 @@ for (const [name, cam] of Object.entries(SPOTS)) {
   });
 }
 
-test('island: indoor at dusk', async ({ page }) => {
-  await spot(page, SPOTS.indoor, '&time=dusk');
-  await expect(page).toHaveScreenshot('indoor-dusk.png');
-});
-
-// An inside corner of that building, the low sun on the wall beside it: no line
+// An inside corner of that building, the sun on the wall beside it: no line
 // of sun down the seam where the walls meet. The line is thin, about 900
 // pixels and dim, so this one is held closer than the rest.
-test('island: inside corner at dusk', async ({ page }) => {
-  await spot(page, '-64.37,17.76,41.2,-65.78,17.56,42.92', '&time=dusk');
-  await expect(page).toHaveScreenshot('corner-dusk.png', { maxDiffPixels: 100, threshold: 0.05 });
+test('island: inside corner', async ({ page }) => {
+  await spot(page, '-64.37,17.76,41.2,-65.78,17.56,42.92');
+  await expect(page).toHaveScreenshot('corner.png', { maxDiffPixels: 100, threshold: 0.05 });
 });
 
-// Outside an outpost at eye height, a lamp on its wall, in each light and
-// weather but a clear day: the sky, sun and fog of each, the rain (frozen),
-// and at night your own flashlight lit and the lamps.
+// Outside an outpost at eye height, in each weather: the sky, sun and fog of
+// each, and the rain (frozen).
 const OUTSIDE = 'o0,-25,1.7,-25,0,1.5,0';
 const CONDITIONS: Record<string, string> = {
-  dusk: '&time=dusk',
+  clear: '',
   rain: '&weather=rain',
   fog: '&weather=fog',
-  night: '&time=night&torch',
-  'night-rain': '&time=night&weather=rain&torch',
 };
 
 for (const [name, query] of Object.entries(CONDITIONS)) {
@@ -82,18 +74,16 @@ for (const [name, query] of Object.entries(CONDITIONS)) {
   });
 }
 
-// Chunk 36, the outpost's lamps at night: outside the wall behind one, which
-// keeps its light in (it used to light a strip of ground out there); the yard
-// from above, the lamps' shadows cast by crates and the watchtower; and the
-// yard under a lamp on a rainy night, wet, with puddles on the level ground.
-const LAMPS: Record<string, string> = {
-  'lamp-behind-wall': 'o0,-22,2.2,-9,-15.5,0.3,-5&time=night',
-  'lamp-yard': 'o0,0,16,-22,2,0,4&time=night',
-  'lamp-wet': 'o0,2,1.7,-8,11,0,-4&time=night&weather=rain',
+// An outpost's yard from above, the shadows cast by crates and the
+// watchtower; and the yard on the ground in the rain, wet, with puddles on
+// the level ground.
+const YARD: Record<string, string> = {
+  yard: 'o0,0,16,-22,2,0,4',
+  'yard-wet': 'o0,2,1.7,-8,11,0,-4&weather=rain',
 };
 
-for (const [name, query] of Object.entries(LAMPS)) {
-  test(`lamps: ${name}`, async ({ page }) => {
+for (const [name, query] of Object.entries(YARD)) {
+  test(`yard: ${name}`, async ({ page }) => {
     const [cam, ...rest] = query.split('&');
     await spot(page, cam, rest.map((r) => `&${r}`).join(''));
     await expect(page).toHaveScreenshot(`${name}.png`);

@@ -23,8 +23,8 @@ interface Bench {
   /** Missing from baselines older than chunk 21; its frame and calls, older than chunk 32. */
   distant?: { bodies: Stats; frame?: Stats; calls?: number };
   groundCover: { first: Stats; again: Stats };
-  /** Missing from baselines older than chunk 25. */
-  night?: { frame: Stats; calls: number; triangles: number };
+  /** Missing from baselines older than chunk 43. */
+  rain?: { frame: Stats; calls: number; triangles: number };
 }
 
 const results: Record<string, Bench> = {};
@@ -99,8 +99,8 @@ test.afterAll(() => {
       `    ground cover, new    ${was(b.groundCover.first.median, o?.groundCover.first.median)} / ${was(b.groundCover.first.p95, o?.groundCover.first.p95)}` +
         `   (max ${b.groundCover.first.max})`,
       `    ground cover, again  ${was(b.groundCover.again.median, o?.groundCover.again.median)} / ${was(b.groundCover.again.p95, o?.groundCover.again.p95)}`,
-      `    rainy night, lit     ${was(b.night!.frame.median, o?.night?.frame.median)} / ${was(b.night!.frame.p95, o?.night?.frame.p95)}` +
-        `   ${b.night!.calls} draw calls, ${Math.round(b.night!.triangles / 1000)}k triangles`,
+      `    in the rain          ${was(b.rain!.frame.median, o?.rain?.frame.median)} / ${was(b.rain!.frame.p95, o?.rain?.frame.p95)}` +
+        `   ${b.rain!.calls} draw calls, ${Math.round(b.rain!.triangles / 1000)}k triangles`,
     );
   }
   if (adaptive) {

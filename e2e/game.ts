@@ -39,9 +39,7 @@ interface Game {
   sfx: Sfx;
   world: unknown;
   camera: { matrixWorld: { elements: number[] }; updateMatrixWorld(): void };
-  input: { yaw: number; pitch: number; freedAt: number; light: boolean };
-  /** Your own flashlight's spotlight is private to the class, but there to read. */
-  flashlights: { own: { intensity: number } };
+  input: { yaw: number; pitch: number; freedAt: number };
 }
 
 declare global {

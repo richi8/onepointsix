@@ -1,4 +1,4 @@
-import { TIMES, WEATHERS, type TimeOfDay, type Weather } from '../shared/conditions.ts';
+import { WEATHERS, type Weather } from '../shared/conditions.ts';
 import type { Mode } from '../shared/protocol.ts';
 
 /** Scores kept per island and mode. */
@@ -9,8 +9,11 @@ export interface BoardEntry {
   score: number;
   /** When it was set, as YYYY-MM-DD. */
   date: string;
-  /** The conditions it was set in; scores from before they were kept have none. */
-  time?: TimeOfDay;
+  /**
+   * The weather it was set in; scores from before it was kept have none.
+   * Scores set before the game was day only also keep a time of day, which
+   * isn't read: they count as set by day.
+   */
   weather?: Weather;
 }
 
@@ -23,8 +26,8 @@ export interface KeyValue {
 /**
  * The best runs on each island, per mode, kept in this browser only. With no
  * backend there's nothing to compare against but your own runs and the score
- * a share link brought. One board takes every time of day and weather, and
- * each score keeps the conditions it was set in.
+ * a share link brought. One board takes every weather, and each score
+ * keeps the weather it was set in.
  */
 export class Leaderboard {
   private readonly store: KeyValue | null;
@@ -42,10 +45,7 @@ export class Leaderboard {
       if (!Array.isArray(raw)) return [];
       return raw.filter((e): e is BoardEntry =>
         !!e && typeof e.name === 'string' && typeof e.score === 'number' && typeof e.date === 'string')
-        .map(({ name, score, date, time, weather }) => ({
-          name, score, date,
-          ...(TIMES.includes(time!) && WEATHERS.includes(weather!) ? { time, weather } : {}),
-        }));
+        .map(({ name, score, date, weather }) => ({ name, score, date, ...(WEATHERS.includes(weather!) ? { weather } : {}) }));
     } catch {
       return [];
     }

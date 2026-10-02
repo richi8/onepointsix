@@ -9,7 +9,7 @@ import { onTiles } from './terrain.ts';
 // collide as: a crate with battens along its edges and a brace across each
 // side, a fence of boards nailed to two rails between posts, a door leaf of
 // stiles and rails round a sunken panel with a handle each side, a table on
-// four legs, a stair's step with a tread on it, a lamp's sloped housing, a window's sill standing out from the wall and a frame round its
+// four legs, a stair's step with a tread on it, a window's sill standing out from the wall and a frame round its
 // glass. Walls, posts, roofs and floors are concrete and steel slabs, and stay boxes.
 //
 // Each shape is one geometry stretched over its prop's box, but its parts keep
@@ -18,7 +18,7 @@ import { onTiles } from './terrain.ts';
 // instance's scale in the shader. A batten is 9 cm wide on a crate of any size.
 
 /** How each prop is drawn. `glass` is see-through and drawn apart, with its frame. */
-type Shape = 'box' | 'crate' | 'fence' | 'door' | 'table' | 'step' | 'lamp' | 'sill' | 'glass' | 'frame';
+type Shape = 'box' | 'crate' | 'fence' | 'door' | 'table' | 'step' | 'sill' | 'glass' | 'frame';
 
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
 const TURN = new THREE.Matrix4().makeRotationY(Math.PI / 2);
@@ -154,17 +154,6 @@ function step(): THREE.BufferGeometry {
   return s.geometry();
 }
 
-/** A lamp's housing: a rim round the bulb and a shade sloping up from it to a narrower top. */
-function lamp(): THREE.BufferGeometry {
-  const s = new Slices();
-  s.box(lo(0), lo(0), lo(0), hi(0), lo(0.05), hi(0), 0.8);
-  s.hexa((sx, sy, sz) => {
-    const inset = sy < 0 ? 0.02 : 0.15;
-    return [sx < 0 ? lo(inset) : hi(inset), sy < 0 ? lo(0.05) : hi(0), sz < 0 ? lo(inset) : hi(inset)];
-  });
-  return s.geometry();
-}
-
 /** The wall under a window, along x: a sill on top standing out a little from both faces. */
 function sill(): THREE.BufferGeometry {
   const s = new Slices();
@@ -193,7 +182,7 @@ function plain(): THREE.BufferGeometry {
   return s.geometry();
 }
 
-const GEOMETRY: Record<Shape, () => THREE.BufferGeometry> = { box: plain, crate, fence, door, table, step, lamp, sill, glass: plain, frame };
+const GEOMETRY: Record<Shape, () => THREE.BufferGeometry> = { box: plain, crate, fence, door, table, step, sill, glass: plain, frame };
 
 /** The window frames' colour: flat, and as a tint over the boards once textured. */
 export const FRAME_COLOR = 0x8a8478;
@@ -206,7 +195,6 @@ function shapeOf(world: World, i: number, sills: Set<number>): Shape {
   if (p.style === 'crate') return 'crate';
   if (p.style === 'fence') return 'fence';
   if (p.style === 'door') return 'door';
-  if (p.style === 'lamp') return 'lamp';
   if (p.panel >= 0 && world.panels[p.panel].kind === 'timber') return p.box.walk ? 'step' : 'table';
   if (p.panel >= 0 && sills.has(p.panel)) return 'sill';
   return 'box';

@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'Always day',
+    notes: [
+      'The island is played by day only: dusk and night are gone, and the menu picks just the weather. Soon the weather will turn during a game instead, from clear to rain or fog and back.',
+      'With the dark gone, so are the flashlights (no more T), the outposts\' lamps, and night\'s extra, tougher guards and richer crates. The crickets went with the night.',
+      'Old links and scores that came from dusk or night still work: they open by day, in their weather.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'No more New island',
     notes: [
       'The menu\'s New island button is gone. Islands will be picked for you: soon Play will put you in the first open game in your time of day and weather, on a freshly made island. Shared links still open their island.',

@@ -36,9 +36,9 @@ export class Directory {
     const { options, capacity } = MODES[mode];
     const found = this.games.find((g) => sameWorld(g.world, world) && g.mode === mode && g.server.humans() < capacity);
     if (found) return found.server;
-    const { time, weather } = world;
-    const server = new GameServer(world.seed, { ...options, conditions: { time, weather } });
-    this.games.push({ world: { seed: server.seed, time, weather }, mode, server, idle: 0 });
+    const { weather } = world;
+    const server = new GameServer(world.seed, { ...options, conditions: { weather } });
+    this.games.push({ world: { seed: server.seed, weather }, mode, server, idle: 0 });
     return server;
   }
 

@@ -11,7 +11,7 @@ test('your own sounds are in before the menu shows, and the ambience soon after'
   await open(page);
   const early = await page.evaluate(() => ['rifle', 'pistol', 'bolt', 'grass'].filter((k) => window.game.sfx.clips[k]));
   expect(early).toEqual(['rifle', 'pistol', 'bolt', 'grass']);
-  await page.waitForFunction(() => ['wind', 'sea', 'birds', 'rain', 'crickets'].every((k) => window.game.sfx.clips[k]));
+  await page.waitForFunction(() => ['wind', 'sea', 'birds', 'rain'].every((k) => window.game.sfx.clips[k]));
 });
 
 test('every shot starts on time in the decoded sound banks', async ({ page }) => {

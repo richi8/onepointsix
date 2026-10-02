@@ -20,10 +20,10 @@ import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
 import type { Senses } from '../shared/conditions.ts';
 import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
-import { eyePosition, type PlayerState } from '../shared/sim.ts';
+import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import { type Bush, CONCEALED, VEG_CELL, bagShows, vegetationOf } from '../shared/vegetation.ts';
-import { inBuilding, lampShine, type Lamp, type Point, type World } from '../shared/world.ts';
+import { inBuilding, type Point, type World } from '../shared/world.ts';
 import type { ExtractPoint } from './extracts.ts';
 import { reached, type NavGrid, type Waypoint } from './nav.ts';
 import { TEMPERS, type Personality, type Temper } from './personality.ts';
@@ -31,8 +31,8 @@ import type { Skill } from './skill.ts';
 import type { ActorSpec } from './range.ts';
 
 // A bot is a player without a keyboard. It perceives the world through the
-// same senses for everyone (sight limited by range, view cone, cover, the dark
-// and the weather; hearing of footsteps, gunfire and rounds passing close),
+// same senses for everyone (sight limited by range, view cone, cover and the
+// weather; hearing of footsteps, gunfire and rounds passing close),
 // decides what to do
 // with a small state machine, and acts only by producing input commands that
 // the server simulates exactly like a human's.
@@ -41,8 +41,6 @@ import type { ActorSpec } from './range.ts';
 export interface Agent extends PlayerState {
   readonly id: number;
   team: Team;
-  /** Their flashlight is on. */
-  light?: boolean;
 }
 
 export interface Post extends Point {
@@ -109,10 +107,6 @@ export interface BotContext {
   bounty: number;
   /** Bags on the ground and what's in them. */
   bags(): readonly BagSnap[];
-  /** Where someone's lit flashlight lands, as beamSpot; the server works each out once a tick. */
-  beam?(a: Agent): Point | null;
-  /** Whether someone stands in a lamp's light; the server works each out once a tick. */
-  lamplit?(a: Agent): boolean;
   /** What the loot someone carries is worth. */
   carried?(a: Agent): number;
 }
@@ -120,27 +114,6 @@ export interface BotContext {
 /** Someone's health as a share of their full health; guards have less than operators. */
 function health(a: Agent | undefined): number {
   return a ? a.hp / (a.team === 'guard' ? GUARD_HP : MAX_HP) : 1;
-}
-
-/**
- * Where the beam of `a`'s flashlight lands on the ground or a wall, pulled a
- * little back toward them, or null if it reaches nothing close enough to light.
- */
-export function beamSpot(world: World, a: Agent): Point | null {
-  const eye = eyePosition(world, a.x, a.y, a.z, a.yaw, a.duck, a.lean);
-  const cp = Math.cos(a.pitch);
-  const dx = -Math.sin(a.yaw) * cp;
-  const dy = Math.sin(a.pitch);
-  const dz = -Math.cos(a.yaw) * cp;
-  const t = world.raycast(eye.x, eye.y, eye.z, dx, dy, dz, BEAM_THROW, true);
-  if (t > BEAM_THROW) return null;
-  const k = Math.max(t - 0.15, 0);
-  return { x: eye.x + dx * k, y: eye.y + dy * k, z: eye.z + dz * k };
-}
-
-/** Just under a lamp's housing: in sight from where a round meets it. */
-function lampTarget(l: Lamp): Point {
-  return { x: l.hx, y: l.hy - 0.1, z: l.hz };
 }
 
 /** Whether a would shoot b. Operators are each on their own side; guards stick together. */
@@ -157,31 +130,6 @@ const TOUCH_RANGE = 3;
 const CROUCH_SIGHT = 0.65;
 /** Awareness lost per second by a half-noticed target out of sight. */
 const AWARENESS_DECAY = 0.25;
-/**
- * In the dark a lit flashlight shows from this many times the sight range for
- * someone unlit, up to the range the weather allows; a muzzle flash does too.
- * Someone in a bot's own beam this close is seen as if by day.
- */
-const LIGHT_REACH = 2.5;
-const BEAM_RANGE = 40;
-/** Half-angle of a flashlight's beam, radians. */
-export const BEAM_ANGLE = 0.3;
-/** How far a flashlight lights a surface brightly enough to be noticed, metres. */
-export const BEAM_THROW = 30;
-/** Metres off where a lit patch's holder is guessed to be, per metre from the patch to them. */
-const BEAM_GUESS = 0.25;
-/** Operator bots switch their flashlight off this close to an outpost, and whenever they aren't just going about their run. */
-const OPERATOR_DARK = 110;
-/**
- * After dark, an operator searching a crate or waiting in a spot that a lamp
- * lights shoots the lamp out first, from at most this far, when it has seen
- * nobody for LAMP_CALM seconds; it looks again every LAMP_LOOK seconds and
- * gives up on a lamp after LAMP_TRY.
- */
-const LAMP_SHOT = 35;
-const LAMP_CALM = 10;
-const LAMP_LOOK = 1;
-const LAMP_TRY = 5;
 /** Footstep hearing ranges: sprinting and walking. Crouch-walking is silent. */
 const STEPS_SPRINT = 22;
 const STEPS_WALK = 9;
@@ -361,9 +309,6 @@ export const tally = {
   slams: 0,
   /** Thinks spent up on a floor off the ground: upstairs or on a watchtower, sentries left out. */
   upThinks: 0,
-  /** Lamps an operator set about shooting out, and paths it looked for keeping out of lamplight. */
-  lampsAimed: 0,
-  shyPaths: 0,
 };
 
 /** A place to go to, and whether it's in a bush, where it has to be reached more exactly. */
@@ -451,10 +396,6 @@ export class Bot {
   private use: 'hold' | 'tap' | null = null;
   /** The doorway it's in or just came through: a leaf of it, and which side of it it came from. */
   private doorway: { id: number; side: number } | null = null;
-  /** A lamp it's shooting out, by index, or -1; when it gives up on it, and when it next looks for one. */
-  private lampAim = -1;
-  private lampUntil = 0;
-  private lampLook = 0;
 
   // Plans.
   private step = 0;
@@ -635,7 +576,6 @@ export class Bot {
     this.perceive(ctx, self, dt);
     this.decide(ctx, self);
     this.behave(ctx, self);
-    this.lamps(ctx, self);
     this.checkStuck(self, dt);
     this.doors(ctx, self);
     if (this.role.kind !== 'sentry' && self.y > ctx.world.floorHeight(self.x, self.z) + 2) tally.upThinks++;
@@ -703,17 +643,9 @@ export class Bot {
     for (const a of ctx.agents) {
       if (a.dead || !hostile(self, a)) continue;
       const d = Math.hypot(a.x - self.x, a.z - self.z);
-      // In the dark, a light or a muzzle flash gives someone away from far off,
-      // and anyone in a bot's own beam or under an outpost's lamp is as plain as by day.
       const flash = a.sinceShot < 1 && !a.suppressed[a.weapon];
       const senses = ctx.senses;
-      const lit = senses.dark && (a.light || flash);
-      const beamed = senses.dark && (
-        (!!self.light && d < BEAM_RANGE && Math.abs(angleDiff(yawToward(self.x, self.z, a.x, a.z), this.yaw)) < BEAM_ANGLE) ||
-        !!ctx.lamplit?.(a));
-      const range = lit
-        ? s.sight * Math.min(senses.sight * LIGHT_REACH, senses.haze)
-        : s.sight * (beamed ? senses.haze : senses.sight) * (a.duck > 0.5 ? CROUCH_SIGHT : 1);
+      const range = s.sight * senses.sight * (a.duck > 0.5 ? CROUCH_SIGHT : 1);
       let c = this.contacts.get(a.id);
       let visible = false;
       let headOnly = false;
@@ -730,9 +662,9 @@ export class Bot {
           const body = through(h.torsoX, chest, h.torsoZ);
           const head = body >= CONCEALED ? 0 : through(h.headX, h.headY, h.headZ);
           shows = Math.max(body, head);
-          // A muzzle flash or a flashlight shows through leaves, unless the shot's suppressed.
+          // A muzzle flash shows through leaves, unless the shot's suppressed.
           // So does anyone close enough to touch.
-          if (shows >= CONCEALED || (shows > 0 && (flash || lit || d < TOUCH_RANGE))) {
+          if (shows >= CONCEALED || (shows > 0 && (flash || d < TOUCH_RANGE))) {
             visible = true;
             headOnly = body < CONCEALED && head >= CONCEALED;
           }
@@ -746,9 +678,8 @@ export class Bot {
         time /= Math.max(shows, CONCEALED);
         if (a.duck > 0.5) time *= 1.6;
         if (speed > WALK_SPEED + 0.5) time *= 0.6;
-        // A muzzle flash gives a shooter away, unless it's suppressed; so does a light in the dark.
+        // A muzzle flash gives a shooter away, unless it's suppressed.
         if (flash) time *= 0.3;
-        else if (lit) time *= 0.5;
         if (off > s.fov * 0.3) time *= 1.5;
         // Everyone who has been told is looking out for the bounty.
         if (this.isBounty(ctx, a.id)) time *= BOUNTY_SPOT;
@@ -781,7 +712,6 @@ export class Bot {
       const loud = (!a.onGround ? 0 : speed > WALK_SPEED + 0.5 ? STEPS_SPRINT : speed > CROUCH_SPEED + 0.3 ? STEPS_WALK : 0) *
         (this.isBounty(ctx, a.id) ? BOUNTY_LOUD : 1);
       if (d < loud * senses.hearing) this.heard = { x: a.x, y: a.y, z: a.z, at: now };
-      else if (senses.dark && a.light) this.seeBeam(ctx, self, a, eye.headX, eye.headY, eye.headZ, now);
     }
     for (const id of this.contacts.keys()) {
       const a = ctx.agent(id);
@@ -807,27 +737,6 @@ export class Bot {
     return id !== 0 && id === ctx.bounty && id === this.bountyKnown;
   }
 
-  /**
-   * In the dark, a lit patch where someone's beam lands gives them away even
-   * when they're out of sight, say behind a wall: the bot looks the way the
-   * beam came from, roughly where its holder must stand.
-   */
-  private seeBeam(ctx: BotContext, self: Agent, a: Agent, ex: number, ey: number, ez: number, now: number): void {
-    const range = this.skill.sight * Math.min(ctx.senses.sight * LIGHT_REACH, ctx.senses.haze);
-    if (Math.hypot(a.x - self.x, a.z - self.z) > range + BEAM_THROW) return;
-    const spot = ctx.beam ? ctx.beam(a) : beamSpot(ctx.world, a);
-    if (!spot || Math.hypot(spot.x - self.x, spot.z - self.z) > range) return;
-    const off = Math.abs(angleDiff(yawToward(self.x, self.z, spot.x, spot.z), this.yaw));
-    if (off > this.skill.fov / 2 || !ctx.world.hasLineOfSight(ex, ey, ez, spot.x, spot.y, spot.z)) return;
-    // Along the beam back toward its holder, the farther the vaguer.
-    const fuzz = Math.hypot(a.x - spot.x, a.z - spot.z) * BEAM_GUESS;
-    this.heard = {
-      x: a.x + (this.rand() - 0.5) * 2 * fuzz,
-      y: a.y,
-      z: a.z + (this.rand() - 0.5) * 2 * fuzz,
-      at: now,
-    };
-  }
 
   private decide(ctx: BotContext, self: Agent): void {
     const now = ctx.time;
@@ -1581,57 +1490,6 @@ export class Bot {
     return this.role.kind === 'operator' && (ctx.agent(id)?.team === 'guard' || !!this.temper?.shy || this.now < this.retreatUntil);
   }
 
-  /**
-   * Guards keep their flashlights on all night; at dusk it's still light enough to go without. Operators light their way
-   * across the open island but go dark near outposts and once anything happens.
-   */
-  private wantsLight(ctx: BotContext, self: Agent): boolean {
-    if (!ctx.senses.night) return false;
-    if (this.role.kind !== 'operator') return true;
-    if (!this.isRoutine(this.state) || this.state === 'hunt' || this.state === 'camp' || this.temper?.sneaky) return false;
-    return ctx.world.outposts.every((o) => Math.hypot(o.x - self.x, o.z - self.z) > OPERATOR_DARK);
-  }
-
-  /**
-   * After dark, an operator about to search a crate or wait in a spot that a
-   * lamp lights shoots the lamp out first, if it can see it and nobody has
-   * been about lately.
-   */
-  private lamps(ctx: BotContext, self: Agent): void {
-    const w = ctx.world;
-    const calm = (): boolean => [...this.contacts.values()].every((c) => c.level < 1 || this.now - c.seenAt > LAMP_CALM);
-    if (this.lampAim >= 0) {
-      const l = w.lamps[this.lampAim];
-      if (w.panels[l.panel].box.gone || this.now > this.lampUntil || !this.isRoutine(this.state) || !calm()) this.lampAim = -1;
-      return;
-    }
-    const g = this.goal;
-    if (this.role.kind !== 'operator' || !ctx.senses.dark || (this.state !== 'loot' && this.state !== 'camp') || !g) return;
-    if (this.now < this.lampLook) return;
-    this.lampLook = this.now + LAMP_LOOK;
-    if (Math.hypot(g.x - self.x, g.z - self.z) > LAMP_SHOT) return;
-    const gy = (g.y ?? w.floorHeight(g.x, g.z)) + 1.2;
-    if (!w.inLamplight(g.x, gy, g.z) || !calm()) return;
-    const eye = hitboxes(self);
-    let best = -1;
-    let most = 0;
-    w.lamps.forEach((l, i) => {
-      if (w.panels[l.panel].box.gone) return;
-      const shine = lampShine(l, g.x, gy, g.z);
-      if (shine <= most) return;
-      const at = lampTarget(l);
-      if (Math.hypot(at.x - eye.headX, at.y - eye.headY, at.z - eye.headZ) > LAMP_SHOT) return;
-      if (!w.hasLineOfSight(eye.headX, eye.headY, eye.headZ, at.x, at.y, at.z)) return;
-      if (!w.hasLineOfSight(l.hx, l.hy - 0.2, l.hz, g.x, gy, g.z)) return;
-      best = i;
-      most = shine;
-    });
-    if (best < 0) return;
-    this.lampAim = best;
-    this.lampUntil = this.now + LAMP_TRY;
-    tally.lampsAimed++;
-  }
-
   private isRoutine(state: BotState): boolean {
     return state === 'patrol' || state === 'loot' || state === 'extract' || state === 'hunt' || state === 'camp';
   }
@@ -1903,10 +1761,7 @@ export class Bot {
     let buttons = 0;
 
     // Where to look: the target, a point of interest, the way ahead, or around.
-    // Shooting out a lamp, it stands still.
-    const lamp = !fighting && this.lampAim >= 0 ? lampTarget(ctx.world.lamps[this.lampAim]) : null;
-    const moving = this.moveDir(ctx, self, a);
-    const dir = lamp ? null : moving;
+    const dir = this.moveDir(ctx, self, a);
     const eye = hitboxes(self);
     let wantYaw = this.yaw;
     let wantPitch = IDLE_PITCH;
@@ -1930,12 +1785,6 @@ export class Bot {
       const t = now + this.wobblePhase;
       wantYaw = aimYaw + this.errYaw + (Math.sin(t * 1.7) + Math.sin(t * 3.1) * 0.5) * s.wobble - self.recoilYaw * s.recoilControl;
       wantPitch = aimPitch + this.errPitch + Math.sin(t * 2.3) * s.wobble - self.recoilPitch * s.recoilControl;
-    } else if (lamp) {
-      // At the housing's middle, from the eye the round leaves from.
-      const from = eyePosition(ctx.world, self.x, self.y, self.z, this.yaw, self.duck, self.lean);
-      dist = Math.hypot(lamp.x - from.x, lamp.z - from.z);
-      aimYaw = wantYaw = yawToward(from.x, from.z, lamp.x, lamp.z);
-      aimPitch = wantPitch = Math.atan2(lamp.y + 0.12 - from.y, dist);
     } else if (this.focus) {
       wantYaw = yawToward(eye.headX, eye.headZ, this.focus.x, this.focus.z);
       wantPitch = Math.atan2(this.focus.y - eye.headY, Math.hypot(this.focus.x - eye.headX, this.focus.z - eye.headZ));
@@ -1993,14 +1842,6 @@ export class Bot {
         buttons |= Btn.Fire;
         this.nextTap = now + w.interval + s.tapDelay * (0.6 + this.rand() * 0.8);
       }
-    } else if (lamp && ready) {
-      // One round at a time, once it's aimed.
-      if (dist > ADS_RANGE) buttons |= Btn.Aim;
-      const off = Math.hypot(angleDiff(this.yaw + self.recoilYaw, aimYaw), this.pitch + self.recoilPitch - aimPitch);
-      if (off < Math.max(Math.atan(0.2 / Math.max(dist, 0.5)), 0.004) && now >= this.nextTap && !self.triggerHeld) {
-        buttons |= Btn.Fire;
-        this.nextTap = now + Math.max(w.interval, 0.3);
-      }
     } else if (fighting && ready && dist > ADS_RANGE) {
       buttons |= Btn.Aim;
     } else {
@@ -2013,7 +1854,6 @@ export class Bot {
     }
     // Firing or aiming stops a sprint in the simulation; don't also hold it.
     if (buttons & (Btn.Fire | Btn.Aim)) buttons &= ~Btn.Sprint;
-    if (this.wantsLight(ctx, self)) buttons |= Btn.Light;
 
     return { seq, buttons, yaw: this.yaw, pitch: this.pitch, weapon: this.weapon };
   }
@@ -2032,12 +1872,9 @@ export class Bot {
         ctx.pathBudget--;
         this.pathAt = now;
         this.pathGoal = g;
-        // After dark an operator going about its run keeps out of the lamps' light.
-        const shy = this.role.kind === 'operator' && ctx.senses.dark && this.isRoutine(this.state);
-        if (shy) tally.shyPaths++;
         this.pathHidden = hidden;
         if (hidden) tally.hiddenPaths++;
-        this.path = ctx.nav.findPath(self.x, self.z, g.x, g.z, self.y, g.y, shy, hidden) ?? [];
+        this.path = ctx.nav.findPath(self.x, self.z, g.x, g.z, self.y, g.y, hidden) ?? [];
         this.noPath = this.path.length === 0;
       }
       while (this.path.length > 1 && reached(this.path[0], self.x, self.y, self.z)) this.path.shift();

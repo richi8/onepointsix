@@ -43,7 +43,7 @@ import {
   SUPPRESSED_NOISE,
   THROW_TIME,
 } from '../shared/constants.ts';
-import { DEFAULT_CONDITIONS, isNight, sensesOf, type Conditions } from '../shared/conditions.ts';
+import { DEFAULT_CONDITIONS, sensesOf, type Conditions } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, wrapAngle, yawToward } from '../shared/geom.ts';
 import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
@@ -58,7 +58,7 @@ import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { bagShows, vegetationOf } from '../shared/vegetation.ts';
 import { inBuilding, leafRect, World, type Box, type Point } from '../shared/world.ts';
-import { beamSpot, Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
+import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
 import { Cover } from './cover.ts';
@@ -152,8 +152,6 @@ interface Player extends PlayerState {
   deathcam: { killer: Player; time: number } | null;
   /** The weapon is down for a grenade throw, not a switch. */
   threw: boolean;
-  /** Their flashlight is on; only ever after dark. */
-  light: boolean;
 }
 
 interface PoseRecord extends Pose {
@@ -213,10 +211,6 @@ export class GameServer {
   private bounty: { id: number; x: number; y: number; z: number; at: number } | null = null;
   /** This tick's bags, for bots, made when first asked for. */
   private bagList: BagSnap[] | null = null;
-  /** Where each lit flashlight lands this tick, for bots, worked out when first asked for. */
-  private readonly beams = new Map<number, Point | null>();
-  /** Who stands in a lamp's light this tick, for bots, worked out when first asked for. */
-  private readonly lamplit = new Map<number, boolean>();
   /** When each operator slot emptied by a bot leaving gets filled again, soonest first. */
   private readonly refills: number[] = [];
   /** On the range: where players drop in, and the actors' ids, in the order of their specs. */
@@ -235,7 +229,6 @@ export class GameServer {
     this.options = options;
     this.mode = options.mode ?? 'offline';
     this.conditions = options.conditions ?? DEFAULT_CONDITIONS;
-    const night = isNight(this.conditions);
     this.world = new World(this.seed);
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
@@ -244,7 +237,7 @@ export class GameServer {
     this.nav = new NavGrid(this.world);
     // Paint the ground now rather than on the first bot's first look.
     vegetationOf(this.world);
-    this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f), night);
+    this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f));
     this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1));
     this.cover = new Cover(this.world);
     this.operatorSlots = options.operators ?? 0;
@@ -266,23 +259,13 @@ export class GameServer {
       senses: sensesOf(this.conditions),
       bounty: 0,
       bags: () => (this.bagList ??= this.containers.bags()),
-      beam: (a) => {
-        let spot = this.beams.get(a.id);
-        if (spot === undefined) this.beams.set(a.id, (spot = beamSpot(this.world, a)));
-        return spot;
-      },
       carried: (a) => {
         const run = players.get(a.id)?.run;
         return run ? lootValue(run.items) : 0;
       },
-      lamplit: (a) => {
-        let lit = this.lamplit.get(a.id);
-        if (lit === undefined) this.lamplit.set(a.id, (lit = this.world.inLamplight(a.x, a.y + 1.2, a.z)));
-        return lit;
-      },
     };
     if (options.guards) {
-      const plans = planGuards(this.world, this.nav, this.botRng, night);
+      const plans = planGuards(this.world, this.nav, this.botRng);
       const ids = plans.map((plan) => this.addBot(plan, 'guard').id);
       // Bots share their plan's role, so followers learn their leader's id here.
       for (const plan of plans) if (plan.follows !== undefined && plan.role.kind === 'guard') plan.role.leader = ids[plan.follows];
@@ -467,8 +450,6 @@ export class GameServer {
     const now = (ctx.time = this.time);
     ctx.pathBudget = PATH_BUDGET;
     this.bagList = null;
-    this.beams.clear();
-    this.lamplit.clear();
     this.world.stepDoors(SERVER_DT);
     for (const p of this.players.values()) {
       if (p.actor && !p.dead) this.act(p, p.actor, now);
@@ -491,7 +472,6 @@ export class GameServer {
           } else if (fx.k === 'draw') p.threw = false;
         });
         p.tape.record(cmd, p);
-        p.light = this.ctx.senses.dark && !p.dead && (cmd.buttons & Btn.Light) !== 0;
         if (p.run && !p.dead) this.use(p, cmd.buttons);
         if ((p.bot || p.actor) && !p.dead) this.botDoors(p, cmd.buttons, cmd.yaw);
         p.lastSim = cmd.seq;
@@ -721,7 +701,7 @@ export class GameServer {
     const at = this.extracts.points[index];
     this.broadcast({ k: 'call', id: p.id, index, name: p.name });
     this.noise(at.x, at.y, at.z, CALL_NOISE, p.id, (g) => g.team === 'guard');
-    for (const plan of planResponse(this.world, this.nav, this.botRng, at, RESPONSE_SQUAD, isNight(this.conditions))) {
+    for (const plan of planResponse(this.world, this.nav, this.botRng, at, RESPONSE_SQUAD)) {
       const g = this.addBot(plan, 'guard');
       g.recall = at.pickup + RESPONSE_STAY;
     }
@@ -920,7 +900,7 @@ export class GameServer {
     const p: Player = {
       ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, queue: [], lastRecv: 0, lastSim: 0,
       respawn: 0, protection: 0, events: [], plan: null, bot: null, actor: null, run: null, recall: 0,
-      tape: new Tape(), deathcam: null, threw: false, light: false,
+      tape: new Tape(), deathcam: null, threw: false,
     };
     this.players.set(p.id, p);
     return p;
@@ -1316,7 +1296,6 @@ function snapOf(p: Player): PlayerSnap {
   return {
     id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon,
     quiet: p.suppressed[weapon], motion: motionOf(p), act, actT: clamp(actT, 0, 1), commander: !!p.plan?.commander,
-    light: p.light && !dead,
     ...(rounds !== undefined && { rounds }),
   };
 }

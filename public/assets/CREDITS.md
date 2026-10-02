@@ -47,8 +47,8 @@ the soldiers, from Microsoft's Rocketbox avatars under the MIT License (its text
   Concrete, Cement (SecureSubset); Footsteps on concrete (florianreichelt); footsteps on wood
   (Mydo1); Metal Steps (Phil25); puddlewalk.wav (j1987); wind.ogg (sleepCircle); Ocean Waves.wav
   (Noted451); sfx_amb_forest_spring_afternoon-01.wav (bajko); Rain Slowly Passing TREATED
-  LOOP_Edgewater_06192020.wav (speakwithanimals); AMBIENCE NIGHT FIELD CRICKET 01.wav (sengjinn);
-  Heavy Thunder Strike - no Rain - QUADRO.wav (BlueDelta). The Freesound ids are in
+  LOOP_Edgewater_06192020.wav (speakwithanimals); Heavy Thunder Strike - no Rain - QUADRO.wav
+  (BlueDelta). The Freesound ids are in
   `src/client/soundlist.ts`.
 
 ## Microsoft Rocketbox: MIT License

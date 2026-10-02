@@ -155,7 +155,7 @@ export class Sun {
     for (const l of [this.light, this.far, this.island]) l.shadow.dispose();
   }
 
-  /** Light from `dir` (towards the sun or moon) in `color` at `intensity`. */
+  /** Light from `dir` (towards the sun) in `color` at `intensity`. */
   set(color: THREE.Color, intensity: number, dir: THREE.Vector3): void {
     this.light.color.copy(color);
     this.light.intensity = intensity;

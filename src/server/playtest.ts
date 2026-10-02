@@ -5,7 +5,7 @@
 // carry), to see whether one way of playing wins out. With --thorough, one
 // operator bot at a time loots as many crates as a person tends to and can't
 // be killed, so the length of a run that isn't cut short by death can be read.
-// Usage: npm run playtest [minutes per island] [islands] [first seed] [time] [weather] [--thorough]
+// Usage: npm run playtest [minutes per island] [islands] [first seed] [weather] [--thorough]
 
 import { SERVER_TICK_RATE } from '../shared/constants.ts';
 import { parseWorldParam } from '../shared/worldconfig.ts';
@@ -24,7 +24,7 @@ const thorough = process.argv.includes('--thorough');
 const minutes = Number(args[0] ?? 30);
 const islands = Number(args[1] ?? 6);
 const firstSeed = Number(args[2] ?? 1);
-const { time, weather } = parseWorldParam(null, args[3] ?? null, args[4] ?? null);
+const { weather } = parseWorldParam(null, args[3] ?? null);
 
 interface Played {
   record: RunRecord;
@@ -42,10 +42,10 @@ let unfinished = 0;
 const start = performance.now();
 for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
   // Thorough bots can't be killed, so they play alone rather than fight each other forever.
-  const server = new GameServer(seed, { ...MODES.offline.options, conditions: { time, weather }, ...(thorough ? { thorough, operators: 1 } : {}) });
+  const server = new GameServer(seed, { ...MODES.offline.options, conditions: { weather }, ...(thorough ? { thorough, operators: 1 } : {}) });
   const names = server.world.extracts.map((_, i) => extractName(server.world, i));
   server.onRunEnd = (e, plan) => {
-    if (plan) played.push({ record: runRecord(e, { seed, time, weather }, 'offline', (i) => names[i]), plan });
+    if (plan) played.push({ record: runRecord(e, { seed, weather }, 'offline', (i) => names[i]), plan });
   };
   let holder = 0;
   server.onEvent = (e) => {
@@ -68,7 +68,7 @@ for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
 const seconds = (performance.now() - start) / 1000;
 
 console.log(
-  `${islands} islands from seed ${firstSeed} (${time}, ${weather})${thorough ? ', thorough looting' : ''}, ${minutes} min each, ` +
+  `${islands} islands from seed ${firstSeed} (${weather})${thorough ? ', thorough looting' : ''}, ${minutes} min each, ` +
   `simulated in ${seconds.toFixed(0)} s`,
 );
 console.log(
@@ -91,8 +91,7 @@ console.log(
   `camps given up for want of a spot that sees the extraction point ${share(tally.campless, tally.camps)}; ` +
   `hid from a fight nearby ${tally.hides}, ${share(tally.bushHides, tally.hides)} in a bush; paths through bushes and tall grass ${tally.hiddenPaths}; ` +
   `operators ducking out of sight of a shooter ${tally.pinned}, outgunned ${tally.outgunned}; ` +
-  `doors shut behind them ${tally.shuts}, ${tally.slams} of them on someone chasing; thinks spent upstairs or up a tower ${tally.upThinks}; ` +
-  `lamps aimed at ${tally.lampsAimed}, paths looked for keeping out of lamplight ${tally.shyPaths}`,
+  `doors shut behind them ${tally.shuts}, ${tally.slams} of them on someone chasing; thinks spent upstairs or up a tower ${tally.upThinks}`,
 );
 console.log(`drop-ins with no spot clear of outposts and other operators, so anywhere: ${share(dropIns.anywhere, dropIns.picked)}`);
 

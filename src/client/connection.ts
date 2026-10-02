@@ -284,7 +284,6 @@ export function playersAt(snaps: readonly Snapshot[], t: number): PlayerSnap[] {
       actT: pa.act === pb.act && pb.actT >= pa.actT ? lerp(pa.actT, pb.actT, f) : pa.actT,
       ...(pa.rounds !== undefined && { rounds: pa.rounds }),
       commander: pa.commander,
-      light: pa.light,
     };
   });
 }

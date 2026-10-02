@@ -1,6 +1,6 @@
 // Runs the game server in Node with its full population of bots and no
 // browser, to prove the server has no browser dependencies and to see how the
-// bots play and what they cost. Usage: npm run sim [seconds] [seed] [time] [weather]
+// bots play and what they cost. Usage: npm run sim [seconds] [seed] [weather]
 
 import { SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD, parseWorldParam } from '../shared/worldconfig.ts';
@@ -11,8 +11,8 @@ declare const process: { argv: string[] };
 
 const seconds = Number(process.argv[2] ?? 60);
 const seed = Number(process.argv[3] ?? DEFAULT_WORLD.seed);
-const { time, weather } = parseWorldParam(null, process.argv[4] ?? null, process.argv[5] ?? null);
-const server = new GameServer(seed, { ...MODES.online.options, conditions: { time, weather } });
+const { weather } = parseWorldParam(null, process.argv[4] ?? null);
+const server = new GameServer(seed, { ...MODES.online.options, conditions: { weather } });
 const counts = { kills: 0, headshots: 0, extracts: 0, calls: 0 };
 const killers = new Map<string, number>();
 server.onEvent = (e) => {

@@ -5,8 +5,6 @@ import { GroundCover } from '../src/client/groundcover.ts';
 import { Resolution } from '../src/client/resolution.ts';
 import { WorldView } from '../src/client/worldview.ts';
 import { DEFAULT_CONDITIONS, type Conditions } from '../src/shared/conditions.ts';
-import { Flashlights } from '../src/client/flashlights.ts';
-import { localLights } from '../src/client/locallights.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
@@ -22,9 +20,8 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 //   without the fine work, those within 230 m casting shadows.
 // - The ground cover's rebuild as the eye crosses its cells: first visits,
 //   which scatter the cells, and a second pass over cells already scattered.
-// - The close-up soldiers again on a rainy night, every one's flashlight on
-//   and yours too: the lights that reach the world, your light's shadow, the
-//   beams, the rain and the wet ground.
+// - The close-up soldiers again in the rain: the streaks, the splashes and
+//   the wet ground.
 //
 // It sets window.bench to the results and document.title to "done".
 //
@@ -66,9 +63,6 @@ const forward = new THREE.Vector3();
 camera.getWorldDirection(forward);
 
 const bodies = new Bodies(scene, world);
-const flashlights = new Flashlights(scene);
-/** Whether everyone's flashlight is on, in the phase being measured. */
-let lit = false;
 const assets = await loadAssets(renderer);
 view.applyAssets(assets);
 bodies.setModel(assets.soldiers, assets.guns);
@@ -96,7 +90,7 @@ function snap(i: number, t: number, far = false): PlayerSnap {
     id: i + 1, team: i % 3 === 0 ? 'guard' : 'operator', x, y: world.floorHeight(x, z), z, yaw,
     pitch: state === 'aimup' ? 0.5 : 0, duck: state === 'crouchwalk' ? 1 : 0, lean: state === 'lean' ? (i % 2 ? 1 : -1) : 0,
     dead: false, weapon: i % 3, quiet: i % 4 === 0, motion: 'ground',
-    act: state === 'reload' || state === 'throw' ? state : 'none', actT: cycle, commander: false, light: lit,
+    act: state === 'reload' || state === 'throw' ? state : 'none', actT: cycle, commander: false,
   };
 }
 
@@ -124,12 +118,7 @@ async function measure(n: number, far = false): Promise<Phase> {
     const t0 = performance.now();
     bodies.update(players, dt, camera);
     const t1 = performance.now();
-    localLights.begin();
-    const beams = flashlights.update(camera, lit, players, (id, at, dir) => bodies.torch(id, at, dir));
-    if (lit) beams.unshift({ at: camera.position, dir: forward });
-    view.torches(beams);
     view.update(camera, focus, 32, 230, t);
-    localLights.draw(renderer, scene);
     view.reflect(renderer, camera);
     renderer.clear();
     renderer.render(scene, camera);
@@ -279,7 +268,7 @@ async function frameCost() {
   const crowd = await measure(N);
   const distant = await measure(N, true);
   const cover = groundCover(-200, 40, 40);
-  const night = await atNight({ time: 'night', weather: 'rain' });
+  const rain = await inWeather({ weather: 'rain' });
 
   const stats = (v: number[]) => {
     const s = [...v].sort((a, b) => a - b);
@@ -299,18 +288,15 @@ async function frameCost() {
     crowd: { bodies: stats(crowd.bodies), frame: stats(crowd.frame), calls: crowd.calls, triangles: crowd.triangles },
     distant: { bodies: stats(distant.bodies), frame: stats(distant.frame), calls: distant.calls },
     groundCover: { first: stats(cover.first), again: stats(cover.again) },
-    night: { frame: stats(night.frame), calls: night.calls, triangles: night.triangles },
+    rain: { frame: stats(rain.frame), calls: rain.calls, triangles: rain.triangles },
   };
   return bench;
 }
 
-/** The close-up crowd in `conditions`, everyone's light on. */
-async function atNight(conditions: Conditions): Promise<Phase> {
+/** The close-up crowd in `conditions`. */
+async function inWeather(conditions: Conditions): Promise<Phase> {
   view.setConditions(conditions);
-  const l = view.lit;
-  flashlights.setConditions(true, l.fogNear, l.fogFar);
-  renderer.toneMappingExposure = l.exposure;
-  lit = true;
+  renderer.toneMappingExposure = view.lit.exposure;
   await renderer.compileAsync(scene, camera);
   return measure(N);
 }

@@ -162,7 +162,7 @@ export const KILL_SCORE_GUARD = 150;
 // once their health runs out, taking whatever rests on them down too. Glass
 // goes with any hit; a roof section comes down once nothing holds it up. A
 // floor slab takes two grenades on it; stairs and tables are timber.
-export const PANEL_HP = { wall: 500, fence: 60, crate: 150, door: 120, glass: 1, roof: 400, lamp: 1, floor: 1500, timber: 200 } as const;
+export const PANEL_HP = { wall: 500, fence: 60, crate: 150, door: 120, glass: 1, roof: 400, floor: 1500, timber: 200 } as const;
 /** Seconds before a broken panel is rebuilt, once nothing is in the way. */
 export const PANEL_REPAIR = 180;
 
@@ -192,7 +192,7 @@ export const GRENADE_NOISE = 320;
 /** Share of a gun's noise radius left with a suppressor fitted. */
 export const SUPPRESSED_NOISE = 0.3;
 /** How far away breaking a panel can be heard, metres. */
-export const BREAK_NOISE = { wall: 140, fence: 50, crate: 70, door: 70, glass: 60, roof: 140, lamp: 40, floor: 160, timber: 70 } as const;
+export const BREAK_NOISE = { wall: 140, fence: 50, crate: 70, door: 70, glass: 60, roof: 140, floor: 160, timber: 70 } as const;
 /** How far away a door opening or shutting can be heard, metres. */
 export const DOOR_NOISE = 22;
 /** How far from a doorway, in metres, a door can be opened or shut. */
@@ -228,8 +228,6 @@ export const Btn = {
   Drop: 8192,
   /** Throw a grenade. */
   Throw: 16384,
-  /** Held while the flashlight is on; the client keeps the toggle. It only lights anything after dark. */
-  Light: 32768,
 } as const;
 
 // The bounty: the operator carrying the most loot is hunted.

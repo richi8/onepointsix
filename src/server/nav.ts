@@ -21,8 +21,6 @@ const WET = 2;
 const BLOCKED = 3;
 /** Wading is this many times the cost of walking. */
 const WET_COST = 4;
-/** For a bot keeping to the dark, lamplit ground is this many times the cost of walking. */
-const LIT_COST = 5;
 /** For a bot sneaking, ground without bushes or tall grass is this many times the cost of walking. */
 const BARE_COST = 1.7;
 /** Clearance kept from obstacles beyond the body's radius, so paths don't scrape corners. */
@@ -125,9 +123,6 @@ export class NavGrid {
   private seen: Uint32Array | null = null;
   private closed: Uint32Array | null = null;
   private gen = 0;
-  /** Whether each ground cell asked about is lamplit, and how many lamps were out when that was worked out. */
-  private readonly litCells = new Map<number, boolean>();
-  private litOut = -1;
   /** Whether each ground cell asked about gives someone sneaking cover. */
   private readonly coverCells = new Map<number, boolean>();
   /** Searches run so far, for budgeting and tests. */
@@ -245,10 +240,9 @@ export class NavGrid {
    * floor if that's nearer. If the goal is too far to reach within the search
    * budget, the route ends at the closest point reached; walking it and
    * searching again gets there. Null if the goal has nowhere walkable near it.
-   * With `shy`, the route keeps out of lamplight where it can, as a bot does after dark.
    * With `hidden`, it goes through bushes and tall grass where it can, as a bot sneaking does.
    */
-  findPath(sx: number, sz: number, gx: number, gz: number, sy?: number, gy?: number, shy = false, hidden = false): Waypoint[] | null {
+  findPath(sx: number, sz: number, gx: number, gz: number, sy?: number, gy?: number, hidden = false): Waypoint[] | null {
     this.searches++;
     const n = this.n;
     const size = n * n;
@@ -259,10 +253,8 @@ export class NavGrid {
     if (s0 < 0 || target < 0) return null;
     const start = s0 === this.nodeAt(sx, sz, sy) ? { x: sx, z: sz, ...this.height(s0) } : this.waypoint(s0);
     const goal = target === this.nodeAt(gx, gz, gy) ? { x: gx, z: gz, ...this.height(target) } : this.waypoint(target);
-    if (shy) this.lampsChanged();
-    const lit = (cell: number) => shy && this.lit(cell);
-    const cost = (cell: number, s: number) => (s === WET ? WET_COST : 1) * (lit(cell) ? LIT_COST : 1) * (hidden && !this.covered(cell) ? BARE_COST : 1);
-    if (s0 < size && target < size && this.lineWalkable(start.x, start.z, goal.x, goal.z) && !(shy && this.lineLit(start.x, start.z, goal.x, goal.z)) &&
+    const cost = (cell: number, s: number) => (s === WET ? WET_COST : 1) * (hidden && !this.covered(cell) ? BARE_COST : 1);
+    if (s0 < size && target < size && this.lineWalkable(start.x, start.z, goal.x, goal.z) &&
       !(hidden && this.lineBare(start.x, start.z, goal.x, goal.z) > 0)) return [goal];
 
     if (!this.g) {
@@ -352,7 +344,7 @@ export class NavGrid {
     if (found) points[points.length - 1] = goal;
     else if (points.length <= 1) return null;
     points[0] = start;
-    return this.smooth(points, shy, hidden);
+    return this.smooth(points, hidden);
   }
 
   /** Whether a cell's ground gives someone sneaking through it cover. */
@@ -380,46 +372,12 @@ export class NavGrid {
     return bare;
   }
 
-  /** Whether the ground in a cell is lamplit, at a standing body's chest. */
-  private lit(cell: number): boolean {
-    let v = this.litCells.get(cell);
-    if (v === undefined) {
-      const x = ((cell % this.n) + 0.5) * CELL - this.world.half;
-      const z = (Math.floor(cell / this.n) + 0.5) * CELL - this.world.half;
-      v = this.world.inLamplight(x, this.world.floorHeight(x, z) + 1.2, z);
-      this.litCells.set(cell, v);
-    }
-    return v;
-  }
-
-  /** Forget which cells are lit once a lamp has gone out. */
-  private lampsChanged(): void {
-    const w = this.world;
-    const out = w.lamps.reduce((n, l) => n + (w.panels[l.panel].box.gone ? 1 : 0), 0);
-    if (out === this.litOut) return;
-    this.litOut = out;
-    this.litCells.clear();
-  }
-
-  /** Whether the straight line from a to b on the ground crosses lamplight. */
-  private lineLit(ax: number, az: number, bx: number, bz: number): boolean {
-    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / (CELL * 0.5)));
-    for (let i = 0; i <= steps; i++) {
-      const f = i / steps;
-      const ix = this.cellX(ax + (bx - ax) * f);
-      const iz = this.cellX(az + (bz - az) * f);
-      if (ix >= 0 && iz >= 0 && ix < this.n && iz < this.n && this.lit(iz * this.n + ix)) return true;
-    }
-    return false;
-  }
-
   /**
    * Drop waypoints on the ground that a straight walkable line can skip; the
-   * start is left out. With `shy`, not by a line through lamplight the route
-   * went round, and with `hidden`, not by one over more bare ground than the
-   * route took.
+   * start is left out. With `hidden`, not by a line over more bare ground
+   * than the route took.
    */
-  private smooth(points: Waypoint[], shy = false, hidden = false): Waypoint[] {
+  private smooth(points: Waypoint[], hidden = false): Waypoint[] {
     const out: Waypoint[] = [];
     // Bare cells along the route up to each point.
     const bareTo = [0];
@@ -431,8 +389,6 @@ export class NavGrid {
         for (let k = anchor + 2; k < points.length; k++) {
           if (points[k - 1].y !== undefined || points[k].y !== undefined) break;
           if (!this.lineWalkable(points[anchor].x, points[anchor].z, points[k].x, points[k].z)) break;
-          if (shy && this.lineLit(points[anchor].x, points[anchor].z, points[k].x, points[k].z) &&
-            !points.slice(anchor, k + 1).some((p, j) => j > 0 && this.lineLit(points[anchor + j - 1].x, points[anchor + j - 1].z, p.x, p.z))) break;
           if (hidden && this.lineBare(points[anchor].x, points[anchor].z, points[k].x, points[k].z) > bareTo[k] - bareTo[anchor]) break;
           next = k;
         }

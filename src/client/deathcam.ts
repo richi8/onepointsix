@@ -84,11 +84,6 @@ export class Deathcam {
     return this.player.state;
   }
 
-  /** Whether the killer's flashlight was on then, as this client saw them. */
-  get lit(): boolean {
-    return playersAt(this.recording.snapshots, this.time).find((p) => p.id === this.killer)?.light ?? false;
-  }
-
   /** Everyone but the killer, as this client saw them then. */
   others(): PlayerSnap[] {
     return playersAt(this.recording.snapshots, this.time).filter((p) => p.id !== this.killer);

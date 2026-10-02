@@ -4,10 +4,10 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 describe('share links', () => {
   it('round-trips the island, mode and score to beat', () => {
-    const q = shareQuery({ seed: 4242, time: 'night', weather: 'rain' }, 'offline', { name: 'Ana Nováková', score: 5400 });
-    expect(q).toContain('time=night&weather=rain');
+    const q = shareQuery({ seed: 4242, weather: 'rain' }, 'offline', { name: 'Ana Nováková', score: 5400 });
+    expect(q).toContain('weather=rain');
     expect(parseShareLink(q)).toEqual({
-      world: { seed: 4242, time: 'night', weather: 'rain' }, mode: 'offline', challenge: { name: 'Ana Nováková', score: 5400 },
+      world: { seed: 4242, weather: 'rain' }, mode: 'offline', challenge: { name: 'Ana Nováková', score: 5400 },
     });
   });
 
@@ -16,7 +16,7 @@ describe('share links', () => {
   });
 
   it('shares just the island when there is no score', () => {
-    expect(shareQuery({ seed: 7, time: 'day', weather: 'clear' }, 'online', { name: 'x', score: 0 })).toBe('?world=7&mode=online');
+    expect(shareQuery({ seed: 7, weather: 'clear' }, 'online', { name: 'x', score: 0 })).toBe('?world=7&mode=online');
     expect(parseShareLink('?world=7&by=x').challenge).toBeNull();
   });
 

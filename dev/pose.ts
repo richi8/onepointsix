@@ -135,7 +135,6 @@ function snap(entry: string, i: number, s: number, end: number): PlayerSnap {
   const base: PlayerSnap = {
     id: i + 1, team: name === 'commander' || name === 'guard' ? 'guard' : 'operator', x: i * spacing, y: 0, z: 0, yaw, pitch: 0, duck: 0, lean: 0,
     dead: false, weapon: gun ? Number(gun) : weapon, quiet: q.has('quiet'), motion: 'ground', act: 'none', actT: 0, commander: name === 'commander',
-    light: q.has('light'),
   };
   const move = (speed: number): void => {
     base.x += fx * speed * (s - end);

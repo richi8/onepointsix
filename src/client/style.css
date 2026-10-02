@@ -708,7 +708,7 @@ canvas.fade-in {
 
 /* ------------------------------------------------------------------ briefing */
 
-/* What the chosen mode, time and weather mean, one line each. */
+/* What the chosen mode and weather mean, one line each. */
 .menu .briefing {
   width: min(380px, 100%);
   box-sizing: border-box;

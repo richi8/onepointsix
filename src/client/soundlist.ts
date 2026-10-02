@@ -83,7 +83,6 @@ export const SOUNDS: SoundSource[] = [
   { name: 'sea', freesound: 531015, author: 'Noted451', title: 'Ocean Waves.wav', from: 48, to: 70, kind: 'loop' },
   { name: 'birds', freesound: 385280, author: 'bajko', title: 'sfx_amb_forest_spring_afternoon-01.wav', from: 60, to: 95, kind: 'loop' },
   { name: 'rain', freesound: 525046, author: 'speakwithanimals', title: 'Rain Slowly Passing TREATED LOOP_Edgewater_06192020.wav', from: 100, to: 128, kind: 'loop' },
-  { name: 'crickets', freesound: 175020, author: 'sengjinn', title: 'AMBIENCE NIGHT FIELD CRICKET 01.wav', from: 8, to: 38, kind: 'loop' },
   // Weather: a strike and its rumble, heard nearer or farther off.
   { name: 'thunder', freesound: 446753, author: 'BlueDelta', title: 'Heavy Thunder Strike - no Rain - QUADRO.wav', from: 0.8, to: 10, kind: 'shot', fade: 3 },
 ];
@@ -100,7 +99,7 @@ export const EARLY: ReadonlySet<string> = new Set([
   'magOutPistol', 'magInPistol', 'chargePistol', 'boltOpen', 'boltLoad', 'boltClose', 'draw',
   'land', 'grass', 'dirt', 'sand', 'rock', 'concrete', 'wood', 'metal', 'water',
 ]);
-export const AMBIENCE: ReadonlySet<string> = new Set(['wind', 'sea', 'birds', 'rain', 'crickets']);
+export const AMBIENCE: ReadonlySet<string> = new Set(['wind', 'sea', 'birds', 'rain']);
 
 /** The banks in the order they load, and which sounds each packs. */
 export const BANKS: readonly { name: string; has: (sound: string) => boolean }[] = [

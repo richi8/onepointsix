@@ -21,8 +21,8 @@ const names = (i: number) => ['North beach', 'East landing zone'][i];
 
 describe('run records', () => {
   it('records how a run got out', () => {
-    const r = runRecord(end(), { seed: 7, time: 'night', weather: 'fog' }, 'offline', names, new Date('2026-09-25T10:00:00Z'));
-    expect(r).toMatchObject({ at: '2026-09-25T10:00:00.000Z', seed: 7, conditions: 'night, fog', mode: 'offline', outcome: 'extracted', time: 200, extract: 'East landing zone', cause: '' });
+    const r = runRecord(end(), { seed: 7, weather: 'fog' }, 'offline', names, new Date('2026-09-25T10:00:00Z'));
+    expect(r).toMatchObject({ at: '2026-09-25T10:00:00.000Z', seed: 7, conditions: 'fog', mode: 'offline', outcome: 'extracted', time: 200, extract: 'East landing zone', cause: '' });
   });
 
   it('records what killed a run', () => {

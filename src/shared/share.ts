@@ -30,7 +30,7 @@ export function parseShareLink(search: string): ShareLink {
   const s = q.get('score') ?? '';
   const score = /^\d{1,8}$/.test(s) ? Number(s) : NaN;
   const challenge = name && score > 0 && score <= SCORE_MAX ? { name, score } : null;
-  return { world: parseWorldParam(q.get('world'), q.get('time'), q.get('weather')), mode, challenge };
+  return { world: parseWorldParam(q.get('world'), q.get('weather')), mode, challenge };
 }
 
 /** The query string of a link to an island in its conditions, optionally in a mode and with a score to beat. */

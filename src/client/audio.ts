@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import { DEFAULT_CONDITIONS, type Conditions, type TimeOfDay } from '../shared/conditions.ts';
+import { DEFAULT_CONDITIONS, type Conditions } from '../shared/conditions.ts';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
@@ -167,12 +167,7 @@ interface Ambience {
   seaPanner: PannerNode;
   birds: GainNode;
   rain: GainNode;
-  crickets: GainNode;
 }
-
-/** How loud the birds sing and the crickets chirp at each time of day. */
-const BIRDS: Record<TimeOfDay, number> = { day: 1, dusk: 0.45, night: 0 };
-const CRICKETS: Record<TimeOfDay, number> = { day: 0, dusk: 0.35, night: 1 };
 
 /** The master volume, and the cut-off of everything heard in air and under water, Hz. */
 const MASTER = 0.7;
@@ -539,8 +534,8 @@ export class Sfx {
   crumble(kind: PanelKind, at: At): void {
     const h = this.hear(at);
     const d = h.d;
-    const gain = (kind === 'glass' || kind === 'lamp' ? 0.6 : 0.7) * (HALF_DISTANCE / (HALF_DISTANCE + d)) * (1 - h.occ * 0.5) * this.drowned(d);
-    const clip = kind === 'wall' || kind === 'roof' || kind === 'floor' ? 'crumble' : kind === 'glass' || kind === 'lamp' ? 'glass' : 'splinter';
+    const gain = (kind === 'glass' ? 0.6 : 0.7) * (HALF_DISTANCE / (HALF_DISTANCE + d)) * (1 - h.occ * 0.5) * this.drowned(d);
+    const clip = kind === 'wall' || kind === 'roof' || kind === 'floor' ? 'crumble' : kind === 'glass' ? 'glass' : 'splinter';
     this.play(clip, { at: h, gain, rate: jitter(0.08), delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, h.occ, d), send: 0.3, space: sourceSpace(this.world, at) });
   }
 
@@ -746,7 +741,7 @@ export class Sfx {
     return src;
   }
 
-  /** Wind, the sea, birds or crickets and rain, looping from the moment the recordings are in. */
+  /** Wind, the sea, birds and rain, looping from the moment the recordings are in. */
   private startAmbience(): void {
     const ctx = this.ctx!;
     const loop = (name: string, out: AudioNode): GainNode => {
@@ -771,7 +766,6 @@ export class Sfx {
       seaPanner,
       birds: loop('birds', this.master!),
       rain: loop('rain', this.master!),
-      crickets: loop('crickets', this.master!),
     };
     this.ambienceIn = 0;
   }
@@ -799,13 +793,11 @@ export class Sfx {
     }
     const calm = clamp((now - this.scaredAt - SCARED_FOR) / CALMING, 0, 1);
     const trees = woodland(w, ear.x, ear.z);
-    const { time, weather } = this.conditions;
-    const raining = weather === 'rain';
+    const raining = this.conditions.weather === 'rain';
     const low = 1 - smoothstep(40, 90, ear.y);
-    // Birds and crickets hush in the rain, and for a while after a shot.
+    // Birds hush in the rain, and for a while after a shot.
     const hush = raining ? 0.25 : 1;
-    amb.birds.gain.setTargetAtTime(0.45 * BIRDS[time] * hush * (0.25 + 0.75 * trees) * low * calm, now, calm < 1 ? 0.3 : 2);
-    amb.crickets.gain.setTargetAtTime(0.3 * CRICKETS[time] * hush * (0.6 + 0.4 * open) * low * calm, now, calm < 1 ? 0.3 : 2);
+    amb.birds.gain.setTargetAtTime(0.45 * hush * (0.25 + 0.75 * trees) * low * calm, now, calm < 1 ? 0.3 : 2);
     // Under a roof the rain drums on it rather than all around.
     amb.rain.gain.setTargetAtTime(raining ? 0.55 * (0.45 + 0.55 * open) : 0, now, 1);
   }

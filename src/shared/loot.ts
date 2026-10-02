@@ -43,17 +43,14 @@ const RICH_RADIUS = 22;
 /** Rarity multiple for items worth this much or more in a guarded crate. */
 const RICH_VALUE = 1000;
 const RICH_BOOST = 2.5;
-/** At night every crate holds one item more, and valuable items turn up this much more often. */
-const NIGHT_BOOST = 1.8;
 
 /**
  * A fresh crate's contents: one or two items out in the open, two to four in
- * an outpost, and one more of each at night.
+ * an outpost.
  */
-export function rollItems(rand: () => number, rich: boolean, night = false): number[] {
-  const count = (rich ? 2 + Math.floor(rand() * 3) : 1 + Math.floor(rand() * 2)) + (night ? 1 : 0);
-  const weights = ITEMS.map((it) =>
-    it.rarity * (it.value >= RICH_VALUE ? (rich ? RICH_BOOST : 1) * (night ? NIGHT_BOOST : 1) : 1));
+export function rollItems(rand: () => number, rich: boolean): number[] {
+  const count = rich ? 2 + Math.floor(rand() * 3) : 1 + Math.floor(rand() * 2);
+  const weights = ITEMS.map((it) => it.rarity * (it.value >= RICH_VALUE && rich ? RICH_BOOST : 1));
   const total = weights.reduce((a, b) => a + b, 0);
   const items: number[] = [];
   for (let i = 0; i < count; i++) {

@@ -13,8 +13,8 @@ import type { NavGrid } from './nav.ts';
 // by hand. Round the island's first outpost, with no guards and no operator
 // bots, stand actors: bots that don't think, each playing one routine over
 // and over from its spot. Some walk, run, sprint and sneak in circles; some
-// crouch, lean, jump, aim, shoot, reload, switch guns, throw grenades or
-// shine a light; one climbs a watchtower's stairs, one climbs onto a crate,
+// crouch, lean, jump, aim, shoot, reload, switch guns or throw grenades;
+// one climbs a watchtower's stairs, one climbs onto a crate,
 // one goes in and out of a door; and some are shot, now and then, by others
 // beside them, or blown up by a grenade, so their bodies fall. The player
 // can't be hurt there, and the run's clock stands still.
@@ -22,9 +22,9 @@ import type { NavGrid } from './nav.ts';
 /** What an actor does, over and over. */
 export type Act =
   | 'idle' | 'look' | 'turn'
-  | 'walk' | 'sprint' | 'crouchWalk' | 'crouchSprint' | 'leanWalk' | 'heavyWalk' | 'runJump' | 'lightWalk'
+  | 'walk' | 'sprint' | 'crouchWalk' | 'crouchSprint' | 'leanWalk' | 'heavyWalk' | 'runJump'
   | 'strafe' | 'backpedal' | 'duck' | 'lean' | 'leanCrouched' | 'leanAim' | 'jump'
-  | 'aim' | 'aimCrouched' | 'rifle' | 'pistol' | 'bolt' | 'reload' | 'switch' | 'grenade' | 'light'
+  | 'aim' | 'aimCrouched' | 'rifle' | 'pistol' | 'bolt' | 'reload' | 'switch' | 'grenade'
   | 'stairs' | 'mantle' | 'door' | 'shooter' | 'victim' | 'crouchVictim';
 
 export interface ActorSpec {
@@ -114,7 +114,7 @@ export function planRange(world: World, nav: NavGrid): { actors: ActorSpec[]; sp
   const circles: [Act, Team, number, Partial<ActorSpec>?][] = [
     ['walk', 'operator', RIFLE], ['sprint', 'operator', RIFLE], ['crouchWalk', 'guard', RIFLE],
     ['crouchSprint', 'operator', RIFLE], ['leanWalk', 'guard', RIFLE], ['heavyWalk', 'operator', RIFLE, { carry: CARRY_MAX }],
-    ['runJump', 'operator', RIFLE], ['lightWalk', 'guard', RIFLE], ['walk', 'guard', PISTOL, { name: 'Walk (pistol)' }],
+    ['runJump', 'operator', RIFLE], ['walk', 'guard', PISTOL, { name: 'Walk (pistol)' }],
     ['walk', 'operator', BOLT, { name: 'Walk (bolt-action)' }],
   ];
   for (const [act, team, weapon, extra] of circles) {
@@ -131,12 +131,12 @@ export function planRange(world: World, nav: NavGrid): { actors: ActorSpec[]; sp
     ['duck', 'operator', RIFLE], ['lean', 'guard', RIFLE], ['leanCrouched', 'operator', RIFLE], ['leanAim', 'operator', RIFLE],
     ['jump', 'guard', RIFLE], ['aim', 'operator', RIFLE], ['aimCrouched', 'guard', RIFLE], ['aim', 'operator', PISTOL, { name: 'Aim (pistol)' }],
     ['rifle', 'guard', RIFLE], ['pistol', 'operator', PISTOL], ['bolt', 'operator', BOLT], ['reload', 'guard', RIFLE],
-    ['switch', 'operator', RIFLE], ['light', 'guard', RIFLE],
+    ['switch', 'operator', RIFLE],
   ];
   for (const [act, team, weapon, extra] of still) {
     const s = take();
     if (!s) break;
-    const loop = { strafe: 3, backpedal: 3, duck: 2.4, lean: 3.6, leanCrouched: 3.6, leanAim: 3.6, jump: 1.4, rifle: 3, pistol: 3, bolt: 3.2, reload: 5, switch: 4.8, light: 4 }[act as string] ?? 0;
+    const loop = { strafe: 3, backpedal: 3, duck: 2.4, lean: 3.6, leanCrouched: 3.6, leanAim: 3.6, jump: 1.4, rifle: 3, pistol: 3, bolt: 3.2, reload: 5, switch: 4.8 }[act as string] ?? 0;
     add({ act, team, weapon, post: at(s, s.out), loop, ...extra });
   }
 
@@ -320,10 +320,6 @@ export class Actor {
         b |= Btn.Sprint;
         if (pulse(2, CMD_DT * 2)) b |= Btn.Jump;
         break;
-      case 'lightWalk':
-        circle();
-        b |= Btn.Light;
-        break;
       case 'strafe':
         b |= t < 1.5 ? Btn.Left : Btn.Right;
         break;
@@ -379,11 +375,6 @@ export class Actor {
       case 'grenade':
         pitch = s.pitch ?? 0.2;
         if (t > 0.6 && t < 0.7) b |= Btn.Throw;
-        break;
-      case 'light':
-        yaw += Math.sin(t * 0.6) * 0.8;
-        pitch = -0.2;
-        if (t < 2) b |= Btn.Light;
         break;
       case 'stairs':
         if (t < 2.4) b |= Btn.Forward;

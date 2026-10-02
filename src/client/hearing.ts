@@ -27,7 +27,7 @@ const DETOUR_RANGE = 250;
  * tenth through, a thin door or fence two thirds, a pane of glass a third,
  * a tree trunk more still.
  */
-const THROUGH: Record<PanelKind, number> = { wall: 9, roof: 9, door: 6, fence: 4, crate: 1.2, glass: 40, lamp: 40, floor: 9, timber: 3 };
+const THROUGH: Record<PanelKind, number> = { wall: 9, roof: 9, door: 6, fence: 4, crate: 1.2, glass: 40, floor: 9, timber: 3 };
 /** Trunks are thin cylinders, rocks thick ones. */
 const TRUNK_LOSS = 0.5;
 const ROCK_LOSS = 2;

@@ -20,7 +20,6 @@ const KEYS: Record<string, number> = {
 
 const MOUSE: Record<number, number> = { 0: Btn.Fire, 2: Btn.Aim };
 const SLOTS: Record<string, number> = { Digit1: 0, Digit2: 1, Digit3: 2 };
-const FLASHLIGHT = 'KeyT';
 
 /** Radians per pixel of mouse movement. */
 const SENSITIVITY = 0.0022;
@@ -39,10 +38,6 @@ export class Input {
   freedAt = -Infinity;
   /** Weapon the player has selected, as an index into WEAPONS. */
   weapon = 0;
-  /** The flashlight is switched on; sent as Btn.Light held for as long as it is. */
-  light = false;
-  /** Dark enough for the flashlight to be any use; it can't be switched on otherwise. */
-  private dark = false;
   /** Multiplies mouse sensitivity; lowered while zoomed in. */
   lookScale = 1;
   onLockChange: ((locked: boolean) => void) | null = null;
@@ -57,7 +52,6 @@ export class Input {
       if (isTyping(e)) return;
       const slot = SLOTS[e.code];
       if (slot !== undefined && this.locked) this.weapon = slot;
-      if (e.code === FLASHLIGHT && this.locked && !e.repeat && this.dark) this.light = !this.light;
       const b = KEYS[e.code];
       if (b === undefined) return;
       this.held |= b;
@@ -107,13 +101,8 @@ export class Input {
    * pressed and already released since the last sample. Nothing while the
    * pointer is free.
    */
-  set lightable(dark: boolean) {
-    this.dark = dark;
-    if (!dark) this.light = false;
-  }
-
   sample(): number {
-    const b = this.held | this.tapped | (this.light ? Btn.Light : 0);
+    const b = this.held | this.tapped;
     this.tapped = 0;
     return this.locked ? b : 0;
   }

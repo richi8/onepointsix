@@ -60,23 +60,20 @@ test.describe('menu', () => {
     await expect(page.locator('#name')).toHaveValue('Test Pilot');
   });
 
-  test('puts the time of day and weather in the address', async ({ page }) => {
+  test('puts the weather in the address', async ({ page }) => {
     await open(page);
-    await page.click('#times [data-time=night]');
     await page.click('#weathers [data-weather=fog]');
-    await expect(page).toHaveURL(/time=night/);
     await expect(page).toHaveURL(/weather=fog/);
-    await expect(page.locator('#times [data-time=night]')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.locator('#briefing p.on').nth(1)).toContainText('More and tougher guards');
-    await expect(page.locator('#briefing p.on').nth(2)).toContainText('Nobody sees far');
-    // Back to day and clear leaves the address plain.
-    await page.click('#times [data-time=day]');
+    await expect(page.locator('#weathers [data-weather=fog]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('#briefing p.on').nth(1)).toContainText('Nobody sees far');
+    // Back to clear leaves the address plain.
     await page.click('#weathers [data-weather=clear]');
-    await expect(page).not.toHaveURL(/time=|weather=/);
-    // A link with conditions opens in them.
+    await expect(page).not.toHaveURL(/weather=/);
+    // A link with weather opens in it; an old one's time of day is dropped, and it's played by day.
     await open(page, '?time=dusk&weather=rain');
-    await expect(page.locator('#times [data-time=dusk]')).toHaveAttribute('aria-checked', 'true');
     await expect(page.locator('#weathers [data-weather=rain]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page).not.toHaveURL(/time=/);
+    await expect(page).toHaveURL(/weather=rain/);
   });
 
   test("What's new lights a dot until opened, and Esc closes it", async ({ page }) => {

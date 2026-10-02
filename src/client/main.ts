@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Btn, CMD_DT, DOOR_REACH, OPERATOR_CAPACITY, PLAYER_RADIUS, SERVER_DT, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
-import { sensesOf, TIME_NAMES, TIMES, WEATHER_NAMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from '../shared/conditions.ts';
+import { WEATHER_NAMES, WEATHERS, type Conditions, type Weather } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
@@ -23,8 +23,6 @@ import { ContractProps } from './contractprops.ts';
 import { Connection, WorkerTransport, type Recording, type RecordedEvent } from './connection.ts';
 import type { Deathcam, DeathcamEvent } from './deathcam.ts';
 import { Effects, type Struck } from './effects.ts';
-import { Flashlights } from './flashlights.ts';
-import { localLights } from './locallights.ts';
 import { Soak, wetMaterial } from './rain.ts';
 import { Grenades } from './grenades.ts';
 import { bearing, Hud } from './hud.ts';
@@ -76,11 +74,6 @@ const MODE_NOTES: Record<Mode, string> = {
   range: 'Try things out round the first outpost: soldiers going through every move, and nothing can hurt you. No scores.',
 };
 
-const TIME_NOTES: Record<TimeOfDay, string> = {
-  day: 'Broad daylight: you see them coming, and they see you.',
-  dusk: 'The light is going. T for a flashlight.',
-  night: 'More and tougher guards, better loot. A flashlight (T) shows you the way, and shows you to them.',
-};
 const WEATHER_NOTES: Record<Weather, string> = {
   clear: 'Sight and sound carry across the island.',
   rain: 'Shorter sight, and it drowns out footsteps and far-off shots.',
@@ -97,7 +90,6 @@ const view = new WorldView(world, config);
 const scene = view.scene;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-localLights.prepare(renderer);
 /** The lazily loaded parts of the island. */
 const prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Part of the island failed to load.', err));
 const resolution = new Resolution(renderer);
@@ -125,7 +117,6 @@ resize();
 
 const effects = new Effects(scene, (x, z) => world.floorHeight(x, z));
 const grenades = new Grenades(scene);
-const flashlights = new Flashlights(scene);
 const bodies = new Bodies(scene, world);
 bodies.seed = world.seed;
 const bags = new Bags(scene);
@@ -247,7 +238,6 @@ import('./assets.ts')
     await Promise.all([earlySounds, prepared]);
     loadingEl.querySelector('p')!.textContent = 'Preparing the island…';
     dress(assets);
-    view.warmSky();
     orbitCamera(performance.now() / 1000);
     camera.updateMatrixWorld();
     await renderer.compileAsync(scene, camera);
@@ -292,14 +282,14 @@ function gpuDone(): Promise<void> {
 
 /**
  * Stand-ins drawn while warming: an operator, a guard and a commander, one
- * with each gun and one lit, in the air just ahead of the camera, near enough
+ * with each gun, in the air just ahead of the camera, near enough
  * to cast shadows as bodies close by do.
  */
 function warmPlayers(): PlayerSnap[] {
   const at = camera.getWorldDirection(V_LOOK).multiplyScalar(12).add(camera.position);
   return (['operator', 'guard', 'guard'] as const).map((team, i) => ({
     id: -1 - i, team, x: at.x + i - 1, y: at.y - 1, z: at.z, yaw: 0, pitch: 0, duck: 0, lean: 0, dead: false, weapon: i, quiet: i === 0,
-    motion: 'ground', act: 'none', actT: 0, commander: i === 2, light: i === 0,
+    motion: 'ground', act: 'none', actT: 0, commander: i === 2,
   }));
 }
 
@@ -426,8 +416,8 @@ function challengeFor(m: Mode): Challenge | null {
 /** Share the island in the current mode, with your best score on it to beat. */
 function shareIsland(): void {
   const best = board.best(config.seed, mode);
-  // The best score goes out in the conditions it was set in.
-  const at = best?.time && best.weather ? { ...config, time: best.time, weather: best.weather } : config;
+  // The best score goes out in the weather it was set in.
+  const at = best?.weather ? { ...config, weather: best.weather } : config;
   void shareLink(shareQuery(at, mode, best ?? undefined), challengeText(best));
 }
 
@@ -453,10 +443,10 @@ function showBoard(): void {
   }
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
   const rows: { name: string; score: number; note: string; when: string; rival: boolean }[] = board.entries(config.seed, mode)
-    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), when: e.time && e.weather ? whenLabel(e.time, e.weather) : '', rival: false }));
+    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), when: e.weather ? WEATHER_NAMES[e.weather] : '', rival: false }));
   if (c) {
     const at = rows.findIndex((r) => r.score < c.score);
-    rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', when: whenLabel(link.world.time, link.world.weather), rival: true });
+    rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', when: WEATHER_NAMES[link.world.weather], rival: true });
   }
   // Keep the challenge in view even below the rows shown.
   const shown = rows.slice(0, BOARD_SHOWN);
@@ -493,11 +483,6 @@ function showBoard(): void {
   empty.hidden = rows.length > 0;
   boardEl.classList.toggle('none', rows.length === 0);
   empty.textContent = 'No scores yet. Get off the island with loot to post one.';
-}
-
-/** The conditions a score was set in, short enough for a row of the board: "Night · Rain", "Day". */
-function whenLabel(time: TimeOfDay, weather: Weather): string {
-  return [TIME_NAMES[time], ...(weather === 'clear' ? [] : [WEATHER_NAMES[weather]])].join(' · ');
 }
 
 function shortDate(date: string): string {
@@ -588,7 +573,6 @@ function briefingLine<K extends string>(notes: Record<K, string>): (chosen: K) =
 }
 
 const briefMode = briefingLine(MODE_NOTES);
-const briefTime = briefingLine(TIME_NOTES);
 const briefWeather = briefingLine(WEATHER_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
 let mode: Mode = 'online';
@@ -620,44 +604,34 @@ selectMode(mode);
 
 // ------------------------------------------------------------- conditions
 
-const timeButtons = [...document.querySelectorAll<HTMLButtonElement>('#times button')];
 const weatherButtons = [...document.querySelectorAll<HTMLButtonElement>('#weathers button')];
 
 /**
- * Play the island at another time of day or in other weather: relit behind
- * the menu, and kept in the address so the page's link reproduces it.
+ * Play the island in other weather: relit behind the menu, and kept in the
+ * address so the page's link reproduces it.
  */
 function setConditions(c: Conditions): void {
   config = { ...config, ...c };
-  for (const b of timeButtons) {
-    const on = b.dataset.time === c.time;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-checked', String(on));
-  }
   for (const b of weatherButtons) {
     const on = b.dataset.weather === c.weather;
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
   }
-  briefTime(c.time);
   briefWeather(c.weather);
   view.setConditions(c);
   const lit = view.lit;
   renderer.toneMappingExposure = lit.exposure;
   viewModel.setLight(lit.ambient, lit.sunColor, lit.sunIntensity / 3.3, lit.hemiSky, lit.hemiGround);
-  flashlights.setConditions(sensesOf(c).dark, lit.fogNear, lit.fogFar);
-  input.lightable = sensesOf(c).dark;
   sfx.conditions = c;
   const q = new URLSearchParams(location.search);
-  for (const [k, v] of [['time', c.time], ['weather', c.weather]] as const) {
-    if (v === TIMES[0] || v === WEATHERS[0]) q.delete(k);
-    else q.set(k, v);
-  }
+  // Links from before the game was day only may carry a time of day: it's dropped.
+  q.delete('time');
+  if (c.weather === WEATHERS[0]) q.delete('weather');
+  else q.set('weather', c.weather);
   const search = q.size ? `?${q}` : '';
   if (search !== location.search) history.replaceState(null, '', `${location.pathname}${search}${location.hash}`);
 }
-for (const b of timeButtons) b.onclick = () => setConditions({ time: b.dataset.time as TimeOfDay, weather: config.weather });
-for (const b of weatherButtons) b.onclick = () => setConditions({ time: config.time, weather: b.dataset.weather as Weather });
+for (const b of weatherButtons) b.onclick = () => setConditions({ weather: b.dataset.weather as Weather });
 setConditions(config);
 
 // ------------------------------------------------------------- what's new
@@ -788,7 +762,7 @@ function endRun(e: RunEnd): void {
   const counts = mode !== 'range';
   if (counts) runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
   const standing: string[] = [];
-  const place = counts ? board.add(config.seed, mode, { name: playerName(), score: e.score, date: today(), time: config.time, weather: config.weather }) : 0;
+  const place = counts ? board.add(config.seed, mode, { name: playerName(), score: e.score, date: today(), weather: config.weather }) : 0;
   if (place === 1) standing.push('New best on this island!');
   else if (place > 1) standing.push(`#${place} of your runs on this island.`);
   const c = challengeFor(mode);
@@ -801,7 +775,7 @@ function endRun(e: RunEnd): void {
   shareButton.textContent = e.score > 0 ? 'Challenge a friend' : best ? 'Share your best' : 'Share island';
   shareButton.onclick = () => {
     const score = e.score > 0 ? { name: playerName(), score: e.score } : best ?? undefined;
-    const at = e.score <= 0 && best?.time && best.weather ? { ...config, time: best.time, weather: best.weather } : config;
+    const at = e.score <= 0 && best?.weather ? { ...config, weather: best.weather } : config;
     void shareLink(shareQuery(at, mode, score), challengeText(score));
   };
   showLastResults = () => {
@@ -1232,8 +1206,6 @@ function eventSound(e: GameEvent): void {
 const focus = new THREE.Vector3();
 /** Which way the camera looks, reused each frame. */
 const V_LOOK = new THREE.Vector3();
-/** Others' lit flashlights nearest the camera, for the rain, reused each frame. */
-const rainBeams: { at: THREE.Vector3; dir: THREE.Vector3 }[] = [];
 const start = performance.now() / 1000;
 let last = start;
 let lastYaw = 0;
@@ -1279,12 +1251,9 @@ const devStanding: PlayerSnap[] = (import.meta.env.DEV ? new URLSearchParams(loc
     const [x, z, yaw = 0] = spot.split(',').map(Number);
     return {
       id: 1000 + i, team: i % 3 === 2 ? 'guard' : 'operator', x, y: world.floorHeight(x, z), z, yaw, pitch: 0, duck: 0, lean: 0,
-      dead: false, weapon: 0, quiet: false, motion: 'ground', act: 'none', actT: 0, commander: false, light: false,
+      dead: false, weapon: 0, quiet: false, motion: 'ground', act: 'none', actT: 0, commander: false,
     };
   });
-
-/** In development, `?torch` lights your own flashlight on the menu camera too, for screenshots of its beam. */
-const devTorch = import.meta.env.DEV && new URLSearchParams(location.search).has('torch');
 
 /** Seconds for the wind, waves and rain. */
 function sceneTime(): number {
@@ -1399,7 +1368,7 @@ if (import.meta.env.DEV) {
   Object.assign(window, {
     THREE,
     game: {
-      treeFade, camera, scene, renderer, bodies, effects, sfx, viewModel, input, resolution, flashlights, dev,
+      treeFade, camera, scene, renderer, bodies, effects, sfx, viewModel, input, resolution, dev,
       get view() { return view; }, get world() { return world; }, get conn() { return conn; }, get deathcam() { return deathcam; },
     },
   });
@@ -1421,9 +1390,6 @@ renderer.setAnimationLoop(() => {
   }
   const dt = Math.min(now - last, 0.1);
   last = now;
-  // Lamps and others' flashlights add their lights as the frame is worked out.
-  localLights.begin();
-
   if (conn) {
     conn.update(dt);
     inputLoop.advance(now);
@@ -1465,12 +1431,6 @@ renderer.setAnimationLoop(() => {
   // The gun in hand, yours or the killer's in a death cam, as wet as its holder.
   viewModel.soak.value = cam ? (bodies.soakNear(cam.state.x, cam.state.y, cam.state.z) ?? 0) : mySoak.level.value;
   viewModel.up.value.set(0, 1, 0).transformDirection(camera.matrixWorldInverse);
-  // In a death cam, the killer's own light lights their view.
-  const torch = cam ? cam.lit : state ? !state.dead && input.light : devTorch;
-  const beams = flashlights.update(camera, torch, players, (id, out, dir) => bodies.torch(id, out, dir), rainBeams);
-  if (torch && flashlights.dark) beams.unshift({ at: camera.position, dir: camera.getWorldDirection(V_LOOK) });
-  view.torches(beams);
-  viewModel.torchOn = torch;
   sfx.underwater = view.underwater;
   sfx.update(camera, dt);
   effects.update(dt);
@@ -1496,7 +1456,6 @@ renderer.setAnimationLoop(() => {
   if (cam?.done) stopDeathcam();
   if (holdFrame || !drawing) return;
   const shown = warming ? [showAll(scene), showAll(viewModel.scene)] : [];
-  localLights.draw(renderer, scene);
   view.reflect(renderer, camera, warming);
   const wobbling = view.underwater;
   if (wobbling) wobble(camera, now);
@@ -1506,10 +1465,7 @@ renderer.setAnimationLoop(() => {
   view.lookForSea(renderer, camera);
   if (state || warming) {
     renderer.clearDepth();
-    // The gun is drawn in a space of its own, the camera's: the world's lights are placed in it.
-    localLights.apart(camera);
     renderer.render(viewModel.scene, viewModel.camera);
-    localLights.restore();
   }
   for (const undo of shown) undo();
   if (pictureNext) {

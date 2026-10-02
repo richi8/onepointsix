@@ -15,7 +15,7 @@ export interface RunRecord {
   /** When it ended, as an ISO date and time. */
   at: string;
   seed: number;
-  /** The time of day and weather, such as "night, fog", or '' for a clear day; missing from runs logged before chunk 16. */
+  /** The weather, such as "fog", or '' for clear; missing from runs logged before chunk 16, and runs before chunk 43 may name a time of day too. */
   conditions?: string;
   mode: Mode;
   outcome: 'extracted' | 'killed' | 'mia';

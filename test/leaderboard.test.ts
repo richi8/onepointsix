@@ -31,14 +31,14 @@ describe('leaderboard', () => {
     expect(board.entries(1, 'offline')[1].name).toBe('later');
   });
 
-  it('keeps the conditions each score was set in, and drops unknown ones', () => {
+  it('keeps the weather each score was set in, and drops unknown weather and old times of day', () => {
     const store = memory();
     const board = new Leaderboard(store);
-    board.add(1, 'offline', { ...run(300), time: 'night', weather: 'rain' });
+    board.add(1, 'offline', { ...run(300), weather: 'rain' });
     board.add(1, 'offline', run(200));
-    expect(board.entries(1, 'offline')).toEqual([{ ...run(300), time: 'night', weather: 'rain' }, run(200)]);
-    store.data.set('board:1:offline', JSON.stringify([{ ...run(100), time: 'noon', weather: 'rain' }]));
-    expect(board.entries(1, 'offline')).toEqual([run(100)]);
+    expect(board.entries(1, 'offline')).toEqual([{ ...run(300), weather: 'rain' }, run(200)]);
+    store.data.set('board:1:offline', JSON.stringify([{ ...run(100), time: 'night', weather: 'fog' }, { ...run(50), weather: 'snow' }]));
+    expect(board.entries(1, 'offline')).toEqual([{ ...run(100), weather: 'fog' }, run(50)]);
   });
 
   it('survives broken or missing storage', () => {

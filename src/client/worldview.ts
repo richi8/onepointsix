@@ -12,7 +12,6 @@ import { lightingOf, type Lighting } from './lighting.ts';
 import { Rain, type Shelter } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
 import { IslandMap, LEVEL_GATHER } from './islandmap.ts';
-import { Lamps } from './lamps.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
@@ -25,7 +24,7 @@ import { wind } from './wind.ts';
 // assets have loaded: blended ground layers, props in wood, concrete and
 // metal, rocks and bark, all lit by a real sky. Near the camera it's dressed
 // in grass, bushes and pebbles; the terrain and trees get simpler farther off.
-// The time of day and the weather set the sky, the sun or moon and the fog.
+// The weather sets the sky, the sun and the fog.
 
 const FLAG_OPEN = 0x4fd06b;
 const FLAG_SHUT = 0xc4453a;
@@ -40,7 +39,6 @@ const PROP_COLORS: Record<PropStyle, number[]> = {
   roof: [0x55595c],
   door: [0x5a4a36],
   glass: [0xa8c4c8],
-  lamp: [0x3a3d40],
 };
 /** With textures, props are tinted rather than coloured. */
 const PROP_TINTS: Record<PropStyle, number[]> = {
@@ -52,7 +50,6 @@ const PROP_TINTS: Record<PropStyle, number[]> = {
   roof: [0xa09a90],
   door: [0x8a7560],
   glass: [0xffffff],
-  lamp: [0x6a6e72],
 };
 /** Wood textures are dark; they're brightened past themselves. */
 const GAIN: Partial<Record<PropStyle, number>> = { crate: 1.7, wood: 1.8, fence: 1.5 };
@@ -65,14 +62,7 @@ const PROP_LAYERS: Record<PropStyle, number> = {
   roof: Layer.metal,
   door: Layer.boards,
   glass: Layer.concrete,
-  lamp: Layer.metal,
 };
-/** How far our own sky is greyed as it's baked to light by. */
-const SKY_GREYING = 0.7;
-const GREY = new THREE.Color();
-function luminance(c: THREE.Color): number {
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-}
 /** The colour lightning lights the sky, and how much flat light it adds at its brightest. */
 const FLASH_SKY = new THREE.Color(0xc8d2ff);
 const FLASH_HEMI = 1.2;
@@ -101,9 +91,6 @@ export class WorldView {
   /** The watchtowers and containers, drawn from their parts. */
   private readonly structures: Structures;
   private readonly water: Water;
-  /** The outposts' lamps, lit after dark. */
-  private readonly lamps: Lamps;
-  private dark: boolean;
   /** Grass, bushes and pebbles near the camera, once their code has loaded. */
   private cover: GroundCover | null = null;
   private assets: Assets | null = null;
@@ -124,9 +111,6 @@ export class WorldView {
   private redrawnAt = -Infinity;
   /** How bright the last lightning flash shown was. */
   private flashed = 0;
-  /** For baking our own sky into a picture to light and reflect by, and the last one baked. */
-  private renderer: THREE.WebGLRenderer | null = null;
-  private skyPicture: { key: string; target: THREE.WebGLRenderTarget } | null = null;
 
   /** Drawn into `scene`, which may have been another island's; see dispose(). */
   constructor(world: World, conditions: Conditions, scene = new THREE.Scene()) {
@@ -134,7 +118,6 @@ export class WorldView {
     patchFog();
     this.lighting = lightingOf(conditions);
     this.raining = conditions.weather === 'rain';
-    this.dark = conditions.time !== 'day';
     this.rain = new Rain(world);
     scene.fog = this.fog;
     scene.background = this.background;
@@ -165,10 +148,8 @@ export class WorldView {
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
-    this.lamps = new Lamps(world);
-    this.lamps.setConditions(this.dark, this.fog.near, this.fog.far);
-    scene.add(this.lamps.group, this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group, this.rain.group);
-    for (const o of [this.sky, this.terrain.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group, this.lamps.group]) reflected(o);
+    scene.add(this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group, this.rain.group);
+    for (const o of [this.sky, this.terrain.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group]) reflected(o);
   }
 
   /**
@@ -176,8 +157,6 @@ export class WorldView {
    * impostors, whose picture needs the renderer to bake.
    */
   async prepare(renderer: THREE.WebGLRenderer): Promise<void> {
-    this.renderer = renderer;
-    this.light();
     await Promise.all([
       this.trees.bake(renderer).then(() => {
         reflected(this.trees.group);
@@ -200,7 +179,7 @@ export class WorldView {
   dispose(): void {
     this.disposed = true;
     const scene = this.scene;
-    const parts = [this.sky, this.hemi, this.lamps.group, this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
+    const parts = [this.sky, this.hemi, this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
     if (this.cover) parts.push(this.cover.group);
     const materials = new Set<THREE.Material>();
     for (const part of parts) {
@@ -222,8 +201,6 @@ export class WorldView {
     }
     this.sun.removeFrom(scene);
     this.water.dispose();
-    this.skyPicture?.target.dispose();
-    this.skyPicture = null;
   }
 
   /** How the island is lit now. */
@@ -231,25 +208,10 @@ export class WorldView {
     return this.lighting;
   }
 
-  /** Light the island for another time of day or weather. */
+  /** Light the island for another weather. */
   setConditions(conditions: Conditions): void {
     this.lighting = lightingOf(conditions);
     this.raining = conditions.weather === 'rain';
-    this.dark = conditions.time !== 'day';
-    this.light();
-  }
-
-  /**
-   * Bake a night sky once and throw it away, if this light doesn't bake its
-   * own: compiling the shaders that do it stalls the first dusk or night
-   * for most of a second on a cold shader cache, better done while loading.
-   */
-  warmSky(): void {
-    if (this.lighting.ownSky || !this.renderer || !this.assets) return;
-    const was = this.lighting;
-    this.lighting = lightingOf({ time: 'night', weather: 'clear' });
-    this.light();
-    this.lighting = was;
     this.light();
   }
 
@@ -279,14 +241,11 @@ export class WorldView {
     u.zenith.value.copy(l.zenith);
     u.sunDir.value.copy(l.sunDir);
     u.sunColor.value.copy(l.sunColor).multiplyScalar(l.disc);
-    u.stars.value = l.stars;
-    // Baked from the sky just set.
-    if (this.assets) this.scene.environment = l.ownSky ? (this.bakeSky() ?? this.assets.environment) : this.assets.environment;
+    if (this.assets) this.scene.environment = this.assets.environment;
     // The streaks catch the light of the sky around them.
     this.rain.set(this.raining, l.horizon.clone().multiplyScalar(1.25));
     // Built after the first lighting.
     this.water?.relit(this.scene);
-    this.lamps?.setConditions(this.dark, this.fog.near, this.fog.far);
   }
 
   /** Swap the flat colours for textures and light everything from the sky. */
@@ -331,7 +290,6 @@ export class WorldView {
   /** Show panels standing or broken and doors open or shut as the world has them, at once. */
   syncPanels(): void {
     this.world.panels.forEach((_, i) => this.showPanel(i));
-    this.lamps.show();
     this.props.moved();
     this.light3d.changed();
     this.rain.roofChanged();
@@ -347,7 +305,6 @@ export class WorldView {
       this.rain.roofChanged();
       this.island.roofs(this.world.panels[id].box);
     }
-    if (this.world.panels[id].kind === 'lamp') this.lamps.show();
     this.showPanel(id);
     this.props.moved();
     this.light3d.changed();
@@ -429,7 +386,6 @@ export class WorldView {
     wind.value = time;
     this.water.update(camera, time, this.scene, this.sky);
     this.trees.update(camera.position);
-    this.lamps.update(camera.position);
     this.cover?.update(camera.position);
     this.rain.update(camera.position, time);
     this.lightning(this.rain.flash);
@@ -446,40 +402,13 @@ export class WorldView {
   /** Draw what the sea reflects, before drawing the scene from `camera`; if `force`, even with no sea in view. */
   reflect(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, force = false): void {
     // Its pass reuses the shadow maps, so it waits for a frame to have drawn
-    // every one, your own flashlight's included.
+    // every one.
     if (this.scene.children.every(drawnShadow)) this.water.reflect(renderer, this.scene, camera, force);
   }
 
   /** Straight after drawing the scene from `camera`, have the GPU count whether any sea showed, for the reflections to come. */
   lookForSea(renderer: THREE.WebGLRenderer, camera: THREE.Camera): void {
     this.water.lookForSea(renderer, camera, this.fog.far);
-  }
-
-  /**
-   * Our own sky as it is now, baked into a picture for image-based light and
-   * reflections, so at night shiny things and puddles show the moon and a
-   * dark sky rather than a dimmed day; null until there's a renderer to bake with.
-   */
-  private bakeSky(): THREE.Texture | null {
-    const renderer = this.renderer;
-    if (!renderer) return null;
-    const l = this.lighting;
-    const key = [l.horizon, l.zenith, l.sunColor, l.sunDir].map((v) => v.toArray().map((n) => n.toFixed(4)).join()).join('|') + l.disc + l.stars;
-    if (this.skyPicture?.key === key) return this.skyPicture.target.texture;
-    this.skyPicture?.target.dispose();
-    const scene = new THREE.Scene();
-    scene.add(new THREE.Mesh(this.sky.geometry, this.sky.material));
-    // Baked a good deal greyer than it looks, or everything it lights turns the night sky's blue.
-    const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
-    const colors: THREE.Color[] = [u.horizon.value, u.zenith.value, u.sunColor.value];
-    const seen = colors.map((c) => c.clone());
-    for (const c of colors) c.lerp(GREY.setScalar(luminance(c)), SKY_GREYING);
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const target = pmrem.fromScene(scene, 0, 1, 3000);
-    pmrem.dispose();
-    colors.forEach((c, i) => c.copy(seen[i]));
-    this.skyPicture = { key, target };
-    return target.texture;
   }
 
   /** Called with how far off lightning struck, metres, as it lights the sky. */
@@ -503,11 +432,6 @@ export class WorldView {
     const hemi = this.textured ? l.hemiTextured : l.hemi;
     this.hemi.intensity = hemi + f * FLASH_HEMI * (1 - 0.8 * l.ambient);
     this.hemi.color.copy(l.hemiSky).lerp(FLASH_SKY, f);
-  }
-
-  /** The lit flashlights nearest the camera, yours first if it's on: the rain in their beams glints. */
-  torches(lit: readonly { at: THREE.Vector3; dir: THREE.Vector3 }[]): void {
-    this.rain.torches(lit);
   }
 
   /** Whether the camera is under the sea. */
@@ -553,7 +477,6 @@ function makeSky(): THREE.Mesh {
       zenith: { value: new THREE.Color() },
       sunDir: { value: new THREE.Vector3(0, 1, 0) },
       sunColor: { value: new THREE.Color() },
-      stars: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -566,20 +489,12 @@ function makeSky(): THREE.Mesh {
       uniform vec3 zenith;
       uniform vec3 sunDir;
       uniform vec3 sunColor;
-      uniform float stars;
       varying vec3 vDir;
       void main() {
         vec3 dir = normalize(vDir);
         vec3 col = mix(horizon, zenith, pow(max(dir.y, 0.0), 0.6));
         float s = max(dot(dir, sunDir), 0.0);
         col += sunColor * (pow(s, 1500.0) * 6.0 + pow(s, 12.0) * 0.18);
-        if (stars > 0.0 && dir.y > 0.0) {
-          // A fixed scatter of stars, fading out toward the horizon's haze.
-          vec3 cell = floor(dir * 260.0);
-          float h = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-          float bright = smoothstep(0.9975, 1.0, h) * smoothstep(0.05, 0.35, dir.y);
-          col += vec3(0.8, 0.85, 1.0) * bright * stars;
-        }
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }`,

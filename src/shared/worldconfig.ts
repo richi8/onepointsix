@@ -1,11 +1,11 @@
-import { DEFAULT_CONDITIONS, TIMES, WEATHERS, type Conditions, type TimeOfDay, type Weather } from './conditions.ts';
+import { DEFAULT_CONDITIONS, WEATHERS, type Conditions, type Weather } from './conditions.ts';
 import { DEFAULT_SEED } from './constants.ts';
 
 /**
  * Everything needed to generate a world and set up a game on it. Every peer
  * builds the same island from it, so this is all that travels in a share
- * link or over the network. The seed shapes the island; the time of day and
- * the weather set the conditions it's played in.
+ * link or over the network. The seed shapes the island; the weather sets the
+ * conditions it's played in.
  */
 export interface WorldConfig extends Conditions {
   seed: number;
@@ -16,13 +16,13 @@ export const DEFAULT_WORLD: WorldConfig = { seed: DEFAULT_SEED, ...DEFAULT_CONDI
 /**
  * Reads a `?world=` value. A plain number is used as the seed; any other text
  * is hashed, so `?world=banana` is a valid, stable island. Missing or blank
- * values give the default world. The conditions come from `time` and
- * `weather`, falling back to a clear day for anything missing or unknown.
+ * values give the default world. The conditions come from `weather`, falling
+ * back to clear for anything missing or unknown. Links from before the game
+ * was day only also carry a `time`, which is ignored: they open by day.
  */
-export function parseWorldParam(value: string | null, time: string | null = null, weather: string | null = null): WorldConfig {
+export function parseWorldParam(value: string | null, weather: string | null = null): WorldConfig {
   const s = value?.trim() ?? '';
   const conditions: Conditions = {
-    time: TIMES.includes(time as TimeOfDay) ? (time as TimeOfDay) : DEFAULT_CONDITIONS.time,
     weather: WEATHERS.includes(weather as Weather) ? (weather as Weather) : DEFAULT_CONDITIONS.weather,
   };
   if (s === '') return { ...DEFAULT_WORLD, ...conditions };
@@ -30,17 +30,16 @@ export function parseWorldParam(value: string | null, time: string | null = null
   return { seed: hashString(s), ...conditions };
 }
 
-/** Query parameters for a world: the seed, plus the conditions unless it's a clear day. */
+/** Query parameters for a world: the seed, plus the weather unless it's clear. */
 export function worldParams(cfg: WorldConfig): Record<string, string> {
   const q: Record<string, string> = { world: String(cfg.seed) };
-  if (cfg.time !== DEFAULT_CONDITIONS.time) q.time = cfg.time;
   if (cfg.weather !== DEFAULT_CONDITIONS.weather) q.weather = cfg.weather;
   return q;
 }
 
 /** Whether two configs describe the same game: island and conditions. */
 export function sameWorld(a: WorldConfig, b: WorldConfig): boolean {
-  return a.seed >>> 0 === b.seed >>> 0 && a.time === b.time && a.weather === b.weather;
+  return a.seed >>> 0 === b.seed >>> 0 && a.weather === b.weather;
 }
 
 /** FNV-1a, 32-bit. */

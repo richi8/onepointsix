@@ -116,8 +116,8 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
   (chunk 29)
 
 ### Shareable worlds and leaderboards
-- The world config (seed, time of day and weather) is encoded in the URL.
-- Each island has its own leaderboard, shared by every time of day and weather: stored locally
+- The world config (seed and weather) is encoded in the URL.
+- Each island has its own leaderboard, shared by every weather: stored locally
   first, on the server once there is multiplayer.
 - A share button on the results screen.
 
@@ -290,7 +290,7 @@ transition rather than switching. The core loop stays as it is.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 43 | **Night out** | Dusk and night removed entirely, with everything that only served them: flashlights (the torch models on the guns, beams and their shadows, beams lighting the rain, bots noticing beams and holders, the key, the killer's flashlight in the death cam, the range's flashlight routine), the outpost lamps (their light and shadows, lamplight for bots, operator bots keeping out of it, shooting lamps out), night's extra and tougher guards and better loot, the night sky, the dusk and night lighting presets and the menu's time picker; the light volume and anything else day still uses kept; old links and scores with a time of day still open and read as day; the browser tests and benchmark cases for night replaced by day ones; the last commit with night in it recorded in Decisions | Nothing in the code mentions dusk, night, flashlights or lamps, every test passes, and the bot playtest by day stays at 15% ± 3 | |
+| 43 | **Night out** | Dusk and night removed entirely, with everything that only served them: flashlights (the torch models on the guns, beams and their shadows, beams lighting the rain, bots noticing beams and holders, the key, the killer's flashlight in the death cam, the range's flashlight routine), the outpost lamps (their light and shadows, lamplight for bots, operator bots keeping out of it, shooting lamps out), night's extra and tougher guards and better loot, the night sky, the dusk and night lighting presets and the menu's time picker; the light volume and anything else day still uses kept; old links and scores with a time of day still open and read as day; the browser tests and benchmark cases for night replaced by day ones; the last commit with night in it recorded in Decisions | Nothing in the code mentions dusk, night, flashlights or lamps, every test passes, and the bot playtest by day stays at 15% ± 3 || **Done** (all of it removed, with the crickets that only sang after dark, which took the ambience sounds from 589 to 455 KB; old links and scores with a time of day open by day in their weather, and the leaderboard now shows each score's weather, "Clear" where it said "Day". The dusk, night and lamp screenshots gave way to an inside corner, the outpost on a clear day and an outpost's yard dry and wet by day; the benchmark's rainy night to the crowd in the rain, 13.2 ms, its baseline re-recorded. The bot playtest by day: 14% extracted. Old "What's new" entries still tell of night, as the record of past updates, and tests pass old links with a time of day on purpose) |
 | 44 | **The weather cycle** | Weather becomes a function of the island's seed and the game's clock, worked out in shared code so the server, bots, the client and the death cam agree: the next weather picked at random from the other two, each phase's length at random, clear lasting longest (about 5 min clear, 3 min rain and 2 min fog on average, so 10 min a cycle), with a blend factor across each transition; bots' sight and hearing read the blended weather every tick; the link and the menu lose the weather (old links still open, their weather ignored); leaderboards drop each score's conditions and the results show the weather at extraction | Unit tests show the same seed and clock giving the same weather on server and client, a run sees the weather change, and a death cam plays in the weather its kill happened in | |
 | 45 | **Transitions and warnings** | Each change blends over 30–60 s: fog density, sky, sun and ambient light, rain streaks, splashes and the rain bed, the sound muffling, fog banks drifting in and thinning out; surfaces wetting as rain starts, drying slowly after, and puddles filling and draining; about a minute's warning before a change (clouds thickening, the wind rising and far thunder before rain, mist gathering in hollows before fog); a benchmark case for the crossover, when rain and fog both run | Screenshot tests mid-transition look right, a player can tell rain or fog is coming before it arrives, and the benchmark's crossover frame holds the budget | |
 | 46 | **Playing the weather** | Operator bots use the weather: rats and looters move in fog, hunters push under rain's cover, campers hold as sight shortens; the bot playtest run over the cycle instead of fixed day and rainy-night runs; the changelog, Features and Vision updated; a human pass on how the changes feel in play | The bot playtest stays at 15% ± 3 with the cycle running, and a tester notices and uses the weather turning | |
@@ -312,7 +312,10 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-01 (see the history).
 
 ### Code and testing
-Nothing open: the last was resolved on 2026-09-30 (see the history).
+- **The "draw" sound starts late in its bank** (found in 43): the browser test that every shot
+  starts on time fails on `draw`, loud only 63 ms in against the 45 ms allowed. It fails the same
+  at `7120c80`, before chunk 43 touched the sounds, and the early bank is unchanged since
+  `31ee20b` re-packed it with the new suppressed rifle; likely its cut point needs moving.
 
 ### Playtest and tuning
 Nothing open: the last was resolved on 2026-10-02 (see the history, and the bot extraction
@@ -420,9 +423,9 @@ extraction stays as hard as it is.
   `locallights.ts`, beams in the rain, bots seeing beams in `bot.ts`, the death cam's flashlight);
   the outpost lamps (`lamps.ts`, lamplight for bots and paths round it in `nav.ts`, shooting lamps
   out); night's extra and tougher guards and better loot (`isNight` in `conditions.ts`,
-  `population.ts`, `containers.ts`, `loot.ts`). Built in chunks 16, 25 and 36. The last commit
-  with all of it is `ee74383` (before Phase 6 was planned); chunk 43 notes the exact commit
-  before its removal here.
+  `population.ts`, `containers.ts`, `loot.ts`); the range's flashlight routines, the menu's time
+  picker and the crickets that sang after dark (Freesound 175020). Built in chunks 16, 25 and 36.
+  The last commit with all of it is `7120c80`, the one before chunk 43.
 - **Phase 3 choices** (settled before it started): no prone stance; the bounty stays unpaid, since
   the carrier's loot is the reward; scores show their conditions but aren't adjusted for night;
   Freesound's free CC0 previews are good enough, so no API key or original files; a new soldier

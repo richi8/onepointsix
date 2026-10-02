@@ -1,17 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { beamSpot, Bot, hostile, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
+import { Bot, hostile, type Agent, type BotContext, type Role } from '../src/server/bot.ts';
 import { NavGrid } from '../src/server/nav.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
-import { Btn, GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, REINFORCE_DELAY, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, REINFORCE_DELAY, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { DEFAULT_CONDITIONS, sensesOf, type Senses } from '../src/shared/conditions.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { spawnState, type PlayerState } from '../src/shared/sim.ts';
 import { RIFLE } from '../src/shared/weapons.ts';
-import { inBuilding, lampShine, LAMP_SEEN, watchtower, World } from '../src/shared/world.ts';
-import { eyePosition } from '../src/shared/sim.ts';
+import { inBuilding, watchtower, World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const world = new World(DEFAULT_WORLD.seed);
@@ -121,80 +120,17 @@ describe('bot perception', () => {
     expect(bot.state).toBe('investigate');
   });
 
-  it('sees less far at night and in fog, except someone with a light on', () => {
+  it('sees less far in fog', () => {
     const far = openGround(60);
     const yaw = yawToward(far.ax, far.az, far.bx, far.bz);
     const sentry: Role = { kind: 'sentry', post: { x: far.ax, y: 0, z: far.az, yaw } };
-    const spots = (senses: Senses, light: boolean): number => {
-      const enemy = { ...agent(2, 'operator', far.bx, far.bz), light };
+    const spots = (senses: Senses): number => {
+      const enemy = agent(2, 'operator', far.bx, far.bz);
       return watch(agent(1, 'guard', far.ax, far.az), [enemy], yaw, 3, undefined, sentry, senses).awareness(2);
     };
-    const night = sensesOf({ time: 'night', weather: 'clear' });
-    const fog = sensesOf({ time: 'day', weather: 'fog' });
-    expect(spots(night, false)).toBe(0);
-    expect(spots(night, true)).toBe(1);
-    expect(spots(fog, false)).toBe(0);
-    // A light doesn't cut through fog.
-    expect(spots(fog, true)).toBe(0);
-    expect(spots(sensesOf({ time: 'day', weather: 'rain' }), false)).toBe(1);
-  });
-
-  it('sees someone crouching in the dark only in its own beam', () => {
-    const near = openGround(35);
-    const yaw = yawToward(near.ax, near.az, near.bx, near.bz);
-    const sentry: Role = { kind: 'sentry', post: { x: near.ax, y: 0, z: near.az, yaw } };
-    const night = sensesOf({ time: 'night', weather: 'clear' });
-    const spots = (light: boolean): number => {
-      const self = { ...agent(1, 'guard', near.ax, near.az), light };
-      const enemy = { ...agent(2, 'operator', near.bx, near.bz), crouched: true, duck: 1 };
-      return watch(self, [enemy], yaw, 3, undefined, sentry, night).awareness(2);
-    };
-    expect(spots(false)).toBe(0);
-    expect(spots(true)).toBe(1);
-  });
-
-  it('sees someone crouching in the dark under a lamp', () => {
-    const near = openGround(35);
-    const yaw = yawToward(near.ax, near.az, near.bx, near.bz);
-    const sentry: Role = { kind: 'sentry', post: { x: near.ax, y: 0, z: near.az, yaw } };
-    const spots = (time: 'night' | 'day', lamp: boolean): number => {
-      const enemy = { ...agent(2, 'operator', near.bx, near.bz), crouched: true, duck: 1 };
-      const lit = (_: unknown, ctx: BotContext) => (ctx.lamplit = (a) => lamp && a.id === 2);
-      return watch(agent(1, 'guard', near.ax, near.az), [enemy], yaw, 3, lit, sentry, sensesOf({ time, weather: 'clear' })).awareness(2);
-    };
-    expect(spots('night', false)).toBe(0);
-    expect(spots('night', true)).toBe(1);
-  });
-
-  it('turns toward someone out of sight whose beam lands in view', () => {
-    // The enemy stands 12 m behind the sentry and shines past it at the ground 8 m ahead.
-    const rand = mulberry32(5);
-    let g: ReturnType<typeof openGround>, away: number, sx: number, sy: number, sz: number;
-    do {
-      const a = world.randomLandPoint(rand);
-      away = rand() * Math.PI * 2;
-      g = { ax: a.x, az: a.z, bx: a.x + Math.sin(away) * 12, bz: a.z + Math.cos(away) * 12 };
-      sx = g.ax - Math.sin(away) * 8;
-      sz = g.az - Math.cos(away) * 8;
-      sy = world.groundHeight(sx, sz, world.floorHeight(sx, sz));
-    } while (![[g.ax, g.az], [g.bx, g.bz], [sx, sz]].every(([x, z]) => nav.dry(x, z)) ||
-      !world.hasLineOfSight(g.bx, world.terrainHeight(g.bx, g.bz) + 1.6, g.bz, sx, sy + 0.2, sz));
-    const night = sensesOf({ time: 'night', weather: 'clear' });
-    const think = (light: boolean): Bot => {
-      const self = agent(1, 'guard', g.ax, g.az);
-      const enemy = { ...agent(2, 'operator', g.bx, g.bz), light, yaw: away };
-      enemy.pitch = Math.atan2(sy - (enemy.y + 1.6), 20);
-      const spot = beamSpot(world, enemy);
-      expect(spot && Math.hypot(spot.x - sx, spot.z - sz)).toBeLessThan(1);
-      const post = { x: g.ax, y: self.y, z: g.az, yaw: away };
-      return watch(self, [enemy], away, 1, undefined, { kind: 'sentry', post }, night);
-    };
-    const dark = think(false);
-    expect(dark.awareness(2)).toBe(0);
-    expect(dark.state).toBe('patrol');
-    const lit = think(true);
-    expect(lit.awareness(2)).toBe(0);
-    expect(lit.state).toBe('investigate');
+    expect(spots(sensesOf({ weather: 'clear' }))).toBe(1);
+    expect(spots(sensesOf({ weather: 'rain' }))).toBe(1);
+    expect(spots(sensesOf({ weather: 'fog' }))).toBe(0);
   });
 
   it('knows where a shooter it cannot see is once hit', () => {
@@ -248,21 +184,11 @@ describe('guards', () => {
     expect(server.bots().find((b) => kill?.k === 'kill' && b.id === kill.killer)?.team).toBe('guard');
   });
 
-  it('are more and tougher at night, and carry their flashlights lit', () => {
-    const day = new GameServer(DEFAULT_WORLD.seed, { guards: true });
-    const night = new GameServer(DEFAULT_WORLD.seed, { guards: true, conditions: { time: 'night', weather: 'clear' } });
-    expect(night.bots().length).toBeGreaterThan(day.bots().length);
-    const easy = (s: GameServer) => s.bots().filter((b) => b.bot.skill.name === 'easy').length;
-    expect(easy(day)).toBeGreaterThan(0);
-    expect(easy(night)).toBe(0);
-    const lit = (s: GameServer) => {
-      const h = human(s);
-      for (let t = 0; t < 3; t++) s.step();
-      const players = (s as unknown as { players: Map<number, { light: boolean }> }).players;
-      return s.bots().filter((b) => players.get(b.id)!.light).length + (players.get(h.id)!.light ? 100 : 0);
-    };
-    expect(lit(day)).toBe(0);
-    expect(lit(night)).toBe(night.bots().length);
+  it('are the same in any weather', () => {
+    const clear = new GameServer(DEFAULT_WORLD.seed, { guards: true });
+    const fog = new GameServer(DEFAULT_WORLD.seed, { guards: true, conditions: { weather: 'fog' } });
+    const skills = (s: GameServer) => s.bots().map((b) => b.bot.skill.name);
+    expect(skills(fog)).toEqual(skills(clear));
   });
 
   it('come back to their post after being killed', () => {
@@ -363,77 +289,6 @@ describe('operator bots', () => {
     for (let t = 0; t < SERVER_TICK_RATE * OPERATOR_REFILL + 1; t++) server.step();
     expect(operators()).toHaveLength(1);
     expect(operators()[0].id).not.toBe(op.id);
-  });
-});
-
-describe('operator bots after dark', () => {
-  const night = sensesOf({ time: 'night', weather: 'clear' });
-
-  /** A lamplit spot in front of a lamp, and a dark one some way off with the lamp in sight. */
-  function litCrate(): { l: World['lamps'][number]; crate: { x: number; y: number; z: number }; from: { x: number; z: number } } {
-    for (const l of world.lamps) {
-      const crate = { x: l.hx + l.dx * 3, y: 0, z: l.hz + l.dz * 3 };
-      crate.y = world.floorHeight(crate.x, crate.z);
-      if (!nav.dry(crate.x, crate.z) || !world.inLamplight(crate.x, crate.y + 1.2, crate.z)) continue;
-      for (let a = 0; a < Math.PI * 2; a += 0.3) {
-        const x = crate.x + Math.sin(a) * 18;
-        const z = crate.z + Math.cos(a) * 18;
-        const y = world.floorHeight(x, z);
-        if (!nav.dry(x, z) || world.lamplight(x, y + 1.2, z) > 0.05) continue;
-        if (!world.hasLineOfSight(x, y + 1.6, z, l.hx, l.hy - 0.1, l.hz)) continue;
-        return { l, crate, from: { x, z } };
-      }
-    }
-    throw new Error('no lamplit crate with a dark spot in sight of its lamp');
-  }
-
-  it('shoot out the lamp over a crate they mean to search, and aim true', () => {
-    const { l, crate, from } = litCrate();
-    expect(lampShine(l, crate.x, crate.y + 1.2, crate.z)).toBeGreaterThan(LAMP_SEEN);
-    const self = agent(1, 'operator', from.x, from.z);
-    const role: Role = { kind: 'operator', loot: [{ ...crate, look: crate }], planned: 1, greed: 20 };
-    const bot = new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(1));
-    const ctx: BotContext = {
-      world, nav, time: 0, agents: [self], agent: (id) => (id === 1 ? self : undefined), pathBudget: 10, callout: () => {},
-      extracts: [], lootView: () => null, senses: night, bounty: 0, bags: () => [],
-    };
-    let fired: { yaw: number; pitch: number } | null = null;
-    for (let t = 0, seq = 0; t < 4 && !fired; t += SERVER_DT) {
-      ctx.time = t;
-      bot.think(ctx, self, SERVER_DT);
-      for (const cmd of bot.commands(ctx, self, seq)) {
-        seq = cmd.seq;
-        if (cmd.buttons & Btn.Fire) fired ??= cmd;
-        // It stands where it is while it shoots.
-        if (fired) expect(cmd.buttons & (Btn.Forward | Btn.Back | Btn.Left | Btn.Right)).toBe(0);
-      }
-    }
-    expect(fired).not.toBeNull();
-    // The round, fired from its eye as aimed, meets the lamp.
-    const eye = eyePosition(world, self.x, self.y, self.z, fired!.yaw, 0, 0);
-    const cp = Math.cos(fired!.pitch);
-    const dir = [-Math.sin(fired!.yaw) * cp, Math.sin(fired!.pitch), -Math.cos(fired!.yaw) * cp];
-    // Lamps are clear panels, met only by rays that stop at glass, as rounds do.
-    expect(world.raycastPanel(eye.x, eye.y, eye.z, dir[0], dir[1], dir[2], 60, true).panel).toBe(l.panel);
-  });
-
-  it('leave the lamps alone by day', () => {
-    const { crate, from } = litCrate();
-    const self = agent(1, 'operator', from.x, from.z);
-    const role: Role = { kind: 'operator', loot: [{ ...crate, look: crate }], planned: 1, greed: 20 };
-    const bot = new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(1));
-    const ctx: BotContext = {
-      world, nav, time: 0, agents: [self], agent: (id) => (id === 1 ? self : undefined), pathBudget: 10, callout: () => {},
-      extracts: [], lootView: () => null, senses: sensesOf(DEFAULT_CONDITIONS), bounty: 0, bags: () => [],
-    };
-    for (let t = 0, seq = 0; t < 4; t += SERVER_DT) {
-      ctx.time = t;
-      bot.think(ctx, self, SERVER_DT);
-      for (const cmd of bot.commands(ctx, self, seq)) {
-        seq = cmd.seq;
-        expect(cmd.buttons & Btn.Fire).toBe(0);
-      }
-    }
   });
 });
 

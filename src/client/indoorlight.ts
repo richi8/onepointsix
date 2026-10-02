@@ -247,7 +247,7 @@ export class IndoorLight {
   /** And the sun's light bounced there, as a share of SUN_RANGE of the sun's, red, green and blue. */
   private readonly sunTexture: THREE.Data3DTexture;
   private readonly sunData: Uint8Array;
-  /** Toward the sun, or the moon, as worked out, and as last set, to work out next. */
+  /** Toward the sun, as worked out, and as last set, to work out next. */
   private readonly sunDir = new THREE.Vector3(0, 1, 0);
   private readonly sunNext = new THREE.Vector3(0, 1, 0);
   /** Buildings changed since they were worked out, to do first, oldest change first. */
@@ -365,7 +365,7 @@ export class IndoorLight {
   }
 
   /**
-   * The sun's (or the moon's) light, colour times intensity, and the way to
+   * The sun's light, colour times intensity, and the way to
    * it: every building is worked out again if it's moved.
    */
   setSun(dir: THREE.Vector3, light: THREE.Color): void {

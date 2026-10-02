@@ -7,7 +7,6 @@ import { atlas } from './baked.ts';
 import { grenadeModel } from './grenade.ts';
 import { wetMaterial } from './rain.ts';
 import { fitGun } from './guns.ts';
-import { lightTorch, makeTorch, mountTorch, torchMaterial, torchMount, type Torch } from './torch.ts';
 import {
   actionMatrix, BOLT_START, BOLT_TIME, boltHand, type GunPoints, magazineMatrix, type Parts, path, reloadHands, shotParts,
 } from './handwork.ts';
@@ -50,7 +49,6 @@ const FLASH_TIME = 0.045;
  */
 const LEAN = 2;
 const MAX_LEAN = 1.2;
-const TORCH_MAT = torchMaterial();
 
 interface Model {
   group: THREE.Group;
@@ -70,8 +68,6 @@ interface Model {
   flash: THREE.Mesh;
   /** The suppressor on the barrel, shown when fitted. */
   can: THREE.Mesh;
-  /** The flashlight on the gun. */
-  torch: Torch;
   /** Muzzle position in the model's space, bare and with the suppressor on. */
   muzzle: THREE.Vector3;
   canMuzzle: THREE.Vector3;
@@ -141,8 +137,6 @@ export class ViewModel {
   private readonly tmp = new THREE.Vector3();
   private readonly hemi = new THREE.HemisphereLight(0xcfdcea, 0x5a5440, 1.4);
   private readonly sun = new THREE.DirectionalLight(0xfff1dc, 2);
-  /** The spill of your own flashlight on the gun, always there so switching it never recompiles. */
-  private readonly torch = new THREE.PointLight(0xfff2de, 0, 3, 2);
   /**
    * How soaked your hands and gun are, 0 to 1 (see Soak), and the world's up
    * in the view's space: the view has no place in the world to get wet by.
@@ -169,18 +163,14 @@ export class ViewModel {
     this.scene.add(this.hemi);
     this.sun.position.set(0.4, 1, 0.3);
     this.scene.add(this.sun);
-    this.torch.position.set(0.25, -0.1, -0.2);
-    this.camera.add(this.torch);
     this.scene.add(this.camera);
     this.camera.add(this.root);
     // In WEAPONS order.
     this.models = [rifle(), pistol(), boltAction()];
-    this.models.forEach((m, i) => {
-      mountTorch(m.torch, torchMount(i, m.muzzle, m.points.support));
+    this.models.forEach((m) => {
       m.group.visible = false;
       this.root.add(m.group);
     });
-    this.takeShadows();
     this.wetAll();
   }
 
@@ -208,14 +198,9 @@ export class ViewModel {
     });
   }
 
-  /** Everything in the hands takes the shadows of the lamps and others' flashlights, as it would in the world. */
-  private takeShadows(): void {
-    this.root.traverse((o) => (o.receiveShadow = true));
-  }
-
   /**
    * Light the gun like the world round it: `ambient` is the share of a clear
-   * day's light, `sun` the sun's or moon's colour and `sunShare` its share.
+   * day's light, `sun` the sun's colour and `sunShare` its share.
    */
   setLight(ambient: number, sun: THREE.Color, sunShare: number, sky: THREE.Color, ground: THREE.Color): void {
     this.skyColor.copy(sky);
@@ -252,12 +237,6 @@ export class ViewModel {
     this.scene.environmentIntensity = 0.8 * this.sky * this.share;
   }
 
-  /** Your flashlight is on, lighting the gun from the side. */
-  set torchOn(on: boolean) {
-    this.torch.intensity = on ? 1.5 : 0;
-    for (const m of this.models) lightTorch(m.torch, on);
-  }
-
   /** Swap the stand-in shapes for real guns, in WEAPONS order, lit by the sky. */
   setGuns(guns: GLTF[], environment: THREE.Texture): void {
     this.scene.environment = environment;
@@ -272,7 +251,6 @@ export class ViewModel {
       m.canMuzzle.copy(m.muzzle).z -= CAN_LENGTH;
       m.flash.position.copy(m.muzzle);
       m.can.position.copy(m.muzzle).z -= CAN_LENGTH / 2;
-      mountTorch(m.torch, torchMount(i, gun.muzzle, gun.support).add(m.grip));
       m.hands[0].position.copy(gun.grip).add(m.grip).y -= 0.03;
       m.hands[1].position.copy(gun.support).add(m.grip).y -= 0.03;
       const shift = (v: THREE.Vector3): THREE.Vector3 => v.clone().add(m.grip);
@@ -291,7 +269,6 @@ export class ViewModel {
         this.root.add(m.fresh);
       }
     });
-    this.takeShadows();
     this.wetAll();
   }
 
@@ -340,7 +317,6 @@ export class ViewModel {
       arm: span(bones.rArm, bones.rForeArm), forearm: span(bones.rForeArm, bones.rHand), nade, round,
     };
     for (const m of this.models) for (const h of m.hands) h.visible = false;
-    this.takeShadows();
     this.wetAll();
   }
 
@@ -655,8 +631,7 @@ function model(
   flash.position.y = muzzleY;
   const can = tube(canRadius, CAN_LENGTH, DARK, 0, muzzleY, muzzleZ - CAN_LENGTH / 2);
   can.visible = false;
-  const torch = makeTorch(TORCH_MAT);
-  group.add(flash, can, torch.object);
+  group.add(flash, can);
   const grip = hands[0].position.clone().setY(0);
   const support = hands[1].position;
   const bolt = grip.clone().add(new THREE.Vector3(0.03, -0.03, -0.1));
@@ -666,7 +641,7 @@ function model(
   };
   return {
     group, body, hands, grip, points, own: points, magazine: null, action: null, fresh: null,
-    flash, can, torch, muzzle: new THREE.Vector3(0, muzzleY, muzzleZ), canMuzzle: new THREE.Vector3(0, muzzleY, muzzleZ - CAN_LENGTH),
+    flash, can, muzzle: new THREE.Vector3(0, muzzleY, muzzleZ), canMuzzle: new THREE.Vector3(0, muzzleY, muzzleZ - CAN_LENGTH),
     hip, ads: new THREE.Vector3(0, 0, adsZ), shove, flip,
   };
 }

@@ -17,7 +17,6 @@ import { fitGun, ROUND } from './guns.ts';
 import { FAR_SHADOWS } from './cascades.ts';
 import { dimIndoors } from './indoorlight.ts';
 import { Soak, wetMaterial, type Shelter } from './rain.ts';
-import { lensOf, lightTorch, makeTorch, mountTorch, torchMount, torchPart, type Torch } from './torch.ts';
 import type { Building } from '../shared/world.ts';
 import {
   actionMatrix, AT_REST, BOLT_START, BOLT_TIME, boltHand, type GunPoints, magazineMatrix, type Parts, path, reloadHands, reloadMagazine, shotParts, SOME_ROUNDS,
@@ -44,7 +43,7 @@ import { REFLECTED } from './water.ts';
 // soldiers in helmets, and commanders soldiers in caps, each body's picked by
 // the island's seed.
 // Each soldier is drawn in two draw calls a pass: its body with its kit as
-// one skinned mesh, and its gun with its flashlight and suppressor (see
+// one skinned mesh, and its gun with its suppressor (see
 // baked.ts). They take the world's shadows everywhere and cast them as far as
 // the sun's cascades reach, and they're mirrored in the sea.
 
@@ -65,8 +64,6 @@ const FAR_UPDATE = 1 / 20;
 const SHADOW_REACH = FAR_SHADOWS;
 /** The longest shadow a body is thought to throw, for a sun low in the sky. */
 const SHADOW_LENGTH = 25;
-/** Bodies this close with their flashlight on are posed off screen too, for their beam. */
-const LIGHT_REACH = 60;
 /** Room round a body standing, for culling. */
 const BODY_RADIUS = 1.4;
 /** Where the fog hides everything. */
@@ -175,7 +172,7 @@ export interface Ground extends Solid {
 
 /** A carried gun, barrel along -z with the grip at z = 0, as fitGun makes them, and its marked points. */
 interface GunShape extends GunPoints {
-  /** The gun with its flashlight's body, bare and with the suppressor on. */
+  /** The gun, bare and with the suppressor on. */
   looks: [bare: THREE.BufferGeometry, quiet: THREE.BufferGeometry];
   /** The same without its moving parts, drawn on their own while they move. */
   frames: [bare: THREE.BufferGeometry, quiet: THREE.BufferGeometry];
@@ -184,8 +181,6 @@ interface GunShape extends GunPoints {
   spent: THREE.BufferGeometry | null;
   action: THREE.BufferGeometry | null;
   muzzle: THREE.Vector3;
-  /** Where its flashlight sits. */
-  torch: THREE.Vector3;
   /** How far behind the grip its back end is, in metres: the butt of a stock. */
   butt: number;
 }
@@ -197,20 +192,18 @@ function buttOf(geometry: THREE.BufferGeometry): number {
 }
 
 /**
- * A gun's frame merged with its flashlight, without and with a suppressor,
- * with its moving parts (its magazine, and its slide or bolt handle) and
- * without, and those parts on their own.
+ * A gun's frame, without and with a suppressor, with its moving parts (its
+ * magazine, and its slide or bolt handle) and without, and those parts on
+ * their own.
  */
 function gunLooks(
-  frame: Part[], mag: Part[], action: Part[], weapon: number, muzzle: THREE.Vector3, support: THREE.Vector3, spent = mag,
-): Pick<GunShape, 'looks' | 'frames' | 'mag' | 'spent' | 'action' | 'torch' | 'butt'> {
-  const torch = torchMount(weapon, muzzle, support);
-  const bare = [...frame, torchPart(torch)];
+  bare: Part[], mag: Part[], action: Part[], muzzle: THREE.Vector3, spent = mag,
+): Pick<GunShape, 'looks' | 'frames' | 'mag' | 'spent' | 'action' | 'butt'> {
   const can = part(CAN_GEO.clone().translate(muzzle.x, muzzle.y, muzzle.z - CAN_LENGTH / 2), CAN, 0.6, 0.3);
   const moving = [...mag, ...action];
   const looks: GunShape['looks'] = [mergeParts([...bare, ...moving]), mergeParts([...bare, ...moving, can])];
   return {
-    torch, looks, butt: buttOf(looks[0]),
+    looks, butt: buttOf(looks[0]),
     frames: moving.length ? [mergeParts(bare), mergeParts([...bare, can])] : looks,
     mag: mag.length ? mergeParts(mag) : null,
     spent: spent.length ? mergeParts(spent) : null,
@@ -219,7 +212,7 @@ function gunLooks(
 }
 
 /** A stand-in gun of boxes until the models load. */
-function gunShape(weapon: number, length: number, stock: boolean): GunShape {
+function gunShape(length: number, stock: boolean): GunShape {
   const parts = [
     new THREE.BoxGeometry(0.05, 0.07, length * 0.55).translate(0, 0.05, -length * 0.2),
     new THREE.CylinderGeometry(0.012, 0.012, length * 0.45, 8).rotateX(Math.PI / 2).translate(0, 0.06, -length * 0.65),
@@ -230,7 +223,7 @@ function gunShape(weapon: number, length: number, stock: boolean): GunShape {
   const support = new THREE.Vector3(0, 0.02, -length * 0.42);
   const bolt = new THREE.Vector3(0.03, 0.06, -length * 0.05);
   return {
-    ...gunLooks(parts.map((g) => part(g, GUN, 0.5, 0.4)), [], [], weapon, muzzle, support),
+    ...gunLooks(parts.map((g) => part(g, GUN, 0.5, 0.4)), [], [], muzzle),
     muzzle,
     grip: new THREE.Vector3(0, -0.02, 0.02),
     support,
@@ -242,7 +235,7 @@ function gunShape(weapon: number, length: number, stock: boolean): GunShape {
 }
 
 /** In WEAPONS order. */
-let GUNS: GunShape[] = [gunShape(0, 0.85, true), gunShape(1, 0.2, false), gunShape(2, 1.1, true)];
+let GUNS: GunShape[] = [gunShape(0.85, true), gunShape(0.2, false), gunShape(1.1, true)];
 
 interface Figure {
   group: THREE.Group;
@@ -267,7 +260,6 @@ interface Figure {
   actionMesh: THREE.Mesh;
   /** Where the magazine was when last posed up close, to see it let go; null when it wasn't. */
   lastMag: Parts['mag'] | null;
-  torch: Torch;
   flashMesh: THREE.Sprite;
   weapon: number;
   quiet: boolean;
@@ -481,7 +473,7 @@ export class Bodies {
   onStep: StepListener | null = null;
   /** Whether it's raining and where a roof keeps it off, for how wet everyone is. */
   shelter: Shelter | null = null;
-  /** Toward the sun or moon, for which bodies out of view throw a shadow into it. */
+  /** Toward the sun, for which bodies out of view throw a shadow into it. */
   readonly sun = new THREE.Vector3(0, 1, 0);
   /** Whether the sea mirrors the island, so bodies seen only in it are posed too. */
   mirrored = false;
@@ -551,7 +543,7 @@ export class Bodies {
         return out;
       };
       const spent = parts(magazinePart, (o) => o.name !== ROUND);
-      return { ...points, ...gunLooks(parts(frame), parts(magazinePart), parts(actionPart), i, points.muzzle, points.support, spent) };
+      return { ...points, ...gunLooks(parts(frame), parts(magazinePart), parts(actionPart), points.muzzle, spent) };
     });
     for (const gun of GUNS) if (gun.spent) this.litter.prepare(gun.spent, gunMaterial('instanced'));
     for (const id of [...this.figures.keys()]) this.remove(id);
@@ -738,15 +730,6 @@ export class Bodies {
     return f.gun.localToWorld(out.copy(muzzleOf(f)));
   }
 
-  /** Where a body's flashlight shines from in the world, and the way the gun points, or null if it isn't drawn. */
-  torch(id: number, out: THREE.Vector3, dir: THREE.Vector3): THREE.Vector3 | null {
-    const f = this.figures.get(id);
-    if (!f || !f.group.visible) return null;
-    f.gun.updateWorldMatrix(true, false);
-    dir.set(0, 0, -1).transformDirection(f.gun.matrixWorld);
-    return f.gun.localToWorld(lensOf(GUNS[f.weapon].torch, out));
-  }
-
   private remove(id: number): void {
     const f = this.figures.get(id);
     if (!f) return;
@@ -782,9 +765,6 @@ export class Bodies {
       gun.add(m);
       return m;
     });
-    const torch = makeTorch(null);
-    mountTorch(torch, GUNS[0].torch);
-    gun.add(torch.object);
     const flashMesh = new THREE.Sprite(FLASH_MAT);
     flashMesh.scale.setScalar(0.45);
     flashMesh.visible = false;
@@ -793,7 +773,7 @@ export class Bodies {
     this.scene.add(group);
     const f: Figure = {
       group, materials: [], body: null, bodyAt: new THREE.Matrix4(), hit: { value: new THREE.Vector4() }, hitAt: new THREE.Vector3(), soak, gunMats,
-      gun, held, magMesh, actionMesh, lastMag: null, torch, flashMesh, weapon: 0, quiet: false,
+      gun, held, magMesh, actionMesh, lastMag: null, flashMesh, weapon: 0, quiet: false,
       id, deadFor: -1, diedAt: 0, snap: null, death: null, fallAt: new THREE.Vector3(), fallYaw: 0, fresh: true, unexplained: 0, rag: null, rig: null, rigSteps: -1, drop: null,
       flash: 0, muzzle: 0, lastX: 0, lastY: 0, lastZ: 0, speed: 0, vy: 0, heading: 0, stride: 0,
       air: 0, mantle: 0, climb: null, airFor: 0, landedFor: LAND_TIME, crouchStride: 1, crouchFast: 0, blade: 1, headFix: 0, duck: 0,
@@ -811,7 +791,7 @@ export class Bodies {
     group.traverse((o) => {
       o.layers.enable(REFLECTED);
       const mesh = o as THREE.Mesh;
-      if (mesh.isMesh && mesh !== torch.lens) mesh.castShadow = mesh.receiveShadow = true;
+      if (mesh.isMesh) mesh.castShadow = mesh.receiveShadow = true;
     });
     return f;
   }
@@ -936,9 +916,7 @@ export class Bodies {
       f.weapon = p.weapon;
       f.quiet = p.quiet;
       f.held.geometry = GUNS[p.weapon].looks[p.quiet ? 1 : 0];
-      mountTorch(f.torch, GUNS[p.weapon].torch);
     }
-    lightTorch(f.torch, p.light && !p.dead);
 
     // How fast and which way it's going, relative to where it faces.
     const dx = p.x - f.lastX;
@@ -1020,7 +998,7 @@ export class Bodies {
 
   /** Draw it as posed, its fall stepped up to now. */
   private draw(f: Figure, p: PlayerSnap, dt: number): void {
-    // Out of sight with no shadow or beam of its own in view, or lost in the fog: not drawn.
+    // Out of sight with no shadow of its own in view, or lost in the fog: not drawn.
     const bounds = this.bounds;
     if (f.rag) bounds.set(V_TMP.set(f.rag.bounds.x, f.rag.bounds.y, f.rag.bounds.z), Math.max(BODY_RADIUS, f.rag.bounds.r + 0.3));
     else bounds.set(V_TMP.set(p.x, p.y + 0.9, p.z), BODY_RADIUS);
@@ -1028,7 +1006,7 @@ export class Bodies {
     // Beyond the cascades, a body's shadow is too small to see but costs a draw in each shadow map.
     const shadow = distance < SHADOW_REACH;
     f.group.visible = (distance < FOG_END && (this.frustum.intersectsSphere(bounds) || this.mirrorInView(bounds))) ||
-      (shadow && this.shadowInView(bounds)) || (p.light && !p.dead && distance < LIGHT_REACH);
+      (shadow && this.shadowInView(bounds));
     if (!shadow && !f.casters) {
       f.casters = [];
       f.group.traverse((o) => o.castShadow && f.casters!.push(o));
