@@ -309,14 +309,7 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Day, night and weather
-- **Frames got slower when the local lights went** (found in 43): on the M3 Pro (ANGLE on
-  Metal) the benchmark's frames take about 3 ms more since chunk 43, 7 against 4 ms empty and
-  13 against 10 ms with 24 bodies, all of it the GPU drawing the lit materials. It isn't the
-  lights' work: by day there were none. Lit shaders that read a `sampler2DShadow` (the local
-  lights' atlas, in a branch that never runs) draw about twice as fast here; the same read from
-  a plain `sampler2D` doesn't help, and nothing else in the patch matters. Likely a driver or
-  ANGLE quirk. A dead read of the atlas alone, put back, wins it all back (tested); not
-  checked yet on other GPUs or in the game itself rather than the benchmark.
+Nothing open: the last was found moot on 2026-10-02 (see the history).
 
 ### Code and testing
 - **The "draw" sound starts late in its bank** (found in 43): the browser test that every shot

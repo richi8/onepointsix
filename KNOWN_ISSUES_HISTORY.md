@@ -1237,6 +1237,19 @@ notes the chunk it came from.
   on a mid-range laptop (the user found one plays fine), only Chrome on Metal measured (Windows'
   Chrome draws through Direct3D, whose costs may differ), and the two-minute hang seen once with
   the old code, not seen since.
+- **Frames got slower when the local lights went** (found in 43): the benchmark's frames by day
+  took about 3 ms more after chunk 43 than before it (empty frame 7 against 4 ms, 24 bodies 13
+  against 10 ms), all of it GPU time, and putting back a never-run read of the local lights'
+  shadow atlas seemed to win it back.
+  **Moot** (2026-10-02): a fault of the old benchmark, not a slowdown. From chunk 36 the
+  benchmark set up the local lights' shadow atlas only when it first drew them, after its day
+  phases had already run, and every lit material reading the atlas, never set up, drew nothing:
+  its empty, 24-body and far-off frames showed only the sky (seen in screenshots taken during
+  them). The game set the atlas up before anything was drawn, so play was never affected. A copy
+  of the read, its texture likewise never set up, made the game's own screenshots sky-only too,
+  so it was dropped. The day numbers chunks 36 to 42 quote (chunk 41's and 42's 24-body frames
+  among them) are therefore of the sky and the unlit parts only; chunk 43's (6.7 ms empty,
+  13.1 ms with 24 bodies, 13.2 ms in the rain on an M3 Pro) are the first true ones since.
 
 ### Sharing and leaderboards
 - **A link without a mode is taken as Mixed** (10), so an old `?world=` link with a score in it
