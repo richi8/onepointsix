@@ -25,6 +25,8 @@ export interface BotPlan {
   temporary?: boolean;
   /** A commander, the target of a contract; drawn with its own markings. */
   commander?: boolean;
+  /** For an outpost's sentry and guards: the outpost's index. Their replacements run in from away. */
+  outpost?: number;
 }
 
 /** Guards walk points this far from their outpost's centre: inside the walls and just outside. */
@@ -55,11 +57,11 @@ const CALLSIGNS = [
 export function planGuards(world: World, nav: NavGrid, rand: () => number, night = false): BotPlan[] {
   const plans: BotPlan[] = [];
   const perOutpost = GUARDS_PER_OUTPOST + (night ? NIGHT_GUARDS : 0);
-  for (const o of world.outposts) {
+  for (const [i, o] of world.outposts.entries()) {
     const { x: tx, y: ty, z: tz } = watchtower(o);
     if (world.fits(tx, ty, tz, PLAYER_HEIGHT)) {
       const post = { x: tx, y: ty, z: tz, yaw: yawToward(o.x, o.z, tx, tz) };
-      plans.push({ name: `${o.name} sentry`, role: { kind: 'sentry', post }, skill: tougher('normal', night), primary: RIFLE, spawn: post });
+      plans.push({ name: `${o.name} sentry`, role: { kind: 'sentry', post }, skill: tougher('normal', night), primary: RIFLE, spawn: post, outpost: i });
     }
     const route = outpostRoute(world, nav, o, rand);
     if (route.length < 2) continue;
@@ -74,6 +76,7 @@ export function planGuards(world: World, nav: NavGrid, rand: () => number, night
         skill: tougher(rand() < 0.5 ? 'easy' : 'normal', night),
         primary: RIFLE,
         spawn: { ...mine[0], yaw: rand() * Math.PI * 2 },
+        outpost: i,
       });
     }
   }
@@ -186,6 +189,30 @@ export function planOperator(
   const primary = skill !== 'easy' && rand() < 0.2 ? BOLT : RIFLE;
   const yaw = loot[0] ? yawToward(spawn.x, spawn.z, loot[0].x, loot[0].z) : rand() * Math.PI * 2;
   return { name, role: { kind: 'operator', loot, planned, greed, personality, ...(thorough ? { thorough } : {}) }, skill, primary, spawn: { ...spawn, yaw } };
+}
+
+/** Replacement guards set off from this far from their outpost... */
+const REINFORCE_DISTANCE: [number, number] = [100, 140];
+/** ...and at least this far from any other. */
+const REINFORCE_FROM_OUTPOSTS = 70;
+
+/**
+ * Where replacements for an outpost's fallen guards set off from: dry land
+ * away from it and from the other outposts, that
+ * `clear` says no operator is near or can see. Null if there's none.
+ */
+export function reinforcementPoint(world: World, nav: NavGrid, rand: () => number, o: Outpost, clear: (p: Point) => boolean): Point | null {
+  for (let i = 0; i < 24; i++) {
+    const a = rand() * Math.PI * 2;
+    const d = REINFORCE_DISTANCE[0] + rand() * (REINFORCE_DISTANCE[1] - REINFORCE_DISTANCE[0]);
+    const w = nav.nearestWalkable(o.x + Math.sin(a) * d, o.z + Math.cos(a) * d, 10);
+    if (!w || !nav.dry(w.x, w.z)) continue;
+    const p = ground(world, w.x, w.z);
+    if (p.y > 40) continue;
+    if (world.outposts.some((q) => q !== o && Math.hypot(q.x - w.x, q.z - w.z) < REINFORCE_FROM_OUTPOSTS)) continue;
+    if (clear(p)) return p;
+  }
+  return null;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   GUARD_HEAD_SHARE,
   GUARD_HP,
   GUARD_RESPAWN,
+  REINFORCE_DELAY,
   INTEL_TIME,
   MAX_CMDS_PER_TICK,
   MAX_HP,
@@ -63,7 +64,7 @@ import { contractReward, contractView, planContracts, reachesIntel, type Contrac
 import { Cover } from './cover.ts';
 import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
-import { insertionPoint, planCommander, planGuards, planOperator, planResponse, type BotPlan } from './population.ts';
+import { insertionPoint, planCommander, planGuards, planOperator, planResponse, reinforcementPoint, type BotPlan } from './population.ts';
 import { ACTOR_RESPAWN, Actor, planRange } from './range.ts';
 import type { Personality } from './personality.ts';
 import { guardSkill, SKILLS } from './skill.ts';
@@ -510,6 +511,8 @@ export class GameServer {
     }
     this.containers.step(now);
     const landed = this.extracts.step(now);
+    // Where each outpost's replacements set off from this tick, and how many have.
+    const staging = new Map<number, { at: Point | null; n: number }>();
     for (const p of [...this.players.values()]) {
       p.protection = Math.max(p.protection - SERVER_DT, 0);
       if (p.bot?.done || (p.recall > 0 && now >= p.recall && !p.dead)) {
@@ -521,9 +524,11 @@ export class GameServer {
       if (!p.dead || !this.players.has(p.id)) continue;
       p.respawn -= SERVER_DT;
       if (p.respawn > 0) continue;
-      // A fallen operator's run is over, as is a response guard's job; a guard is replaced at its
-      // post, but not in front of an operator: it waits until nobody is close to the post or sees it.
+      // A fallen operator's run is over, as is a response guard's job. An outpost's guard is replaced
+      // by one running in from away; a patrol at its route's start, but not in front of an operator:
+      // it waits until nobody is close to it or sees it.
       if (p.run || p.plan?.temporary) this.leave(p);
+      else if (p.plan?.outpost !== undefined) this.reinforce(p, p.plan.outpost, staging);
       else if (p.plan && !p.actor && this.watched(p.plan.spawn)) p.respawn = RESPAWN_RETRY;
       else this.spawn(p);
     }
@@ -892,6 +897,15 @@ export class GameServer {
     }
   }
 
+  /** One of an outpost's guards died: if none is left standing there, replacements come soon. */
+  private outpostDown(outpost: number): void {
+    const home = this.world.outposts[outpost];
+    const garrison = [...this.players.values()].filter((p) => p.plan?.outpost === outpost);
+    const standing = (p: Player) => !p.dead && (p.plan?.outpost === outpost || (p.plan?.commander && p.plan.role.kind === 'guard' && p.plan.role.home === home));
+    if ([...this.players.values()].some(standing)) return;
+    for (const p of garrison) p.respawn = Math.min(p.respawn, REINFORCE_DELAY);
+  }
+
   /** Someone died: a commander's contract is done if its holder killed it, and failed otherwise. */
   private commanderDown(victim: Player, attacker: Player): void {
     for (const p of this.players.values()) {
@@ -945,10 +959,11 @@ export class GameServer {
     if (p.team === 'operator') this.refills.push(this.time + OPERATOR_REFILL);
   }
 
-  /** (Re)spawn a player with full health and ammo: bots at their post, humans at an insertion point. */
-  private spawn(p: Player): void {
+  /** (Re)spawn a player with full health and ammo: bots at their post or `at`, humans at an insertion point. */
+  private spawn(p: Player, at?: Post): void {
     let post: Post;
-    if (p.plan) post = p.plan.spawn;
+    if (at) post = at;
+    else if (p.plan) post = p.plan.spawn;
     else if (this.rangeSpawn) post = this.rangeSpawn;
     else {
       const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
@@ -971,6 +986,26 @@ export class GameServer {
       p.bot = new Bot(role, role.kind === 'operator' ? SKILLS[skill] : guardSkill(SKILLS[skill]), primary, post.yaw, mulberry32((this.seed ^ Math.imul(p.id, 0x9e3779b1) ^ p.life) >>> 0));
       p.weapon = primary;
     }
+  }
+
+  /**
+   * Replace a fallen outpost guard with one that sets off from somewhere away
+   * from the outpost that no operator is near or sees, and runs to it. Those
+   * replaced in the same tick set off together.
+   */
+  private reinforce(p: Player, outpost: number, staging: Map<number, { at: Point | null; n: number }>): void {
+    const o = this.world.outposts[outpost];
+    let group = staging.get(outpost);
+    if (!group) staging.set(outpost, (group = { at: reinforcementPoint(this.world, this.nav, this.botRng, o, (q) => !this.watched(q)), n: 0 }));
+    if (!group.at) {
+      p.respawn = RESPAWN_RETRY;
+      return;
+    }
+    const k = group.n++;
+    const w = this.nav.nearestWalkable(group.at.x + ((k % 3) - 1) * 2, group.at.z + Math.floor(k / 3) * 2, 5) ?? group.at;
+    const y = this.world.groundHeight(w.x, w.z, this.world.floorHeight(w.x, w.z));
+    this.spawn(p, { x: w.x, y, z: w.z, yaw: yawToward(w.x, w.z, o.x, o.z) });
+    p.bot!.inbound = o;
   }
 
   /** Whether a living operator is near `at`, or can see it. */
@@ -1195,6 +1230,7 @@ export class GameServer {
       ...deathPose(victim, x, y, z, from),
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
+    if (victim.plan?.outpost !== undefined) this.outpostDown(victim.plan.outpost);
     // Killed by their own grenade, they watch it through their own eyes.
     if (!victim.plan) victim.deathcam = { killer: attacker, time: this.time };
     if (victim.run) {

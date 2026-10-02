@@ -3,7 +3,7 @@ import { beamSpot, Bot, hostile, type Agent, type BotContext, type Role } from '
 import { NavGrid } from '../src/server/nav.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
-import { Btn, GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
+import { Btn, GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, REINFORCE_DELAY, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { DEFAULT_CONDITIONS, sensesOf, type Senses } from '../src/shared/conditions.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
@@ -280,23 +280,64 @@ describe('guards', () => {
 });
 
 describe('guard respawns', () => {
-  it('wait while an operator stands near the post, and come back once they leave', () => {
+  type Body = PlayerState & { respawn: number; protection: number; dead: boolean };
+  const internals = (server: GameServer) => server as unknown as {
+    players: Map<number, Body>;
+    damage: (victim: Body, attacker: Body, amount: number, zone: string, weapon: number, x: number, y: number, z: number) => void;
+  };
+
+
+  it("are replaced by one running in from away, out of operators' sight", () => {
     const server = new GameServer(DEFAULT_WORLD.seed, { guards: true });
     const sentry = server.bots().find((b) => b.bot.role.kind === 'sentry')!;
-    const players = (server as unknown as { players: Map<number, PlayerState & { respawn: number; protection: number; dead: boolean }> }).players;
+    const { players } = internals(server);
     const post = players.get(sentry.id)!;
     const { x, y, z } = post;
     Object.assign(post, { dead: true, respawn: 0.1 });
     // Someone on the tower, where the intel lies, whom nothing hurts.
     const op = players.get(human(server).id)!;
-    for (let t = 0; t < 10 * SERVER_TICK_RATE; t++) {
+    for (let t = 0; t < 2 * SERVER_TICK_RATE && post.dead; t++) {
       Object.assign(op, { x: x + 2, y, z, vx: 0, vy: 0, vz: 0, protection: Infinity });
       server.step();
     }
-    expect(post.dead).toBe(true);
-    Object.assign(op, { x: x + 400, z: z + 400 });
-    for (let t = 0; t < 4 * SERVER_TICK_RATE; t++) server.step();
     expect(post.dead).toBe(false);
+    const d = Math.hypot(post.x - x, post.z - z);
+    expect(d).toBeGreaterThan(80);
+    expect(Math.hypot(post.x - op.x, post.z - op.z)).toBeGreaterThan(50);
+    const replaced = server.bots().find((b) => b.id === sentry.id)!;
+    expect(replaced.bot.inbound).not.toBeNull();
+    // It runs back to the tower.
+    for (let t = 0; t < 60 * SERVER_TICK_RATE; t++) {
+      Object.assign(op, { x: x + 400, z: z + 400, vx: 0, vy: 0, vz: 0 });
+      server.step();
+    }
+    expect(Math.hypot(post.x - x, post.z - z)).toBeLessThan(3);
+  });
+
+  it('come for a wiped-out outpost all together, soon after its last guard falls', () => {
+    const server = new GameServer(DEFAULT_WORLD.seed, { guards: true });
+    const { players, damage } = internals(server);
+    const plans = (id: number) => (players.get(id) as unknown as { plan: { outpost?: number } }).plan;
+    const mine = server.bots().filter((b) => plans(b.id).outpost === 0).map((b) => players.get(b.id)!);
+    expect(mine.length).toBeGreaterThanOrEqual(3);
+    const op = players.get(human(server).id)!;
+    Object.assign(op, { x: op.x + 1000, protection: Infinity });
+    const kill = (g: Body) => damage.call(server, g, op, 500, 'head', RIFLE, g.x, g.y, g.z);
+    for (const g of mine.slice(0, -1)) kill(g);
+    // While one still stands, the dead wait the full time.
+    expect(mine[0].respawn).toBe(GUARD_RESPAWN);
+    kill(mine[mine.length - 1]);
+    for (const g of mine) expect(g.respawn).toBeLessThanOrEqual(REINFORCE_DELAY);
+    for (let t = 0; t < (REINFORCE_DELAY - 1) * SERVER_TICK_RATE; t++) server.step();
+    expect(mine.every((g) => g.dead)).toBe(true);
+    for (let t = 0; t < 2 * SERVER_TICK_RATE; t++) server.step();
+    expect(mine.every((g) => !g.dead)).toBe(true);
+    // Side by side, away from the outpost.
+    const o = server.world.outposts[0];
+    for (const g of mine) {
+      expect(Math.hypot(g.x - o.x, g.z - o.z)).toBeGreaterThan(80);
+      expect(Math.hypot(g.x - mine[0].x, g.z - mine[0].z)).toBeLessThan(15);
+    }
   });
 });
 

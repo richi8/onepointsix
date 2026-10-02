@@ -296,6 +296,8 @@ const PATROL_WAIT: [number, number] = [2, 6];
 /** Distance a follower keeps behind its leader. */
 const FOLLOW_GAP = 3;
 const ARRIVE = 1.2;
+/** A replacement guard stops running in this close to the outpost it's sent to. */
+const INBOUND_ARRIVE = 25;
 /** A place more than this far above or below is farther by that much: upstairs, or on the way. */
 const OTHER_FLOOR = 0.6;
 /**
@@ -465,6 +467,8 @@ export class Bot {
   private lastCover = -Infinity;
   /** Where it last was during its routine; guards without a home stay leashed to it. */
   private anchor: Point | null = null;
+  /** Sent to replace fallen guards: it runs to this point before taking up its routine. */
+  inbound: Point | null = null;
   /** Extraction point it's heading for, and those it couldn't reach. */
   private exit = -1;
   private readonly unreachable = new Set<number>();
@@ -1079,9 +1083,14 @@ export class Bot {
 
     switch (this.state) {
       case 'patrol': {
+        if (this.inbound) {
+          if (Math.hypot(this.inbound.x - self.x, this.inbound.z - self.z) > INBOUND_ARRIVE) this.pace = 'sprint';
+          else this.inbound = null;
+        }
         if (role.kind === 'sentry') {
-          this.goTo(null);
-          this.lookAround(now, role.post.yaw);
+          const far = Math.hypot(role.post.x - self.x, role.post.z - self.z) > ARRIVE;
+          this.goTo(far ? role.post : null);
+          if (!far) this.lookAround(now, role.post.yaw);
           break;
         }
         if (role.kind !== 'guard') break;

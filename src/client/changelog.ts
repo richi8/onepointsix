@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'Outposts send for help',
+    notes: [
+      'Clearing an outpost no longer buys you all the time you want: 15 seconds after its last guard falls, a fresh squad sets off from out of sight and runs back to retake it.',
+      'Guards are never replaced on the spot any more: every replacement starts well away from the outpost, where no operator is, and you can meet them on their way in.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'Falls that hold together',
     notes: [
       'A body thrown hard or landing face down no longer bends an elbow or knee the wrong way, or turns a foot too far, for a moment as it hits the ground.',

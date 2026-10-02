@@ -113,9 +113,11 @@ export const OPERATOR_CAPACITY = 8;
 export const GUARDS_PER_OUTPOST = 2;
 /** Pairs of guards walking routes between outposts. */
 export const GUARD_PATROLS = 3;
-/** Seconds before a dead guard is replaced at its post. */
+/** Seconds before a dead guard is replaced: an outpost's by one running in from away, a patrol's at its route. */
 export const GUARD_RESPAWN = 60;
-/** A dead guard waits while an operator is this close to its post, or can see it from this far, and looks again every few seconds. */
+/** Seconds after an outpost's last guard falls before replacements for them all set off for it. */
+export const REINFORCE_DELAY = 15;
+/** A guard isn't replaced while an operator is this close to where it would appear, or can see it from this far; it looks again every few seconds. */
 export const RESPAWN_CLEAR = 50;
 export const RESPAWN_SIGHT = 150;
 export const RESPAWN_RETRY = 3;
