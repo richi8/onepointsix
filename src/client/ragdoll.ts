@@ -156,8 +156,9 @@ export class Verlet {
     for (let k = 0; k < ITERATIONS; k++) {
       this.solve();
       this.constrain();
-      // Collide on the last passes only: the ground has the last word.
-      if (k >= ITERATIONS - 2) this.collide(solid, near, standing);
+      // The ground on every pass, so the joints' limits and the ground settle together; the rest
+      // on the last passes only. The ground has the last word.
+      this.collide(solid, near, standing, k >= ITERATIONS - 2);
     }
     this.grip();
     this.measure();
@@ -193,8 +194,8 @@ export class Verlet {
     }
   }
 
-  /** Out of the ground, colliders, other bodies and the living. */
-  private collide(solid: Solid, near: readonly Verlet[], living: readonly Living[]): void {
+  /** Out of the ground, and unless `all` is false, colliders, other bodies and the living. */
+  private collide(solid: Solid, near: readonly Verlet[], living: readonly Living[], all = true): void {
     const { pos, prev, radius, pushed } = this;
     for (let i = 0; i < this.n; i++) {
       const j = i * 3;
@@ -218,8 +219,8 @@ export class Verlet {
         const pen = r - (y - h) * ny;
         if (pen > 0) (px += nx * pen), (py += ny * pen), (pz += nz * pen);
       }
-      if (solid.sphereOut(x + px, y + py, z + pz, r, OUT)) (px += OUT.x), (py += OUT.y), (pz += OUT.z);
-      for (const o of near) {
+      if (all && solid.sphereOut(x + px, y + py, z + pz, r, OUT)) (px += OUT.x), (py += OUT.y), (pz += OUT.z);
+      for (const o of all ? near : NONE) {
         for (let k = 0; k < o.n; k++) {
           const dx = x + px - o.pos[k * 3];
           const dy = y + py - o.pos[k * 3 + 1];
@@ -234,7 +235,7 @@ export class Verlet {
           pz += dz * s;
         }
       }
-      for (const l of living) {
+      for (const l of all ? living : NONE) {
         // From the nearest point on the capsule's upright segment.
         const cy = Math.min(Math.max(y + py, l.bottom), l.top);
         const dx = x + px - l.x;
@@ -309,6 +310,7 @@ export class Verlet {
 }
 
 const OUT = { x: 0, y: 0, z: 0 };
+const NONE: readonly never[] = [];
 
 function overlaps(a: Verlet['bounds'], b: Verlet['bounds']): boolean {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < a.r + b.r;
@@ -531,9 +533,10 @@ export class Ragdoll extends Verlet {
   protected override constrain(): void {
     const f = this.forward(FORWARD);
     if (!f) return;
-    for (const [hip, knee, ankle] of [[J.lHip, J.lKnee, J.lAnkle], [J.rHip, J.rKnee, J.rAnkle]]) {
+    for (const [hip, knee, ankle, toe] of [[J.lHip, J.lKnee, J.lAnkle, J.lToe], [J.rHip, J.rKnee, J.rAnkle, J.rToe]]) {
       const ahead = this.bend(hip, knee, ankle, f);
-      if (ahead < KNEE_BENT) this.nudge(KNEE_BENT - ahead, [[knee, 0.6], [ankle, -0.4]]);
+      // The foot goes with the ankle, so straightening the knee doesn't turn it.
+      if (ahead < KNEE_BENT) this.nudge(KNEE_BENT - ahead, [[knee, 0.6], [ankle, -0.4], [toe, -0.4]]);
     }
     for (const [k, [shoulder, elbow, hand]] of ELBOWS.entries()) {
       const back = -this.bend(shoulder, elbow, hand, f, ELBOW_UP);

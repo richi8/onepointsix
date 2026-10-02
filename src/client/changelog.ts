@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'Falls that hold together',
+    notes: [
+      'A body thrown hard or landing face down no longer bends an elbow or knee the wrong way, or turns a foot too far, for a moment as it hits the ground.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'Smoother uniforms',
     notes: [
       'The folds and seams on the soldiers\' uniforms and vests are drawn smoothly, without the blocky patches up close.',

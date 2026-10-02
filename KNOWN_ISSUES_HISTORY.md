@@ -830,6 +830,20 @@ notes the chunk it came from.
   bend backward. The new start showed that elbows and ankles give a little in a hard landing (see
   PLAN.md's Known Issues), so the tests check the joints' limits strictly once the body is at
   rest, and more loosely while it falls.
+- **Elbows and ankles give a little in a hard landing** (41, 2026-10-02). Started from the
+  Rocketbox body's forward fall, the ragdoll can force an elbow up to about 5 cm the wrong way, or
+  an ankle up to about 0.2 rad past its range, for a few steps as it lands, when thrown hard or
+  sliding downhill. The ground has the last word in each step, over the joints' limits. Both
+  settle back within their limits at rest, and the unit tests allow the give while it falls.
+  **Resolved** (41, 2026-10-02): each of the solver's eight passes now pushes the joints out of
+  the ground after the limits, not just the last two, so the two settle together; colliders,
+  other bodies and the living still come in on the last two passes only. Trying 16 throws, a knee
+  was found going 12 cm the wrong way too, and the knee's own limit turned the foot: it moved the
+  ankle and not the toe, which now goes with it. Over 16 throws and 8 slopes and shoves, elbows
+  and knees now stay within their limits, and ankles within 0.023 rad of theirs (0.137 before).
+  A step costs about 35 µs instead of 24. Bodies still stop on slopes up to about 0.5 rad and
+  slide down steeper ones. The unit tests check the limits strictly all the way down again, over
+  16 throws instead of 8.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

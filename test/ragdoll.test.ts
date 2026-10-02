@@ -129,25 +129,20 @@ describe('Ragdoll', () => {
   });
 
   it('never bends a knee or an elbow backward, however it is thrown', () => {
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 16; k++) {
       const rag = body();
-      const a = (k * Math.PI) / 4;
+      const a = (k * Math.PI) / 8;
       for (let i = 0; i < rag.n; i++) rag.push(i, Math.sin(a) * 3, 1, Math.cos(a) * 3);
       rag.push(JOINT.lHand, -Math.cos(a) * 6, 2, Math.sin(a) * 6);
       rag.push(JOINT.rAnkle, Math.cos(a) * 6, 2, -Math.sin(a) * 6);
       const elbows = [0, 1].map((s) => elbowBack(rag, s));
-      // An elbow can be forced a little the wrong way for a few steps as it lands (see PLAN.md's Known Issues).
-      const check = (elbowGive: number): void => {
-        for (const s of [0, 1]) {
-          expect(kneeAhead(rag, s)).toBeGreaterThan(-0.02);
-          expect(elbowBack(rag, s)).toBeGreaterThan(Math.min(elbows[s], 0) - elbowGive);
-        }
-      };
       while (!rag.asleep) {
         rag.step(solid(), []);
-        check(0.07);
+        for (const s of [0, 1]) {
+          expect(kneeAhead(rag, s)).toBeGreaterThan(-0.02);
+          expect(elbowBack(rag, s)).toBeGreaterThan(Math.min(elbows[s], 0) - 0.02);
+        }
       }
-      check(0.02);
     }
   });
 
@@ -156,20 +151,15 @@ describe('Ragdoll', () => {
     const start = [0, 1].map((s) => ankleAngle(rag, s));
     let turned = 0;
     for (let i = 0; i < rag.n; i++) rag.push(i, 0, 0, -2);
-    // A foot can be forced a little past its range for a few steps as it lands (see PLAN.md's Known Issues).
-    const check = (give: number): void => {
+    while (!rag.asleep) {
+      rag.step(solid(Math.tan(0.3)), []);
       for (const s of [0, 1]) {
         const angle = ankleAngle(rag, s);
         turned = Math.max(turned, Math.abs(angle - start[s]));
-        expect(angle).toBeGreaterThan(Math.min(1.2, start[s]) - give);
-        expect(angle).toBeLessThan(Math.max(2.6, start[s]) + give);
+        expect(angle).toBeGreaterThan(Math.min(1.2, start[s]) - 0.1);
+        expect(angle).toBeLessThan(Math.max(2.6, start[s]) + 0.1);
       }
-    };
-    while (!rag.asleep) {
-      rag.step(solid(Math.tan(0.3)), []);
-      check(0.25);
     }
-    check(0.1);
     expect(turned).toBeGreaterThan(0.1);
   });
 
