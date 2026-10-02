@@ -303,10 +303,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   stylized soldier's death clip where the ragdoll took over, falling back; the Rocketbox body's
   death clip (the library's `Death01`) falls forward, and the tests, written round a fall back,
   keep the old start. The browser test of a fall in play and in the death cam runs on the new body.
-- **The soldier's normal map is plain ETC1S** (41). The terrain's normal maps keep two channels
-  for quality, which needs the shader to rebuild the third; the soldier's go through three.js's
-  own material, so they're packed as an ordinary colour image, which ETC1S blurs a little. The
-  goggle lens, the one see-through part, is left out.
 
 ### Sound
 - **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed

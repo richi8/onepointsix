@@ -96,3 +96,29 @@ export function vertexSurfaces<M extends THREE.MeshStandardMaterial>(material: M
   material.customProgramCacheKey = () => `${key()}-surfaces`;
   return material;
 }
+
+/**
+ * Patch a material that takes the avatar's textures (a body's, or the
+ * first-person arms'): its normal map holds only X and Y, and the kit made in
+ * code (whose UVs are negative) is left in its plain colours.
+ */
+export function atlas<M extends THREE.MeshStandardMaterial>(material: M): M {
+  const before = material.onBeforeCompile;
+  const key = material.customProgramCacheKey.bind(material);
+  material.onBeforeCompile = (shader, renderer) => {
+    before.call(material, shader, renderer);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace(
+        'vec4 sampledDiffuseColor = texture2D( map, vMapUv );',
+        'vec4 sampledDiffuseColor = vMapUv.x < 0.0 ? vec4( 1.0 ) : texture2D( map, vMapUv );',
+      ))
+      .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace(
+        'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
+        // The map holds only X and Y (in RGB and alpha), so Z is rebuilt.
+        'vec2 mapXY = vNormalMapUv.x < 0.0 ? vec2( 0.0 ) : texture2D( normalMap, vNormalMapUv ).ga * 2.0 - 1.0;\n'
+          + 'vec3 mapN = vec3( mapXY, sqrt( max( 1.0 - dot( mapXY, mapXY ), 0.0 ) ) );',
+      ));
+  };
+  material.customProgramCacheKey = () => `${key()}-atlas`;
+  return material;
+}

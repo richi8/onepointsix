@@ -808,6 +808,16 @@ notes the chunk it came from.
   length with the left hand short of the bolt-action's fore-end, which the probe's gap from the
   butt pad to the vest then settled. Accepted as it looks now; the right forearm's dip of up to
   about 4 cm into the vest leaning left, drawing and throwing is left as it is.
+- **The soldier's normal map is plain ETC1S** (41). The terrain's normal maps keep two channels
+  for quality, which needs the shader to rebuild the third; the soldier's go through three.js's
+  own material, so they're packed as an ordinary colour image, which ETC1S blurs a little. The
+  goggle lens, the one see-through part, is left out.
+  **Resolved** (41, 2026-10-02): it's packed as the terrain's are, X in RGB and Y in alpha
+  (`--normal-mode`), and the soldier's shader patch (`atlas`, moved to `baked.ts`) samples green
+  and alpha and rebuilds Z, as `surfTangent` does. The first-person arms take the same patch now,
+  carried over to their wet copies in rain. Side by side in the pose viewer, the blocky patches on the
+  sleeves and vest are gone and the shading is otherwise the same. The map grows from 127 KB to
+  210 KB, for the alpha slice. The lens is still left out.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

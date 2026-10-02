@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-10-02',
+    title: 'Smoother uniforms',
+    notes: [
+      'The folds and seams on the soldiers\' uniforms and vests are drawn smoothly, without the blocky patches up close.',
+    ],
+  },
+  {
     date: '2026-10-01',
     title: 'Realistic soldiers',
     notes: [

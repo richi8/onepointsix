@@ -9,7 +9,7 @@ import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { HEAD_RADIUS, hitboxes, LEGS_RADIUS, TORSO_RADIUS } from '../shared/hitbox.ts';
 import type { GameEvent, PlayerSnap, Team } from '../shared/protocol.ts';
 import { BOLT, GRENADE, PISTOL } from '../shared/weapons.ts';
-import { floats, mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
+import { atlas, floats, mergeParts, part, type Part, partOf, vertexSurfaces } from './baked.ts';
 import { clip, crouchRun, gaitSpeed, Reaction } from './clips.ts';
 import { grenadeModel } from './grenade.ts';
 import { fitGun, ROUND } from './guns.ts';
@@ -2057,29 +2057,6 @@ function look(meshes: THREE.SkinnedMesh[], bones: Bones, frame: THREE.Object3D, 
     wear(new THREE.BoxGeometry(0.2, 0.28, 0.12), MAST, 0.6, bones.spine2, chest.x, chest.y - 0.05, chest.z + 0.18);
   }
   return mergeParts(parts, ['skinIndex', 'skinWeight', 'uv']);
-}
-
-/**
- * Patch a body's material, which takes the avatar's textures, to leave the
- * kit made in code (whose UVs are negative) in its plain colours.
- */
-export function atlas<M extends THREE.MeshStandardMaterial>(material: M): M {
-  const before = material.onBeforeCompile;
-  const key = material.customProgramCacheKey.bind(material);
-  material.onBeforeCompile = (shader, renderer) => {
-    before.call(material, shader, renderer);
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace(
-        'vec4 sampledDiffuseColor = texture2D( map, vMapUv );',
-        'vec4 sampledDiffuseColor = vMapUv.x < 0.0 ? vec4( 1.0 ) : texture2D( map, vMapUv );',
-      ))
-      .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace(
-        'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
-        'vec3 mapN = vNormalMapUv.x < 0.0 ? vec3( 0.0, 0.0, 1.0 ) : texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
-      ));
-  };
-  material.customProgramCacheKey = () => `${key()}-atlas`;
-  return material;
 }
 
 /** 0 before `a`, up to 1 by a fifth of the way and down again by `b`: for an action's middle. */

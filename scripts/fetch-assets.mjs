@@ -356,7 +356,8 @@ if (doing('soldier')) {
   const common = ['create', '--generate-mipmap', '--encode', 'basis-lz', '--clevel', '2', '--assign-primaries', 'bt709'];
   execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_SRGB', '--assign-tf', 'srgb', '--qlevel', '200',
     join(work, `${name}_color.png`), join(work, 'color.ktx2')], { env: ktx.env, stdio: 'inherit' });
-  execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_UNORM', '--assign-tf', 'linear', '--qlevel', '200',
+  // Two-channel normals, as the terrain's (X in RGB, Y in alpha); the shader rebuilds Z.
+  execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_UNORM', '--assign-tf', 'linear', '--normal-mode', '--qlevel', '200',
     join(work, `${name}_normal.png`), join(work, 'normal.ktx2')], { env: ktx.env, stdio: 'inherit' });
   await model(join(work, `${name}.glb`), join(OUT, 'soldier.glb'), (doc) => {
     // Blender's specular settings, which the game has no use for.

@@ -3,6 +3,7 @@ import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { clamp, lerp } from '../shared/geom.ts';
 import { BOLT } from '../shared/weapons.ts';
+import { atlas } from './baked.ts';
 import { grenadeModel } from './grenade.ts';
 import { wetMaterial } from './rain.ts';
 import { fitGun } from './guns.ts';
@@ -196,7 +197,11 @@ export class ViewModel {
       if (!mesh.isMesh || Array.isArray(m) || !(m instanceof THREE.MeshStandardMaterial) || made.has(m)) return;
       let wet = this.wet.get(m);
       if (!wet) {
-        wet = wetMaterial(m.clone(), { gloss: 0.4, soak: this.soak, held: this.up });
+        // A copy loses its shader patch (the arms' atlas), so it's carried over.
+        const copy = m.clone();
+        copy.onBeforeCompile = m.onBeforeCompile;
+        copy.customProgramCacheKey = m.customProgramCacheKey;
+        wet = wetMaterial(copy, { gloss: 0.4, soak: this.soak, held: this.up });
         this.wet.set(m, wet);
       }
       mesh.material = wet;
@@ -305,7 +310,7 @@ export class ViewModel {
         continue;
       }
       mesh.geometry = geometry;
-      mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
+      mesh.material = atlas((mesh.material as THREE.MeshStandardMaterial).clone());
       mesh.frustumCulled = false;
     }
     // The model faces +z; the view looks down -z.
