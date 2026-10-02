@@ -27,6 +27,10 @@ playing in seconds: no install, no account. Written fully in TypeScript.
    - **Future (multiplayer):** matchmaking picks the first instance with a free slot and creates a
      new instance if all are full.
 3. A world link (`?world=...`) skips the default world and joins that world instead.
+4. **Share link** on the menu makes a fresh, randomly seeded island and goes there; its link
+   carries `private=1`, and private games are kept apart in the directory, so only players with
+   the link join them and take the bots' slots. On a private island, Share link shares that island
+   again with your best score. The menu labels a private island and says nothing for any other.
 
 ## Game Modes
 
@@ -121,6 +125,7 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
 - Each island has its own leaderboard, whatever the weather: stored locally first, on the server
   once there is multiplayer.
 - A share button on the results screen.
+- Share link on the menu makes a fresh private island (see Entry Flow).
 
 ### Death cam (cheap because the simulation is deterministic)
 - The simulation runs on inputs, so the killer's last seconds can be sent as their inputs and
@@ -318,7 +323,10 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
   again switches to its weather at once.
 
 ### Code and testing
-Nothing open: the last was resolved on 2026-10-02 (see the history).
+- **No way back from a private island** (private islands, 2026-10-02): the menu has no button to
+  leave a private island for the public one; only opening the page without the link does. Locally
+  the privacy is only in principle too, since nobody else can join any game until there is a
+  multiplayer server.
 
 ### Playtest and tuning
 Nothing open: the last was resolved on 2026-10-02 (see the history, and the bot extraction
@@ -444,6 +452,9 @@ extraction stays as hard as it is.
 - **No "New island" button** (2026-10-02): removed at the user's request. Islands are to be
   randomly generated and picked by matchmaking (see Future), not by the player; until then the
   menu shows the default island or a linked one.
+- **Share link makes a private island** (2026-10-02, at the user's request): a fresh random seed
+  with `private=1`, so a group shares an island no stranger is put on by quick join. Shared from
+  Offline it opens in Online, since Offline takes nobody. "Default island" left the menu.
 - **Share links carry the sharer's score.** With no backend, leaderboards live in each browser,
   so the link encodes the world config plus the sharer's name and score as the target to beat.
 - **Hosting:** a static site (e.g. GitHub Pages or Cloudflare Pages) is needed in chunk 10 so

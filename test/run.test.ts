@@ -304,6 +304,15 @@ describe('quick join', () => {
     expect(dir.count).toBe(4);
   });
 
+  it('keeps private games to those with the link', () => {
+    const dir = new Directory();
+    const open = dir.quickJoin(DEFAULT_WORLD, 'online');
+    const closed = dir.quickJoin(DEFAULT_WORLD, 'online', true);
+    expect(closed).not.toBe(open);
+    expect(dir.quickJoin(DEFAULT_WORLD, 'online', true)).toBe(closed);
+    expect(dir.quickJoin(DEFAULT_WORLD, 'online')).toBe(open);
+  });
+
   it.each(['online', 'offline'] as const)('fills %s with operator bots that humans replace', (mode) => {
     const dir = new Directory();
     const game = dir.quickJoin(DEFAULT_WORLD, mode);

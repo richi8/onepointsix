@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'Private islands',
+    notes: [
+      'Share link on the menu now makes a fresh island of your own and takes you there. Only players with its link can join its games, so friends you send it to take the bots\' places beside you and no strangers turn up. Shared from Offline, it opens in Online, since Offline takes nobody.',
+      'On a private island the menu says so, and Share link sends that same island again, with your best score on it to beat.',
+      'The menu no longer says "Default island".',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'The weather turns',
     notes: [
       'The weather changes during a game now. A game opens on a clear day, then clear, rain and fog follow each other at random, never the same twice running: clear for about 5 minutes, rain about 3 and fog about 2, so most runs see the sky turn at least once.',

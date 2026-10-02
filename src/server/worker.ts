@@ -21,7 +21,7 @@ self.onmessage = (e: MessageEvent<ClientMsg>) => {
   if (msg.t === 'hello') {
     // Each hello is a quick join for a new run; leave the last game first.
     if (current) current.game.disconnect(current.id);
-    const game = directory.quickJoin(msg.world, msg.mode);
+    const game = directory.quickJoin(msg.world, msg.mode, msg.private ?? false);
     current = { game, id: game.connect((m: ServerMsg) => self.postMessage(m)) };
   }
   if (!current) return;
