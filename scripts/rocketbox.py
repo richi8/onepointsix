@@ -1,14 +1,15 @@
 # Turns one of Microsoft's Rocketbox avatars (an FBX with its textures) into
 # glTF for the game, run by scripts/fetch-assets.mjs in Blender, headless:
 #
-#   blender -b --factory-startup -P scripts/rocketbox.py -- <fbx> <textures> <out dir> [shrink]
+#   blender -b --factory-startup -P scripts/rocketbox.py -- <fbx> <textures> <out dir> [shrink | <side>]
 #
 # With `shrink`, it only writes each texture the avatar's FBX uses, found in
 # <textures>, at no more than 1024 px as a JPEG into <out dir> (the originals kept in
 # scripts/originals), and stops. Otherwise it writes <name>.glb, the avatar
 # without its textures, and the textures it uses packed into one image each
 # for colour and normals (at half the size), <name>_color.png and <name>_normal.png, which
-# fetch-assets.mjs compresses and puts back on the materials.
+# fetch-assets.mjs compresses and puts back on the materials. Given a side
+# (operator, guard or commander), the clothes take its colours (see PALETTES).
 #
 # On the way: the face's bones go, their skin moving with the head; so do the
 # guns and knives some avatars carry, and the see-through goggle lens; avatars
@@ -26,6 +27,7 @@ from mathutils import Vector
 args = sys.argv[sys.argv.index('--') + 1:]
 fbx, textures, out = args[:3]
 shrink = len(args) > 3 and args[3] == 'shrink'
+team = args[3] if len(args) > 3 and not shrink else None
 name = os.path.splitext(os.path.basename(fbx))[0]
 
 # Materials of the things carried, not worn: guns, knives, and the clear lens.
@@ -189,6 +191,39 @@ bpy.context.view_layer.update()
 
 # ------------------------------------------------------------ the images
 
+# Each side's clothes, to suit a green and brown island: their colours by
+# brightness, dark to light, as sRGB, and how far toward them they go. Each
+# pixel's brightness picks its colour, so the camouflage's pattern and the
+# folds' shading stay. The guards in green, the commanders in brown so they
+# stand apart, and the operators keep their black, turned a little olive.
+PALETTES = {
+    'guard': ([(0.08, 0.085, 0.055), (0.23, 0.25, 0.15), (0.47, 0.46, 0.33)], 1.0),
+    'commander': ([(0.11, 0.08, 0.05), (0.34, 0.26, 0.16), (0.62, 0.54, 0.38)], 1.0),
+    'operator': ([(0.05, 0.055, 0.035), (0.40, 0.42, 0.30), (0.80, 0.80, 0.68)], 0.7),
+}
+
+
+def recolor(px, palette):
+    """
+    Clothes in `px` (RGBA, sRGB) in `palette`'s colours, caps and helmets
+    included, leaving skin, which is far more saturated, as it is.
+    """
+    stops, strength = palette
+    rgb = px[..., :3]
+    lum = rgb @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    # Most of the cloth is darker than mid-grey: stretched so its range spans the stops.
+    t = np.clip(lum * 1.6, 0, 1)
+    stops = np.array(stops, dtype=np.float32)
+    low = np.clip(t * 2, 0, 1)[..., None]
+    high = np.clip(t * 2 - 1, 0, 1)[..., None]
+    mapped = np.where(t[..., None] < 0.5, stops[0] + (stops[1] - stops[0]) * low, stops[1] + (stops[2] - stops[1]) * high)
+    sat = (rgb.max(axis=-1) - rgb.min(axis=-1)) / np.maximum(rgb.max(axis=-1), 1e-4)
+    cloth = 1 - np.clip((sat - 0.12) / 0.08, 0, 1)
+    k = (cloth * strength)[..., None]
+    px[..., :3] = rgb + (mapped - rgb) * k
+    return px
+
+
 def pack(kind):
     tile = TILE[kind]
     sheet = np.zeros((rows * tile, cols * tile, 4), dtype=np.float32)
@@ -198,6 +233,8 @@ def pack(kind):
         img.colorspace_settings.name = 'Non-Color'
         img.scale(tile, tile)
         px = np.array(img.pixels[:], dtype=np.float32).reshape(tile, tile, 4)
+        if kind == 'color' and team:
+            px = recolor(px, PALETTES[team])
         col, row = i % cols, i // cols
         sheet[row * tile:(row + 1) * tile, col * tile:(col + 1) * tile] = px
     if kind == 'normal':

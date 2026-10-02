@@ -17,7 +17,8 @@ the soldiers, from Microsoft's Rocketbox avatars under the MIT License (its text
   `Military_Male_01`, `_03`, `_04`, `Military_Female_01` and `_02` (guards), and
   `Military_Male_02`, `_05` and `_06` (commanders). Converted by `scripts/rocketbox.py` in
   Blender: the face's bones, the guns and knives some carry and their goggle lenses taken out,
-  the soldiers in helmets thinned to 10,000 triangles, and their textures packed into one KTX2
+  the soldiers in helmets thinned to 10,000 triangles, their clothes recoloured (operators a
+  little olive, guards green, commanders brown), and their textures packed into one KTX2
   image each for colour (512 px a part) and normals (256 px a part). Their clips (idle, walk,
   run, death, shooting, two hit reactions, crouching still and walking, jump, in the air and
   landing) come from Quaternius's

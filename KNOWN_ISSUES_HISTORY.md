@@ -866,6 +866,14 @@ notes the chunk it came from.
   apart from the side. The first avatar carries the clips, and the others' bones are
   turned to play them (posed by them, Military_Female_01's skin lands within 0.01 mm of where
   its own retargeted clips put it).
+- **Guards and commanders look alike from the side at a distance** (42). With the radio and its
+  mast taken off at the developer's wish, all that sets a commander apart is the cap and bare
+  face in place of a helmet and vest, both in the same camouflage. At 30 m, as the game frames
+  it, that shows from the front but barely from the side.
+  **Resolved** (42, 2026-10-02): the clothes are recoloured by side as the avatars are packed,
+  guards in green and commanders in brown, caps and helmets included (skin, far more saturated,
+  is left alone). At 30 m, as the game frames it, the two are easy to tell apart from the front
+  and the side.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

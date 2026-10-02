@@ -20,7 +20,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRTextureBasisu } from '@gltf-transform/extensions';
 import { meshopt, prune, resample } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
-import { AVATAR_NAMES } from '../src/shared/avatars.ts';
+import { AVATAR_NAMES, AVATARS } from '../src/shared/avatars.ts';
 import { LAYERS } from '../src/shared/layers.ts';
 import { rebase, retarget } from './retarget.mjs';
 import { ffmpeg, get } from './tools.mjs';
@@ -356,7 +356,9 @@ if (doing('soldiers')) {
       rmSync(full, { recursive: true });
     }
     const work = mkdtempSync(join(tmpdir(), 'rocketbox-'));
-    const report = JSON.parse(run(fbx, join(kept, 'textures'), work).match(/^AVATAR (.*)$/m)[1]);
+    // In its side's colours.
+    const side = Object.keys(AVATARS).find((s) => AVATARS[s].includes(name));
+    const report = JSON.parse(run(fbx, join(kept, 'textures'), work, side).match(/^AVATAR (.*)$/m)[1]);
     console.log(`${name}: ${report.triangles} triangles, ${report.materials.join(', ')}`);
     // The packed textures as Basis ETC1S, which the game transcodes to whatever compressed format the GPU has.
     const common = ['create', '--generate-mipmap', '--encode', 'basis-lz', '--clevel', '2', '--assign-primaries', 'bt709'];
