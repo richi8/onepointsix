@@ -1009,6 +1009,19 @@ notes the chunk it came from.
   **Accepted** (2026-09-30): the charging handle heard in the rifle's reload without being seen is a
   small thing. Closed at the user's request, all but the rifle's suppressed shot, which stays open
   on its own ("The rifle's suppressed shot is a stand-in", in the plan).
+- **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
+  sniper rifle from a US government video, the nearest real one found: no CC0 recording of a
+  suppressed rifle of its kind turned up (the few suppressed ones on Freesound are made in an
+  editor, an air rifle, or a blank-firing BB gun). The rest of the recordings are real (see "Some
+  recordings aren't what they stand for" above).
+  **Resolved** (2026-10-02): it's an HK MP7 now, a real suppressed select-fire gun fired
+  outdoors, its single shot cut from the start of the same recording that goes on to fire full
+  auto. Recorded by areniporgen, who also recorded the pistol's and the bolt-action's suppressed
+  shots, so all three sound like one place and microphone. A fresh search still found no CC0
+  suppressed AR15 or other 5.56 carbine on Freesound (the rest are made in an editor, an air rifle,
+  a BB gun or are pistols), so the MP7's 4.6 mm round is as near as it gets. Played at the same
+  gain as the old one, it's within 1 dB over its first 50 and 200 ms, and it dies away in half a
+  second where the sniper rifle's rang on for nearly a second.
 - **The reverb is one generated room** (14), the same everywhere, only louder when walled in.
   It isn't placed in 3D, and a place with no roof yet (every building so far) rings like a room
   when its walls are close.

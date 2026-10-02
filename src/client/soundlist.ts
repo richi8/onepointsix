@@ -35,8 +35,10 @@ export const SOUNDS: SoundSource[] = [
   { name: 'pistol', freesound: 427592, author: 'michorvath', title: '9mm pistol shot', from: 0, to: 1.0, kind: 'shot' },
   { name: 'bolt', freesound: 431834, author: 'moosegravy', title: 'Sauer 404 close shot.wav', from: 0.45, to: 2.3, kind: 'shot', fade: 0.8 },
   { name: 'far', freesound: 52357, author: 'trip2000', title: 'gun shot.aif', from: 0, to: 2.0, kind: 'shot' },
-  // Suppressed shots, one per gun: a sniper rifle for the rifle, a suppressed 9 mm and a .50 bolt-action.
-  { name: 'quietRifle', freesound: 182815, author: 'qubodup', title: 'Silenced Sniper Rifle.flac', from: 0.98, to: 1.95, kind: 'shot', fade: 0.5 },
+  // Suppressed shots, one per gun: an MP7's single shot for the rifle (no CC0
+  // recording of a suppressed AR15 exists; the nearest real one is this
+  // select-fire gun), a suppressed 9 mm and a .50 bolt-action.
+  { name: 'quietRifle', freesound: 732250, author: 'areniporgen', title: 'Heckler & Koch MP7 Suppressed (Semi & Full Auto)', from: 0, to: 0.7, kind: 'shot', fade: 0.3 },
   { name: 'quietPistol', freesound: 828790, author: 'areniporgen', title: 'SIG Sauer P226 (Suppressed)', from: 0, to: 0.7, kind: 'shot', fade: 0.4 },
   { name: 'quietBolt', freesound: 737570, author: 'areniporgen', title: 'MacMillan Tac-50A1-R2 Suppressed', from: 0, to: 0.9, kind: 'shot', fade: 0.5 },
   { name: 'cycle', freesound: 204204, author: 'Danwardvs', title: '22 Bolt.wav', from: 0.2, to: 0.9, kind: 'shot' },

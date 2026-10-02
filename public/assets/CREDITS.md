@@ -33,8 +33,9 @@ the soldiers, from Microsoft's Rocketbox avatars under the MIT License (its text
   [Freesound](https://freesound.org), each one CC0, checked on its page by
   `scripts/fetch-sounds.mjs`. Cut from Freesound's previews and packed into three files as Opus;
   `sounds.json` says where each sits. By sound: AR15 rifle shot, 9mm pistol shot (michorvath);
-  Sauer 404 close shot.wav (moosegravy); gun shot.aif (trip2000); Silenced Sniper Rifle.flac,
-  Whoosh (qubodup); SIG Sauer P226 (Suppressed), MacMillan Tac-50A1-R2 Suppressed (areniporgen);
+  Sauer 404 close shot.wav (moosegravy); gun shot.aif (trip2000); Whoosh (qubodup); SIG Sauer
+  P226 (Suppressed), MacMillan Tac-50A1-R2 Suppressed, Heckler & Koch MP7 Suppressed (Semi & Full
+  Auto) (areniporgen);
   22 Bolt.wav (Danwardvs); A rifle being dry fired once (serøutōnin--deprivəd); AR15 M4 Gun
   Hardware Magazine Movement Sounds, Glock 19 Handgun Pistol Slide Cocking Sounds
   (jackthemurray); Handgun / Pistol Removing Mag and Inserting Mag Foley (e9118586020); Bolt

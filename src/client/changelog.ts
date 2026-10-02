@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'A truer suppressed rifle',
+    notes: [
+      'The suppressed rifle sounds like a suppressed automatic now, recorded outdoors, instead of a sniper rifle: shorter, with no long ring after the shot.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'Every side looks its own',
     notes: [
       'Operators are SWAT officers in black with an olive cast, men and women. Guards are soldiers in green camouflage, helmets and loaded vests. Commanders are soldiers in brown camouflage and caps, easy to tell from their guards even far off.',

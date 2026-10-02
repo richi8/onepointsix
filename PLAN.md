@@ -289,11 +289,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Sound
-- **The rifle's suppressed shot is a stand-in** (14, split out 2026-09-30). It's a suppressed
-  sniper rifle from a US government video, the nearest real one found: no CC0 recording of a
-  suppressed rifle of its kind turned up (the few suppressed ones on Freesound are made in an
-  editor, an air rifle, or a blank-firing BB gun). The rest of the recordings are real (see "Some
-  recordings aren't what they stand for" in the history).
+Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Day, night and weather
 Nothing open: the last was resolved on 2026-10-01 (see the history).
