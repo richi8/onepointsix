@@ -314,15 +314,8 @@ Nothing open: the last was resolved on 2026-10-01 (see the history).
 Nothing open: the last was resolved on 2026-09-30 (see the history).
 
 ### Playtest and tuning
-- **Outpost reinforcements are untested by people** (2026-10-02). An outpost's fallen guards are
-  no longer replaced at their posts: each is replaced 60 s later by one that sets off 100–140 m
-  away, out of every operator's reach and sight, and sprints back; once the last of an outpost's
-  guards (sentry included, and a living commander counts) falls, all of them set off together
-  after 15 s. Nobody has played it yet, so whether 15 s plus the run in (roughly 30–40 s in all)
-  is the right rush is a guess. The starting point isn't checked for a way to the outpost, so on
-  a rugged island a replacement could take a long way round. Patrols are still replaced at the
-  start of their route. A bot playtest by day came out at 15% of operator bots extracting,
-  against 14% just before (seeds 1–6), since bots rarely wipe out an outpost; night wasn't run.
+Nothing open: the last was resolved on 2026-10-02 (see the history, and the bot extraction
+baseline in Decisions).
 
 ## Future
 - **Multiplayer**

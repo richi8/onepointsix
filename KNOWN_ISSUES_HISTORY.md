@@ -1767,6 +1767,8 @@ notes the chunk it came from.
   50 m of its post (`RESPAWN_CLEAR`) or can see it from within 150 m (`RESPAWN_SIGHT`), and
   looks again every 3 s. A unit test stands someone on a tower. An operator bot camping near an
   outpost holds its guards off too; in the bot playtest nothing changed beyond the noise.
+  **Replaced** (2026-10-02): an outpost's guards are no longer replaced at their posts at all, but
+  by ones running in from out of sight (see "Outpost reinforcements are untested by people").
 - **Nobody else has played it yet** (12). The chunk's goal, several full runs by other people with
   the average run between 3 and 10 minutes, still waits on real playtesters. Everything tuned so
   far comes from bots.
@@ -1903,6 +1905,18 @@ notes the chunk it came from.
   (3% at 5,000, 19% before the fee) and 15% at night in rain (9%, 21%), with extracted runs of
   2:19 and 2:16. The HUD texts above follow the constant.
   **Accepted** (2026-09-30): the user is fine with it for now; the fee stays at 2,000.
+- **Outpost reinforcements are untested by people** (2026-10-02). An outpost's fallen guards are
+  no longer replaced at their posts: each is replaced 60 s later by one that sets off 100–140 m
+  away, out of every operator's reach and sight, and sprints back; once the last of an outpost's
+  guards (sentry included, and a living commander counts) falls, all of them set off together
+  after 15 s. Nobody has played it yet, so whether 15 s plus the run in (roughly 30–40 s in all)
+  is the right rush is a guess. The starting point isn't checked for a way to the outpost, so on
+  a rugged island a replacement could take a long way round. Patrols are still replaced at the
+  start of their route. A bot playtest by day came out at 15% of operator bots extracting,
+  against 14% just before (seeds 1–6), since bots rarely wipe out an outpost; night wasn't run.
+  **Resolved** (2026-10-02): the developer played it and liked it: staying too long in a cleared
+  outpost means fighting the replacements coming in, which is the rush it was meant to add. The
+  15 s delay stays, and the unchecked way in was accepted as it is.
 ## Dropped
 
 Open issues taken off the plan on 2026-09-28 as not worth pursuing: records of what was measured
