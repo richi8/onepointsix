@@ -278,6 +278,23 @@ in a T-pose and took the Universal Animation Library's clips with only a table o
 | 41 | **New soldier pipeline** | A committed script that turns Rocketbox's FBX avatars into the game's glTF (Blender headless, fetched into a cache like the Linux tools; the FBX files and textures shrunk to 1k kept in `scripts/originals`): facial bones, the guns and knives baked into some avatars and unused bones dropped, the meshes merged, textures at 512 px in KTX2; the Universal Animation Library's clips retargeted onto the `Bip01` rig (both bind in a T-pose), replacing the SWAT's own clips; `rig.ts`, hands, leg IK (the feet hang off the shins now, not the root), first-person arms (from the SWAT avatar), the ragdoll rig and hitboxes moved to the new bones; one avatar for every side to begin with | The pose viewer shows every pose and clip on the new body with nothing stretched, and the benchmark's 24-body frame is within chunk 39's | **Done** (`Police_Male_02` for everyone, 9,765 triangles, `soldier.glb` 0.56 MB against the old 0.60 MB; every pose-viewer screenshot re-recorded and looked over; in four runs each alternating with the code before on an M3 Pro, the 24-body frame took 9.1–10.0 ms against 9.6–10.5 ms, in the same 272 draw calls. The thighs were moved onto the pelvis and the collarbones onto the chest; the textures are packed into one 1024 px image each, not kept apart. Nobody has watched it in play) |
 | 42 | **Avatars per side** | Operators as SWAT (`Police_Male_02`, `Police_Female_01`); guards as soldiers in helmets (`Military_Male_01`, `_03`, `_04`, `Military_Female_01`, `_02`); commanders as soldiers in caps (`Military_Male_02`, `_05`, `_06`) with the radio; each body's avatar picked from the seed, so the same island looks the same; the code-built kit (packs, webbing, helmet band) dropped where the avatars carry their own, keeping the operators' pack and the commanders' radio; the side tints dropped or kept subtle; Microsoft credited in `CREDITS.md` with the MIT text; level of detail for far bodies if the benchmark needs it | At 30 m an operator, a guard and a commander can be told apart by shape alone, and the download grows by no more than about 3 MB | **Done** (all ten avatars, picked for each body by the island's seed in turn, so an outpost's guards differ; the soldiers in helmets thinned from 13–15k to 10k triangles, the normal maps halved to 256 px a part; the first avatar carries the clips and the others' bones are turned to play them, which saved about 1 MB of clips; the ten come to 3.60 MB against the one's 0.64 MB, 2.96 MB more. All the code-built kit went (the operators' pack, the commanders' helmet band, radio and mast), the ragdoll's pack joint giving way to one inside the back of the ribs that braces the chest as the pack did, and there were no side tints left. At 30 m, at the game's field of view, operators stand out in black; guards and commanders differ by helmet and vest against cap and bare face. Afterwards, at the developer's wish, the clothes were recoloured to suit the island in `scripts/rocketbox.py`, by a gradient map on brightness that leaves skin alone: operators' black a little olive, guards green and commanders brown, which sets the last two apart from any side. In four runs each alternating with the code before on an M3 Pro, the 24-body frame took 8.8–9.9 ms against 8.5–10.1 ms, in the same 272 draw calls, so no level of detail; preparing the ten at load takes about 90 ms against 25. The ragdoll's unit tests now run for every avatar's fall: a body falling into someone standing slides off their side as often as it stops short, and one pile sinks 3.8 cm, so those two checks were loosened. Nobody has watched it in play) |
 
+### Phase 6: day only, changing weather (still local only, Chrome only)
+
+Decided on 2026-10-02: nearly everyone prefers playing by day, so dusk and night go, along with
+everything that only served the dark (see Decisions for what was removed and how to bring it
+back). In their place the weather changes during a game: clear, rain and fog follow each other
+at random, a whole cycle averaging 10 minutes, so most 3–10 minute runs see the sky turn at
+least once. One rolling sky for everyone also means matchmaking no longer splits players by
+conditions. Players get warning before the weather turns, and every change blends over a
+transition rather than switching. The core loop stays as it is.
+
+| # | Chunk | Scope | Done when | Status |
+|---|---|---|---|---|
+| 43 | **Night out** | Dusk and night removed entirely, with everything that only served them: flashlights (the torch models on the guns, beams and their shadows, beams lighting the rain, bots noticing beams and holders, the key, the killer's flashlight in the death cam, the range's flashlight routine), the outpost lamps (their light and shadows, lamplight for bots, operator bots keeping out of it, shooting lamps out), night's extra and tougher guards and better loot, the night sky, the dusk and night lighting presets and the menu's time picker; the light volume and anything else day still uses kept; old links and scores with a time of day still open and read as day; the browser tests and benchmark cases for night replaced by day ones; the last commit with night in it recorded in Decisions | Nothing in the code mentions dusk, night, flashlights or lamps, every test passes, and the bot playtest by day stays at 15% ± 3 | |
+| 44 | **The weather cycle** | Weather becomes a function of the island's seed and the game's clock, worked out in shared code so the server, bots, the client and the death cam agree: the next weather picked at random from the other two, each phase's length at random, clear lasting longest (about 5 min clear, 3 min rain and 2 min fog on average, so 10 min a cycle), with a blend factor across each transition; bots' sight and hearing read the blended weather every tick; the link and the menu lose the weather (old links still open, their weather ignored); leaderboards drop each score's conditions and the results show the weather at extraction | Unit tests show the same seed and clock giving the same weather on server and client, a run sees the weather change, and a death cam plays in the weather its kill happened in | |
+| 45 | **Transitions and warnings** | Each change blends over 30–60 s: fog density, sky, sun and ambient light, rain streaks, splashes and the rain bed, the sound muffling, fog banks drifting in and thinning out; surfaces wetting as rain starts, drying slowly after, and puddles filling and draining; about a minute's warning before a change (clouds thickening, the wind rising and far thunder before rain, mist gathering in hollows before fog); a benchmark case for the crossover, when rain and fog both run | Screenshot tests mid-transition look right, a player can tell rain or fog is coming before it arrives, and the benchmark's crossover frame holds the budget | |
+| 46 | **Playing the weather** | Operator bots use the weather: rats and looters move in fog, hunters push under rain's cover, campers hold as sight shortens; the bot playtest run over the cycle instead of fixed day and rainy-night runs; the changelog, Features and Vision updated; a human pass on how the changes feel in play | The bot playtest stays at 15% ± 3 with the cycle running, and a tester notices and uses the weather turning | |
+
 ## Known Issues
 
 Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
@@ -306,8 +323,9 @@ baseline in Decisions).
   - Node server that reuses `server/`, with WebSocket first
   - Snapshot deltas, interpolation and lag compensation
   - Real matchmaking: islands are always randomly generated (no picking one on the menu), and
-    **Play** throws you into the first game that isn't full in your time of day and weather, on
-    whatever island it runs, or starts one on a new random island
+    **Play** throws you into the first game that isn't full, on whatever island it runs, or
+    starts one on a new random island (conditions no longer split players: always day, with the
+    weather changing during a game, from Phase 6)
   - Bot fill that shrinks as humans join
   - Anonymous identity, basic anti-cheat, deployment
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
@@ -384,13 +402,27 @@ extraction stays as hard as it is.
   else stays CC0.
 - **Bot extraction baseline** (2026-09-30): operator bots extracting from 15% ± 3 of their runs by
   day in the bot playtest (`npm run playtest`, 6 islands × 30 min, seeds 1–6) is where the user
-  wants it; at night in rain it's about 20%. Changes to bots, guards, loot or the island keep it
+  wants it; at night in rain it was about 20% until night was removed (Phase 6). Changes to bots, guards, loot or the island keep it
   within that band, and a change that moves it out says so.
 - **Leaderboards are universal across conditions** (16): one board per island and mode, whatever
   the time of day or weather. The plan had them per condition; the user asked to keep them
   universal. A link still carries its conditions, so a challenge is played as it was set.
 - **Conditions are fixed presets** (16): day, dusk or night, and clear, rain or fog, fixed for a
-  game. The time doesn't pass and the weather doesn't change during a run.
+  game. The time doesn't pass and the weather doesn't change during a run. Replaced on 2026-10-02
+  by Phase 6: always day, with the weather changing on a random cycle.
+- **Day only, weather changes** (2026-10-02, Phase 6): nearly every tester preferred day, so dusk
+  and night are removed entirely, not left switched off. Clear, rain and fog follow each other at
+  random (never the same twice running), a cycle averaging 10 minutes with clear lasting longest,
+  worked out from the seed and the game's clock, with a warning and a blend at each change.
+- **Night removed, kept in history** (2026-10-02, chunk 43): the night systems can be brought back
+  from version control if wanted. What went: dusk and night lighting and the night sky
+  (`lighting.ts`); flashlights (`flashlights.ts`, `torch.ts`, beams and their shadows in
+  `locallights.ts`, beams in the rain, bots seeing beams in `bot.ts`, the death cam's flashlight);
+  the outpost lamps (`lamps.ts`, lamplight for bots and paths round it in `nav.ts`, shooting lamps
+  out); night's extra and tougher guards and better loot (`isNight` in `conditions.ts`,
+  `population.ts`, `containers.ts`, `loot.ts`). Built in chunks 16, 25 and 36. The last commit
+  with all of it is `ee74383` (before Phase 6 was planned); chunk 43 notes the exact commit
+  before its removal here.
 - **Phase 3 choices** (settled before it started): no prone stance; the bounty stays unpaid, since
   the carrier's loot is the reward; scores show their conditions but aren't adjusted for night;
   Freesound's free CC0 previews are good enough, so no API key or original files; a new soldier
