@@ -20,7 +20,7 @@ test('Stats sums up your runs, and exports them as a file', async ({ page }) => 
   await expect(stats.locator('.tiles div').first()).toHaveText('1Runs');
   await expect(stats.locator('.tiles div').nth(1)).toHaveText('100%Extracted');
   await expect(stats.locator('.recent li')).toHaveCount(1);
-  await expect(stats.locator('.recent li')).toHaveText(/^Extracted · [\d,]+ · Default island · Day · \d+:\d\d · /);
+  await expect(stats.locator('.recent li')).toHaveText(/^Extracted · [\d,]+ · Default island · Clear · \d+:\d\d · /);
 
   const download = page.waitForEvent('download');
   await stats.locator('.export').click();

@@ -8,7 +8,7 @@ import { planOperator } from '../src/server/population.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
 import { BOUNTY_MIN, BOUNTY_PING, CROUCH_EYE_HEIGHT, EYE_HEIGHT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
-import { DEFAULT_CONDITIONS, sensesOf } from '../src/shared/conditions.ts';
+import { sensesOf, settled } from '../src/shared/weather.ts';
 import { ITEMS, lootValue } from '../src/shared/loot.ts';
 import type { BagSnap, GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
@@ -40,7 +40,7 @@ function openSpot(far: number, seed = 5): { x: number; z: number } {
 function context(agents: Agent[], bags: BagSnap[] = [], bounty = 0): BotContext {
   return {
     world, nav, time: 0, agents, agent: (id) => agents.find((a) => a.id === id), pathBudget: 10, callout: () => {},
-    extracts: new Extracts(world, mulberry32(1)).points, lootView: () => null, senses: sensesOf(DEFAULT_CONDITIONS), bounty, bags: () => bags,
+    extracts: new Extracts(world, mulberry32(1)).points, lootView: () => null, senses: sensesOf(settled('clear')), bounty, bags: () => bags,
   };
 }
 

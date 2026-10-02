@@ -4,7 +4,7 @@ import { Bodies } from '../src/client/bodies.ts';
 import { GroundCover } from '../src/client/groundcover.ts';
 import { Resolution } from '../src/client/resolution.ts';
 import { WorldView } from '../src/client/worldview.ts';
-import { DEFAULT_CONDITIONS, type Conditions } from '../src/shared/conditions.ts';
+import type { Weather } from '../src/shared/weather.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
@@ -36,7 +36,7 @@ const WARMUP = 60;
 const FRAMES = Number(q.get('frames') ?? 240);
 
 const world = new World(DEFAULT_WORLD.seed);
-const view = new WorldView(world, DEFAULT_CONDITIONS);
+const view = new WorldView(world, 'clear');
 view.preview = false;
 const scene = view.scene;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -268,7 +268,7 @@ async function frameCost() {
   const crowd = await measure(N);
   const distant = await measure(N, true);
   const cover = groundCover(-200, 40, 40);
-  const rain = await inWeather({ weather: 'rain' });
+  const rain = await inWeather('rain');
 
   const stats = (v: number[]) => {
     const s = [...v].sort((a, b) => a - b);
@@ -293,9 +293,9 @@ async function frameCost() {
   return bench;
 }
 
-/** The close-up crowd in `conditions`. */
-async function inWeather(conditions: Conditions): Promise<Phase> {
-  view.setConditions(conditions);
+/** The close-up crowd in `weather`. */
+async function inWeather(weather: Weather): Promise<Phase> {
+  view.setWeather(weather);
   renderer.toneMappingExposure = view.lit.exposure;
   await renderer.compileAsync(scene, camera);
   return measure(N);

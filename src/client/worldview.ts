@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Conditions } from '../shared/conditions.ts';
+import type { Weather } from '../shared/weather.ts';
 import type { ExtractView } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { leafRect, type PropStyle, type World } from '../shared/world.ts';
@@ -113,11 +113,11 @@ export class WorldView {
   private flashed = 0;
 
   /** Drawn into `scene`, which may have been another island's; see dispose(). */
-  constructor(world: World, conditions: Conditions, scene = new THREE.Scene()) {
+  constructor(world: World, weather: Weather, scene = new THREE.Scene()) {
     this.scene = scene;
     patchFog();
-    this.lighting = lightingOf(conditions);
-    this.raining = conditions.weather === 'rain';
+    this.lighting = lightingOf(weather);
+    this.raining = weather === 'rain';
     this.rain = new Rain(world);
     scene.fog = this.fog;
     scene.background = this.background;
@@ -209,9 +209,9 @@ export class WorldView {
   }
 
   /** Light the island for another weather. */
-  setConditions(conditions: Conditions): void {
-    this.lighting = lightingOf(conditions);
-    this.raining = conditions.weather === 'rain';
+  setWeather(weather: Weather): void {
+    this.lighting = lightingOf(weather);
+    this.raining = weather === 'rain';
     this.light();
   }
 

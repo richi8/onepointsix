@@ -300,9 +300,8 @@ describe('quick join', () => {
     const solo2 = dir.quickJoin(DEFAULT_WORLD, 'offline');
     expect(solo2).not.toBe(solo);
     expect(dir.quickJoin({ ...DEFAULT_WORLD, seed: 7 }, 'offline')).not.toBe(solo2);
-    expect(dir.quickJoin({ ...DEFAULT_WORLD, weather: 'fog' }, 'offline')).not.toBe(solo2);
     expect(dir.quickJoin(DEFAULT_WORLD, 'online').mode).toBe('online');
-    expect(dir.count).toBe(5);
+    expect(dir.count).toBe(4);
   });
 
   it.each(['online', 'offline'] as const)('fills %s with operator bots that humans replace', (mode) => {

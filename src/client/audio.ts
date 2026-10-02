@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import { DEFAULT_CONDITIONS, type Conditions } from '../shared/conditions.ts';
+import type { Weather } from '../shared/weather.ts';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { BOLT, PISTOL } from '../shared/weapons.ts';
@@ -214,8 +214,8 @@ export class Sfx {
   private scaredAt = -Infinity;
   /** Where the listener is, for how far sounds are. */
   private readonly ear = { x: 0, y: 0, z: 0 };
-  /** The time of day and weather, for the ambience. */
-  conditions: Conditions = DEFAULT_CONDITIONS;
+  /** The weather, for the ambience. */
+  weather: Weather = 'clear';
   /** Everything heard passes through this, which muffles it while the listener is under water. */
   private muffle: BiquadFilterNode | null = null;
   private submerged = false;
@@ -661,7 +661,7 @@ export class Sfx {
 
   /** How much of the rain's hiss lies between here and `d` metres off, 0 to 1: none when dry. */
   private rained(d: number): number {
-    return this.conditions.weather === 'rain' ? smoothstep(RAIN_NEAR, RAIN_FAR, d) : 0;
+    return this.weather === 'rain' ? smoothstep(RAIN_NEAR, RAIN_FAR, d) : 0;
   }
 
   /** What's left of a sound's volume from `d` metres off under the rain. */
@@ -793,7 +793,7 @@ export class Sfx {
     }
     const calm = clamp((now - this.scaredAt - SCARED_FOR) / CALMING, 0, 1);
     const trees = woodland(w, ear.x, ear.z);
-    const raining = this.conditions.weather === 'rain';
+    const raining = this.weather === 'rain';
     const low = 1 - smoothstep(40, 90, ear.y);
     // Birds hush in the rain, and for a while after a shot.
     const hush = raining ? 0.25 : 1;

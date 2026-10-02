@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { Btn, CMD_DT, DOOR_REACH, OPERATOR_CAPACITY, PLAYER_RADIUS, SERVER_DT, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
-import { WEATHER_NAMES, WEATHERS, type Conditions, type Weather } from '../shared/conditions.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
@@ -11,6 +10,7 @@ import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { cleanName, parseShareLink, shareQuery, type Challenge } from '../shared/share.ts';
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
+import { Forecast, mainWeather, parseWeather, type Weather } from '../shared/weather.ts';
 import { leafRect, World } from '../shared/world.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
 import type { Assets } from './assets.ts';
@@ -74,18 +74,17 @@ const MODE_NOTES: Record<Mode, string> = {
   range: 'Try things out round the first outpost: soldiers going through every move, and nothing can hurt you. No scores.',
 };
 
-const WEATHER_NOTES: Record<Weather, string> = {
-  clear: 'Sight and sound carry across the island.',
-  rain: 'Shorter sight, and it drowns out footsteps and far-off shots.',
-  fog: 'Nobody sees far, you included.',
-};
-
 /** The link the page came in on. */
 const link = parseShareLink(location.search);
-/** The island from the link, in the conditions picked on the menu. */
-let config = link.world;
+/** The island from the link. */
+const config = link.world;
 const world = new World(config.seed);
-const view = new WorldView(world, config);
+/** Its weather over a game, as the server works it out. */
+const forecast = new Forecast(config.seed);
+/** In development, `?sky=rain` holds the weather shown whatever the game's, for screenshots. */
+const heldWeather = import.meta.env.DEV ? parseWeather(new URLSearchParams(location.search).get('sky')) : undefined;
+/** Behind the menu, the weather a game on the island opens in. */
+const view = new WorldView(world, heldWeather ?? mainWeather(forecast.at(0)));
 /** Drawn into by every island in turn. */
 const scene = view.scene;
 
@@ -129,7 +128,6 @@ const runHud = new RunHud(world);
 const rivalHud = new RivalHud(world);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
-sfx.conditions = config;
 view.onThunder = (distance) => sfx.thunder(distance);
 
 const surfaces = new Surfaces(world);
@@ -416,9 +414,7 @@ function challengeFor(m: Mode): Challenge | null {
 /** Share the island in the current mode, with your best score on it to beat. */
 function shareIsland(): void {
   const best = board.best(config.seed, mode);
-  // The best score goes out in the weather it was set in.
-  const at = best?.weather ? { ...config, weather: best.weather } : config;
-  void shareLink(shareQuery(at, mode, best ?? undefined), challengeText(best));
+  void shareLink(shareQuery(config, mode, best ?? undefined), challengeText(best));
 }
 
 /** What goes with a shared link: the score to beat on it, if any. */
@@ -442,11 +438,11 @@ function showBoard(): void {
     challengeEl.textContent = `${link.challenge.name} scored ${link.challenge.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
   }
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
-  const rows: { name: string; score: number; note: string; when: string; rival: boolean }[] = board.entries(config.seed, mode)
-    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), when: e.weather ? WEATHER_NAMES[e.weather] : '', rival: false }));
+  const rows: { name: string; score: number; note: string; rival: boolean }[] = board.entries(config.seed, mode)
+    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), rival: false }));
   if (c) {
     const at = rows.findIndex((r) => r.score < c.score);
-    rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', when: WEATHER_NAMES[link.world.weather], rival: true });
+    rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', rival: true });
   }
   // Keep the challenge in view even below the rows shown.
   const shown = rows.slice(0, BOARD_SHOWN);
@@ -472,11 +468,9 @@ function showBoard(): void {
     name.textContent = r.name;
     const score = document.createElement('b');
     score.textContent = r.score.toLocaleString('en-US');
-    const when = document.createElement('em');
-    when.textContent = r.when;
     const note = document.createElement('small');
     note.textContent = r.note;
-    li.append(rank, name, when, score, note);
+    li.append(rank, name, score, note);
     return li;
   }), ...open);
   const empty = boardEl.querySelector('.empty') as HTMLElement;
@@ -573,7 +567,6 @@ function briefingLine<K extends string>(notes: Record<K, string>): (chosen: K) =
 }
 
 const briefMode = briefingLine(MODE_NOTES);
-const briefWeather = briefingLine(WEATHER_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
 let mode: Mode = 'online';
 try {
@@ -602,37 +595,32 @@ function selectMode(m: Mode): void {
 for (const b of modeButtons) b.onclick = () => selectMode(b.dataset.mode as Mode);
 selectMode(mode);
 
-// ------------------------------------------------------------- conditions
+// ---------------------------------------------------------------- weather
 
-const weatherButtons = [...document.querySelectorAll<HTMLButtonElement>('#weathers button')];
+/** The weather the island is shown in. */
+let shownWeather: Weather | null = null;
 
-/**
- * Play the island in other weather: relit behind the menu, and kept in the
- * address so the page's link reproduces it.
- */
-function setConditions(c: Conditions): void {
-  config = { ...config, ...c };
-  for (const b of weatherButtons) {
-    const on = b.dataset.weather === c.weather;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-checked', String(on));
-  }
-  briefWeather(c.weather);
-  view.setConditions(c);
+/** Light the island and set its sounds for weather `w`, if it isn't already. */
+function showWeather(w: Weather): void {
+  w = heldWeather ?? w;
+  if (w === shownWeather) return;
+  shownWeather = w;
+  view.setWeather(w);
   const lit = view.lit;
   renderer.toneMappingExposure = lit.exposure;
   viewModel.setLight(lit.ambient, lit.sunColor, lit.sunIntensity / 3.3, lit.hemiSky, lit.hemiGround);
-  sfx.conditions = c;
+  sfx.weather = w;
+}
+showWeather(mainWeather(forecast.at(0)));
+
+{
+  // Links from before the weather changed during a game may carry it, and older ones a time of day: both are dropped.
   const q = new URLSearchParams(location.search);
-  // Links from before the game was day only may carry a time of day: it's dropped.
   q.delete('time');
-  if (c.weather === WEATHERS[0]) q.delete('weather');
-  else q.set('weather', c.weather);
+  q.delete('weather');
   const search = q.size ? `?${q}` : '';
   if (search !== location.search) history.replaceState(null, '', `${location.pathname}${search}${location.hash}`);
 }
-for (const b of weatherButtons) b.onclick = () => setConditions({ weather: b.dataset.weather as Weather });
-setConditions(config);
 
 // ------------------------------------------------------------- what's new
 
@@ -762,7 +750,7 @@ function endRun(e: RunEnd): void {
   const counts = mode !== 'range';
   if (counts) runLog.add(runRecord(e, config, mode, (i) => extractNames[i]));
   const standing: string[] = [];
-  const place = counts ? board.add(config.seed, mode, { name: playerName(), score: e.score, date: today(), weather: config.weather }) : 0;
+  const place = counts ? board.add(config.seed, mode, { name: playerName(), score: e.score, date: today() }) : 0;
   if (place === 1) standing.push('New best on this island!');
   else if (place > 1) standing.push(`#${place} of your runs on this island.`);
   const c = challengeFor(mode);
@@ -775,8 +763,7 @@ function endRun(e: RunEnd): void {
   shareButton.textContent = e.score > 0 ? 'Challenge a friend' : best ? 'Share your best' : 'Share island';
   shareButton.onclick = () => {
     const score = e.score > 0 ? { name: playerName(), score: e.score } : best ?? undefined;
-    const at = e.score <= 0 && best?.weather ? { ...config, weather: best.weather } : config;
-    void shareLink(shareQuery(at, mode, score), challengeText(score));
+    void shareLink(shareQuery(config, mode, score), challengeText(score));
   };
   showLastResults = () => {
     (document.getElementById('watch-deathcam') as HTMLButtonElement).hidden = !killedBy;
@@ -809,7 +796,7 @@ function playDeathcam(): void {
     void loadPlayback().then(playDeathcam, () => showLastResults?.());
     return;
   }
-  deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? noCover);
+  deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? noCover, conn?.forecast ?? forecast);
   ownDeath = killedBy.e.killer === conn?.id;
   showCover(deathcam.cover);
   // Start the bodies afresh, as they were then; the magazines they dropped already lie where they fell.
@@ -1416,6 +1403,9 @@ renderer.setAnimationLoop(() => {
   bags.update(conn?.bags ?? (warming ? [{ id: -1, x: 0, y: y0, z: 1 }] : []), bodyDt);
   grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? (warming ? [{ id: -1, x: 1, y: y0 + 0.5, z: 1 }] : [])));
   if (conn) view.setExtracts(conn.extracts, now);
+  // The weather of the moment shown: the kill's in a death cam. Back on the menu it stays as it was.
+  const weather = cam ? cam.weather : conn?.weather();
+  if (weather) showWeather(mainWeather(weather));
 
   const me = conn?.predictor.render(inputLoop.alpha);
   if (me && !cam) mySoak.update(view.shelter, me.x, me.y + 1, me.z, dt);

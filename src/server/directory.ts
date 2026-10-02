@@ -26,7 +26,7 @@ interface Entry {
 
 /**
  * Every game this host runs. Quick join puts a player in the first game on
- * their island, in its conditions and mode, that isn't full, or starts a new one. Locally there is
+ * their island, in its mode, that isn't full, or starts a new one. Locally there is
  * one player, so this is one game; a multiplayer host runs many.
  */
 export class Directory {
@@ -36,9 +36,8 @@ export class Directory {
     const { options, capacity } = MODES[mode];
     const found = this.games.find((g) => sameWorld(g.world, world) && g.mode === mode && g.server.humans() < capacity);
     if (found) return found.server;
-    const { weather } = world;
-    const server = new GameServer(world.seed, { ...options, conditions: { weather } });
-    this.games.push({ world: { seed: server.seed, weather }, mode, server, idle: 0 });
+    const server = new GameServer(world.seed, options);
+    this.games.push({ world: { seed: server.seed }, mode, server, idle: 0 });
     return server;
   }
 

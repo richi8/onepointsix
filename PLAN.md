@@ -116,9 +116,10 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
   (chunk 29)
 
 ### Shareable worlds and leaderboards
-- The world config (seed and weather) is encoded in the URL.
-- Each island has its own leaderboard, shared by every weather: stored locally
-  first, on the server once there is multiplayer.
+- The world config (the seed) is encoded in the URL. The weather follows from the seed and the
+  game's clock (chunk 44), so it isn't in the link.
+- Each island has its own leaderboard, whatever the weather: stored locally first, on the server
+  once there is multiplayer.
 - A share button on the results screen.
 
 ### Death cam (cheap because the simulation is deterministic)
@@ -291,7 +292,7 @@ transition rather than switching. The core loop stays as it is.
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 43 | **Night out** | Dusk and night removed entirely, with everything that only served them: flashlights (the torch models on the guns, beams and their shadows, beams lighting the rain, bots noticing beams and holders, the key, the killer's flashlight in the death cam, the range's flashlight routine), the outpost lamps (their light and shadows, lamplight for bots, operator bots keeping out of it, shooting lamps out), night's extra and tougher guards and better loot, the night sky, the dusk and night lighting presets and the menu's time picker; the light volume and anything else day still uses kept; old links and scores with a time of day still open and read as day; the browser tests and benchmark cases for night replaced by day ones; the last commit with night in it recorded in Decisions | Nothing in the code mentions dusk, night, flashlights or lamps, every test passes, and the bot playtest by day stays at 15% ± 3 | **Done** (all of it removed, with the crickets that only sang after dark, which took the ambience sounds from 589 to 455 KB; old links and scores with a time of day open by day in their weather, and the leaderboard now shows each score's weather, "Clear" where it said "Day". The dusk, night and lamp screenshots gave way to an inside corner, the outpost on a clear day and an outpost's yard dry and wet by day; the benchmark's rainy night to the crowd in the rain, 13.2 ms, its baseline re-recorded. The bot playtest by day: 14% extracted. Old "What's new" entries still tell of night, as the record of past updates, and tests pass old links with a time of day on purpose) |
-| 44 | **The weather cycle** | Weather becomes a function of the island's seed and the game's clock, worked out in shared code so the server, bots, the client and the death cam agree: the next weather picked at random from the other two, each phase's length at random, clear lasting longest (about 5 min clear, 3 min rain and 2 min fog on average, so 10 min a cycle), with a blend factor across each transition; bots' sight and hearing read the blended weather every tick; the link and the menu lose the weather (old links still open, their weather ignored); leaderboards drop each score's conditions and the results show the weather at extraction | Unit tests show the same seed and clock giving the same weather on server and client, a run sees the weather change, and a death cam plays in the weather its kill happened in | |
+| 44 | **The weather cycle** | Weather becomes a function of the island's seed and the game's clock, worked out in shared code so the server, bots, the client and the death cam agree: the next weather picked at random from the other two, each phase's length at random, clear lasting longest (about 5 min clear, 3 min rain and 2 min fog on average, so 10 min a cycle), with a blend factor across each transition; bots' sight and hearing read the blended weather every tick; the link and the menu lose the weather (old links still open, their weather ignored); leaderboards drop each score's conditions and the results show the weather at extraction | Unit tests show the same seed and clock giving the same weather on server and client, a run sees the weather change, and a death cam plays in the weather its kill happened in | **Done** (`src/shared/weather.ts`: phases 60–140% of their average, changes 30–60 s; every game opens clear, a random way into its first spell, so the menu shows a clear island; any 10-minute stretch sees a change, checked over 100 islands. The unit tests run a server and a client's connection side by side through a change, and a death cam made just before one plays in the weather before it while the game has turned. On screen and in sound the weather switches halfway through each change, chunk 45's to blend; a run's results show the weather it ended in, and the run log keeps it. Screenshot tests hold a weather with `?sky=` in development builds. Seen in the browser on island 359, turning from clear to rain at 2 min. The bot playtest: 15% extracted with the weather changing, 14% held clear) |
 | 45 | **Transitions and warnings** | Each change blends over 30–60 s: fog density, sky, sun and ambient light, rain streaks, splashes and the rain bed, the sound muffling, fog banks drifting in and thinning out; surfaces wetting as rain starts, drying slowly after, and puddles filling and draining; about a minute's warning before a change (clouds thickening, the wind rising and far thunder before rain, mist gathering in hollows before fog); a benchmark case for the crossover, when rain and fog both run | Screenshot tests mid-transition look right, a player can tell rain or fog is coming before it arrives, and the benchmark's crossover frame holds the budget | |
 | 46 | **Playing the weather** | Operator bots use the weather: rats and looters move in fog, hunters push under rain's cover, campers hold as sight shortens; the bot playtest run over the cycle instead of fixed day and rainy-night runs; the changelog, Features and Vision updated; a human pass on how the changes feel in play | The bot playtest stays at 15% ± 3 with the cycle running, and a tester notices and uses the weather turning | |
 
@@ -309,7 +310,12 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Day, night and weather
-Nothing open: the last was found moot on 2026-10-02 (see the history).
+- **The weather switches at once on screen** (44): the island's sky, fog, rain and sounds turn to the
+  new weather halfway through each 30–60 s change, while bots' sight and hearing blend across it.
+  Chunk 45 blends what's seen and heard and adds the warning before a change.
+- **The menu's weather stands still** (44): back on the menu, the island keeps the weather it was
+  last shown in, while the game kept for two minutes behind it goes on turning; joining that game
+  again switches to its weather at once.
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-10-02 (see the history).
@@ -406,14 +412,19 @@ extraction stays as hard as it is.
   within that band, and a change that moves it out says so.
 - **Leaderboards are universal across conditions** (16): one board per island and mode, whatever
   the time of day or weather. The plan had them per condition; the user asked to keep them
-  universal. A link still carries its conditions, so a challenge is played as it was set.
+  universal. A link carried its conditions, so a challenge was played as it was set, until the
+  weather began changing during a game (chunk 44): links and scores carry no weather now, and the
+  results show the weather the run ended in.
 - **Conditions are fixed presets** (16): day, dusk or night, and clear, rain or fog, fixed for a
   game. The time doesn't pass and the weather doesn't change during a run. Replaced on 2026-10-02
   by Phase 6: always day, with the weather changing on a random cycle.
 - **Day only, weather changes** (2026-10-02, Phase 6): nearly every tester preferred day, so dusk
   and night are removed entirely, not left switched off. Clear, rain and fog follow each other at
   random (never the same twice running), a cycle averaging 10 minutes with clear lasting longest,
-  worked out from the seed and the game's clock, with a warning and a blend at each change.
+  worked out from the seed and the game's clock, with a warning and a blend at each change. Every
+  game opens clear, a random way into its first clear spell (chunk 44, chosen while building it
+  and open to change): the island first shows itself in the open, behind the menu too, and a game's first
+  change still comes at a different time on each island.
 - **Night removed, kept in history** (2026-10-02, chunk 43): the night systems can be brought back
   from version control if wanted. What went: dusk and night lighting and the night sky
   (`lighting.ts`); flashlights (`flashlights.ts`, `torch.ts`, beams and their shadows in

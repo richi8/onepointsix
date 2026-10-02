@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Conditions, Weather } from '../shared/conditions.ts';
+import type { Weather } from '../shared/weather.ts';
 
 // How the island is lit in each weather: the sun, the sky, the fog and how
 // much the sky's picture lights things. The fog is the colour of the horizon,
@@ -57,9 +57,9 @@ const WEATHER: Record<Weather, Sky> = {
   fog: { light: 0.3, grey: 1, fogNear: 0, fogFar: 100, previewFogNear: 30, previewFogFar: 700 },
 };
 
-export function lightingOf(c: Conditions): Lighting {
+export function lightingOf(weather: Weather): Lighting {
   const t = DAY;
-  const w = WEATHER[c.weather];
+  const w = WEATHER[weather];
   const overcast = new THREE.Color(t.overcast);
   const horizon = new THREE.Color(t.horizon).lerp(overcast, w.grey);
   // In fog the whole sky is fog; under rain clouds the top is barely darker.

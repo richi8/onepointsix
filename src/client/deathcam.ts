@@ -3,6 +3,7 @@ import type { CoverState, GameEvent, GrenadeSnap, PlayerSnap } from '../shared/p
 import type { PlayerState } from '../shared/sim.ts';
 import { TapePlayer, type Played } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
+import type { Forecast, WeatherNow } from '../shared/weather.ts';
 import type { World } from '../shared/world.ts';
 import { grenadesAt, playersAt, type Recording, type RecordedEvent } from './connection.ts';
 
@@ -19,7 +20,7 @@ const SLOW_AFTER = 0.4;
  * killer is rebuilt from their recorded inputs through the shared
  * simulation, so their aim, recoil and shots are exactly what the server
  * judged. Everyone else is drawn from the snapshots this client received,
- * and the panels are put back as they stood then.
+ * and the panels are put back as they stood then, in the weather of then.
  */
 export class Deathcam {
   readonly killer: number;
@@ -32,10 +33,12 @@ export class Deathcam {
   private readonly kill: number;
   private readonly player: TapePlayer;
   private readonly recording: Recording;
+  private readonly forecast: Forecast;
   private nextEvent = 0;
 
-  /** `cover` is how the cover stands now. */
-  constructor(world: World, e: DeathcamEvent, recording: Recording, cover: CoverState) {
+  /** `cover` is how the cover stands now, and `forecast` the game's weather. */
+  constructor(world: World, e: DeathcamEvent, recording: Recording, cover: CoverState, forecast: Forecast) {
+    this.forecast = forecast;
     this.killer = e.killer;
     this.name = e.name;
     this.kill = e.time;
@@ -48,6 +51,11 @@ export class Deathcam {
     this.player.seek(this.time);
     this.cover = coverBefore(cover, recording.events, this.time);
     while (this.nextEvent < recording.events.length && recording.events[this.nextEvent].time <= this.time) this.nextEvent++;
+  }
+
+  /** The weather at the moment shown. */
+  get weather(): WeatherNow {
+    return this.forecast.at(this.time);
   }
 
   get done(): boolean {

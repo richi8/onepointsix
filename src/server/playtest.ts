@@ -5,10 +5,11 @@
 // carry), to see whether one way of playing wins out. With --thorough, one
 // operator bot at a time loots as many crates as a person tends to and can't
 // be killed, so the length of a run that isn't cut short by death can be read.
+// The weather changes as in a game unless one is named to hold all game.
 // Usage: npm run playtest [minutes per island] [islands] [first seed] [weather] [--thorough]
 
 import { SERVER_TICK_RATE } from '../shared/constants.ts';
-import { parseWorldParam } from '../shared/worldconfig.ts';
+import { parseWeather } from '../shared/weather.ts';
 import { extractName } from '../shared/loot.ts';
 import { runRecord, summarize, summaryText, type RunRecord } from '../shared/runstats.ts';
 import { WEAPONS } from '../shared/weapons.ts';
@@ -24,7 +25,7 @@ const thorough = process.argv.includes('--thorough');
 const minutes = Number(args[0] ?? 30);
 const islands = Number(args[1] ?? 6);
 const firstSeed = Number(args[2] ?? 1);
-const { weather } = parseWorldParam(null, args[3] ?? null);
+const weather = parseWeather(args[3]);
 
 interface Played {
   record: RunRecord;
@@ -42,10 +43,10 @@ let unfinished = 0;
 const start = performance.now();
 for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
   // Thorough bots can't be killed, so they play alone rather than fight each other forever.
-  const server = new GameServer(seed, { ...MODES.offline.options, conditions: { weather }, ...(thorough ? { thorough, operators: 1 } : {}) });
+  const server = new GameServer(seed, { ...MODES.offline.options, weather, ...(thorough ? { thorough, operators: 1 } : {}) });
   const names = server.world.extracts.map((_, i) => extractName(server.world, i));
   server.onRunEnd = (e, plan) => {
-    if (plan) played.push({ record: runRecord(e, { seed, weather }, 'offline', (i) => names[i]), plan });
+    if (plan) played.push({ record: runRecord(e, { seed }, 'offline', (i) => names[i]), plan });
   };
   let holder = 0;
   server.onEvent = (e) => {
@@ -68,7 +69,7 @@ for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
 const seconds = (performance.now() - start) / 1000;
 
 console.log(
-  `${islands} islands from seed ${firstSeed} (${weather})${thorough ? ', thorough looting' : ''}, ${minutes} min each, ` +
+  `${islands} islands from seed ${firstSeed} (${weather ?? 'changing weather'})${thorough ? ', thorough looting' : ''}, ${minutes} min each, ` +
   `simulated in ${seconds.toFixed(0)} s`,
 );
 console.log(

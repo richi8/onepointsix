@@ -43,7 +43,7 @@ import {
   SUPPRESSED_NOISE,
   THROW_TIME,
 } from '../shared/constants.ts';
-import { DEFAULT_CONDITIONS, sensesOf, type Conditions } from '../shared/conditions.ts';
+import { Forecast, mainWeather, sensesOf, type Weather, type WeatherNow } from '../shared/weather.ts';
 import { angleDiff, clamp, lerp, wrapAngle, yawToward } from '../shared/geom.ts';
 import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
@@ -165,8 +165,8 @@ export interface ServerOptions {
   mode?: Mode;
   /** Post guards at the outposts and send patrols between them (default false). */
   guards?: boolean;
-  /** The time of day and the weather (default a clear day). */
-  conditions?: Conditions;
+  /** Hold this weather all game, for tests and the playtest (default the island's own, changing). */
+  weather?: Weather;
   /** Operator slots, filled by bots where no player takes them (default 0, no operator bots). */
   operators?: number;
   /** Every operator bot plays this way, for tests (default a personality at random for each). */
@@ -187,7 +187,8 @@ export interface ServerOptions {
 export class GameServer {
   readonly seed: number;
   readonly mode: Mode;
-  readonly conditions: Conditions;
+  /** The island's weather over the game. */
+  readonly forecast: Forecast;
   readonly world: World;
   readonly nav: NavGrid;
   readonly containers: Containers;
@@ -228,7 +229,7 @@ export class GameServer {
     this.seed = seed >>> 0;
     this.options = options;
     this.mode = options.mode ?? 'offline';
-    this.conditions = options.conditions ?? DEFAULT_CONDITIONS;
+    this.forecast = new Forecast(this.seed, options.weather);
     this.world = new World(this.seed);
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
@@ -256,7 +257,7 @@ export class GameServer {
         const p = players.get(a.id);
         return p ? this.lootView(p) : null;
       },
-      senses: sensesOf(this.conditions),
+      senses: sensesOf(this.forecast.at(0)),
       bounty: 0,
       bags: () => (this.bagList ??= this.containers.bags()),
       carried: (a) => {
@@ -283,6 +284,11 @@ export class GameServer {
 
   get time(): number {
     return this.tick * SERVER_DT;
+  }
+
+  /** The weather now. */
+  get weather(): WeatherNow {
+    return this.forecast.at(this.time);
   }
 
   connect(send: (msg: ServerMsg) => void): number {
@@ -449,6 +455,7 @@ export class GameServer {
     const ctx = this.ctx;
     const now = (ctx.time = this.time);
     ctx.pathBudget = PATH_BUDGET;
+    ctx.senses = sensesOf(this.forecast.at(now));
     this.bagList = null;
     this.world.stepDoors(SERVER_DT);
     for (const p of this.players.values()) {
@@ -742,7 +749,7 @@ export class GameServer {
     const end: RunEndEvent = {
       k: 'runEnd', outcome, score, value, items: [...run.items], kills: run.kills, guardKills: run.guardKills,
       contracts, time: this.time - run.start, killer: run.killer, extract: outcome === 'extracted' ? run.zone : -1,
-      death: outcome === 'killed' ? run.death : null, taken: { ...run.taken },
+      death: outcome === 'killed' ? run.death : null, taken: { ...run.taken }, weather: mainWeather(this.weather),
     };
     p.events.push(end);
     this.onRunEnd?.(end, p.plan);

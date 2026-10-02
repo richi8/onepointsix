@@ -58,13 +58,13 @@ test('island: inside corner', async ({ page }) => {
   await expect(page).toHaveScreenshot('corner.png', { maxDiffPixels: 100, threshold: 0.05 });
 });
 
-// Outside an outpost at eye height, in each weather: the sky, sun and fog of
-// each, and the rain (frozen).
+// Outside an outpost at eye height, in each weather (held with ?sky=, see
+// main.ts): the sky, sun and fog of each, and the rain (frozen).
 const OUTSIDE = 'o0,-25,1.7,-25,0,1.5,0';
 const CONDITIONS: Record<string, string> = {
   clear: '',
-  rain: '&weather=rain',
-  fog: '&weather=fog',
+  rain: '&sky=rain',
+  fog: '&sky=fog',
 };
 
 for (const [name, query] of Object.entries(CONDITIONS)) {
@@ -79,7 +79,7 @@ for (const [name, query] of Object.entries(CONDITIONS)) {
 // the level ground.
 const YARD: Record<string, string> = {
   yard: 'o0,0,16,-22,2,0,4',
-  'yard-wet': 'o0,2,1.7,-8,11,0,-4&weather=rain',
+  'yard-wet': 'o0,2,1.7,-8,11,0,-4&sky=rain',
 };
 
 for (const [name, query] of Object.entries(YARD)) {

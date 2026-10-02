@@ -13,7 +13,7 @@ function memory(): KeyValue {
 function end(over: Partial<RunEndEvent> = {}): RunEndEvent {
   return {
     k: 'runEnd', outcome: 'extracted', score: 1000, value: 800, items: [], kills: 0, guardKills: 1, contracts: [],
-    time: 200.4, killer: '', extract: 1, death: null, ...over,
+    time: 200.4, killer: '', extract: 1, death: null, weather: 'clear', ...over,
   };
 }
 
@@ -21,7 +21,7 @@ const names = (i: number) => ['North beach', 'East landing zone'][i];
 
 describe('run records', () => {
   it('records how a run got out', () => {
-    const r = runRecord(end(), { seed: 7, weather: 'fog' }, 'offline', names, new Date('2026-09-25T10:00:00Z'));
+    const r = runRecord(end({ weather: 'fog' }), { seed: 7 }, 'offline', names, new Date('2026-09-25T10:00:00Z'));
     expect(r).toMatchObject({ at: '2026-09-25T10:00:00.000Z', seed: 7, conditions: 'fog', mode: 'offline', outcome: 'extracted', time: 200, extract: 'East landing zone', cause: '' });
   });
 

@@ -66,7 +66,7 @@ function recentLine(r: RunRecord): string {
   const how = r.outcome === 'extracted' ? `Extracted · ${r.score.toLocaleString('en-US')}`
     : r.outcome === 'killed' ? `Killed${r.cause ? ` · ${r.cause}` : ''}` : 'Missing in action';
   const island = r.seed === DEFAULT_WORLD.seed ? 'Default island' : `Island #${r.seed}`;
-  const when = r.conditions ? r.conditions[0].toUpperCase() + r.conditions.slice(1) : 'Day';
+  const when = r.conditions ? r.conditions[0].toUpperCase() + r.conditions.slice(1) : 'Clear';
   return [how, island, when, clock(r.time), shortDate(r.at)].join(' · ');
 }
 

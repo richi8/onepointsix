@@ -4,7 +4,7 @@ import { NavGrid } from '../src/server/nav.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
 import { GUARD_HP, GUARD_RESPAWN, OPERATOR_REFILL, REINFORCE_DELAY, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
-import { DEFAULT_CONDITIONS, sensesOf, type Senses } from '../src/shared/conditions.ts';
+import { sensesOf, settled, type Senses } from '../src/shared/weather.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
@@ -40,7 +40,7 @@ function openGround(dist: number): { ax: number; az: number; bx: number; bz: num
 function watch(
   self: Agent, others: Agent[], yaw: number, seconds: number, before?: (bot: Bot, ctx: BotContext) => void,
   role: Role = { kind: 'sentry', post: { x: self.x, y: self.y, z: self.z, yaw } },
-  senses: Senses = sensesOf(DEFAULT_CONDITIONS),
+  senses: Senses = sensesOf(settled('clear')),
 ) {
   const bot = new Bot(role, SKILLS.normal, RIFLE, yaw, mulberry32(1));
   const all = [self, ...others];
@@ -128,9 +128,9 @@ describe('bot perception', () => {
       const enemy = agent(2, 'operator', far.bx, far.bz);
       return watch(agent(1, 'guard', far.ax, far.az), [enemy], yaw, 3, undefined, sentry, senses).awareness(2);
     };
-    expect(spots(sensesOf({ weather: 'clear' }))).toBe(1);
-    expect(spots(sensesOf({ weather: 'rain' }))).toBe(1);
-    expect(spots(sensesOf({ weather: 'fog' }))).toBe(0);
+    expect(spots(sensesOf(settled('clear')))).toBe(1);
+    expect(spots(sensesOf(settled('rain')))).toBe(1);
+    expect(spots(sensesOf(settled('fog')))).toBe(0);
   });
 
   it('knows where a shooter it cannot see is once hit', () => {
@@ -186,7 +186,7 @@ describe('guards', () => {
 
   it('are the same in any weather', () => {
     const clear = new GameServer(DEFAULT_WORLD.seed, { guards: true });
-    const fog = new GameServer(DEFAULT_WORLD.seed, { guards: true, conditions: { weather: 'fog' } });
+    const fog = new GameServer(DEFAULT_WORLD.seed, { guards: true, weather: 'fog' });
     const skills = (s: GameServer) => s.bots().map((b) => b.bot.skill.name);
     expect(skills(fog)).toEqual(skills(clear));
   });
@@ -348,7 +348,7 @@ describe('bots and doors', () => {
     const all = [self, ...others];
     const ctx: BotContext = {
       world, nav, time: 0, agents: all, agent: (id) => all.find((a) => a.id === id), pathBudget: 10, callout: () => {},
-      extracts: [], lootView: () => null, senses: sensesOf(DEFAULT_CONDITIONS), bounty: 0, bags: () => [],
+      extracts: [], lootView: () => null, senses: sensesOf(settled('clear')), bounty: 0, bags: () => [],
     };
     let shut = -1;
     for (let k = 0; k <= 30; k++) {

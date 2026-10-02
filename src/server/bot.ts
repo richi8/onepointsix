@@ -18,7 +18,7 @@ import {
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
-import type { Senses } from '../shared/conditions.ts';
+import type { Senses } from '../shared/weather.ts';
 import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
@@ -101,7 +101,7 @@ export interface BotContext {
   extracts: readonly ExtractPoint[];
   /** The container an agent faces within reach, as a player would see it. */
   lootView(self: Agent): LootView | null;
-  /** How far the time of day and the weather let everyone see and hear. */
+  /** How far the weather lets everyone see and hear, read afresh every tick. */
   senses: Senses;
   /** Who carries the bounty, or 0. */
   bounty: number;

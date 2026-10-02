@@ -1,4 +1,3 @@
-import { conditionsLabel } from './conditions.ts';
 import { SHOOTERS_WINDOW } from './constants.ts';
 import type { Death, GameEvent, Mode } from './protocol.ts';
 import { weaponName } from './weapons.ts';
@@ -15,7 +14,10 @@ export interface RunRecord {
   /** When it ended, as an ISO date and time. */
   at: string;
   seed: number;
-  /** The weather, such as "fog", or '' for clear; missing from runs logged before chunk 16, and runs before chunk 43 may name a time of day too. */
+  /**
+   * The weather as it ended, such as "fog", or '' for clear; missing from runs logged before chunk 16.
+   * Before chunk 44 it was the weather the whole game had, and before chunk 43 it may name a time of day too.
+   */
   conditions?: string;
   mode: Mode;
   outcome: 'extracted' | 'killed' | 'mia';
@@ -48,7 +50,7 @@ export function runRecord(
   return {
     at: at.toISOString(),
     seed: world.seed,
-    conditions: conditionsLabel(world).toLowerCase(),
+    conditions: e.weather === 'clear' ? '' : e.weather,
     mode,
     outcome: e.outcome,
     time: Math.round(e.time),

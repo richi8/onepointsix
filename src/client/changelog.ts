@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-02',
+    title: 'The weather turns',
+    notes: [
+      'The weather changes during a game now. A game opens on a clear day, then clear, rain and fog follow each other at random, never the same twice running: clear for about 5 minutes, rain about 3 and fog about 2, so most runs see the sky turn at least once.',
+      'Guards and operator bots see and hear by the weather of the moment: their sight shortens as the fog comes in and lengthens as it lifts, and rain covers footsteps and far-off shots while it falls.',
+      'For now the island looks and sounds the new weather all at once, halfway through each change; a gradual change, with warning before it, is coming next.',
+      'The menu no longer picks the weather and links no longer carry it: an old link with weather opens its island in whatever the game\'s weather is. The leaderboard no longer shows weather either, and the results show the weather you got out in, or died in. A death cam plays in the weather of the moment you died.',
+    ],
+  },
+  {
+    date: '2026-10-02',
     title: 'A snappier weapon switch',
     notes: [
       'Switching weapons sounds right on the draw now: the faint click before the slide is cut, so the sound no longer lags a hair behind.',

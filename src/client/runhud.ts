@@ -3,6 +3,7 @@ import { CALL_TIME, CARRY_HEAVY, EXTRACT_FEE, EXTRACT_TIME, KILL_SCORE_GUARD, KI
 import { extractKind, extractName, ITEMS, lootMass, lootValue, runScore } from '../shared/loot.ts';
 import { PERSONALITY_NOTES } from '../shared/personality.ts';
 import type { ContractView, ExtractView, GameEvent, RunView } from '../shared/protocol.ts';
+import { WEATHER_NAMES } from '../shared/weather.ts';
 import type { World } from '../shared/world.ts';
 import { bearing } from './hud.ts';
 
@@ -224,6 +225,7 @@ export class RunHud {
         return [contractTitle(c), c.state === 'done' && !out ? `<s>${pay}</s>` : pay];
       }),
       ['Time', clock(e.time)],
+      ['Weather', WEATHER_NAMES[e.weather]],
     ];
     const counts = new Map<number, number>();
     for (const i of e.items) counts.set(i, (counts.get(i) ?? 0) + 1);

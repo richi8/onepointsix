@@ -6,6 +6,7 @@ import type {
 import type { PlayerState } from '../shared/sim.ts';
 import { TAPE_TIME } from '../shared/tape.ts';
 import type { WeaponFx } from '../shared/weapons.ts';
+import { Forecast, type WeatherNow } from '../shared/weather.ts';
 import type { LagTransport, Transport } from '../shared/transport.ts';
 import type { World } from '../shared/world.ts';
 import type { WorldConfig } from '../shared/worldconfig.ts';
@@ -63,6 +64,8 @@ export class Connection {
   id = 0;
   seed = 0;
   mode: Mode = 'offline';
+  /** The game's island's weather, once welcomed. */
+  forecast: Forecast | null = null;
   /** The local player's run, the extraction points and the bags on the ground, as of the latest snapshot. */
   run: RunView | null = null;
   extracts: ExtractView[] = [];
@@ -156,6 +159,11 @@ export class Connection {
     return clamp(this.clock - INTERP_DELAY, snaps[0].time, snaps[snaps.length - 1].time);
   }
 
+  /** The weather at renderTime, as the server has it then; null until welcomed. */
+  weather(): WeatherNow | null {
+    return this.forecast?.at(this.renderTime()) ?? null;
+  }
+
   /** Other players as they were at renderTime, blended between buffered snapshots. */
   interpolated(): PlayerSnap[] {
     return playersAt(this.snapshots, this.renderTime());
@@ -184,6 +192,7 @@ export class Connection {
       case 'welcome':
         this.id = msg.id;
         this.seed = msg.seed;
+        this.forecast = new Forecast(msg.seed);
         this.mode = msg.mode;
         this.clock = msg.tick * SERVER_DT;
         for (const i of msg.broken) this.broken.add(i);

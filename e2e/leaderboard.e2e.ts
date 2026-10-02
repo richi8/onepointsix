@@ -33,18 +33,19 @@ test('shows this mode\'s best runs, best first, filled out with open places', as
 test('a challenge link puts the score to beat among yours', async ({ page }) => {
   await seedBoard(page, SEED, 'offline', [
     { name: 'Me', score: 8000, date: '2026-09-20' },
-    // Set before the game was day only.
-    { name: 'Me', score: 3000, date: '2026-09-21', weather: 'rain', ...{ time: 'night' } },
+    // Set before the weather changed during a game, and before the game was day only.
+    { name: 'Me', score: 3000, date: '2026-09-21', ...{ weather: 'rain', time: 'night' } },
   ]);
   await open(page, shareQuery(DEFAULT_WORLD, 'offline', { name: 'Rival', score: 5000 }));
   const challenge = page.locator('#challenge');
   await expect(challenge).toHaveText('Rival scored 5,000 on this island in Offline. Beat it.');
   await expect(page.locator('#modes [data-mode=offline]')).toHaveAttribute('aria-checked', 'true');
   await expect(rows(page).nth(1)).toHaveClass(/rival/);
-  // Each row shows the weather its score was set in, the link's for the challenge; an old score's time of day isn't shown.
+  // An old score's weather and time of day aren't shown.
   await expect(rows(page).nth(0)).toContainText('1.Me8,000');
-  await expect(rows(page).nth(1)).toContainText('RivalClear5,000to beat');
-  await expect(rows(page).nth(2)).toContainText('3.MeRain3,000');
+  await expect(rows(page).nth(1)).toContainText('2.Rival5,000to beat');
+  await expect(rows(page).nth(2)).toContainText('3.Me3,000');
+  await expect(page.locator('#board')).not.toContainText(/Rain|Clear|Night/);
   // In the other mode it fades and leaves the board.
   await page.click('#modes [data-mode=online]');
   await expect(challenge).toHaveClass(/off/);
@@ -55,5 +56,5 @@ test('keeps the challenge in view below the rows shown', async ({ page }) => {
   await seedBoard(page, SEED, 'offline', [9, 8, 7, 6, 5, 4].map((k) => ({ name: `Me${k}`, score: k * 1000, date: '2026-09-20' })));
   await open(page, shareQuery(DEFAULT_WORLD, 'offline', { name: 'Low', score: 100 }));
   await expect(rows(page)).toHaveCount(5);
-  await expect(rows(page).nth(4)).toContainText('7.LowClear100to beat');
+  await expect(rows(page).nth(4)).toContainText('7.Low100to beat');
 });

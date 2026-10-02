@@ -20,6 +20,8 @@ test.describe('results', () => {
     expect(score).toBeGreaterThanOrEqual(lootValue([GOLD, GOLD]) - EXTRACT_FEE);
     await expect(results.locator('.standing')).toHaveText('New best on this island!');
     await expect(results.locator('.items')).toHaveText('Gold bar ×2');
+    // A game opens on a clear day.
+    await expect(results.locator('dl')).toContainText('WeatherClear');
     for (const id of ['again', 'to-menu', 'share-run']) await expect(page.locator(`#${id}`)).toBeVisible();
     await expect(page.locator('#watch-deathcam')).toBeHidden();
 
@@ -30,7 +32,7 @@ test.describe('results', () => {
 
     await page.click('#to-menu');
     await expect(page.locator('#menu')).toBeVisible();
-    await expect(page.locator('#board li').first()).toContainText(`1.TesterClear${score.toLocaleString('en-US')}`);
+    await expect(page.locator('#board li').first()).toContainText(`1.Tester${score.toLocaleString('en-US')}`);
   });
 
   test('Play again starts a fresh run', async ({ page }) => {

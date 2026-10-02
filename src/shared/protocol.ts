@@ -6,6 +6,7 @@ import type { Zone } from './hitbox.ts';
 import type { Personality } from './personality.ts';
 import type { PlayerState } from './sim.ts';
 import type { TapeClip } from './tape.ts';
+import type { Weather } from './weather.ts';
 import type { WorldConfig } from './worldconfig.ts';
 
 /** One fixed CMD_DT step of player intent. Bots produce these too. */
@@ -164,6 +165,8 @@ export type GameEvent =
       death: Death | null;
       /** Damage taken over the run from guards and from other operators. */
       taken?: { guards: number; operators: number };
+      /** The weather as it ended. */
+      weather: Weather;
     }
   // To a player killed by someone else, a moment after: their killer's inputs
   // around the kill at server time `time`, to replay from the killer's eyes.
