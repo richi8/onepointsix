@@ -10,6 +10,7 @@ import {
 } from './constants.ts';
 import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
 import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
+import type { Mode } from './protocol.ts';
 import { fbm, mulberry32 } from './rng.ts';
 
 export interface Cyl {
@@ -212,6 +213,39 @@ export interface Point {
   z: number;
 }
 
+/**
+ * What stands on an island besides the country: Extraction's (and the range's)
+ * six walled outposts, or Deathmatch's three towns.
+ */
+export type Layout = 'outposts' | 'towns';
+
+/** The island a mode is played on. */
+export function layoutFor(mode: Mode): Layout {
+  return mode === 'deathmatch' ? 'towns' : 'outposts';
+}
+
+/**
+ * Each town's character: an old town packed tight, a village on its slope,
+ * and a harbour on the coast.
+ */
+export type TownStyle = 'old' | 'village' | 'harbour';
+
+/** A town's site: levelled ground at height `y` out to `r` from its middle. */
+export interface Town {
+  name: string;
+  style: TownStyle;
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  /** For the harbour, which way the sea lies, as a unit vector; 0, 0 inland. */
+  seaX: number;
+  seaZ: number;
+}
+
+/** A road's width, and how far round it is kept clear of cover, huts and trees. */
+export const ROAD_WIDTH = 5;
+
 /** Height of a watchtower's platform above its outpost, and its offset from the outpost's centre on both axes. */
 const TOWER_TOP = 4;
 const TOWER_OFFSET = -6;
@@ -240,6 +274,20 @@ export interface Body {
 const GRID_CELL = 8;
 const GRID_OFFSET = 1024;
 const OUTPOST_NAMES = ['Fort Ash', 'Radio Hill', 'Quarry', 'Old Mill', 'Pinecrest', 'Lookout'];
+/** An outpost's walls stand this far out from its middle. */
+const OUTPOST_EDGE = 14;
+/** The towns, in the order they're placed: the harbour first, as the coast has fewest places for it. */
+const TOWNS: { name: string; style: TownStyle; r: number }[] = [
+  { name: 'Port Ash', style: 'harbour', r: 60 },
+  { name: 'Oldbridge', style: 'old', r: 48 },
+  { name: 'Hillcombe', style: 'village', r: 52 },
+];
+/** Beyond its edge, a town's ground slopes back to the land's over this many metres. */
+const TOWN_BLEND = 30;
+/** The harbour's ground, metres above the sea: a quay's height. */
+const HARBOUR_HEIGHT = 2.5;
+/** Road points are this far apart. */
+const ROAD_STEP = 8;
 /** One for each outpost. */
 const EXTRACT_COUNT = 6;
 /**
@@ -336,7 +384,12 @@ export class World {
   /** The faces every rock is drawn from, in its own frame (see rock.ts). */
   readonly rockShape: Float64Array;
   readonly props: Prop[] = [];
+  readonly layout: Layout;
   readonly outposts: Outpost[] = [];
+  /** Deathmatch's towns; none with outposts. */
+  readonly towns: Town[] = [];
+  /** The roads between the towns, each a line of points from one town's middle to another's. */
+  readonly roads: { x: number; z: number }[][] = [];
   /** Where operators leave the island; the server opens and closes them. */
   readonly extracts: Point[] = [];
   readonly colliders: Collider[] = [];
@@ -355,8 +408,9 @@ export class World {
   /** The collider the last raycast stopped at, if it was one. */
   private hit: Collider | null = null;
 
-  constructor(seed: number) {
+  constructor(seed: number, layout: Layout = 'outposts') {
     this.seed = seed >>> 0;
+    this.layout = layout;
     this.rockShape = rockShape(this.seed + 23);
     const n = this.res + 1;
     this.heights = new Float32Array(n * n);
@@ -367,7 +421,12 @@ export class World {
     }
 
     const rng = mulberry32(this.seed ^ 0x9e3779b9);
-    this.placeOutposts(rng);
+    if (layout === 'towns') {
+      // Their own random stream, so the rest is drawn from the island's as with outposts.
+      const towns = mulberry32(this.seed ^ 0x7f4a7c15);
+      this.placeTowns(towns);
+      this.placeRoads(towns);
+    } else this.placeOutposts(rng);
     let maxH = -Infinity;
     for (const h of this.heights) if (h > maxH) maxH = h;
     this.maxHeight = maxH;
@@ -1074,8 +1133,46 @@ export class World {
     return false;
   }
 
+  /**
+   * Whether (x, z) is within `r` of an outpost's middle, or as far beyond a
+   * town's edge as that is beyond an outpost's walls.
+   */
   private nearOutpost(x: number, z: number, r: number): boolean {
-    return this.outposts.some((o) => Math.hypot(o.x - x, o.z - z) < r);
+    return this.outposts.some((o) => Math.hypot(o.x - x, o.z - z) < r) ||
+      this.towns.some((t) => Math.hypot(t.x - x, t.z - z) < t.r + r - OUTPOST_EDGE);
+  }
+
+  /** Whether (x, z) is within `pad` of a road's side. */
+  onRoad(x: number, z: number, pad = 0): boolean {
+    return this.roadDistance(x, z) < ROAD_WIDTH / 2 + pad;
+  }
+
+  /** How far (x, z) is from the middle of the nearest road; Infinity with none. */
+  roadDistance(x: number, z: number): number {
+    let best = Infinity;
+    for (const road of this.roads) {
+      for (let i = 1; i < road.length; i++) {
+        const a = road[i - 1];
+        const b = road[i];
+        if (Math.min(Math.abs(a.x - x), Math.abs(b.x - x)) > best + ROAD_STEP || Math.min(Math.abs(a.z - z), Math.abs(b.z - z)) > best + ROAD_STEP) continue;
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const t = clamp(((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+        best = Math.min(best, Math.hypot(a.x + dx * t - x, a.z + dz * t - z));
+      }
+    }
+    return best;
+  }
+
+  /** The nearest town and how far its middle is, or null with none. */
+  nearestTown(x: number, z: number): { town: Town; dist: number } | null {
+    let best: Town | null = null;
+    let bestD = Infinity;
+    for (const t of this.towns) {
+      const d = Math.hypot(t.x - x, t.z - z);
+      if (d < bestD) (best = t), (bestD = d);
+    }
+    return best ? { town: best, dist: bestD } : null;
   }
 
   private nearProp(x: number, z: number, pad: number): boolean {
@@ -1390,6 +1487,139 @@ export class World {
     }
   }
 
+  /**
+   * Deathmatch's three towns: the harbour where the land meets the sea, its
+   * sea side left as it is, then two inland, each on fairly flat ground, well
+   * apart, and with land all round. Each one's ground is levelled.
+   */
+  private placeTowns(rng: () => number): void {
+    const [port, ...inland] = TOWNS;
+
+    // The harbour: along a line out from the middle to where the sea starts, then back inland a little.
+    let best: Town | null = null;
+    let bestScore = Infinity;
+    for (let k = 0; k < 48; k++) {
+      const a = (k / 48 + rng() / 48) * Math.PI * 2;
+      const sx = Math.sin(a);
+      const sz = Math.cos(a);
+      let shore = -1;
+      for (let d = 60; d < this.half; d += 4) {
+        if (this.rawHeight(sx * d, sz * d) < 0) {
+          shore = d;
+          break;
+        }
+      }
+      if (shore < 0) continue;
+      const d = shore - port.r * 0.35;
+      const x = sx * d;
+      const z = sz * d;
+      // Land over the inland half, low and even, and open sea off the outer edge.
+      const land: number[] = [];
+      for (let i = 0; i < 12; i++) {
+        const b = (i / 12) * Math.PI * 2;
+        const [ox, oz] = [Math.sin(b) * port.r * 0.8, Math.cos(b) * port.r * 0.8];
+        if (ox * sx + oz * sz < 0) land.push(this.rawHeight(x + ox, z + oz));
+      }
+      if (land.some((h) => h < 1.5) || this.rawHeight(sx * (shore + 40), sz * (shore + 40)) > -2) continue;
+      // Least ground to cut away down to the waterfront.
+      const score = land.reduce((s, h) => s + Math.abs(h - HARBOUR_HEIGHT), 0) / land.length;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { name: port.name, style: port.style, x, y: HARBOUR_HEIGHT, z, r: port.r, seaX: sx, seaZ: sz };
+      }
+    }
+    if (best) this.towns.push(best);
+
+    // The towns inland: spread out and flat; relax both until both fit.
+    for (const [spacing, maxRough] of [[220, 6], [190, 9], [160, 13], [130, 18], [100, 30]]) {
+      const placed = (): number => this.towns.length - (best ? 1 : 0);
+      for (let attempt = 0; attempt < 600 && placed() < inland.length; attempt++) {
+        const spec = inland[placed()];
+        const x = (rng() - 0.5) * this.size * 0.7;
+        const z = (rng() - 0.5) * this.size * 0.7;
+        if (this.towns.some((t) => Math.hypot(t.x - x, t.z - z) < spacing)) continue;
+        const ring: number[] = [this.rawHeight(x, z)];
+        for (let i = 0; i < 12; i++) {
+          const b = (i / 12) * Math.PI * 2;
+          for (const f of [0.5, 1]) ring.push(this.rawHeight(x + Math.sin(b) * spec.r * f, z + Math.cos(b) * spec.r * f));
+        }
+        if (Math.max(...ring) - Math.min(...ring) > maxRough) continue;
+        // Dry land well past the edge on every side, so nothing of it runs into the sea.
+        let dry = true;
+        for (let i = 0; i < 12 && dry; i++) {
+          const b = (i / 12) * Math.PI * 2;
+          dry = this.rawHeight(x + Math.sin(b) * (spec.r + TOWN_BLEND), z + Math.cos(b) * (spec.r + TOWN_BLEND)) > 3;
+        }
+        const y = ring.reduce((s, h) => s + h, 0) / ring.length;
+        if (!dry || y < 4 || y > 36) continue;
+        this.towns.push({ name: spec.name, style: spec.style, x, y, z, r: spec.r, seaX: 0, seaZ: 0 });
+      }
+    }
+
+    // Level each one's ground, out past its edge by a cell and a half so every triangle in it is flat,
+    // then blend back to the land's; the harbour's sea stays.
+    const n = this.res + 1;
+    for (const t of this.towns) {
+      const flat = t.r + this.cell * 1.5;
+      const outer = flat + TOWN_BLEND;
+      for (let iz = 0; iz < n; iz++) {
+        const z = -this.half + iz * this.cell;
+        if (Math.abs(z - t.z) > outer) continue;
+        for (let ix = 0; ix < n; ix++) {
+          const x = -this.half + ix * this.cell;
+          const d = Math.hypot(x - t.x, z - t.z);
+          if (d > outer) continue;
+          const i = iz * n + ix;
+          const land = t.style === 'harbour' ? smoothstep(-2, 0.5, this.heights[i]) : 1;
+          this.heights[i] += (t.y - this.heights[i]) * smoothstep(outer, flat, d) * land;
+        }
+      }
+    }
+  }
+
+  /**
+   * A road between each pair of towns: a straight line kept off the sea and
+   * the beach by bending it inland, then smoothed, following the ground.
+   */
+  private placeRoads(rng: () => number): void {
+    const dry = (x: number, z: number): boolean => this.terrainHeight(x, z) >= HARBOUR_HEIGHT - 0.1;
+    for (let i = 0; i < this.towns.length; i++) {
+      for (let j = i + 1; j < this.towns.length; j++) {
+        const a = this.towns[i];
+        const b = this.towns[j];
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const steps = Math.max(2, Math.round(len / ROAD_STEP));
+        // A gentle sideways bow, so the roads don't run ruler-straight.
+        const bow = (rng() - 0.5) * len * 0.25;
+        const [nx, nz] = [-(b.z - a.z) / len, (b.x - a.x) / len];
+        const road: { x: number; z: number }[] = [];
+        for (let k = 0; k <= steps; k++) {
+          const f = k / steps;
+          const side = Math.sin(f * Math.PI) * bow;
+          road.push(k === steps ? { x: b.x, z: b.z } : { x: a.x + (b.x - a.x) * f + nx * side, z: a.z + (b.z - a.z) * f + nz * side });
+        }
+        const inland = (p: { x: number; z: number }): void => {
+          const d = Math.hypot(p.x, p.z) || 1;
+          for (let s = 0; s < 60 && !dry(p.x, p.z); s++) {
+            p.x -= (p.x / d) * 4;
+            p.z -= (p.z / d) * 4;
+          }
+        };
+        for (let pass = 0; pass < 4; pass++) {
+          for (const p of road) inland(p);
+          // Smoothed, the two ends staying in their towns' middles.
+          const prev = road.map((p) => ({ ...p }));
+          for (let k = 1; k < road.length - 1; k++) {
+            road[k].x = (prev[k - 1].x + prev[k].x * 2 + prev[k + 1].x) / 4;
+            road[k].z = (prev[k - 1].z + prev[k].z * 2 + prev[k + 1].z) / 4;
+          }
+        }
+        for (const p of road) inland(p);
+        this.roads.push(road);
+      }
+    }
+  }
+
   /** `house` seeds the outpost's own stream, for its building and the cover round it, so their details don't shift the rest of the island. */
   private buildOutpost(o: Outpost, index: number, plan: Plan, rng: () => number, house: number): void {
     const y = o.y;
@@ -1509,7 +1739,7 @@ export class World {
       const x = (rng() - 0.5) * this.size * 0.8;
       const z = (rng() - 0.5) * this.size * 0.8;
       const y = this.terrainHeight(x, z);
-      if (y < 1.5 || y > 40 || this.nearOutpost(x, z, 35)) continue;
+      if (y < 1.5 || y > 40 || this.nearOutpost(x, z, 35) || this.onRoad(x, z, 5)) continue;
       placed++;
       if (rng() < 0.5) {
         const len = 3 + rng() * 4;
@@ -1540,7 +1770,7 @@ export class World {
       const z = (rng() - 0.5) * this.size * 0.9;
       const h = this.terrainHeight(x, z);
       if (h < 2 || h > 14 || Math.hypot(x, z) < this.half * 0.35) continue;
-      if (this.nearOutpost(x, z, 90) || this.blocked(x, z, 3)) continue;
+      if (this.nearOutpost(x, z, 90) || this.onRoad(x, z, 6) || this.blocked(x, z, 3)) continue;
       candidates.push({ x, y: this.groundHeight(x, z, h), z });
     }
     // Greedy farthest-point picks spread them around the island.
@@ -1565,7 +1795,7 @@ export class World {
       const z = (rng() - 0.5) * this.size * 0.8;
       const alongX = rng() < 0.5;
       const count = 2 + Math.floor(rng() * 4);
-      if (this.nearOutpost(x, z, 40) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 20)) continue;
+      if (this.nearOutpost(x, z, 40) || this.onRoad(x, z, (count * FENCE_PANEL) / 2 + 1) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 20)) continue;
       const sections: [number, number, number, number, number, number][] = [];
       for (let i = 0; i < count; i++) {
         const a = (i - count / 2) * FENCE_PANEL;
@@ -1600,7 +1830,7 @@ export class World {
       const alongX = rng() < 0.5;
       const flipU = rng() < 0.5;
       const flipV = rng() < 0.5;
-      if (this.nearOutpost(x, z, 45) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 30)) continue;
+      if (this.nearOutpost(x, z, 45) || this.onRoad(x, z, Math.max(spec.L, spec.D) / 2 + 2) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 30)) continue;
       if (this.buildings.some((b) => Math.hypot((b.minX + b.maxX) / 2 - x, (b.minZ + b.maxZ) / 2 - z) < 40)) continue;
       const [w, d] = alongX ? [spec.L, spec.D] : [spec.D, spec.L];
       const r: Rect = { minX: x - w / 2, minZ: z - d / 2, maxX: x + w / 2, maxZ: z + d / 2 };
@@ -1646,7 +1876,7 @@ export class World {
       const y = this.terrainHeight(x, z);
       if (y < 1.5 || y > 50) continue;
       if (fbm(x / 110, z / 110, this.seed + 99, 3) < 0.48) continue;
-      if (this.nearOutpost(x, z, 30) || this.nearProp(x, z, 2)) continue;
+      if (this.nearOutpost(x, z, 30) || this.onRoad(x, z, 2) || this.nearProp(x, z, 2)) continue;
       const s = 0.8 + rng() * 0.7;
       this.trees.push({ x, y, z, s });
       this.colliders.push({ kind: 'cyl', x, z, r: 0.3 * s + 0.05, y0: y - 1, y1: y + 7 * s, stamp: 0 });
@@ -1704,7 +1934,7 @@ export class World {
         const x = e.x + Math.sin(a) * d;
         const z = e.z + Math.cos(a) * d;
         const y = this.terrainHeight(x, z);
-        if (y < 1.5 || this.blocked(x, z, 2.5)) continue;
+        if (y < 1.5 || this.onRoad(x, z, 3) || this.blocked(x, z, 2.5)) continue;
         // Square to the point, whichever axis is nearer.
         const alongX = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a));
         if (rng() < 0.5) {
@@ -1742,7 +1972,7 @@ export class World {
       const z = (rng() - 0.5) * this.size * 0.96;
       const y = this.terrainHeight(x, z);
       if (y < -0.5 || y > 55) continue;
-      if (this.nearOutpost(x, z, 26) || this.nearProp(x, z, 3)) continue;
+      if (this.nearOutpost(x, z, 26) || this.onRoad(x, z, 3) || this.nearProp(x, z, 3)) continue;
       const r = 0.6 + rng() ** 2 * 2.6;
       const h = r * (0.6 + rng() * 0.6);
       const rock = { x, y, z, r, h, rot: rng() * Math.PI * 2 };

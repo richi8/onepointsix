@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { DEATHMATCH_CAPACITY } from '../src/shared/constants.ts';
-import { dev, open, play } from './game.ts';
+import { dev, open, pickMode, play } from './game.ts';
 
 /** Our own life count and whether we're down, as the client has it. */
 async function me(page: import('@playwright/test').Page): Promise<{ life: number; dead: boolean }> {
@@ -12,7 +12,13 @@ async function me(page: import('@playwright/test').Page): Promise<{ life: number
 
 test('Deathmatch: no clock or extraction, every operator on Tab, and back in after the death cam', async ({ page }) => {
   await open(page);
-  await page.click('#modes [data-mode=deathmatch]');
+  await pickMode(page, 'deathmatch');
+  // Its own island: three towns, and no outposts or extraction points, on the menu too.
+  expect(await page.evaluate(() => {
+    const w = window.game.world as { towns: unknown[]; outposts: unknown[]; roads: unknown[] };
+    return [w.towns.length, w.outposts.length, w.roads.length];
+  })).toEqual([3, 0, 3]);
+  expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(false);
   await expect(page.locator('#board .empty')).toHaveText('No games yet. Leave a Deathmatch game with a kill to post it.');
   await play(page, 'deathmatch');
   await expect(page.locator('#clock')).toBeHidden();
@@ -66,5 +72,10 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
   await expect(page.locator('#paused')).toBeVisible();
   await page.click('#leave');
   await expect(page.locator('#board li').first()).toContainText('1 kill · 2 deaths');
+  expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(false);
+
+  // Back to Extraction: its island again, outposts and all.
+  await pickMode(page, 'extraction');
+  expect(await page.evaluate(() => (window.game.world as { outposts: unknown[] }).outposts.length)).toBe(6);
   expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(true);
 });

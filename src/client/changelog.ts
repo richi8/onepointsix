@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Deathmatch gets its own island',
+    notes: [
+      'Deathmatch is played on an island of its own: the same hills and coast, but instead of the six outposts there are three town sites, a harbour on the coast and two towns inland, joined by dirt roads. The towns themselves are still to be built; for now each is a levelled clearing.',
+      'The huts, fences, walls and crates out in the country are still there, off the roads.',
+      'Picking Deathmatch on the menu, or leaving it for another mode, loads the page again to build its island.',
+      'Deathmatch’s board starts afresh on the new island. Games played among the outposts are kept, but not shown.',
+      'Extraction and the range are on the same island as before.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Solid walls',
     notes: [
       'Walls, roofs, floors and stairs no longer break, in every mode: no round or grenade gets through a wall, and a building’s roof and upper floor always hold.',

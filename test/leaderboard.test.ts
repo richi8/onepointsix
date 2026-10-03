@@ -40,6 +40,16 @@ describe('leaderboard', () => {
     expect(board.entries(1, 'extraction')).toEqual([]);
   });
 
+  it('starts Deathmatch afresh on its island with towns, keeping the outposts\' games apart', () => {
+    const store = memory();
+    const board = new Leaderboard(store);
+    store.data.set('board:1:deathmatch', JSON.stringify([{ ...run(9), deaths: 1 }]));
+    expect(board.entries(1, 'deathmatch')).toEqual([]);
+    expect(board.add(1, 'deathmatch', { ...run(2), deaths: 5 })).toBe(1);
+    expect(store.data.get('board:1:deathmatch')).toBe(JSON.stringify([{ ...run(9), deaths: 1 }]));
+    expect(JSON.parse(store.data.get('board:1:deathmatch-towns')!)).toEqual([{ ...run(2), deaths: 5 }]);
+  });
+
   it('drops the weather and time of day old scores were kept with', () => {
     const store = memory();
     const board = new Leaderboard(store);

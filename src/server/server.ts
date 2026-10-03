@@ -60,7 +60,7 @@ import { applyCmd, copyState, eyePosition, motionOf, spawnState, type PlayerStat
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { bagShows, vegetationOf } from '../shared/vegetation.ts';
-import { inBuilding, leafRect, World, type Box, type Point } from '../shared/world.ts';
+import { inBuilding, layoutFor, leafRect, World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
@@ -257,7 +257,7 @@ export class GameServer {
     this.options = options;
     this.mode = options.mode ?? 'extraction';
     this.forecast = new Forecast(this.seed, options.weather);
-    this.world = new World(this.seed);
+    this.world = new World(this.seed, layoutFor(this.mode));
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
     this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);

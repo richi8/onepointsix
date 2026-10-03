@@ -116,6 +116,20 @@ for (const [name, query] of Object.entries(YARD)) {
   });
 }
 
+// Deathmatch's island (see ?cam=t in main.ts): an inland town's levelled site
+// with a road out of it, and the harbour round its cove.
+const TOWNS: Record<string, string> = {
+  'town-site': 't1,-90,70,-90,0,0,0',
+  harbour: 't0,-60,45,-110,10,0,20',
+};
+
+for (const [name, cam] of Object.entries(TOWNS)) {
+  test(`towns: ${name}`, async ({ page }) => {
+    await spot(page, cam, '&mode=deathmatch');
+    await expect(page).toHaveScreenshot(`${name}.png`);
+  });
+}
+
 // Soldiers stood on the island (see ?stand in main.ts): one in a tree's
 // shadow out in the open, shaded, beside one in the sun; one wading, mirrored
 // in the sea.

@@ -36,7 +36,7 @@ export class Leaderboard {
   /** Best first. */
   entries(seed: number, mode: Mode): BoardEntry[] {
     // Extraction plays as Online did, and Online as Mixed, so it starts from their scores.
-    return this.entriesAt(key(seed, mode), ...(mode === 'extraction' ? [`board:${seed >>> 0}:online`, `board:${seed >>> 0}:mixed`] : []));
+    return this.entriesAt(boardKey(seed, mode), ...(mode === 'extraction' ? [`board:${seed >>> 0}:online`, `board:${seed >>> 0}:mixed`] : []));
   }
 
   /** The board kept under `at`, or else under the first of `fallbacks` there is. */
@@ -64,7 +64,7 @@ export class Leaderboard {
     if (place >= BOARD_SIZE) return 0;
     list.splice(place, 0, entry);
     try {
-      this.store?.setItem(key(seed, mode), JSON.stringify(list.slice(0, BOARD_SIZE)));
+      this.store?.setItem(boardKey(seed, mode), JSON.stringify(list.slice(0, BOARD_SIZE)));
     } catch {
       // Storage full or blocked: the score just isn't kept.
       return 0;
@@ -77,8 +77,13 @@ export class Leaderboard {
   }
 }
 
-function key(seed: number, mode: Mode): string {
-  return `board:${seed >>> 0}:${mode}`;
+/**
+ * Where a board is kept. Deathmatch moved to an island with towns on
+ * 2026-10-03, so its board started afresh there: the games played among the
+ * outposts stay under `deathmatch`, not read and not mixed in.
+ */
+export function boardKey(seed: number, mode: Mode): string {
+  return `board:${seed >>> 0}:${mode === 'deathmatch' ? 'deathmatch-towns' : mode}`;
 }
 
 /**
@@ -106,7 +111,7 @@ export function dropOldBoards(store: Pick<Storage, 'length' | 'key' | 'getItem' 
             return !seen.has(id) && !!seen.add(id);
           })
           .sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
-        store.setItem(key(Number(seed), 'extraction'), JSON.stringify(merged.slice(0, BOARD_SIZE)));
+        store.setItem(boardKey(Number(seed), 'extraction'), JSON.stringify(merged.slice(0, BOARD_SIZE)));
       }
       store.removeItem(k);
     }

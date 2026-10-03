@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { ITEMS } from '../src/shared/loot.ts';
-import type { BoardEntry } from '../src/client/leaderboard.ts';
+import { boardKey, type BoardEntry } from '../src/client/leaderboard.ts';
 import type { DevCmd, Mode } from '../src/shared/protocol.ts';
 
 // Driving the game in a test browser, through the page and the development
@@ -56,9 +56,24 @@ export async function open(page: Page, query = ''): Promise<void> {
   await expect(page.locator('#loading')).toHaveCount(0, { timeout: 60_000 });
 }
 
+/**
+ * Pick a mode on the menu. Into or out of Deathmatch, whose island has towns
+ * rather than outposts, the page loads again to build it: wait for that.
+ */
+export async function pickMode(page: Page, mode: Mode): Promise<void> {
+  const current = await page.locator('#modes button.on').getAttribute('data-mode');
+  if ((current === 'deathmatch') === (mode === 'deathmatch')) {
+    await page.click(`#modes [data-mode=${mode}]`);
+    return;
+  }
+  await Promise.all([page.waitForEvent('load'), page.click(`#modes [data-mode=${mode}]`)]);
+  await expect(page.locator('#loading')).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.locator(`#modes [data-mode=${mode}]`)).toHaveClass(/\bon\b/);
+}
+
 /** Start a run from the menu. */
 export async function play(page: Page, mode: Mode = 'extraction'): Promise<void> {
-  await page.click(`#modes [data-mode=${mode}]`);
+  await pickMode(page, mode);
   await page.click('#play');
   await page.waitForFunction(() => !!window.game.conn?.run);
   await expect(page.locator('#hud')).toBeVisible();
@@ -90,5 +105,5 @@ export async function face(page: Page, x: number, z: number): Promise<void> {
 
 /** Put scores on this browser's board before the page loads. */
 export async function seedBoard(page: Page, seed: number, mode: Mode, entries: BoardEntry[]): Promise<void> {
-  await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [`board:${seed >>> 0}:${mode}`, JSON.stringify(entries)]);
+  await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [boardKey(seed, mode), JSON.stringify(entries)]);
 }

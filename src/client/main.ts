@@ -13,7 +13,7 @@ import { cleanName, parseShareLink, type Challenge } from '../shared/share.ts';
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
 import { Forecast, mainWeather, parseWeather } from '../shared/weather.ts';
-import { leafRect, World } from '../shared/world.ts';
+import { layoutFor, leafRect, World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
@@ -81,7 +81,23 @@ const MODE_NOTES: Record<Mode, string> = {
 const link = parseShareLink(location.search);
 /** The island from the link. */
 const config = link.world;
-const world = new World(config.seed);
+let mode: Mode = 'extraction';
+try {
+  mode = parseMode(localStorage.getItem('mode')) ?? mode;
+} catch {
+  // Storage may be blocked; the default will do.
+}
+// A link's mode wins, so a challenge is played the way it was set.
+if (link.mode) mode = link.mode;
+try {
+  // Unless the menu just loaded the page again for the mode picked on it.
+  mode = parseMode(sessionStorage.getItem('pickedMode')) ?? mode;
+  sessionStorage.removeItem('pickedMode');
+} catch {
+  // Nothing picked, then.
+}
+/** The island, with outposts or, for Deathmatch, towns. */
+const world = new World(config.seed, layoutFor(mode));
 /** Its weather over a game, as the server works it out. */
 const forecast = new Forecast(config.seed);
 /**
@@ -92,6 +108,8 @@ const forecast = new Forecast(config.seed);
 const heldSky = import.meta.env.DEV ? parseHeldSky(new URLSearchParams(location.search).get('sky')) : null;
 /** Behind the menu, the weather a game on the island opens in. */
 const view = new WorldView(world, mainWeather(forecast.at(0)));
+// Deathmatch's island has no extraction points, on the menu either.
+view.showExtracts = world.layout === 'outposts';
 /** Drawn into by every island in turn. */
 const scene = view.scene;
 
@@ -559,16 +577,20 @@ function briefingLine<K extends string>(notes: Record<K, string>): (chosen: K) =
 
 const briefMode = briefingLine(MODE_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
-let mode: Mode = 'extraction';
-try {
-  mode = parseMode(localStorage.getItem('mode')) ?? mode;
-} catch {
-  // Storage may be blocked; the default will do.
-}
-// A link's mode wins, so a challenge is played the way it was set.
-if (link.mode) mode = link.mode;
 
 function selectMode(m: Mode): void {
+  if (layoutFor(m) !== world.layout) {
+    // Deathmatch has an island of its own (towns, not outposts): the page loads again to build it.
+    try {
+      localStorage.setItem('mode', m);
+      sessionStorage.setItem('pickedMode', m);
+    } catch {
+      // Then the island stays as it is, and so does the mode.
+      return;
+    }
+    location.reload();
+    return;
+  }
   mode = m;
   for (const b of modeButtons) {
     const on = b.dataset.mode === m;
@@ -983,7 +1005,7 @@ function toMenu(): void {
   paused.hidden = true;
   menu.hidden = false;
   view.preview = true;
-  view.showExtracts = true;
+  view.showExtracts = world.layout === 'outposts';
   bodies.clear();
   bags.update([]);
   grenades.update([]);
@@ -1269,13 +1291,16 @@ const own = { x: 0, z: 0, stride: 0, air: false, fall: 0 };
 /**
  * In development, `?cam=x,y,z,tx,ty,tz` holds the menu camera at (x, y, z)
  * looking at (tx, ty, tz), with `o` meaning relative to outpost o, e.g.
- * `?cam=o0,-20,6,-20,0,2,0`. For screenshots of one spot.
+ * `?cam=o0,-20,6,-20,0,2,0`, or `t` to town t (with `mode=deathmatch`). For
+ * screenshots of one spot.
  */
 const devCam = ((): number[] | null => {
   const v = import.meta.env.DEV ? new URLSearchParams(location.search).get('cam') : null;
   if (!v) return null;
   const parts = v.split(',');
-  const at = parts[0].startsWith('o') ? world.outposts[Number(parts.shift()!.slice(1))] : { x: 0, y: 0, z: 0 };
+  const origin = { x: 0, y: 0, z: 0 };
+  const site = /^[ot]\d+$/.test(parts[0]) ? parts.shift()! : null;
+  const at = (site && (site[0] === 'o' ? world.outposts : world.towns)[Number(site.slice(1))]) || origin;
   const n = parts.map(Number);
   return [n[0] + at.x, n[1] + at.y, n[2] + at.z, n[3] + at.x, n[4] + at.y, n[5] + at.z];
 })();
