@@ -561,6 +561,9 @@ selectMode(mode);
 
 // ---------------------------------------------------------------- weather
 
+/** The clock of the game last left, as it stood when we left it at `at`, performance seconds; null before any. */
+let menuWeather: { forecast: Forecast; time: number; at: number } | null = null;
+
 /** How wet the island is, along the clock of the weather shown. */
 const wetting = new Wetting();
 
@@ -889,6 +892,8 @@ window.addEventListener('keydown', (e) => {
 
 function toMenu(): void {
   stopDeathcam(false);
+  // The game is kept a while after we leave, its weather turning on: the menu's goes along with it.
+  if (conn?.forecast) menuWeather = { forecast: conn.forecast, time: conn.renderTime(), at: performance.now() / 1000 };
   conn?.leave();
   conn = null;
   showBoard();
@@ -1373,9 +1378,10 @@ renderer.setAnimationLoop(() => {
   bags.update(conn?.bags ?? (warming ? [{ id: -1, x: 0, y: y0, z: 1 }] : []), bodyDt);
   grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? (warming ? [{ id: -1, x: 1, y: y0 + 0.5, z: 1 }] : [])));
   if (conn) view.setExtracts(conn.extracts, now);
-  // The weather of the moment shown: the kill's in a death cam. Back on the menu it stays as it was.
+  // The weather of the moment shown: the kill's in a death cam, and on the menu the game last left's, going on as it does.
   if (cam) showWeather(cam.forecast, cam.time);
   else if (conn?.forecast) showWeather(conn.forecast, conn.renderTime());
+  else if (!conn && menuWeather && Number.isNaN(still)) showWeather(menuWeather.forecast, menuWeather.time + now - menuWeather.at);
 
   const me = conn?.predictor.render(inputLoop.alpha);
   if (me && !cam) mySoak.update(view.shelter, me.x, me.y + 1, me.z, dt);

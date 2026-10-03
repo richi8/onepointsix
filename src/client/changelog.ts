@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Weather behind the menu',
+    notes: [
+      'Back on the menu after a game, the weather over the island goes on changing as it does in the game you left, so going back in shortly after finds the same sky instead of a sudden switch.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Mist inland',
     notes: [
       'The mist before a fog, and the low mist in fog and rain, now lies over the ground all across the island, not only by the sea: it settles in hollows inland and up on the high ground too, while ridges and hilltops stand clear. From a hilltop you can see the fog coming over the land.',

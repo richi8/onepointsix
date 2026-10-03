@@ -1521,6 +1521,13 @@ notes the chunk it came from.
   each client, as before, so two players hear different thunder and a death cam doesn't replay
   the thunder of its moment. Only how stormy it is comes from the forecast.
   **Accepted** (2026-10-03): the user is fine with each player hearing their own thunder.
+- **The menu's weather stands still** (44): back on the menu, the island keeps the weather it was
+  last shown in, while the game kept for two minutes behind it goes on turning; joining that game
+  again switches to its weather at once.
+  **Resolved** (2026-10-03): leaving a game notes its clock and the moment we left, and the menu
+  shows that game's weather on that clock as it runs on, so rejoining it within the two minutes
+  picks up where the menu has got to. A game joined after it closes, or in another mode, is a
+  new one and can still differ (see the plan's Known Issues).
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
