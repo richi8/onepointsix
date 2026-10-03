@@ -94,6 +94,10 @@ console.log(
   `operators ducking out of sight of a shooter ${tally.pinned}, outgunned ${tally.outgunned}; ` +
   `doors shut behind them ${tally.shuts}, ${tally.slams} of them on someone chasing; thinks spent upstairs or up a tower ${tally.upThinks}`,
 );
+console.log(
+  `weather: rats lying low for fog seen coming ${tally.fogWaits}, crates searched past the plan in fog ${tally.fogCrates}, ` +
+  `fights hunters closed in on under rain ${tally.rainStalks}, camps moved nearer as sight shortened ${tally.campsCloser}`,
+);
 console.log(`drop-ins with no spot clear of outposts and other operators, so anywhere: ${share(dropIns.anywhere, dropIns.picked)}`);
 
 /** One line per group of runs, to compare ways of playing. */
@@ -120,7 +124,11 @@ function fmt(t: number): string {
   return `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
 }
 
-compare('personality', (p) => (p.plan.role.kind === 'operator' ? (p.plan.role.personality ?? '?') : '?'));
+const personality = (p: Played) => (p.plan.role.kind === 'operator' ? (p.plan.role.personality ?? '?') : '?');
+const ended = (p: Played) => p.record.conditions || 'clear';
+compare('personality', personality);
+compare('weather at the end', ended);
+compare('personality and weather at the end', (p) => `${personality(p)} ${ended(p)}`);
 compare('skill', (p) => p.plan.skill);
 compare('weapon', (p) => WEAPONS[p.plan.primary].name);
 compare('greed', (p) => {

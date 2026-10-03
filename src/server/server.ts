@@ -456,6 +456,7 @@ export class GameServer {
     const now = (ctx.time = this.time);
     ctx.pathBudget = PATH_BUDGET;
     ctx.senses = sensesOf(this.forecast.at(now));
+    ctx.coming = this.forecast.next(now);
     this.bagList = null;
     this.world.stepDoors(SERVER_DT);
     for (const p of this.players.values()) {

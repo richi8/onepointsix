@@ -160,3 +160,22 @@ export function sensesOf(w: WeatherNow): Senses {
   const mix = (k: Record<Weather, number>) => k[w.from] + (k[w.to] - k[w.from]) * w.blend;
   return { sight: mix(HAZE), hearing: mix(MUFFLE) };
 }
+
+/** How much cover the weather gives, each 0 (none) to 1 (all its own weather gives). */
+export interface Cover {
+  /** Fog hiding people from sight, beyond what rain does. */
+  fog: number;
+  /** Rain drowning out footsteps and shots. */
+  rain: number;
+}
+
+export function coverOf(s: Senses): Cover {
+  return {
+    fog: clamp01((HAZE.rain - s.sight) / (HAZE.rain - HAZE.fog)),
+    rain: clamp01((1 - s.hearing) / (1 - MUFFLE.rain)),
+  };
+}
+
+function clamp01(v: number): number {
+  return Math.min(Math.max(v, 0), 1);
+}

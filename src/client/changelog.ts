@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Rivals who play the weather',
+    notes: [
+      'Rats see a fog coming and lie low until it rolls in, then hurry through it; in fog, rats and looters search an extra crate and go nearer the outposts.',
+      'Hunters close in on fights under the cover of rain, which drowns out their steps, and come further to check on a noise.',
+      'Campers move in nearer their extraction point as rain or fog shortens the view, stop answering noises, and wait longer in fog before leaving.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Mist over hills and hollows',
     notes: [
       'Looking across the island in mist, a ridge in the way now thins it and a hollow in between thickens it, where before only the ground at your feet and at what you were looking at counted.',

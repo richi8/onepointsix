@@ -8,7 +8,7 @@ import { planOperator } from '../src/server/population.ts';
 import { GameServer } from '../src/server/server.ts';
 import { SKILLS } from '../src/server/skill.ts';
 import { BOUNTY_MIN, BOUNTY_PING, CROUCH_EYE_HEIGHT, EYE_HEIGHT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
-import { sensesOf, settled } from '../src/shared/weather.ts';
+import { sensesOf, settled, type WeatherNow } from '../src/shared/weather.ts';
 import { ITEMS, lootValue } from '../src/shared/loot.ts';
 import type { BagSnap, GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
@@ -374,6 +374,121 @@ describe('bot senses and stealth III', () => {
     const outgunned = fight([a, b]);
     expect(outgunned.state).toBe('cover');
     expect(inside(outgunned).fleeing).toBe(true);
+  });
+});
+
+describe('playing the weather', () => {
+  type Inside = { spot: (Point & { bush?: boolean }) | null; camp: Point | null; planned: number; pace: string };
+  const inside = (bot: Bot) => bot as unknown as Inside;
+  const fog = sensesOf(settled('fog'));
+
+  it('a rat lies low for fog it sees coming, and sets off once it is in; a looter doesn’t wait', () => {
+    const at = openSpot(250);
+    for (const [p, coming, want] of [
+      ['rat', { weather: 'fog', in: 60 }, 'hide'],
+      ['rat', { weather: 'fog', in: 200 }, 'loot'],
+      ['rat', { weather: 'rain', in: 60 }, 'loot'],
+      ['looter', { weather: 'fog', in: 60 }, 'loot'],
+    ] as const) {
+      const self = agent(1, 'operator', at.x, at.z);
+      const bot = operator(p, [{ x: at.x - 150, y: self.y, z: at.z }]);
+      const ctx: BotContext = { ...context([self]), coming };
+      think(bot, ctx, self, 0.5);
+      expect(bot.state, `${p} with ${coming.weather} ${coming.in} s off`).toBe(want);
+      if (want !== 'hide') continue;
+      const spot = inside(bot).spot!;
+      Object.assign(self, { x: spot.x, y: spot.y, z: spot.z });
+      // There (this body doesn't walk), still clear: it stays down; halfway into the fog, it goes on, and doesn't wait for that fog again.
+      think(bot, ctx, self, 30, 0.5);
+      expect(bot.state).toBe('hide');
+      const half: WeatherNow = { from: 'clear', to: 'fog', blend: 0.8 };
+      ctx.senses = sensesOf(half);
+      ctx.coming = { weather: 'fog', in: 60 - 31 };
+      think(bot, ctx, self, 0.5, 31);
+      expect(bot.state).toBe('loot');
+    }
+  });
+
+  it('rats and looters take a crate more than they meant to in fog, and hurry on through it', () => {
+    const at = openSpot(250);
+    const self = agent(1, 'operator', at.x, at.z);
+    const crates = [{ x: at.x - 150, y: self.y, z: at.z }, { x: at.x + 150, y: self.y, z: at.z }];
+    for (const [p, more] of [['rat', 1], ['looter', 1], ['camper', 0], ['hunter', 0]] as const) {
+      const role: Role = { kind: 'operator', loot: crates.map((c) => ({ ...c, look: c })), planned: 1, greed: 20, personality: p };
+      const clear = new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(2));
+      think(clear, context([self]), self, 0.5);
+      expect(inside(clear).planned).toBe(1);
+      const bot = new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(2));
+      const ctx = { ...context([self]), senses: fog };
+      think(bot, ctx, self, 2);
+      expect(inside(bot).planned, p).toBe(1 + more);
+      // A rat runs across the island in fog, where in the clear it never does.
+      if (p === 'rat') {
+        expect(inside(clear).pace).toBe('walk');
+        expect(inside(bot).pace).toBe('sprint');
+      }
+    }
+  });
+
+  it('a hunter under rain closes in nearer a fight than in the clear', () => {
+    const at = openSpot(250);
+    const self = agent(1, 'operator', at.x, at.z);
+    const shooter = agent(2, 'operator', at.x + 120, at.z);
+    const stops = (weather: 'clear' | 'rain') => {
+      const bot = operator('hunter');
+      const ctx = { ...context([self, shooter]), senses: sensesOf(settled(weather)) };
+      think(bot, ctx, self, 0.2);
+      bot.hear(self, { x: shooter.x, y: shooter.y, z: shooter.z, radius: 180, source: 2, gunfire: true }, 0.2);
+      think(bot, ctx, self, 0.3, 0.2);
+      expect(bot.state).toBe('stalk');
+      const spot = inside(bot).spot!;
+      return Math.hypot(spot.x - shooter.x, spot.z - shooter.z);
+    };
+    expect(stops('rain')).toBeLessThan(stops('clear') - 10);
+  });
+
+  it('a camper moves in nearer its extraction point as fog comes in, ignores noises, and stays on longer', () => {
+    const extracts = new Extracts(world, mulberry32(1)).points;
+    let moved = 0;
+    extracts.forEach((e, i) => {
+      const rand = mulberry32(20 + i);
+      let at: { x: number; z: number } | null = null;
+      for (let k = 0; k < 200 && !at; k++) {
+        const a = rand() * Math.PI * 2;
+        const x = e.x + Math.sin(a) * 60;
+        const z = e.z + Math.cos(a) * 60;
+        if (nav.dry(x, z)) at = { x, z };
+      }
+      if (!at) return;
+      const self = agent(1, 'operator', at.x, at.z);
+      const camper = operator('camper');
+      const ctx = { ...context([self]), extracts: [e] };
+      think(camper, ctx, self, 0.5);
+      const before = inside(camper).camp;
+      if (!before) return;
+      ctx.senses = fog;
+      think(camper, ctx, self, 0.5, 0.5);
+      const after = inside(camper).camp;
+      if (!after) return;
+      expect(world.hasLineOfSight(after.x, after.y + CROUCH_EYE_HEIGHT, after.z, e.x, e.y + 1, e.z)).toBe(true);
+      if (Math.hypot(after.x - e.x, after.z - e.z) < Math.hypot(before.x - e.x, before.z - e.z)) moved++;
+    });
+    expect(moved).toBeGreaterThan(extracts.length / 2);
+
+    const at = openSpot(150);
+    const self = agent(1, 'operator', at.x, at.z);
+    const camper = operator('camper');
+    const ctx = { ...context([self]), senses: fog };
+    think(camper, ctx, self, 1);
+    expect(camper.state).toBe('camp');
+    camper.hear(self, { x: at.x + 8, y: self.y, z: at.z, radius: 20, source: 2 }, 1);
+    think(camper, ctx, self, 0.5, 1);
+    expect(camper.state).toBe('camp');
+    think(camper, ctx, self, 0.5, TEMPERS.camper.linger + 1);
+    expect(camper.state).toBe('camp');
+    ctx.senses = sensesOf(settled('clear'));
+    think(camper, ctx, self, 0.5, TEMPERS.camper.linger + 2);
+    expect(camper.state).toBe('extract');
   });
 });
 

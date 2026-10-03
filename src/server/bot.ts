@@ -18,7 +18,7 @@ import {
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
-import type { Senses } from '../shared/weather.ts';
+import { CHANGE_MAX, coverOf, type Coming, type Senses } from '../shared/weather.ts';
 import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
@@ -103,6 +103,8 @@ export interface BotContext {
   lootView(self: Agent): LootView | null;
   /** How far the weather lets everyone see and hear, read afresh every tick. */
   senses: Senses;
+  /** The next change of weather, which anyone outside can see coming about a minute ahead. */
+  coming?: Coming;
   /** Who carries the bounty, or 0. */
   bounty: number;
   /** Bags on the ground and what's in them. */
@@ -279,6 +281,26 @@ const TARGET_WIDTH = 0.35;
 const IDLE_PITCH = -0.06;
 /** How much of the remaining turn is taken each command, before the turn-rate cap. */
 const TURN_GAIN = 0.35;
+/** The weather's cover counts once it's at least this much in: from about halfway through a change. */
+const IN_COVER = 0.5;
+/** A rat sees fog coming this many seconds off at most, as the mist gathers, and lies low until it's in. */
+const FOG_AHEAD = 75;
+/** Longest a rat waits for fog, from when it's coming. */
+const FOG_WAIT = 150;
+/** Rats and looters crossing the island in fog sneak and walk this much nearer outposts than they would. */
+const FOG_BOLDNESS = 0.4;
+/** Kg more a looter carries off in fog. */
+const FOG_GREED = 6;
+/** A hunter closing in on a fight under rain stops this much nearer, runs until this close, and goes this much farther to a noise. */
+const RAIN_STANDOFF = 0.5;
+const RAIN_SPRINT = 45;
+const RAIN_CURIOSITY = 2;
+/** A camper with sight this much shorter waits this much nearer its extraction point, and no closer than CAMP_NEAREST. */
+const CAMP_RESIGHT = 0.15;
+const CAMP_NEAREST = 12;
+/** Campers ignore noises once sight is this short, and stay on this many seconds longer for each share of sight lost. */
+const CAMP_HOLD = 0.85;
+const CAMP_LINGER = 150;
 
 /** What bots have been up to, summed over every bot, for the playtest. */
 export const tally = {
@@ -309,6 +331,13 @@ export const tally = {
   slams: 0,
   /** Thinks spent up on a floor off the ground: upstairs or on a watchtower, sentries left out. */
   upThinks: 0,
+  /** Rats lying low for fog seen coming, and crates searched past the plan in fog by rats and looters. */
+  fogWaits: 0,
+  fogCrates: 0,
+  /** Fights a hunter closed in on under rain. */
+  rainStalks: 0,
+  /** Camps moved nearer an extraction point as sight shortened. */
+  campsCloser: 0,
 };
 
 /** A place to go to, and whether it's in a bush, where it has to be reached more exactly. */
@@ -457,6 +486,17 @@ export class Bot {
   private readonly bagValues = new Map<number, number>();
   /** Who it has been told carries the bounty, or 0. */
   private bountyKnown = 0;
+  /** The weather's cover and how far it lets it see, as of the last think. */
+  private fog = 0;
+  private rain = 0;
+  private sight = 1;
+  /** Whether it has taken a crate more for the fog that's in, and the change of weather it last lay low for, by when it comes. */
+  private fogCrate = false;
+  private bidedFor = -Infinity;
+  /** Lying low for fog to come in. */
+  private biding = false;
+  /** How far it could see when it picked its camp. */
+  private campSight = 1;
 
   constructor(role: Role, skill: Skill, primary: number, yaw: number, rand: () => number) {
     this.role = role;
@@ -572,6 +612,7 @@ export class Bot {
     this.health = health(self);
     this.paid = (ctx.carried?.(self) ?? Infinity) >= EXTRACT_FEE;
     this.loaded = (ctx.carried?.(self) ?? 0) >= LOADED;
+    this.weather(ctx);
     if (this.isRoutine(this.state)) this.anchor = { x: self.x, y: self.y, z: self.z };
     this.perceive(ctx, self, dt);
     this.decide(ctx, self);
@@ -579,6 +620,55 @@ export class Bot {
     this.checkStuck(self, dt);
     this.doors(ctx, self);
     if (this.role.kind !== 'sentry' && self.y > ctx.world.floorHeight(self.x, self.z) + 2) tally.upThinks++;
+  }
+
+  /** Reads the weather; fog setting in, a rat or a looter takes a crate more than it meant to while it hides them. */
+  private weather(ctx: BotContext): void {
+    const cover = coverOf(ctx.senses);
+    this.fog = cover.fog;
+    this.rain = cover.rain;
+    this.sight = ctx.senses.sight;
+    if (!this.fogMoves()) {
+      this.fogCrate = false;
+      return;
+    }
+    if (this.fogCrate || this.role.kind !== 'operator' || this.role.thorough) return;
+    this.fogCrate = true;
+    if (this.step < this.planned && this.planned < this.loot.length && this.health >= WOUNDED) {
+      this.planned++;
+      tally.fogCrates++;
+    }
+  }
+
+  /** Whether fog is in, and it's a rat or a looter, who make the most of it. */
+  private fogMoves(): boolean {
+    return this.fog >= IN_COVER && (this.personality === 'rat' || this.personality === 'looter');
+  }
+
+  /** Whether rain is in, and it's a hunter, who closes in on fights under it. */
+  private pushes(): boolean {
+    return this.rain >= IN_COVER && this.personality === 'hunter';
+  }
+
+  /**
+   * A rat sees fog coming as the mist gathers: rather than cross open ground
+   * in the clear, it lies low near where it is until the fog is in. Not in
+   * the extraction zone, or when waiting would leave too little time to get out.
+   */
+  private bidesForFog(ctx: BotContext, self: Agent): boolean {
+    const c = ctx.coming;
+    if (this.personality !== 'rat' || !c || c.weather !== 'fog' || c.in > FOG_AHEAD || this.fog >= IN_COVER) return false;
+    if (this.role.kind !== 'operator' || this.role.thorough || this.waiting(ctx, self)) return false;
+    const comes = this.now + c.in;
+    if (Math.abs(comes - this.bidedFor) < 1 || this.now - this.born + c.in + CHANGE_MAX > RUN_TIME - LEAVE_BY) return false;
+    this.bidedFor = comes;
+    tally.fogWaits++;
+    this.enter('hide');
+    this.biding = true;
+    this.fightAt = null;
+    this.spot = this.waitSpot(ctx, self);
+    this.spotUntil = this.now + FOG_WAIT;
+    return true;
   }
 
   /**
@@ -825,15 +915,24 @@ export class Bot {
       this.hide(ctx, self, this.alarm);
       return;
     }
+    if (this.isRoutine(this.state) && this.bidesForFog(ctx, self)) return;
     if (this.isRoutine(this.state) && this.pickUpBag(ctx, self)) return;
 
     if (this.heard && this.heard.at >= this.stateAt && this.state !== 'engage') {
       const h = this.heard;
       this.heard = null;
       const d = Math.hypot(h.x - self.x, h.z - self.z);
-      if (d > (this.temper?.curiosity ?? (this.role.kind === 'operator' ? OPERATOR_CURIOSITY : GUARD_CURIOSITY))) return;
+      if (d > this.curiosity()) return;
       this.investigate(ctx, h);
     }
+  }
+
+  /** How far it goes to check on a noise: a hunter farther under rain, which hides its coming; a camper holds its spot once sight shortens. */
+  private curiosity(): number {
+    const c = this.temper?.curiosity ?? (this.role.kind === 'operator' ? OPERATOR_CURIOSITY : GUARD_CURIOSITY);
+    if (this.pushes()) return c * RAIN_CURIOSITY;
+    if (this.personality === 'camper' && this.sight < CAMP_HOLD) return 0;
+    return c;
   }
 
   /**
@@ -933,7 +1032,8 @@ export class Bot {
   private stalk(ctx: BotContext, self: Agent, at: Point & { at: number; guards?: boolean; source?: number }): void {
     this.stalkAt = at.at;
     const d = Math.hypot(at.x - self.x, at.z - self.z);
-    const standoff = at.guards ? GUARD_STANDOFF : STALK_STANDOFF;
+    // A hunter under rain stops nearer, unheard.
+    const standoff = (at.guards ? GUARD_STANDOFF : STALK_STANDOFF) * (this.pushes() ? RAIN_STANDOFF : 1);
     if (d < standoff) return;
     let k = (d - standoff) / d;
     const o = ctx.world.nearestOutpost(at.x, at.z);
@@ -951,6 +1051,7 @@ export class Bot {
       tally.joins++;
       tally.guessOff += Math.hypot(shooter.x - at.x, shooter.z - at.z);
     }
+    if (this.pushes() && this.state !== 'stalk') tally.rainStalks++;
     this.enter('stalk', true);
     // Watch from a bush nearby, if there's one that can see that way.
     this.spot = this.waitSpot(ctx, { x: p.x, y: at.y, z: p.z }, at);
@@ -1113,7 +1214,10 @@ export class Bot {
           this.enter('extract');
           break;
         }
-        if (this.campFor !== this.exit) {
+        // As sight shortens it moves in nearer, so as still to see whoever comes; out again as it clears.
+        const resight = Math.abs(this.sight - this.campSight) > CAMP_RESIGHT;
+        if (this.campFor !== this.exit || resight) {
+          if (this.campFor === this.exit && this.sight < this.campSight) tally.campsCloser++;
           this.camp = this.pickCamp(ctx, e);
           this.campFor = this.exit;
         }
@@ -1147,7 +1251,8 @@ export class Bot {
           this.crouch = true;
           this.lookAround(now, yawToward(self.x, self.z, fight.x, fight.z));
         }
-        if (now >= this.spotUntil) this.enter(this.routine());
+        // Lying low for fog, it sets off once the fog is in.
+        if (now >= this.spotUntil || (this.biding && this.fog >= IN_COVER)) this.enter(this.routine());
         break;
       }
 
@@ -1158,9 +1263,11 @@ export class Bot {
         const toFight = Math.hypot(fight.x - self.x, fight.z - self.z);
         if (d > arrival(spot, ARRIVE * 2) && this.waitUntil === 0) {
           this.goTo(spot);
-          // Run while far off, then close in carefully, watching where the shots came from.
-          if (toFight > 90 && self.stamina > 0.3 && !this.temper?.sneaky) this.pace = 'sprint';
-          else if (toFight < 50) {
+          // Run while far off, then close in carefully, watching where the shots came from; under rain, which
+          // drowns out footsteps, a hunter runs in closer.
+          const push = this.pushes();
+          if (toFight > (push ? RAIN_SPRINT : 90) && self.stamina > 0.3 && !this.temper?.sneaky) this.pace = 'sprint';
+          else if (toFight < (push ? RAIN_SPRINT / 2 : 50)) {
             this.pace = this.skill.name === 'easy' ? 'walk' : 'sneak';
             this.focus = { x: fight.x, y: fight.y + EYE_HEIGHT, z: fight.z };
           }
@@ -1310,14 +1417,19 @@ export class Bot {
     return best ?? goal;
   }
 
-  /** How an operator crosses the island `d` metres from where it's going: fast in the open, quietly near outposts and guards. */
+  /**
+   * How an operator crosses the island `d` metres from where it's going: fast
+   * in the open, quietly near outposts and guards. In fog, rats and looters
+   * hurry on, a rat running too, and keep low only nearer outposts.
+   */
   private travel(ctx: BotContext, self: Agent, d: number): void {
     const near = ctx.world.nearestOutpost(self.x, self.z)?.dist ?? Infinity;
-    const sneaky = !!this.temper?.sneaky;
+    const bold = this.fogMoves() ? FOG_BOLDNESS : 1;
+    const sneaky = !!this.temper?.sneaky && bold === 1;
     // Near an outpost, or with a guard seen about lately, it keeps low.
     const wary = this.now - this.guardSeenAt < WARY_TIME;
-    if ((near < (sneaky ? OUTPOST_WALK : OUTPOST_SNEAK) || wary) && d > ARRIVE * 3) this.pace = 'sneak';
-    else if (d > 30 && self.stamina > 0.4 && near > OUTPOST_WALK && !sneaky) this.pace = 'sprint';
+    if ((near < (sneaky ? OUTPOST_WALK : OUTPOST_SNEAK) * bold || wary) && d > ARRIVE * 3) this.pace = 'sneak';
+    else if (d > 30 && self.stamina > 0.4 && near > OUTPOST_WALK * bold && !sneaky) this.pace = 'sprint';
   }
 
   /** Somewhere for a hunter to go looking: an extraction point, or a random spot within reach. */
@@ -1346,8 +1458,11 @@ export class Bot {
    */
   private pickCamp(ctx: BotContext, e: ExtractPoint): Spot | null {
     tally.camps++;
-    for (let far = CAMP_RANGE[1]; far <= CAMP_FARTHEST; far += CAMP_WIDEN) {
-      const found = this.campSpot(ctx, e, far);
+    this.campSight = this.sight;
+    const k = Math.max(Math.min(this.sight, 1), CAMP_NEAREST / CAMP_RANGE[0]);
+    const ring: [number, number] = [CAMP_RANGE[0] * k, CAMP_RANGE[1] * k];
+    for (let far = ring[1]; far <= CAMP_FARTHEST; far += CAMP_WIDEN) {
+      const found = this.campSpot(ctx, e, far, ring);
       if (found) return found;
     }
     tally.campless++;
@@ -1356,10 +1471,10 @@ export class Bot {
 
   /**
    * A dry spot a little way off an extraction point, out to `far`, that can
-   * see into it from a crouch: in a bush if one will do. Null if none of those
-   * tried can.
+   * see into it from a crouch: in a bush if one will do, nearest the middle
+   * of `ring`. Null if none of those tried can.
    */
-  private campSpot(ctx: BotContext, e: Point, far: number): Spot | null {
+  private campSpot(ctx: BotContext, e: Point, far: number, ring = CAMP_RANGE): Spot | null {
     const w = ctx.world;
     const sees = (x: number, y: number, z: number): boolean => w.hasLineOfSight(x, y + CROUCH_EYE_HEIGHT, z, e.x, e.y + 1, e.z);
     const clear = (x: number, z: number): boolean => ctx.nav.dry(x, z) && (w.nearestOutpost(x, z)?.dist ?? Infinity) >= OUTPOST_BERTH;
@@ -1367,16 +1482,16 @@ export class Bot {
     let bestD = Infinity;
     for (const b of hidingBushes(ctx.world, e.x, e.z, far)) {
       const d = Math.hypot(b.x - e.x, b.z - e.z);
-      if (d < CAMP_RANGE[0] || !clear(b.x, b.z) || !sees(b.x, b.y, b.z)) continue;
+      if (d < ring[0] || !clear(b.x, b.z) || !sees(b.x, b.y, b.z)) continue;
       // Nearest the middle of the range.
-      const off = Math.abs(d - (CAMP_RANGE[0] + CAMP_RANGE[1]) / 2);
+      const off = Math.abs(d - (ring[0] + ring[1]) / 2);
       if (off < bestD) (best = { x: b.x, y: b.y, z: b.z, bush: true }), (bestD = off);
     }
     if (best) return best;
     const turn = this.rand() * Math.PI * 2;
     for (let i = 0; i < CAMP_TRIES; i++) {
       const a = turn + (i / CAMP_TRIES) * Math.PI * 2;
-      const r = CAMP_RANGE[0] + this.rand() * (far - CAMP_RANGE[0]);
+      const r = ring[0] + this.rand() * (far - ring[0]);
       const x = e.x + Math.sin(a) * r;
       const z = e.z + Math.cos(a) * r;
       if (!clear(x, z)) continue;
@@ -1406,9 +1521,11 @@ export class Bot {
     return best;
   }
 
-  /** How much it's willing to carry, kg: more while it can't yet pay for extraction. */
+  /** How much it's willing to carry, kg: more while it can't yet pay for extraction, and for a looter, in fog. */
   private carryLimit(): number {
-    return this.role.kind !== 'operator' ? 0 : this.paid ? this.role.greed : CARRY_MAX;
+    if (this.role.kind !== 'operator') return 0;
+    if (!this.paid) return CARRY_MAX;
+    return this.role.greed + (this.personality === 'looter' && this.fogMoves() ? FOG_GREED : 0);
   }
 
   private nextStop(): void {
@@ -1457,6 +1574,7 @@ export class Bot {
     this.state = state;
     this.stateAt = this.now;
     this.waitUntil = 0;
+    this.biding = false;
     this.path = [];
     this.pathGoal = null;
   }
@@ -1502,7 +1620,9 @@ export class Bot {
     if (this.step < this.planned && this.health >= WOUNDED && run < RUN_TIME - LEAVE_BY) return 'loot';
     // Hunters and campers stay on a while once done looting, but leave in time.
     const t = this.temper;
-    if (t && run < Math.min(t.linger, RUN_TIME - LEAVE_BY) && this.health >= WOUNDED) {
+    // A camper stays on longer while sight is short.
+    const linger = t ? t.linger + (this.personality === 'camper' ? CAMP_LINGER * (1 - this.sight) : 0) : 0;
+    if (t && run < Math.min(linger, RUN_TIME - LEAVE_BY) && this.health >= WOUNDED) {
       if (this.personality === 'hunter') return 'hunt';
       if (this.personality === 'camper' && !this.campDone) return 'camp';
     }
@@ -1864,8 +1984,8 @@ export class Bot {
       const g = this.goal;
       const pg = this.pathGoal;
       const now = ctx.time;
-      // Sneaking, or a sneaky operator going about its run, keeps to bushes and tall grass.
-      const hidden = this.pace === 'sneak' || (!!this.temper?.sneaky && this.isRoutine(this.state));
+      // Sneaking, or a sneaky operator going about its run, keeps to bushes and tall grass; in fog it needn't.
+      const hidden = this.pace === 'sneak' || (!!this.temper?.sneaky && this.isRoutine(this.state) && !this.fogMoves());
       const stale = !pg || Math.hypot(pg.x - g.x, pg.z - g.z) > 1.5 || Math.abs((pg.y ?? 0) - (g.y ?? 0)) > 1.5 || this.path.length === 0 ||
         hidden !== this.pathHidden;
       if (stale && now - this.pathAt >= REPATH_DELAY && ctx.pathBudget > 0) {

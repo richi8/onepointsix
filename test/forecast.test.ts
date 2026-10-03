@@ -6,7 +6,7 @@ import { DEATHCAM_AFTER, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/const
 import { isReliable, type ClientMsg, type ServerMsg } from '../src/shared/protocol.ts';
 import { LagTransport, type Transport } from '../src/shared/transport.ts';
 import {
-  CHANGE_MAX, CHANGE_MIN, Forecast, mainWeather, MEAN_LENGTH, sensesOf, WEATHERS, type Weather, type WeatherNow,
+  CHANGE_MAX, CHANGE_MIN, coverOf, Forecast, mainWeather, MEAN_LENGTH, sensesOf, WEATHERS, type Weather, type WeatherNow,
 } from '../src/shared/weather.ts';
 import { World } from '../src/shared/world.ts';
 
@@ -120,6 +120,26 @@ describe('the weather cycle', () => {
   });
 });
 
+describe('the weather’s cover', () => {
+  it('is fog’s in fog and rain’s in rain, coming in over a change', () => {
+    const at = (from: Weather, to: Weather, blend: number) => coverOf(sensesOf({ from, to, blend }));
+    expect(at('clear', 'clear', 1)).toEqual({ fog: 0, rain: 0 });
+    expect(at('fog', 'fog', 1)).toEqual({ fog: 1, rain: 0 });
+    expect(at('rain', 'rain', 1)).toEqual({ fog: 0, rain: 1 });
+    // Rain shortens sight too, but that isn't fog's cover.
+    expect(at('rain', 'fog', 0.5).fog).toBeCloseTo(0.5);
+    for (const [from, to] of [['clear', 'fog'], ['clear', 'rain'], ['rain', 'fog'], ['fog', 'rain']] as const) {
+      let last = -1;
+      for (let b = 0; b <= 1; b += 0.1) {
+        const c = at(from, to, b)[to as 'fog' | 'rain'];
+        expect(c).toBeGreaterThanOrEqual(last);
+        last = c;
+      }
+      expect(last).toBeCloseTo(1);
+    }
+  });
+});
+
 describe('the weather in a game', () => {
   const seed = 5;
 
@@ -127,7 +147,7 @@ describe('the weather in a game', () => {
     const server = new GameServer(seed);
     const conn = new Connection({ seed }, new World(seed), 'offline', 'me', pipe(server));
     server.step();
-    const ctx = (server as unknown as { ctx: { senses: { sight: number; hearing: number } } }).ctx;
+    const ctx = (server as unknown as { ctx: { senses: { sight: number; hearing: number }; coming: unknown } }).ctx;
     const turn = turns(seed, 3600)[0];
     const seen = new Set<Weather>();
     for (let t = 0; t < (turn.at + 30) * SERVER_TICK_RATE; t++) {
@@ -140,6 +160,8 @@ describe('the weather in a game', () => {
       expect(conn.forecast!.at(server.time)).toEqual(server.weather);
       // And the bots sense the weather of this very tick.
       expect(ctx.senses).toEqual(sensesOf(server.weather));
+      // And see the next change coming, as anyone outside can.
+      expect(ctx.coming).toEqual(server.forecast.next(server.time));
       seen.add(mainWeather(conn.weather()!));
     }
     // The run saw it turn.
