@@ -325,7 +325,7 @@ apply: no backend, and nothing that breaks the rules that keep multiplayer easy 
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 47 | **Scoreboard on Tab** | Held during a run, Tab shows every operator in the game who is a player, bots left out, with their kills, deaths, best run score and cumulative score; the server keeps each player's record over the game, across their runs in it, and sends it to every player as an event whenever it changes; Esc stays the pause screen | Holding Tab in a run shows your line, and a kill, a death or an extraction shows on it, carried on to your next run on the same island | **Done** (`src/client/scoreboard.ts`; the records are kept in `GameServer` by name, see Known Issues; kills count guards and operators alike; nothing counts on the range; checked by unit tests with two players in one game and a browser test; locally the board only ever lists you) |
+| 47 | **Scoreboard on Tab** | Held during a run, Tab shows every operator in the game who is a player, bots left out, with their kills, deaths, best run score and cumulative score; the server keeps each player's record over the game, across their runs in it, and sends it to every player as an event whenever it changes; Esc stays the pause screen | Holding Tab in a run shows your line, and a kill, a death or an extraction shows on it, carried on to your next run on the same island | **Done** (`src/client/scoreboard.ts`; the records are kept in `GameServer` by a random id each browser keeps and sends in its hello, not by name; kills count guards and operators alike; nothing counts on the range; checked by unit tests with two players in one game and a browser test; locally the board only ever lists you) |
 
 ## Known Issues
 
@@ -351,14 +351,7 @@ Nothing open: the last was resolved on 2026-10-03 (see the history, and the bot 
 baseline in Decisions).
 
 ### Scoreboard
-- **Records kept by name** (chunk 47): the server keeps each player's line under the name typed
-  on the menu, so two players with the same name share one line, and anyone can carry on another's
-  record by taking their name. Waits on anonymous identity (Future).
-- **Records last only as long as the game** (chunk 47): the cumulative score is over one game on
-  one island; back on the menu for more than 2 minutes (the game closes) or playing another
-  island starts everyone afresh, and nothing is kept in the browser.
-- **Only ever you, locally** (chunk 47): without a multiplayer server the board lists one line;
-  several players in one game are covered by unit tests only, not seen on screen.
+Nothing open: the last were resolved or accepted on 2026-10-03 (see the history).
 
 ## Future
 - **Multiplayer**
@@ -374,7 +367,8 @@ baseline in Decisions).
     island that only players with the link join, so friends take its bots' slots and quick join
     never fills it with strangers (built once and reverted, commit 5ea65d8)
   - **Scoreboard on Tab:** built locally in chunk 47; with a server it lists everyone playing in
-    the game, and keeps records by identity rather than by name
+    the game. Records are kept by a random id each browser keeps, which anonymous identity can
+    take over
   - Anonymous identity, basic anti-cheat, deployment
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
     leaderboards kept by the server instead of in links and one browser; every run's stats sent to

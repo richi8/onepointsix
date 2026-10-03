@@ -105,12 +105,15 @@ export class Connection {
   private clock = -1;
   private sincePing = PING_INTERVAL;
 
-  /** Quick-joins a game of `mode` on the island as `name`; the transport is shared by every run. */
-  constructor(config: WorldConfig, world: World, mode: Mode, name: string, transport: LagTransport<ClientMsg, ServerMsg>) {
+  /**
+   * Quick-joins a game of `mode` on the island as `name`, `player` being this browser's id for
+   * the scoreboard; the transport is shared by every run.
+   */
+  constructor(config: WorldConfig, world: World, mode: Mode, name: string, transport: LagTransport<ClientMsg, ServerMsg>, player?: string) {
     this.predictor = new Predictor(world);
     this.transport = transport;
     this.transport.onMessage = (msg) => this.handle(msg);
-    this.transport.send({ t: 'hello', name, world: config, mode });
+    this.transport.send({ t: 'hello', name, world: config, mode, ...(player ? { player } : {}) });
   }
 
   /** A copy of the last TAPE_TIME seconds as this client saw them. */

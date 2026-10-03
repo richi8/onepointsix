@@ -2088,6 +2088,24 @@ notes the chunk it came from.
   the fog, unless within 30 m of it, and gets on with its run. In the bot playtest (seeds 1–6)
   68 of 86 fog crates were given up as the fog lifted, and operator bots extracted from 15% of
   runs. Campers need no signs: they move with sight as it changes.
+### Scoreboard
+- **Records kept by name** (47): the server kept each player's line under the name typed on the
+  menu, so two players with the same name shared one line, and anyone could carry on another's
+  record by taking their name.
+  **Resolved** (2026-10-03): each browser makes a random id once, keeps it (`playerId` in local
+  storage, or for the page alone with storage blocked) and sends it in every hello; the server
+  keeps records by it, so a renamed player keeps their line and two of the same name get one
+  each. The id is never sent to other players, so it can't be read off the board. A hello with no
+  id, or a malformed one, gets a record for that run alone. It isn't checked by anything, so it
+  stands in for the anonymous identity in Future until then.
+- **Records last only as long as the game** (47): the cumulative score is over one game on one
+  island; back on the menu for more than 2 minutes (the game closes) or playing another island
+  starts everyone afresh, and nothing is kept in the browser.
+  **Accepted** (2026-10-03): the user is fine with it.
+- **Only ever you, locally** (47): without a multiplayer server the board lists one line; several
+  players in one game are covered by unit tests only, not seen on screen.
+  **Accepted** (2026-10-03): the user is fine with it for now.
+
 ## Dropped
 
 Open issues taken off the plan on 2026-09-28 as not worth pursuing: records of what was measured

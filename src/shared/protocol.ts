@@ -32,6 +32,11 @@ export interface InputCmd {
  */
 export type Mode = 'online' | 'range';
 
+/** Whether `id` will do as a player's id in hello: letters, digits and dashes, 8 to 64 of them. */
+export function validPlayerId(id: unknown): id is string {
+  return typeof id === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(id);
+}
+
 /** A mode named in a link or saved setting; Mixed and Offline, from before, are now Online. */
 export function parseMode(m: string | null): Mode | null {
   return m === 'online' || m === 'range' ? m : m === 'mixed' || m === 'offline' ? 'online' : null;
@@ -212,7 +217,10 @@ export type GameEvent =
 export type ClientMsg =
   // `world` is the island the client wants to join; the server may ignore it.
   // Quick join: the client wants to play `mode` on this island. Sent again for another run.
-  | { t: 'hello'; name: string; world: WorldConfig; mode: Mode }
+  // `player` is a random id the browser keeps, so their record on the scoreboard follows them
+  // from run to run, whatever their name; it's never sent to anyone else. Without one, each run
+  // starts a fresh record.
+  | { t: 'hello'; name: string; world: WorldConfig; mode: Mode; player?: string }
   // Back to the menu.
   | { t: 'leave' }
   // Carries the last few unacknowledged commands so a lost packet costs nothing.

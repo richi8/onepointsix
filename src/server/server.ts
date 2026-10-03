@@ -51,6 +51,7 @@ import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loo
 import type {
   Action, BagSnap, BoardRow, BountyView, ClientMsg, Death, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
+import { validPlayerId } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
 import { applyCmd, copyState, eyePosition, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
@@ -127,6 +128,8 @@ interface Player extends PlayerState {
   send: (msg: ServerMsg) => void;
   /** Set once the client says hello; until then it gets no snapshots. */
   joined: boolean;
+  /** Whose record on the scoreboard a human's play counts toward: the id from their hello. */
+  player: string;
   queue: InputCmd[];
   /** Highest seq received, to discard redundant resends. */
   lastRecv: number;
@@ -229,8 +232,8 @@ export class GameServer {
   /** Where everyone stood at the end of each recent tick, oldest first, for rewinding shots. */
   private readonly history: { tick: number; poses: PoseRecord[] }[] = [];
   /**
-   * Each player's record over the game, kept by name across their runs for as long as the game
-   * goes on, so leaving and joining again carries on where they were.
+   * Each player's record over the game, by the id from their hello, kept across their runs for as
+   * long as the game goes on, so leaving and joining again carries on where they were.
    */
   private readonly tallies = new Map<string, Tally>();
   /** The scoreboard changed and goes out to every player this tick. */
@@ -336,6 +339,8 @@ export class GameServer {
       case 'hello':
         p.joined = true;
         p.name = msg.name.slice(0, 24) || 'player';
+        // No id, or a bad one, keeps a record for this run alone.
+        p.player = validPlayerId(msg.player) ? msg.player : `run-${p.id}`;
         this.boardChanged = true;
         p.send({
           t: 'welcome', id, seed: this.seed, tick: this.tick, tickRate: SERVER_TICK_RATE, mode: this.mode,
@@ -866,12 +871,13 @@ export class GameServer {
 
   /**
    * A player's record, marked as changing; null for bots, and on the range, where nothing
-   * counts. A record is kept by name, so another run under the same name carries it on.
+   * counts. A record is kept by the player's id, so their next run carries it on, under
+   * whatever name.
    */
   private tallyOf(p: Player): Tally | null {
     if (p.plan || !p.joined || this.options.range) return null;
-    let tally = this.tallies.get(p.name);
-    if (!tally) this.tallies.set(p.name, (tally = { kills: 0, deaths: 0, best: 0, total: 0 }));
+    let tally = this.tallies.get(p.player);
+    if (!tally) this.tallies.set(p.player, (tally = { kills: 0, deaths: 0, best: 0, total: 0 }));
     this.boardChanged = true;
     return tally;
   }
@@ -881,7 +887,7 @@ export class GameServer {
     const rows: BoardRow[] = [];
     for (const p of this.players.values()) {
       if (p.plan || !p.joined) continue;
-      const t = this.tallies.get(p.name) ?? { kills: 0, deaths: 0, best: 0, total: 0 };
+      const t = this.tallies.get(p.player) ?? { kills: 0, deaths: 0, best: 0, total: 0 };
       rows.push({ id: p.id, name: p.name, ...t });
     }
     return rows.sort((a, b) => b.total - a.total || b.best - a.best || b.kills - a.kills || a.deaths - b.deaths);
@@ -957,7 +963,7 @@ export class GameServer {
 
   private add(name: string, team: Team, send: (msg: ServerMsg) => void): Player {
     const p: Player = {
-      ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, queue: [], lastRecv: 0, lastSim: 0,
+      ...spawnState(0, 0, 0), id: this.nextId++, name, team, send, joined: false, player: '', queue: [], lastRecv: 0, lastSim: 0,
       respawn: 0, protection: 0, events: [], plan: null, bot: null, actor: null, run: null, recall: 0,
       tape: new Tape(), deathcam: null, threw: false,
     };

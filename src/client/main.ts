@@ -4,7 +4,7 @@ import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
 import { extractName } from '../shared/loot.ts';
-import { isReliable, parseMode, type ClientMsg, type CoverState, type DevCmd, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
+import { isReliable, parseMode, validPlayerId, type ClientMsg, type CoverState, type DevCmd, type GameEvent, type Mode, type PlayerSnap, type ServerMsg } from '../shared/protocol.ts';
 import { runRecord } from '../shared/runstats.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { cleanName, parseShareLink, type Challenge } from '../shared/share.ts';
@@ -372,6 +372,28 @@ function playerName(): string {
   return cleanName(nameInput.value) || 'Operator';
 }
 
+/**
+ * This browser's id for the scoreboard, made once and kept, so a player's record follows them
+ * from run to run, not their name. With storage blocked it lasts until the page closes.
+ */
+const playerId = ((): string => {
+  let id = '';
+  try {
+    id = store?.getItem('playerId') ?? '';
+  } catch {
+    // Made afresh below.
+  }
+  if (validPlayerId(id)) return id;
+  // randomUUID needs a secure context; random bytes work in the single file too.
+  id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+  try {
+    store?.setItem('playerId', id);
+  } catch {
+    // Kept for this page only.
+  }
+  return id;
+})();
+
 // ------------------------------------------------------------------ sharing
 
 const toastEl = document.getElementById('toast')!;
@@ -665,7 +687,7 @@ function join(): void {
   killedBy = null;
   bodies.forget();
   mySoak = new Soak();
-  conn = new Connection(config, world, mode, playerName(), transport);
+  conn = new Connection(config, world, mode, playerName(), transport, playerId);
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
   conn.onEvents = (events, time) => events.forEach((e) => onEvent(e, time));
   conn.onWelcome = (cover) => showCover(cover);

@@ -15,7 +15,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     title: 'Scoreboard on Tab',
     notes: [
       'Hold Tab during a run to see the players in your game, with their kills, deaths, best run and total score. Bots aren’t listed.',
-      'Your line carries on from run to run while you keep playing the same island; it starts afresh on another island or after a couple of minutes back on the menu.',
+      'Your line carries on from run to run while you keep playing the same island, even if you change your name; it starts afresh on another island or after a couple of minutes back on the menu.',
     ],
   },
   {

@@ -8,11 +8,11 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const GOLD = ITEMS.findIndex((i) => i.name === 'Gold bar');
 
-/** A player joining `server` as `name` for a run, and what they've been sent. */
-function join(server: GameServer, name: string): { id: number; events: () => GameEvent[]; board: () => BoardRow[] | undefined } {
+/** A player joining `server` as `name` for a run, with `player` as their id, and what they've been sent. */
+function join(server: GameServer, name: string, player: string | null = `player-${name}`): { id: number; events: () => GameEvent[]; board: () => BoardRow[] | undefined } {
   const sent: ServerMsg[] = [];
   const id = server.connect((m) => sent.push(m));
-  server.receive(id, { t: 'hello', name, world: DEFAULT_WORLD, mode: 'online' });
+  server.receive(id, { t: 'hello', name, world: DEFAULT_WORLD, mode: 'online', ...(player === null ? {} : { player }) });
   server.step();
   const events = () => sent.flatMap((m) => (m.t === 'events' ? m.events : []));
   const board = () => events().filter((e) => e.k === 'board').at(-1)?.rows;
@@ -51,8 +51,8 @@ describe('scoreboard', () => {
     const score = end?.k === 'runEnd' ? end.score : 0;
     expect(score).toBeGreaterThan(0);
 
-    // The next run in the same game, under the same name, carries the record on.
-    const again = join(game, 'me');
+    // The next run in the same game carries the record on, under another name too.
+    const again = join(game, 'renamed', 'player-me');
     expect(again.board()?.[0]).toMatchObject({ id: again.id, kills: 1, deaths: 0, best: score, total: score });
     game.receive(again.id, { t: 'dev', cmd: { act: 'end', outcome: 'killed', self: true } });
     game.step();
@@ -61,6 +61,27 @@ describe('scoreboard', () => {
     // Someone else starts afresh.
     const other = join(game, 'other');
     expect(other.board()?.find((r) => r.name === 'other')).toMatchObject({ kills: 0, deaths: 0, total: 0 });
+  });
+
+  it('keeps a line per player, not per name', () => {
+    const game = server();
+    const me = join(game, 'twin', 'player-one');
+    game.receive(me.id, { t: 'dev', cmd: { act: 'rival' } });
+    game.receive(me.id, { t: 'dev', cmd: { act: 'kill' } });
+    game.step();
+    const other = join(game, 'twin', 'player-two');
+    expect(other.board()?.map((r) => [r.id, r.kills]).sort()).toEqual([[me.id, 1], [other.id, 0]].sort());
+  });
+
+  it('starts a fresh record each run without an id, or with a bad one', () => {
+    for (const player of [null, 'short', 'has spaces in it']) {
+      const game = server();
+      const me = join(game, 'me', player);
+      game.receive(me.id, { t: 'dev', cmd: { act: 'end', outcome: 'killed' } });
+      game.step();
+      expect(me.board()?.[0]).toMatchObject({ deaths: 1 });
+      expect(join(game, 'me', player).board()?.find((r) => r.name === 'me' && r.deaths === 0)).toBeTruthy();
+    }
   });
 
   it('counts nothing on the range', () => {
