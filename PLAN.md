@@ -377,10 +377,8 @@ Nothing open: the last was resolved on 2026-10-03 (see the history).
 Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Playtest and tuning
-- **Bot extraction at the top of its range** (chunk 49): the bot playtest over the weather cycle
-  came to 18% extracted on seeds 1–6 and 19% on seeds 7–12, against the 15% ± 3 baseline. The
-  commit before chunk 49 gave 18% and 20% on the same seeds, so solid walls didn't move it; it
-  drifted up before (chunk 46 measured 15%). Not tuned back yet.
+Nothing open: the last was accepted on 2026-10-03 (see the history, and the bot extraction
+baseline in Decisions).
 
 ### Scoreboard
 Nothing open: the last were resolved or accepted on 2026-10-03 (see the history).

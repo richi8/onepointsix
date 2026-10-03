@@ -2088,6 +2088,11 @@ notes the chunk it came from.
   the fog, unless within 30 m of it, and gets on with its run. In the bot playtest (seeds 1–6)
   68 of 86 fog crates were given up as the fog lifted, and operator bots extracted from 15% of
   runs. Campers need no signs: they move with sight as it changes.
+- **Bot extraction at the top of its range** (49): the bot playtest over the weather cycle came
+  to 18% extracted on seeds 1–6 and 19% on seeds 7–12, against the 15% ± 3 baseline. The commit
+  before chunk 49 gave 18% and 20% on the same seeds, so solid walls didn't move it; it drifted
+  up before (chunk 46 measured 15%).
+  **Accepted** (2026-10-03): the user is fine with it.
 ### Scoreboard
 - **Records kept by name** (47): the server kept each player's line under the name typed on the
   menu, so two players with the same name shared one line, and anyone could carry on another's
