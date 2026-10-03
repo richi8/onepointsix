@@ -1550,6 +1550,19 @@ notes the chunk it came from.
   it eases to 55% and the thunder dies away by the time the change starts. Before a fog goes, the
   air clears a quarter of the way, and before it clears the wind rises with the clouds. Unit tests
   check the signs; two new screenshots show the rain and the fog 5 s before they clear.
+- **The mist lies by the ground at either end of a view** (2026-10-03): how high the mist stands is
+  taken as changing evenly from the ground under the camera to the ground at what's seen, so a
+  ridge or a hollow between the two doesn't count, only its ends.
+  **Resolved** (2026-10-03): the mist's ground is also read at a fifth, two, three and four
+  fifths of the way, per vertex as before; the points move with the vertex, so across a triangle
+  they interpolate to the points along each pixel's way. The mist is integrated over each fifth
+  on its own, so a ridge between the camera and what's seen thins it and a hollow thickens it.
+  The vertex shader works out how much mist there is from the fog's near and far, as the
+  fragment shader does, and reads nothing without any, as on a clear day. The views in the
+  screenshot tests hardly change (they look down into the mist or along level ground); forcing
+  the mist to the ground all along the way showed the new reads take effect. Alternated benchmark
+  runs against the last commit: clear frames the same within the noise, rain and fog perhaps
+  0.5 ms slower.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

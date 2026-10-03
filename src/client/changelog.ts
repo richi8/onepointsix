@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Mist over hills and hollows',
+    notes: [
+      'Looking across the island in mist, a ridge in the way now thins it and a hollow in between thickens it, where before only the ground at your feet and at what you were looking at counted.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Clearing skies ahead',
     notes: [
       'About a minute before the weather clears, the sky now lightens as the clouds break. Before rain stops, it eases off and the thunder dies away; before a fog lifts, it thins and the wind picks up, so you can see further.',

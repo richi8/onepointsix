@@ -68,13 +68,31 @@ export function mistNear(near: number, mist: number): number {
   return near + MIST_STEP * Math.round(Math.min(Math.max(mist, 0), 1) * 255);
 }
 
+// How much mist there is, 0 to 1, and how much of it is ahead of a fog: from
+// the fog's near and far, so in both shaders.
+const AMOUNT = /* glsl */ `
+	float mistAhead() {
+		return floor( fogNear / ${MIST_STEP.toFixed(1)} ) / 255.0;
+	}
+	float mistAmount() {
+		return max( clamp( ( ${MIST_NONE.toFixed(1)} - fogFar ) / ${(MIST_NONE - MIST_FULL).toFixed(1)}, 0.0, 1.0 ), mistAhead() );
+	}
+`;
+
 const PARS_VERTEX = /* glsl */ `
 #ifdef USE_FOG
 	uniform sampler2D mistGround;
+	#ifndef FOG_EXP2
+		uniform float fogNear;
+		uniform float fogFar;
+		${AMOUNT}
+	#endif
 	varying float vFogDepth;
 	varying vec3 vFogWorld;
-	// The camera's and this vertex's heights above where the mist lies.
+	// The camera's and this vertex's heights above where the mist lies, and the
+	// heights of the line between them above it at a fifth of the way, two, three and four.
 	varying vec2 vMistHeights;
+	varying vec4 vMistBetween;
 
 	// The height the mist lies from at x and z.
 	float mistBase( vec2 xz ) {
@@ -90,7 +108,20 @@ const VERTEX = /* glsl */ `
 	// The view turns and moves rigidly, so its inverse is its turn transposed.
 	vFogWorld = cameraPosition + transpose( mat3( viewMatrix ) ) * mvPosition.xyz;
 	// Read per vertex, not per pixel, for speed; it changes slowly across the ground.
-	vMistHeights = vec2( cameraPosition.y - mistBase( cameraPosition.xz ), vFogWorld.y - mistBase( vFogWorld.xz ) );
+	// The points along the way move with the vertex, so they interpolate across a
+	// triangle to the points along each pixel's way. None of it is read without
+	// any mist, as on a clear day.
+	vMistHeights = vec2( 0.0 );
+	vMistBetween = vec4( 0.0 );
+	#ifndef FOG_EXP2
+		if ( mistAmount() > 0.0 ) {
+			vMistHeights = vec2( cameraPosition.y - mistBase( cameraPosition.xz ), vFogWorld.y - mistBase( vFogWorld.xz ) );
+			for ( int i = 0; i < 4; i ++ ) {
+				vec3 q = mix( cameraPosition, vFogWorld, float( i + 1 ) * 0.2 );
+				vMistBetween[ i ] = q.y - mistBase( q.xz );
+			}
+		}
+	#endif
 #endif
 `;
 
@@ -100,11 +131,13 @@ const PARS_FRAGMENT = /* glsl */ `
 	varying float vFogDepth;
 	varying vec3 vFogWorld;
 	varying vec2 vMistHeights;
+	varying vec4 vMistBetween;
 	#ifdef FOG_EXP2
 		uniform float fogDensity;
 	#else
 		uniform float fogNear;
 		uniform float fogFar;
+		${AMOUNT}
 	#endif
 
 	float mistHash( vec2 p ) {
@@ -117,13 +150,19 @@ const PARS_FRAGMENT = /* glsl */ `
 		return mix( mix( mistHash( i ), mistHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( mistHash( i + vec2( 0.0, 1.0 ) ), mistHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
 	}
 
+	// The mean of exp( -y ) along a stretch where y changes evenly from ya to yb.
+	float mistMean( float ya, float yb ) {
+		float dy = yb - ya;
+		return abs( dy ) < 1e-3 ? exp( - ya ) : ( exp( - ya ) - exp( - yb ) ) / dy;
+	}
+
 	// How much of the view from the camera to p the low mist hides, 0 to 1.
 	float mistAlong( vec3 p ) {
 		#ifdef FOG_EXP2
 			return 0.0;
 		#else
-			float ahead = floor( fogNear / ${MIST_STEP.toFixed(1)} ) / 255.0;
-			float amount = max( clamp( ( ${MIST_NONE.toFixed(1)} - fogFar ) / ${(MIST_NONE - MIST_FULL).toFixed(1)}, 0.0, 1.0 ), ahead );
+			float ahead = mistAhead();
+			float amount = mistAmount();
 			if ( amount <= 0.0 ) return 0.0;
 			vec3 c = cameraPosition;
 			// The banks: where the mist stands deep, sampled along the way there,
@@ -133,11 +172,15 @@ const PARS_FRAGMENT = /* glsl */ `
 			// Ahead of a fog it stands deeper, up into the island's hollows.
 			float depth = mix( 3.0, 22.0, smoothstep( 0.8 - 0.45 * amount, 0.8, bank ) ) * ( 1.0 + 0.8 * ahead );
 			// Density falls off exponentially with height above where it lies, taken
-			// as changing evenly from the camera to p; integrated along the straight line.
-			float ya = max( vMistHeights.x, 0.0 ) / depth;
-			float yb = max( vMistHeights.y, 0.0 ) / depth;
-			float dy = yb - ya;
-			float mean = abs( dy ) < 1e-3 ? exp( - ya ) : ( exp( - ya ) - exp( - yb ) ) / dy;
+			// as changing evenly over each fifth of the way from the camera to p, so a
+			// ridge or hollow between them counts; integrated along the straight line.
+			vec4 between = max( vMistBetween, 0.0 ) / depth;
+			float mean = 0.2 * (
+				mistMean( max( vMistHeights.x, 0.0 ) / depth, between.x ) +
+				mistMean( between.x, between.y ) +
+				mistMean( between.y, between.z ) +
+				mistMean( between.z, between.w ) +
+				mistMean( between.w, max( vMistHeights.y, 0.0 ) / depth ) );
 			float thick = 0.035 * amount * amount;
 			return 1.0 - exp( - thick * mean * distance( c, p ) );
 		#endif

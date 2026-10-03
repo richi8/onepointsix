@@ -311,9 +311,6 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Day, night and weather
-- **The mist lies by the ground at either end of a view** (2026-10-03): how high the mist stands is
-  taken as changing evenly from the ground under the camera to the ground at what's seen, so a
-  ridge or a hollow between the two doesn't count, only its ends.
 - **The mist ahead of a fog rides in the fog's near distance** (45): three.js sends a linear fog
   only its near and far, so the mist level is packed into the near distance's multiples of 4096
   m (`mistNear` in `fogbanks.ts`). Anything else that reads `scene.fog.near` gets the packed
