@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Shooting over boulders',
+    notes: [
+      "Rounds fired just over the curve of a boulder now go where the scope shows, instead of sometimes stopping in thin air above its edge. Guards and other bots see over boulders the same way, as they look.",
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Trees hide you',
     notes: [
       "Guards and other bots can no longer see you through a tree's branches. A spruce's crown hides you as it looks: thick near the trunk, thinner at its edges, and not at all once you're clear of it or above it. Standing close against a trunk under the low limbs hides you too, while a bot standing there still sees out.",

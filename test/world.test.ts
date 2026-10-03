@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Btn, CMD_DT, PLAYER_RADIUS } from '../src/shared/constants.ts';
-import { rayAabb, rayCylinder } from '../src/shared/geom.ts';
+import { rayAabb, rayCylinder, rayEllipsoid } from '../src/shared/geom.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
 import { World } from '../src/shared/world.ts';
@@ -31,7 +31,9 @@ describe('World', () => {
       let best = Infinity;
       for (const c of w1.colliders) {
         const t = c.kind === 'cyl'
-          ? rayCylinder(o.x, oy, o.z, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
+          ? c.dome !== undefined
+            ? rayEllipsoid(o.x, oy, o.z, dx, dy, dz, c.x, c.dome, c.z, c.r, c.y1 - c.dome)
+            : rayCylinder(o.x, oy, o.z, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
           : rayAabb(o.x, oy, o.z, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
         best = Math.min(best, t);
       }
@@ -39,6 +41,20 @@ describe('World', () => {
       // Within range, no collider is missed; terrain can only bring the hit nearer.
       if (best <= maxT && got > best) throw new Error(`missed a collider at ${best}, got ${got}`);
     }
+  });
+
+  it('lets rounds past a boulder\'s shoulder, where it curves away', () => {
+    const c = w1.colliders.find((k) => k.kind === 'cyl' && k.dome !== undefined && k.r > 1.2);
+    if (c?.kind !== 'cyl' || c.dome === undefined) throw new Error('no boulder');
+    const h = c.y1 - c.dome;
+    // Level, across the rim at three-quarters its height, where a flat-topped post would stop it.
+    const y = c.dome + h * 0.75;
+    const ox = c.x - 10;
+    const oz = c.z + c.r * 0.8;
+    expect(rayCylinder(ox, y, oz, 1, 0, 0, c.x, c.z, c.r, c.y0, c.y1)).toBeLessThan(20);
+    expect(rayEllipsoid(ox, y, oz, 1, 0, 0, c.x, c.dome, c.z, c.r, h)).toBe(Infinity);
+    // Straight over the middle, just under the top, it still stops.
+    expect(w1.raycast(c.x - 10, c.y1 - 0.05, c.z, 1, 0, 0, 20)).toBeLessThan(10);
   });
 
   it('places extraction points on dry land, spread apart and away from outposts', () => {

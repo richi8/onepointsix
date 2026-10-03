@@ -8,7 +8,7 @@ import {
   WATER_LEVEL,
   WORLD_SIZE,
 } from './constants.ts';
-import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
+import { clamp, rayAabb, rayCylinder, rayEllipsoid, rayExit, smoothstep } from './geom.ts';
 import { fbm, mulberry32 } from './rng.ts';
 
 export interface Cyl {
@@ -18,6 +18,11 @@ export interface Cyl {
   r: number;
   y0: number;
   y1: number;
+  /**
+   * A boulder: rounds and sight meet a dome on the ground at this height,
+   * rising to y1, as it looks, not the flat-topped post it is to walk into.
+   */
+  dome?: number;
   stamp: number;
   gone?: boolean;
 }
@@ -315,6 +320,13 @@ function rayBox(c: Box, ox: number, oy: number, oz: number, dx: number, dy: numb
   if (!t) return rayAabb(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
   const [la, lb] = along(t, ox, oz);
   return rayAabb(la, oy, lb, dx * t.ux + dz * t.uz, dy, dz * t.ux - dx * t.uz, 0, c.minY, -t.half, t.len, c.maxY, t.half);
+}
+
+/** Where a ray first meets a collider, a boulder by its dome, or Infinity; rayExit() then gives where it leaves. */
+function rayCollider(c: Collider, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
+  if (c.kind === 'box') return rayBox(c, ox, oy, oz, dx, dy, dz);
+  if (c.dome !== undefined) return rayEllipsoid(ox, oy, oz, dx, dy, dz, c.x, c.dome, c.z, c.r, c.y1 - c.dome);
+  return rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1);
 }
 
 /**
@@ -685,9 +697,7 @@ export class World {
         for (const c of cell) {
           if (c.stamp === stamp || c.gone) continue;
           c.stamp = stamp;
-          const t = c.kind === 'cyl'
-            ? rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
-            : rayBox(c, ox, oy, oz, dx, dy, dz);
+          const t = rayCollider(c, ox, oy, oz, dx, dy, dz);
           if (t < len) visit(c, Math.min(rayExit(), len) - t);
         }
       }
@@ -902,6 +912,15 @@ export class World {
       const dz = z - c.z;
       const d = Math.hypot(dx, dz);
       if (d > c.r + e || y < c.y0 - e || y > c.y1 + e) continue;
+      if (c.dome !== undefined) {
+        // Off the dome: across its squashed sphere, scaled back.
+        const h = c.y1 - c.dome;
+        const nx = dx / (c.r * c.r);
+        const ny = (y - c.dome) / (h * h);
+        const nz = dz / (c.r * c.r);
+        const len = Math.hypot(nx, ny, nz);
+        if (len > 1e-9) return [nx / len, ny / len, nz / len];
+      }
       if (Math.abs(y - c.y1) < e || d < 1e-6) return [0, 1, 0];
       return [dx / d, 0, dz / d];
     }
@@ -972,9 +991,7 @@ export class World {
           if (c.stamp === stamp || c.gone) continue;
           c.stamp = stamp;
           if (glass && c.kind === 'box' && c.clear) continue;
-          const t = c.kind === 'cyl'
-            ? rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
-            : rayBox(c, ox, oy, oz, dx, dy, dz);
+          const t = rayCollider(c, ox, oy, oz, dx, dy, dz);
           if (t < best) (best = t), (this.hit = c);
         }
       }
@@ -1758,7 +1775,7 @@ export class World {
           const rz = z - Math.sin(turn) * off;
           const ry = this.terrainHeight(rx, rz);
           this.rocks.push({ x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 });
-          this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, stamp: 0 });
+          this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, dome: ry, stamp: 0 });
         }
       }
     }
@@ -1802,7 +1819,7 @@ export class World {
             const rz = z + (alongX ? 0 : off);
             const ry = this.terrainHeight(rx, rz);
             this.rocks.push({ x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 });
-            this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, stamp: 0 });
+            this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, dome: ry, stamp: 0 });
           }
         }
         placed++;
@@ -1821,7 +1838,7 @@ export class World {
       const r = 0.6 + rng() ** 2 * 2.6;
       const h = r * (0.6 + rng() * 0.6);
       this.rocks.push({ x, y, z, r, h, rot: rng() * Math.PI * 2 });
-      this.colliders.push({ kind: 'cyl', x, z, r: r * 0.85, y0: y - 1, y1: y + h * 0.85, stamp: 0 });
+      this.colliders.push({ kind: 'cyl', x, z, r: r * 0.85, y0: y - 1, y1: y + h * 0.85, dome: y, stamp: 0 });
     }
   }
 }
