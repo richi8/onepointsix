@@ -7,9 +7,10 @@ import type { World } from '../shared/world.ts';
 // thinning with height above the ground round about (see setMistGround), and
 // deeper in some places than others, so banks of it stand across the island
 // and a hilltop can rise clear. How much mist there is follows the fog's own
-// reach: none on a clear day, a little under rain, a lot in fog. Ahead of a fog it gathers in the hollows before the air
-// thickens; three.js sends a linear fog only its near and far, so that mist
-// rides in the near distance's whole multiples of MIST_STEP (see mistNear).
+// reach: none on a clear day, a little under rain, a lot in fog. Ahead of a
+// fog it gathers in the hollows before the air thickens; three.js sends a
+// linear fog only its near and far, so that mist rides in the near distance's
+// whole multiples of MIST_STEP (see mistNear).
 // As there's more of it, the banks spread out from where they lie deepest.
 // Patched into three.js's fog chunks once, so every fogged material, the
 // stock ones and our own, gets it.
