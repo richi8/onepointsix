@@ -2106,6 +2106,22 @@ notes the chunk it came from.
   players in one game are covered by unit tests only, not seen on screen.
   **Accepted** (2026-10-03): the user is fine with it for now.
 
+### Deathmatch
+- **Kills while you watch your death cam go unseen** (48): the client sets aside the game's events
+  while a death cam plays, so those kills miss the feed, and their bodies lie down after a short
+  wait instead of falling from the round that killed them.
+  **Accepted** (2026-10-03): the user is fine with it.
+- **A respawn can be in someone's sight** (48): the spot was the farthest from the living of 24
+  tried at random, with no check of who could see it.
+  **Resolved** (2026-10-03): `arenaPoint` tries up to 64 spots and takes only those with no living
+  operator within 80 m or seeing it from within 200 m, the farthest of up to 8 such; only with
+  none does it fall back to the farthest of all. In three 10-minute games of 20 bots, 549
+  respawns all found a clear spot, the nearest operator 87 m away at the least, and none in sight.
+  Checked by `test/deathmatch.test.ts`.
+- **Bots leave the board when a player takes their slot** (48): their kills and deaths go with
+  them, so the totals on Tab don't add up over a game.
+  **Accepted** (2026-10-03): the user is fine with it.
+
 ## Dropped
 
 Open issues taken off the plan on 2026-09-28 as not worth pursuing: records of what was measured

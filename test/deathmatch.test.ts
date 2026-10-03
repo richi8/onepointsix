@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Directory, MODES } from '../src/server/directory.ts';
+import { ARENA_CLEAR } from '../src/server/population.ts';
 import { GameServer } from '../src/server/server.ts';
 import {
   DEATHCAM_AFTER, DEATHMATCH_BOT_RESPAWN, DEATHMATCH_CAPACITY, DEATHMATCH_RESPAWN_WAIT, SERVER_TICK_RATE,
@@ -87,6 +88,20 @@ describe('deathmatch', () => {
     steps(server, DEATHMATCH_BOT_RESPAWN + 0.2);
     expect(bot()?.state.dead).toBe(false);
     expect(server.bots().length).toBe(DEATHMATCH_CAPACITY - 1);
+  });
+
+  it('respawns nobody within reach of another operator', () => {
+    const server = game();
+    const me = join(server, 'me');
+    for (let i = 0; i < 5; i++) {
+      server.receive(me.id, { t: 'dev', cmd: { act: 'end', outcome: 'killed', self: true } });
+      server.step();
+      server.receive(me.id, { t: 'respawn' });
+      server.step();
+      const you = me.snap().you;
+      const others = me.snap().players.filter((p) => p.id !== me.id && !p.dead);
+      expect(Math.min(...others.map((p) => Math.hypot(p.x - you.x, p.z - you.z)))).toBeGreaterThanOrEqual(ARENA_CLEAR);
+    }
   });
 
   it('lists every operator on the board, bots too, most kills first', () => {

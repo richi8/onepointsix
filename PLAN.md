@@ -36,7 +36,7 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 | Mode | Description |
 |---|---|
 | **Extraction** | The core loop below. 8 operator slots, every one starting as a bot, and the guards. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
-| **Deathmatch** | Everyone against everyone: 20 operator slots, filled the same way, and no guards or commanders. No contracts, extraction points, run clock, bag value, score or leaderboard; crates hold only ammo and medkits. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at the spot farthest from the living. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
+| **Deathmatch** | Everyone against everyone: 20 operator slots, filled the same way, and no guards or commanders. No contracts, extraction points, run clock, bag value, score or leaderboard; crates hold only ammo and medkits. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at a spot nobody living is within 80 m of or sees from within 200 m, the farthest from them of those found. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
 | **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate, a door), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
 
 Online was renamed Extraction on 2026-10-03 (chunk 48): old `mode=online`, `mixed` and `offline`
@@ -363,16 +363,11 @@ baseline in Decisions).
 Nothing open: the last were resolved or accepted on 2026-10-03 (see the history).
 
 ### Deathmatch
-- **Kills while you watch your death cam go unseen** (chunk 48). The client sets aside the game's
-  events while a death cam plays, as Extraction's ends the run, so those kills miss the feed, and
-  their bodies fall without the push of the round that killed them, lying down after a short wait.
-- **A respawn can be in someone's sight** (chunk 48). The spot is the farthest from the living of
-  24 tried at random, with no check of who can see it, and there is no spawn protection for bots.
-- **Bots leave the board when a player takes their slot** (chunk 48). Their kills and deaths go
-  with them, so the totals on Tab don't add up over a game.
-- **Untuned** (chunk 48). Only bots have played it: 20 in a 10-minute headless game made about 15
-  kills a minute. How often people meet, die and run dry of ammo, and whether 20 is the right
-  count, wait for playtests. Deathmatch games aren't in the run log or the stats page.
+- **Untuned by people** (chunk 48). Only bots have played it. Ten-minute headless games of 20 bots
+  on islands 1–3 (2026-10-03): 13–17 kills a minute, a median life of 54–74 s, the median bot
+  6–8 kills and the best 16–19, 3–5 deaths a game within 15 s of spawning, nobody ever out of
+  ammo, and bots searching crates 3–5% of the time. How it feels, and whether 20 is the right
+  count, wait for the user's own playtest. Deathmatch games aren't in the run log or the stats page.
 
 ## Future
 - **Multiplayer**
