@@ -1563,6 +1563,16 @@ notes the chunk it came from.
   the mist to the ground all along the way showed the new reads take effect. Alternated benchmark
   runs against the last commit: clear frames the same within the noise, rain and fog perhaps
   0.5 ms slower.
+- **The mist ahead of a fog rides in the fog's near distance** (45): three.js sends a linear fog
+  only its near and far, so the mist level is packed into the near distance's multiples of 4096
+  m (`mistNear` in `fogbanks.ts`). Anything else that reads `scene.fog.near` gets the packed
+  number; only the sea's underwater fog does, saving and restoring it whole.
+  **Resolved** (2026-10-03): the mist ahead of a fog is a uniform of its own, `mistGathered`, set
+  by `setMistAhead`. Like the mist's ground texture it's added to three.js's fog uniforms and
+  shared by every fogged material, its vector cloning to itself, so `scene.fog.near` is the plain
+  near distance again. The mist is no longer rounded to 255 steps. Under water the gathered mist
+  now stays rather than going with the near distance, but the underwater fog is near enough to
+  have all the mist anyway. The fog screenshots, the mist ahead of a fog among them, are unchanged.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

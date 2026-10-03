@@ -8,9 +8,7 @@ import type { World } from '../shared/world.ts';
 // deeper in some places than others, so banks of it stand across the island
 // and a hilltop can rise clear. How much mist there is follows the fog's own
 // reach: none on a clear day, a little under rain, a lot in fog. Ahead of a
-// fog it gathers in the hollows before the air thickens; three.js sends a
-// linear fog only its near and far, so that mist rides in the near distance's
-// whole multiples of MIST_STEP (see mistNear).
+// fog it gathers in the hollows before the air thickens (see setMistAhead).
 // As there's more of it, the banks spread out from where they lie deepest.
 // Patched into three.js's fog chunks once, so every fogged material, the
 // stock ones and our own, gets it.
@@ -18,8 +16,6 @@ import type { World } from '../shared/world.ts';
 /** Distance fog reaching this far or farther has no mist; at MIST_FULL or nearer, all of it. */
 const MIST_NONE = 1000;
 const MIST_FULL = 100;
-/** The fog's near distance carries the mist ahead of a fog in steps of this, 255 of them. */
-const MIST_STEP = 4096;
 
 /** Below the ground round about by this much, the mist is as thick as at the sea; metres. */
 const HOLLOW = 6;
@@ -33,9 +29,19 @@ class SharedTexture extends THREE.DataTexture {
   }
 }
 
+/** Likewise a vector every fogged material shares. */
+class SharedVector2 extends THREE.Vector2 {
+  override clone(): this {
+    return this;
+  }
+}
+
 /** The height the mist lies from at each terrain vertex: the sea, or a little under the ground round about. */
 const ground = new SharedTexture(new Uint16Array(1), 1, 1, THREE.RedFormat, THREE.HalfFloatType);
 ground.magFilter = ground.minFilter = THREE.LinearFilter;
+
+/** The mist ahead of a fog, 0 to 1, in x. */
+const gathered = new SharedVector2();
 
 /** Lay the mist on `world`'s ground: it settles in hollows below the ground round them. */
 export function setMistGround(world: World): void {
@@ -63,16 +69,17 @@ export function setMistGround(world: World): void {
   ground.needsUpdate = true;
 }
 
-/** The fog's near distance `near` carrying `mist` ahead of a fog, 0 to 1. */
-export function mistNear(near: number, mist: number): number {
-  return near + MIST_STEP * Math.round(Math.min(Math.max(mist, 0), 1) * 255);
+/** Gather `mist` ahead of a fog, 0 to 1, besides what the fog's reach brings. */
+export function setMistAhead(mist: number): void {
+  gathered.x = Math.min(Math.max(mist, 0), 1);
 }
 
 // How much mist there is, 0 to 1, and how much of it is ahead of a fog: from
-// the fog's near and far, so in both shaders.
+// the fog's far and the mist gathered, so in both shaders.
 const AMOUNT = /* glsl */ `
+	uniform vec2 mistGathered;
 	float mistAhead() {
-		return floor( fogNear / ${MIST_STEP.toFixed(1)} ) / 255.0;
+		return mistGathered.x;
 	}
 	float mistAmount() {
 		return max( clamp( ( ${MIST_NONE.toFixed(1)} - fogFar ) / ${(MIST_NONE - MIST_FULL).toFixed(1)}, 0.0, 1.0 ), mistAhead() );
@@ -193,7 +200,7 @@ const FRAGMENT = /* glsl */ `
 	#ifdef FOG_EXP2
 		float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
 	#else
-		float fogFactor = smoothstep( mod( fogNear, ${MIST_STEP.toFixed(1)} ), fogFar, vFogDepth );
+		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
 	#endif
 	fogFactor = 1.0 - ( 1.0 - fogFactor ) * ( 1.0 - mistAlong( vFogWorld ) );
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
@@ -211,7 +218,7 @@ export function patchFog(): void {
   THREE.ShaderChunk.fog_pars_fragment = PARS_FRAGMENT;
   THREE.ShaderChunk.fog_fragment = FRAGMENT;
   // Stock materials clone their ShaderLib uniforms when they compile, after this.
-  const uniform = { mistGround: { value: ground } };
+  const uniform = { mistGround: { value: ground }, mistGathered: { value: gathered } };
   Object.assign(THREE.UniformsLib.fog, uniform);
   for (const shader of Object.values(THREE.ShaderLib)) {
     if ('fogColor' in shader.uniforms) Object.assign(shader.uniforms, uniform);

@@ -7,7 +7,7 @@ import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import type { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
-import { mistNear, patchFog, setMistGround } from './fogbanks.ts';
+import { patchFog, setMistAhead, setMistGround } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { outlookMoved, settledOutlook, type Outlook } from './outlook.ts';
 import { Rain, type Shelter } from './rain.ts';
@@ -253,7 +253,8 @@ export class WorldView {
     this.scene.environmentIntensity = l.environment;
     this.fog.color.copy(l.horizon);
     this.background.copy(l.horizon);
-    this.fog.near = mistNear(this.previewing ? l.previewFogNear : l.fogNear, this.outlook.mist);
+    this.fog.near = this.previewing ? l.previewFogNear : l.fogNear;
+    setMistAhead(this.outlook.mist);
     this.fog.far = this.previewing ? l.previewFogFar : l.fogFar;
     const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
     u.horizon.value.copy(l.horizon);

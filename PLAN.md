@@ -311,10 +311,7 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Day, night and weather
-- **The mist ahead of a fog rides in the fog's near distance** (45): three.js sends a linear fog
-  only its near and far, so the mist level is packed into the near distance's multiples of 4096
-  m (`mistNear` in `fogbanks.ts`). Anything else that reads `scene.fog.near` gets the packed
-  number; only the sea's underwater fog does, saving and restoring it whole.
+Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-10-02 (see the history).
