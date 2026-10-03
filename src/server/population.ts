@@ -187,9 +187,8 @@ export function planOperator(
   return { name, role: { kind: 'operator', loot, planned, greed, personality, ...(thorough ? { thorough } : {}) }, skill, primary, spawn: { ...spawn, yaw } };
 }
 
-/** Spots tried for a Deathmatch spawn, and how many clear ones are enough to pick the farthest from. */
+/** Spots tried for a Deathmatch spawn. */
 const ARENA_TRIES = 64;
-const ARENA_ENOUGH = 8;
 /** A Deathmatch spawn is clear with nobody this close to it, nor in sight of it from this far. */
 export const ARENA_CLEAR = 80;
 export const ARENA_SIGHT = 200;
@@ -197,19 +196,16 @@ export const ARENA_SIGHT = 200;
 export const arenaPicks = { picked: 0, unclear: 0 };
 
 /**
- * Where an operator (re)spawns in Deathmatch: a spot on dry land with none of
- * `avoid`, the living operators, within ARENA_CLEAR or seeing it from within
- * ARENA_SIGHT, the farthest from them of the few found. If there's none, the
- * farthest of all those tried. Outposts are fair game, as nobody guards them.
+ * Where an operator (re)spawns in Deathmatch: a random spot on dry land with
+ * none of `avoid`, the living operators, within ARENA_CLEAR or seeing it from
+ * within ARENA_SIGHT. If none turns up, the farthest from them of those tried.
+ * Outposts are fair game, as nobody guards them.
  */
 export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[]): Point {
   arenaPicks.picked++;
   let best: Point | null = null;
   let bestD = -1;
-  let clear: Point | null = null;
-  let clearD = -1;
-  let found = 0;
-  for (let i = 0; i < ARENA_TRIES && found < ARENA_ENOUGH; i++) {
+  for (let i = 0; i < ARENA_TRIES; i++) {
     const p = world.randomLandPoint(rand);
     if (!nav.dry(p.x, p.z) || p.y > 40) continue;
     const y = world.groundHeight(p.x, p.z, world.floorHeight(p.x, p.z));
@@ -220,13 +216,11 @@ export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid
       d = Math.min(d, ad);
       if (!seen && ad < ARENA_SIGHT && world.hasLineOfSight(a.x, a.y + EYE_HEIGHT, a.z, p.x, y + EYE_HEIGHT, p.z)) seen = true;
     }
+    if (d >= ARENA_CLEAR && !seen) return p;
     if (d > bestD) (best = p), (bestD = d);
-    if (d < ARENA_CLEAR || seen) continue;
-    found++;
-    if (d > clearD) (clear = p), (clearD = d);
   }
-  if (!clear) arenaPicks.unclear++;
-  return clear ?? best ?? world.randomLandPoint(rand);
+  arenaPicks.unclear++;
+  return best ?? world.randomLandPoint(rand);
 }
 
 /** Where to search every crate on an island from, worked out once per island. */

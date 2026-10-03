@@ -1041,7 +1041,7 @@ export class GameServer {
     let post: Post;
     if (at) post = at;
     else if (this.options.deathmatch) {
-      // Players and bots alike, wherever is farthest from everyone still standing.
+      // Players and bots alike, anywhere nobody still standing is near or sees.
       const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
       const at = arenaPoint(this.world, this.nav, this.spawnRng, others);
       post = { ...at, yaw: yawToward(at.x, at.z, 0, 0) };
