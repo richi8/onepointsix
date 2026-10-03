@@ -107,10 +107,11 @@ export const WET_GLSL = /* glsl */ `
     float open = 1.0 - underRoof(p);
     float w = wetness * open * mix(0.45, 1.0, clamp(n.y, 0.0, 1.0));
     float patches = wetNoise(p.xz * 0.35) * 0.65 + wetNoise(p.xz * 1.3) * 0.35;
-    // Water lies in the hollows, its edge ragged, reaching farther out of them the fuller they are.
+    // Water lies in the hollows, its edge ragged, reaching farther out of them
+    // the fuller they are, and the last of it shrinks into the deepest.
     float pool = gather * 1.3 + (patches - 0.5) * 0.6;
-    float edge = mix(0.95, 0.5, sqrt(puddles));
-    float puddle = open * min(puddles * 6.0, 1.0) * smoothstep(0.985, 0.996, n.y) * smoothstep(edge, edge + 0.12, pool);
+    float edge = mix(0.95, 0.5, sqrt(puddles)) + max(0.7 - puddles * 4.2, 0.0);
+    float puddle = open * smoothstep(0.985, 0.996, n.y) * smoothstep(edge + 0.045, edge + 0.075, pool);
     // A film of water comes and goes in patches, thicker toward the hollows.
     float film = w * smoothstep(0.45, 0.7, patches + gather * 0.4) * smoothstep(0.95, 0.99, n.y);
     return vec3(w, puddle, film);
@@ -149,10 +150,14 @@ export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: st
     .replace('#include <roughnessmap_fragment>', /* glsl */ `#include <roughnessmap_fragment>
       vec3 wet = wetAt(${pos}, ${normal}, ${gather ?? '0.0'});
       ${gather ? '' : 'wet.y = 0.0;'}
-      // Soaking deepens a colour as well as darkening it.
-      diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.5 * wet.x)) * (1.0 - 0.15 * wet.x - 0.25 * wet.y);
-      // Soaked soil and grass stay mostly matte; only a thin film on the flat catches the sky.
-      roughnessFactor = mix(mix(mix(roughnessFactor, 0.9, wet.x), 0.78, wet.z), 0.03, wet.y);`)
+      // Soaking deepens a colour as well as darkening it. The ground under a
+      // puddle stays soaked after the rest has dried round it.
+      float soaked = max(wet.x, wet.y);
+      diffuseColor.rgb = pow(diffuseColor.rgb, vec3(1.0 + 0.5 * soaked)) * (1.0 - 0.15 * soaked - 0.35 * wet.y);
+      // Soaked soil and grass stay mostly matte; only a thin film on the flat
+      // catches the sky. A puddle's rim stays dull rather than half glossy,
+      // which would show a bright sky as a pale haze.
+      roughnessFactor = mix(mix(mix(roughnessFactor, 0.9, soaked), 0.78, wet.z), 0.03, smoothstep(0.6, 1.0, wet.y));`)
     // A puddle lies flat, whatever the ground's bumps, but for its ripples.
     .replace('#include <lights_fragment_begin>', /* glsl */ `
       if (wet.y > 0.0 && rainfall > 0.0) {

@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Puddles in the sun',
+    notes: [
+      'Puddles left after the rain now look like water in the sun, dark and clear, instead of pale patches on the ground. They shrink back into their hollows as they drain rather than fading out.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Weather behind the menu',
     notes: [
       'Back on the menu after a game, the weather over the island goes on changing as it does in the game you left, so going back in shortly after finds the same sky instead of a sudden switch.',

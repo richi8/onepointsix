@@ -1533,6 +1533,16 @@ notes the chunk it came from.
   mode is picked, the game joined is a new one starting from its own clock, and the weather
   switches to its own at once.
   **Accepted** (2026-10-03): the user is fine with a new game switching to its own clock's weather.
+- **Puddles in the sun after rain look pale** (45): once the ground has dried round them, the
+  puddles left mirror a bright sky and read as light patches more than water.
+  **Resolved** (2026-10-03): draining puddles faded out evenly instead of shrinking, and their
+  ragged edge was wide enough that the last of the water never came fully in. Ground half covered
+  by water went half glossy, and at a low angle that shows a bright sky as a milky haze. The
+  ground under them was darkened only as much as the drying ground round them was. Now each puddle
+  shrinks into its hollow with a narrow edge, so a spot is water or it isn't, and its rim stays
+  dull until the water is nearly full. The ground under a puddle stays soaked and dark after the
+  rest has dried. The yard-drying screenshot moved from three minutes to two minutes after the
+  rain, where puddles are still left.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

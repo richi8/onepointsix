@@ -77,8 +77,8 @@ for (const [name, query] of Object.entries(CONDITIONS)) {
 // The weather turning, held part way (see ?sky= in main.ts): clouds gathering
 // a few seconds before rain, the rain half come in, mist lying in the valleys
 // ahead of a fog (and seen from the island's top), halfway from rain to fog with both at once, a fog half
-// lifted, and the yard drying three minutes after the rain, its puddles
-// shrunk into the hollows.
+// lifted, and the yard drying two minutes after the rain, its last puddles
+// shrunk into the hollows and dark in the sun.
 const TURNING: Record<string, string> = {
   'rain-coming': `${OUTSIDE}&sky=clear,rain,-5`,
   'rain-arriving': `${OUTSIDE}&sky=clear,rain,0.5`,
@@ -86,7 +86,7 @@ const TURNING: Record<string, string> = {
   'fog-coming-hilltop': '124,57.7,-236,0,15,0&sky=clear,fog,-5',
   'rain-to-fog': `${OUTSIDE}&sky=rain,fog,0.5`,
   'fog-lifting': `${OUTSIDE}&sky=fog,clear,0.5`,
-  'yard-drying': 'o0,2,1.7,-8,11,0,-4&sky=rain,clear,4',
+  'yard-drying': 'o0,2,1.7,-8,11,0,-4&sky=rain,clear,3',
 };
 
 for (const [name, query] of Object.entries(TURNING)) {
