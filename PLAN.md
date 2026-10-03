@@ -330,12 +330,7 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Code and testing
-- **Boulders are smooth domes to rounds and sight** (2026-10-03, after rounds were stopped by
-  the invisible top corners of a boulder's flat-topped collider): rays now meet an upright
-  ellipsoid at 0.85 of the rock's width and height, but the drawn rock is a lumpy, flat-shaded
-  ellipsoid whose corners sit at 0.8–1.15 of its size, so a lump can stand up to about 0.3 of
-  its radius off the dome. A round skimming the very edge of a lump can still pass through it,
-  or stop just short of a hollow. Walking into a boulder still meets the flat-topped post.
+Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Playtest and tuning
 Nothing open: the last was resolved on 2026-10-03 (see the history, and the bot extraction

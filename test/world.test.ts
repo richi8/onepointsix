@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Btn, CMD_DT, PLAYER_RADIUS } from '../src/shared/constants.ts';
-import { rayAabb, rayCylinder, rayEllipsoid } from '../src/shared/geom.ts';
+import { rayAabb, rayCylinder } from '../src/shared/geom.ts';
+import { rayRock, rockNormal, ROCK_SQUASH } from '../src/shared/rock.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
 import { World } from '../src/shared/world.ts';
@@ -31,8 +32,8 @@ describe('World', () => {
       let best = Infinity;
       for (const c of w1.colliders) {
         const t = c.kind === 'cyl'
-          ? c.dome !== undefined
-            ? rayEllipsoid(o.x, oy, o.z, dx, dy, dz, c.x, c.dome, c.z, c.r, c.y1 - c.dome)
+          ? c.rock
+            ? rayRock(w1.rockShape, c.rock, o.x, oy, o.z, dx, dy, dz)
             : rayCylinder(o.x, oy, o.z, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1)
           : rayAabb(o.x, oy, o.z, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
         best = Math.min(best, t);
@@ -43,18 +44,38 @@ describe('World', () => {
     }
   });
 
-  it('lets rounds past a boulder\'s shoulder, where it curves away', () => {
-    const c = w1.colliders.find((k) => k.kind === 'cyl' && k.dome !== undefined && k.r > 1.2);
-    if (c?.kind !== 'cyl' || c.dome === undefined) throw new Error('no boulder');
-    const h = c.y1 - c.dome;
-    // Level, across the rim at three-quarters its height, where a flat-topped post would stop it.
-    const y = c.dome + h * 0.75;
-    const ox = c.x - 10;
-    const oz = c.z + c.r * 0.8;
-    expect(rayCylinder(ox, y, oz, 1, 0, 0, c.x, c.z, c.r, c.y0, c.y1)).toBeLessThan(20);
-    expect(rayEllipsoid(ox, y, oz, 1, 0, 0, c.x, c.dome, c.z, c.r, h)).toBe(Infinity);
-    // Straight over the middle, just under the top, it still stops.
-    expect(w1.raycast(c.x - 10, c.y1 - 0.05, c.z, 1, 0, 0, 20)).toBeLessThan(10);
+  it('stops rounds and sight at a boulder\'s faces as drawn', () => {
+    // The drawn rock, a corner at a time, as the renderer places it.
+    const corner = (k: { x: number; y: number; z: number; r: number; h: number; rot: number }, i: number): number[] => {
+      const [lx, ly, lz] = [w1.rockShape[i], w1.rockShape[i + 1], w1.rockShape[i + 2]];
+      const c = Math.cos(k.rot);
+      const s = Math.sin(k.rot);
+      return [k.x + (lx * c + lz * s) * k.r, k.y + ly * k.h * ROCK_SQUASH, k.z + (-lx * s + lz * c) * k.r];
+    };
+    const rand = mulberry32(11);
+    for (const k of w1.rocks.slice(0, 40)) {
+      for (let n = 0; n < 20; n++) {
+        // A point on a face above the ground, aimed at from outside along its normal.
+        const f = Math.floor(rand() * 80) * 9;
+        let u = rand();
+        let v = rand();
+        if (u + v > 1) (u = 1 - u), (v = 1 - v);
+        const [a, b, c] = [corner(k, f), corner(k, f + 3), corner(k, f + 6)];
+        const p = [0, 1, 2].map((j) => a[j] + (b[j] - a[j]) * u + (c[j] - a[j]) * v);
+        if (p[1] < w1.terrainHeight(p[0], p[2]) + 0.05) continue;
+        const nrm = rockNormal(w1.rockShape, k, p[0], p[1], p[2]);
+        const o = p.map((q, j) => q + nrm[j] * 3);
+        const t = rayRock(w1.rockShape, k, o[0], o[1], o[2], -nrm[0], -nrm[1], -nrm[2]);
+        expect(t).toBeCloseTo(3, 3);
+        // Just outside the face, a ray grazing past it along the face misses, unless another lump stands in the way.
+        const out = p.map((q, j) => q + nrm[j] * 0.01);
+        expect(w1.surfaceNormal(p[0], p[1], p[2]).map((q) => Math.round(q * 1e4))).toEqual(nrm.map((q) => Math.round(q * 1e4)));
+        expect(rayRock(w1.rockShape, k, out[0], out[1], out[2], nrm[0], nrm[1], nrm[2])).toBe(Infinity);
+        // And from inside, it's in.
+        const inside = p.map((q, j) => q - nrm[j] * 0.01);
+        expect(rayRock(w1.rockShape, k, inside[0], inside[1], inside[2], nrm[0], nrm[1], nrm[2])).toBe(0);
+      }
+    }
   });
 
   it('places extraction points on dry land, spread apart and away from outposts', () => {

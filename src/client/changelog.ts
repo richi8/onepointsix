@@ -14,7 +14,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     date: '2026-10-03',
     title: 'Shooting over boulders',
     notes: [
-      "Rounds fired just over the curve of a boulder now go where the scope shows, instead of sometimes stopping in thin air above its edge. Guards and other bots see over boulders the same way, as they look.",
+      "Rounds fired just over the curve of a boulder now go where the scope shows, instead of sometimes stopping in thin air above its edge, and stop on exactly the lumps you see. Guards and other bots see over boulders the same way. Boulders' lumps are shaped a little differently than before.",
     ],
   },
   {

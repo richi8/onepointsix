@@ -37,7 +37,7 @@ export function yawToward(x: number, z: number, tx: number, tz: number): number 
 let T0 = 0;
 let T1 = 0;
 
-/** Where the ray left what the last rayAabb, rayCylinder or rayEllipsoid hit. */
+/** Where the ray left what the last rayAabb or rayCylinder hit. */
 export function rayExit(): number {
   return T1;
 }
@@ -92,31 +92,6 @@ export function rayCylinder(
     T1 = (-b + s) / a;
   }
   if (!slab(oy, dy, y0, y1) || T1 < 0) return Infinity;
-  return T0 > 0 ? T0 : 0;
-}
-
-/** Upright ellipsoid, `r` across and `h` from its centre to its top. */
-export function rayEllipsoid(
-  ox: number, oy: number, oz: number,
-  dx: number, dy: number, dz: number,
-  cx: number, cy: number, cz: number, r: number, h: number,
-): number {
-  // Squashed to a unit sphere; distances along the ray stay as they were.
-  const px = (ox - cx) / r;
-  const py = (oy - cy) / h;
-  const pz = (oz - cz) / r;
-  const ex = dx / r;
-  const ey = dy / h;
-  const ez = dz / r;
-  const a = ex * ex + ey * ey + ez * ez;
-  const b = px * ex + py * ey + pz * ez;
-  const c = px * px + py * py + pz * pz - 1;
-  const disc = b * b - a * c;
-  if (disc < 0) return Infinity;
-  const s = Math.sqrt(disc);
-  T0 = (-b - s) / a;
-  T1 = (-b + s) / a;
-  if (T1 < 0) return Infinity;
   return T0 > 0 ? T0 : 0;
 }
 

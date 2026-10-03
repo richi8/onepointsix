@@ -1895,6 +1895,17 @@ notes the chunk it came from.
   loud enough to set the start. Opus at 40 kbps smears the click below that, so decoded the sound
   only got loud at the hit. The cut now starts at 0.28 s in the recording, past the click, and
   the early bank was re-packed; the draw starts on the slide itself.
+- **Boulders are smooth domes to rounds and sight** (2026-10-03, after rounds were stopped by
+  the invisible top corners of a boulder's flat-topped collider): rays now meet an upright
+  ellipsoid at 0.85 of the rock's width and height, but the drawn rock is a lumpy, flat-shaded
+  ellipsoid whose corners sit at 0.8–1.15 of its size, so a lump can stand up to about 0.3 of
+  its radius off the dome. A round skimming the very edge of a lump can still pass through it,
+  or stop just short of a hollow. Walking into a boulder still meets the flat-topped post.
+  **Resolved** (2026-10-03): the rock's lumpy shape is now built in `src/shared/rock.ts` from
+  the island's seed, and both the renderer and the rays use it. Rounds and sight test its 80
+  triangles, placed as drawn, once a ray reaches the sphere its corners lie within. Impacts
+  take the normal of the face hit. Bot extraction on 12 clear islands stayed at 19% (20%
+  before), and the playtest ran no slower.
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops

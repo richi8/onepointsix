@@ -8,7 +8,8 @@ import {
   WATER_LEVEL,
   WORLD_SIZE,
 } from './constants.ts';
-import { clamp, rayAabb, rayCylinder, rayEllipsoid, rayExit, smoothstep } from './geom.ts';
+import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
+import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
 import { fbm, mulberry32 } from './rng.ts';
 
 export interface Cyl {
@@ -18,11 +19,8 @@ export interface Cyl {
   r: number;
   y0: number;
   y1: number;
-  /**
-   * A boulder: rounds and sight meet a dome on the ground at this height,
-   * rising to y1, as it looks, not the flat-topped post it is to walk into.
-   */
-  dome?: number;
+  /** A boulder: rounds and sight meet its faces as drawn, not the flat-topped post it is to walk into. */
+  rock?: Rock;
   stamp: number;
   gone?: boolean;
 }
@@ -322,12 +320,6 @@ function rayBox(c: Box, ox: number, oy: number, oz: number, dx: number, dy: numb
   return rayAabb(la, oy, lb, dx * t.ux + dz * t.uz, dy, dz * t.ux - dx * t.uz, 0, c.minY, -t.half, t.len, c.maxY, t.half);
 }
 
-/** Where a ray first meets a collider, a boulder by its dome, or Infinity; rayExit() then gives where it leaves. */
-function rayCollider(c: Collider, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
-  if (c.kind === 'box') return rayBox(c, ox, oy, oz, dx, dy, dz);
-  if (c.dome !== undefined) return rayEllipsoid(ox, oy, oz, dx, dy, dz, c.x, c.dome, c.z, c.r, c.y1 - c.dome);
-  return rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1);
-}
 
 /**
  * The static game world, generated deterministically from a seed. Both the
@@ -343,6 +335,8 @@ export class World {
   readonly heights: Float32Array;
   readonly trees: Tree[] = [];
   readonly rocks: Rock[] = [];
+  /** The faces every rock is drawn from, in its own frame (see rock.ts). */
+  readonly rockShape: Float64Array;
   readonly props: Prop[] = [];
   readonly outposts: Outpost[] = [];
   /** Where operators leave the island; the server opens and closes them. */
@@ -365,6 +359,7 @@ export class World {
 
   constructor(seed: number) {
     this.seed = seed >>> 0;
+    this.rockShape = rockShape(this.seed + 23);
     const n = this.res + 1;
     this.heights = new Float32Array(n * n);
     for (let iz = 0; iz < n; iz++) {
@@ -697,8 +692,8 @@ export class World {
         for (const c of cell) {
           if (c.stamp === stamp || c.gone) continue;
           c.stamp = stamp;
-          const t = rayCollider(c, ox, oy, oz, dx, dy, dz);
-          if (t < len) visit(c, Math.min(rayExit(), len) - t);
+          const t = this.rayCollider(c, ox, oy, oz, dx, dy, dz);
+          if (t < len) visit(c, Math.min(c.kind === 'cyl' && c.rock ? rockExit() : rayExit(), len) - t);
         }
       }
       const exit = Math.min(nextX, nextZ);
@@ -908,19 +903,17 @@ export class World {
         const [, nx, ny, nz] = faces.reduce((a, b) => (b[0] < a[0] ? b : a));
         return [nx, ny, nz];
       }
+      if (c.rock) {
+        // A point a round stopped at on a boulder's faces, which reach past its post.
+        const k = c.rock;
+        const u = Math.hypot((x - k.x) / k.r, (y - k.y) / (k.h * ROCK_SQUASH), (z - k.z) / k.r);
+        if (u <= ROCK_BULGE + e) return rockNormal(this.rockShape, k, x, y, z);
+        continue;
+      }
       const dx = x - c.x;
       const dz = z - c.z;
       const d = Math.hypot(dx, dz);
       if (d > c.r + e || y < c.y0 - e || y > c.y1 + e) continue;
-      if (c.dome !== undefined) {
-        // Off the dome: across its squashed sphere, scaled back.
-        const h = c.y1 - c.dome;
-        const nx = dx / (c.r * c.r);
-        const ny = (y - c.dome) / (h * h);
-        const nz = dz / (c.r * c.r);
-        const len = Math.hypot(nx, ny, nz);
-        if (len > 1e-9) return [nx / len, ny / len, nz / len];
-      }
       if (Math.abs(y - c.y1) < e || d < 1e-6) return [0, 1, 0];
       return [dx / d, 0, dz / d];
     }
@@ -929,6 +922,13 @@ export class World {
     const hz = this.terrainHeight(x, z + s) - this.terrainHeight(x, z - s);
     const len = Math.hypot(hx, 2 * s, hz);
     return [-hx / len, (2 * s) / len, -hz / len];
+  }
+
+  /** Where a ray first meets a collider, a boulder by its faces, or Infinity; rayExit() or rockExit() then gives where it leaves. */
+  private rayCollider(c: Collider, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
+    if (c.kind === 'box') return rayBox(c, ox, oy, oz, dx, dy, dz);
+    if (c.rock) return rayRock(this.rockShape, c.rock, ox, oy, oz, dx, dy, dz);
+    return rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1);
   }
 
   hasLineOfSight(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
@@ -991,7 +991,7 @@ export class World {
           if (c.stamp === stamp || c.gone) continue;
           c.stamp = stamp;
           if (glass && c.kind === 'box' && c.clear) continue;
-          const t = rayCollider(c, ox, oy, oz, dx, dy, dz);
+          const t = this.rayCollider(c, ox, oy, oz, dx, dy, dz);
           if (t < best) (best = t), (this.hit = c);
         }
       }
@@ -1057,8 +1057,10 @@ export class World {
   }
 
   private insert(c: Collider): void {
+    // A boulder is filed under every cell its faces reach, which stand out past its post.
+    const r = c.kind === 'cyl' ? Math.max(c.r, c.rock ? c.rock.r * ROCK_BULGE : 0) : 0;
     let [x0, z0, x1, z1] =
-      c.kind === 'cyl' ? [c.x - c.r, c.z - c.r, c.x + c.r, c.z + c.r] : [c.minX, c.minZ, c.maxX, c.maxZ];
+      c.kind === 'cyl' ? [c.x - r, c.z - r, c.x + r, c.z + r] : [c.minX, c.minZ, c.maxX, c.maxZ];
     if (c.kind === 'box' && c.door !== undefined) {
       // Wherever the leaf swings, it stays in the cells it's filed under.
       const d = this.doors[c.door];
@@ -1774,8 +1776,9 @@ export class World {
           const rx = x + Math.cos(turn) * off;
           const rz = z - Math.sin(turn) * off;
           const ry = this.terrainHeight(rx, rz);
-          this.rocks.push({ x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 });
-          this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, dome: ry, stamp: 0 });
+          const rock = { x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 };
+          this.rocks.push(rock);
+          this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, rock, stamp: 0 });
         }
       }
     }
@@ -1818,8 +1821,9 @@ export class World {
             const rx = x + (alongX ? off : 0);
             const rz = z + (alongX ? 0 : off);
             const ry = this.terrainHeight(rx, rz);
-            this.rocks.push({ x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 });
-            this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, dome: ry, stamp: 0 });
+            const rock = { x: rx, y: ry, z: rz, r, h, rot: rng() * Math.PI * 2 };
+            this.rocks.push(rock);
+            this.colliders.push({ kind: 'cyl', x: rx, z: rz, r: r * 0.85, y0: ry - 1, y1: ry + h * 0.85, rock, stamp: 0 });
           }
         }
         placed++;
@@ -1837,8 +1841,9 @@ export class World {
       if (this.nearOutpost(x, z, 26) || this.nearProp(x, z, 3)) continue;
       const r = 0.6 + rng() ** 2 * 2.6;
       const h = r * (0.6 + rng() * 0.6);
-      this.rocks.push({ x, y, z, r, h, rot: rng() * Math.PI * 2 });
-      this.colliders.push({ kind: 'cyl', x, z, r: r * 0.85, y0: y - 1, y1: y + h * 0.85, dome: y, stamp: 0 });
+      const rock = { x, y, z, r, h, rot: rng() * Math.PI * 2 };
+      this.rocks.push(rock);
+      this.colliders.push({ kind: 'cyl', x, z, r: r * 0.85, y0: y - 1, y1: y + h * 0.85, rock, stamp: 0 });
     }
   }
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Weather } from '../shared/weather.ts';
 import type { ExtractView } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
+import { ROCK_SQUASH } from '../shared/rock.ts';
 import { leafRect, type PropStyle, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
@@ -560,18 +561,11 @@ function makeExtracts(world: World): { group: THREE.Group; flags: THREE.MeshStan
 }
 
 function makeRocks(world: World): THREE.InstancedMesh {
-  // One lumpy unit rock, jittered deterministically, shared by all instances.
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const pos = geo.getAttribute('position');
-  const rand = mulberry32(world.seed + 23);
-  const jitter = new Map<string, number>();
-  for (let i = 0; i < pos.count; i++) {
-    const key = `${pos.getX(i).toFixed(3)},${pos.getY(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
-    let k = jitter.get(key);
-    if (k === undefined) jitter.set(key, (k = 0.8 + rand() * 0.35));
-    pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k, pos.getZ(i) * k);
-  }
+  // The world's one lumpy unit rock, which rounds and sight meet too, shared by all instances.
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(world.rockShape, 3));
   geo.computeVertexNormals();
+  const rand = mulberry32(world.seed + 29);
 
   const mesh = new THREE.InstancedMesh(
     geo,
@@ -584,7 +578,7 @@ function makeRocks(world: World): THREE.InstancedMesh {
   const c = new THREE.Color();
   world.rocks.forEach((r, i) => {
     q.setFromAxisAngle(up, r.rot);
-    m.compose(new THREE.Vector3(r.x, r.y, r.z), q, new THREE.Vector3(r.r, r.h * 0.9, r.r));
+    m.compose(new THREE.Vector3(r.x, r.y, r.z), q, new THREE.Vector3(r.r, r.h * ROCK_SQUASH, r.r));
     mesh.setMatrixAt(i, m);
     const v = 0.36 + rand() * 0.12;
     mesh.setColorAt(i, c.setRGB(v, v * 0.97, v * 0.92, THREE.SRGBColorSpace));
