@@ -4,10 +4,10 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 describe('share links', () => {
   it('round-trips the island, mode and score to beat', () => {
-    const q = shareQuery({ seed: 4242 }, 'offline', { name: 'Ana Nováková', score: 5400 });
+    const q = shareQuery({ seed: 4242 }, 'online', { name: 'Ana Nováková', score: 5400 });
     expect(q).not.toContain('weather');
     expect(parseShareLink(q)).toEqual({
-      world: { seed: 4242 }, mode: 'offline', challenge: { name: 'Ana Nováková', score: 5400 },
+      world: { seed: 4242 }, mode: 'online', challenge: { name: 'Ana Nováková', score: 5400 },
     });
   });
 

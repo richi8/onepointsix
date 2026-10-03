@@ -161,7 +161,7 @@ interface PoseRecord extends Pose {
 }
 
 export interface ServerOptions {
-  /** How the game is played, as told to clients (default 'offline'). */
+  /** How the game is played, as told to clients (default 'online'). */
   mode?: Mode;
   /** Post guards at the outposts and send patrols between them (default false). */
   guards?: boolean;
@@ -228,7 +228,7 @@ export class GameServer {
   constructor(seed: number, options: ServerOptions = {}) {
     this.seed = seed >>> 0;
     this.options = options;
-    this.mode = options.mode ?? 'offline';
+    this.mode = options.mode ?? 'online';
     this.forecast = new Forecast(this.seed, options.weather);
     this.world = new World(this.seed);
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);

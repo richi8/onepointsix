@@ -152,7 +152,7 @@ function body(server: GameServer, id: number): PlayerState {
 function human(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: 'human', world: DEFAULT_WORLD, mode: 'offline' });
+  server.receive(id, { t: 'hello', name: 'human', world: DEFAULT_WORLD, mode: 'online' });
   return { id, events: (): GameEvent[] => inbox.flatMap((m) => (m.t === 'events' ? m.events : [])) };
 }
 

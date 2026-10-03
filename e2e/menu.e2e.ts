@@ -49,14 +49,14 @@ test.describe('loading screen', () => {
 test.describe('menu', () => {
   test('remembers the mode and the name', async ({ page }) => {
     await open(page);
-    await page.click('#modes [data-mode=offline]');
-    await expect(page.locator('#modes [data-mode=offline]')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.locator('#briefing p.on').first()).toContainText('bot operators');
+    await page.click('#modes [data-mode=range]');
+    await expect(page.locator('#modes [data-mode=range]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('#briefing p.on').first()).toContainText('nothing can hurt you');
     await page.fill('#name', '  Test   Pilot ');
     await page.locator('#name').blur();
     await expect(page.locator('#name')).toHaveValue('Test Pilot');
     await open(page);
-    await expect(page.locator('#modes [data-mode=offline]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('#modes [data-mode=range]')).toHaveAttribute('aria-checked', 'true');
     await expect(page.locator('#name')).toHaveValue('Test Pilot');
   });
 

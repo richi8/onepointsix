@@ -10,7 +10,7 @@ function setup() {
   const server = new GameServer(1);
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: 'test', world: DEFAULT_WORLD, mode: 'offline' });
+  server.receive(id, { t: 'hello', name: 'test', world: DEFAULT_WORLD, mode: 'online' });
   const lastSnapshot = () => inbox.filter((m) => m.t === 'snapshot').at(-1)!;
   return { server, id, inbox, lastSnapshot };
 }
@@ -20,7 +20,7 @@ const fwd = (seq: number): InputCmd => ({ seq, buttons: Btn.Forward, yaw: 0, pit
 describe('GameServer', () => {
   it('welcomes a client with its id and the world seed', () => {
     const { inbox, id } = setup();
-    expect(inbox[0]).toEqual({ t: 'welcome', id, seed: 1, tick: 0, tickRate: 30, mode: 'offline', broken: [], open: new World(1).openDoors() });
+    expect(inbox[0]).toEqual({ t: 'welcome', id, seed: 1, tick: 0, tickRate: 30, mode: 'online', broken: [], open: new World(1).openDoors() });
   });
 
   it('spawns players standing on dry land', () => {
@@ -93,7 +93,7 @@ describe('GameServer joining', () => {
     const id = server.connect((m) => inbox.push(m));
     server.step();
     expect(inbox).toEqual([]);
-    server.receive(id, { t: 'hello', name: 'late', world: DEFAULT_WORLD, mode: 'offline' });
+    server.receive(id, { t: 'hello', name: 'late', world: DEFAULT_WORLD, mode: 'online' });
     server.step();
     expect(inbox.map((m) => m.t)).toEqual(['welcome', 'snapshot']);
   });

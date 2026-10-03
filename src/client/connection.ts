@@ -63,7 +63,7 @@ export class Connection {
   readonly predictor: Predictor;
   id = 0;
   seed = 0;
-  mode: Mode = 'offline';
+  mode: Mode = 'online';
   /** The game's island's weather, once welcomed. */
   forecast: Forecast | null = null;
   /** The local player's run, the extraction points and the bags on the ground, as of the latest snapshot. */

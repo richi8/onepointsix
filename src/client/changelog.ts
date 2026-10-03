@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Offline is gone',
+    notes: [
+      'Offline played exactly as Online, so it has been removed: runs are now always Online, and players who join take a bot’s place.',
+      'Your Offline scores have moved to the Online board, and links to Offline open Online.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Puddles look like water after rain',
     notes: [
       "Once the rain stops, the puddles left behind now lie smooth and mirror the sky, instead of looking crinkled and frosted, like ice.",

@@ -32,9 +32,14 @@ export class Leaderboard {
 
   /** Best first. */
   entries(seed: number, mode: Mode): BoardEntry[] {
+    // Online plays as Mixed did, so it starts from Mixed's scores.
+    return this.entriesAt(key(seed, mode), mode === 'online' ? `board:${seed >>> 0}:mixed` : null);
+  }
+
+  /** The board kept under `at`, or else under `fallback`. */
+  entriesAt(at: string, fallback: string | null = null): BoardEntry[] {
     try {
-      // Online plays as Mixed did, so it starts from Mixed's scores.
-      const saved = this.store?.getItem(key(seed, mode)) ?? (mode === 'online' ? this.store?.getItem(`board:${seed >>> 0}:mixed`) : null);
+      const saved = this.store?.getItem(at) ?? (fallback ? this.store?.getItem(fallback) : null);
       const raw = JSON.parse(saved ?? '[]') as unknown;
       if (!Array.isArray(raw)) return [];
       return raw.filter((e): e is BoardEntry =>
@@ -73,18 +78,28 @@ function key(seed: number, mode: Mode): string {
 }
 
 /**
- * Clear out the boards of modes no longer played: PvE's, left in storage
- * since it became Offline, whose scores don't compare. Returns how many went.
+ * Tidy the boards of modes no longer played. PvE's, left in storage since it became Offline,
+ * don't compare and are dropped. Offline played as Online does, so its scores join Online's
+ * board, best first. Returns how many old boards went.
  */
-export function dropOldBoards(store: Pick<Storage, 'length' | 'key' | 'removeItem'> | null): number {
+export function dropOldBoards(store: Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'> | null): number {
   if (!store) return 0;
   try {
     const old: string[] = [];
     for (let i = 0; i < store.length; i++) {
       const k = store.key(i);
-      if (k && /^board:\d+:pve$/.test(k)) old.push(k);
+      if (k && /^board:\d+:(pve|offline)$/.test(k)) old.push(k);
     }
-    for (const k of old) store.removeItem(k);
+    const board = new Leaderboard(store);
+    for (const k of old) {
+      const [, seed, mode] = k.split(':');
+      if (mode === 'offline') {
+        const merged = [...board.entries(Number(seed), 'online'), ...board.entriesAt(k)]
+          .sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
+        store.setItem(key(Number(seed), 'online'), JSON.stringify(merged.slice(0, BOARD_SIZE)));
+      }
+      store.removeItem(k);
+    }
     return old.length;
   } catch {
     return 0;

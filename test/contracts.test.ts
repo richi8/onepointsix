@@ -36,7 +36,7 @@ function internals(server: GameServer) {
 function human(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `h${id}`, world: DEFAULT_WORLD, mode: 'offline' });
+  server.receive(id, { t: 'hello', name: `h${id}`, world: DEFAULT_WORLD, mode: 'online' });
   let seq = 0;
   return {
     id,
@@ -52,7 +52,7 @@ function human(server: GameServer) {
   };
 }
 
-const runsServer = (guards = false) => new GameServer(DEFAULT_WORLD.seed, { mode: 'offline', guards });
+const runsServer = (guards = false) => new GameServer(DEFAULT_WORLD.seed, { mode: 'online', guards });
 
 /** A contract of `kind`, from the first seed that plans one. */
 function contractOf(world: World, kind: Contract['kind']): Contract {

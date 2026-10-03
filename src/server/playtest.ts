@@ -43,10 +43,10 @@ let unfinished = 0;
 const start = performance.now();
 for (let seed = firstSeed; seed < firstSeed + islands; seed++) {
   // Thorough bots can't be killed, so they play alone rather than fight each other forever.
-  const server = new GameServer(seed, { ...MODES.offline.options, weather, ...(thorough ? { thorough, operators: 1 } : {}) });
+  const server = new GameServer(seed, { ...MODES.online.options, weather, ...(thorough ? { thorough, operators: 1 } : {}) });
   const names = server.world.extracts.map((_, i) => extractName(server.world, i));
   server.onRunEnd = (e, plan) => {
-    if (plan) played.push({ record: runRecord(e, { seed }, 'offline', (i) => names[i]), plan });
+    if (plan) played.push({ record: runRecord(e, { seed }, 'online', (i) => names[i]), plan });
   };
   let holder = 0;
   server.onEvent = (e) => {

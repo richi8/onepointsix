@@ -230,7 +230,7 @@ describe('telling what kind of rival it was', () => {
     const server = new GameServer(DEFAULT_WORLD.seed, { operators: 3, personality: 'hunter' });
     const sent: ServerMsg[] = [];
     const id = server.connect((m) => sent.push(m));
-    server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'offline' });
+    server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'online' });
     const events = () => sent.flatMap((m) => (m.t === 'events' ? m.events : []));
     server.step();
 
@@ -588,7 +588,7 @@ describe('the bounty', () => {
     const server = new GameServer(DEFAULT_WORLD.seed, { operators: 3, personality: 'rat' });
     const sent: ServerMsg[] = [];
     const id = server.connect((m) => sent.push(m));
-    server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'offline' });
+    server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'online' });
     const events: GameEvent[] = [];
     server.onEvent = (e) => events.push(e);
     server.step();

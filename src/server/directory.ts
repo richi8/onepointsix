@@ -7,8 +7,6 @@ import { GameServer, type ServerOptions } from './server.ts';
 export const MODES: Record<Mode, { options: ServerOptions; capacity: number }> = {
   // Every operator slot starts as a bot; each player who joins takes one over.
   online: { options: { mode: 'online', guards: true, operators: OPERATOR_CAPACITY }, capacity: OPERATOR_CAPACITY },
-  // The same island, but the other operators are always bots.
-  offline: { options: { mode: 'offline', guards: true, operators: OPERATOR_CAPACITY }, capacity: 1 },
   // Actors going through every move round an outpost, and nobody to hurt you.
   range: { options: { mode: 'range', range: true }, capacity: OPERATOR_CAPACITY },
 };

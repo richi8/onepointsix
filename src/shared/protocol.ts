@@ -26,15 +26,15 @@ export interface InputCmd {
 }
 
 /**
- * How a game is played. Online and Offline are runs against guards and 8 operators; Online lets
- * other players take bot operators' places, Offline keeps them all bots. The range is for trying
- * things out: actors going through every move round an outpost, and nobody to hurt you.
+ * How a game is played. Online is a run against guards and 8 operators, where players who join
+ * take bot operators' places. The range is for trying things out: actors going through every
+ * move round an outpost, and nobody to hurt you.
  */
-export type Mode = 'online' | 'offline' | 'range';
+export type Mode = 'online' | 'range';
 
-/** A mode named in a link or saved setting; Mixed, from before, is now Online. */
+/** A mode named in a link or saved setting; Mixed and Offline, from before, are now Online. */
 export function parseMode(m: string | null): Mode | null {
-  return m === 'online' || m === 'offline' || m === 'range' ? m : m === 'mixed' ? 'online' : null;
+  return m === 'online' || m === 'range' ? m : m === 'mixed' || m === 'offline' ? 'online' : null;
 }
 
 /** Operators are players and fill bots, each on their own side; guards defend outposts together. */

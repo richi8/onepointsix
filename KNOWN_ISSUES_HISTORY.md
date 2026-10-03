@@ -2250,6 +2250,9 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   run in the local Worker, so nobody can join an Online game yet. The only difference today is
   that Offline never takes a second human.
   **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.
+  **Moot** (2026-10-03): Offline was removed. It played the same as Online and still would with a
+  multiplayer server, so there is one mode for runs; old `mode=offline` links open Online, and
+  Offline's scores were folded into Online's board.
 - **Names aren't filtered** (10). Locally only you and the bots see yours, but multiplayer will
   need filtering and length checks on the server.
   **Moved to Future** (2026-09-28): only matters once there is a multiplayer server; kept as a checklist under Future.

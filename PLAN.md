@@ -36,12 +36,14 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 | Mode | Description |
 |---|---|
 | **Online** | 8 operator slots, every one starting as a bot. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
-| **Offline** | Plays the same way as Online, but the other 7 operators are always bots and nobody else joins. |
 | **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate, a door), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
 
 Mixed was renamed Online, and old `mode=mixed` links and scores count as Online. PvE and the
 shooting range were removed after chunk 16: PvE became Offline, which has 7 bot operators, and the
-range with its target dummies is gone. The range came back after chunk 35 as a place to watch
+range with its target dummies is gone. Offline was removed on 2026-10-03: it played exactly as
+Online, and with a multiplayer server a game alone with bots is still just an Online game nobody
+else has joined. Old `mode=offline` links count as Online, and Offline's scores joined Online's
+board. The range came back after chunk 35 as a place to watch
 every animation (see `src/server/range.ts`), with actors instead of dummies.
 
 ### World capacity
@@ -50,8 +52,8 @@ The island is 800 × 800 m, with 6 outposts.
 
 | Kind | Count | Notes |
 |---|---|---|
-| **Operators** (players and fill bots) | **8** per game | Every slot starts as a bot. Online: joining players replace them. Offline: only you and bots. |
-| **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Present in both modes. |
+| **Operators** (players and fill bots) | **8** per game | Every slot starts as a bot. Joining players replace them. |
+| **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Not in the range. |
 
 **Why 8:** that's roughly 80,000 m² per operator, which is about a 280 m square each. Runs are
 3–10 minutes, and the aim is to meet another operator every 1–3 minutes, while guards fill the
@@ -239,7 +241,7 @@ human pass comes last so people play the finished result.
 
 Known Issues that Phase 3 leaves alone:
 - **Waiting on multiplayer or a backend** (Future): scores in links can be faked, leaderboards
-  stay in one browser, Online and Offline play the same, names aren't filtered, the server
+  stay in one browser, Online and Offline played the same (Offline since removed), names aren't filtered, the server
   doesn't check conditions, packing snapshots and death cam clips, the server keeping a human's
   whole run, and taping every player's inputs (which the server needs for death cams).
 - **Accepted as they are**: "New island" seeds up to 999,999, outposts rearranged in chunk 15
