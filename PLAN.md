@@ -363,11 +363,7 @@ baseline in Decisions).
 Nothing open: the last were resolved or accepted on 2026-10-03 (see the history).
 
 ### Deathmatch
-- **Untuned by people** (chunk 48). Only bots have played it. Ten-minute headless games of 20 bots
-  on islands 1–3 (2026-10-03, `npm run sim:deathmatch -- 600 1,2,3`): 13–17 kills a minute, a median life of 54–74 s, the median bot
-  6–8 kills and the best 16–19, 3–5 deaths a game within 15 s of spawning, nobody ever out of
-  ammo, and bots searching crates 3–5% of the time. How it feels, and whether 20 is the right
-  count, wait for the user's own playtest. Deathmatch games aren't in the run log or the stats page.
+Nothing open: the last was accepted on 2026-10-03 (see the history).
 
 ## Future
 - **Multiplayer**

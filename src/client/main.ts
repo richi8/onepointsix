@@ -704,6 +704,7 @@ function join(): void {
   };
   hud.reset();
   hud.respawns = runHud.deathmatch = mode === 'deathmatch';
+  view.showExtracts = mode !== 'deathmatch';
   hud.show();
   runHud.hideResults();
   // Shown until the lock succeeds, so a refused lock still leaves a way in.
@@ -982,6 +983,7 @@ function toMenu(): void {
   paused.hidden = true;
   menu.hidden = false;
   view.preview = true;
+  view.showExtracts = true;
   bodies.clear();
   bags.update([]);
   grenades.update([]);

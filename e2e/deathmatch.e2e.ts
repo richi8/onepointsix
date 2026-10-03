@@ -18,6 +18,8 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
   await expect(page.locator('#clock')).toBeHidden();
   await expect(page.locator('#extracts')).toBeHidden();
   await expect(page.locator('#pack')).toBeHidden();
+  // No extraction points to see either.
+  expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(false);
 
   // Everyone, bots too, with kills and deaths alone.
   await page.keyboard.down('Tab');
@@ -64,4 +66,5 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
   await expect(page.locator('#paused')).toBeVisible();
   await page.click('#leave');
   await expect(page.locator('#board li').first()).toContainText('1 kill · 2 deaths');
+  expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(true);
 });

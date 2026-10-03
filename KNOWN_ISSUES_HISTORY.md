@@ -2121,6 +2121,12 @@ notes the chunk it came from.
 - **Bots leave the board when a player takes their slot** (48): their kills and deaths go with
   them, so the totals on Tab don't add up over a game.
   **Accepted** (2026-10-03): the user is fine with it.
+- **Untuned by people** (48). Only bots have played it. Ten-minute headless games of 20 bots
+  on islands 1–3 (2026-10-03, `npm run sim:deathmatch -- 600 1,2,3`): 13–17 kills a minute, a median life of 54–74 s, the median bot
+  6–8 kills and the best 16–19, 3–5 deaths a game within 15 s of spawning, nobody ever out of
+  ammo, and bots searching crates 3–5% of the time. How it feels, and whether 20 is the right
+  count, wait for the user's own playtest. Deathmatch games aren't in the run log or the stats page.
+  **Accepted** (2026-10-03): the user finds the numbers about right, and will playtest it.
 
 ## Dropped
 

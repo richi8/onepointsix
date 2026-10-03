@@ -39,6 +39,7 @@ interface Game {
   deathcam: object | null;
   sfx: Sfx;
   world: unknown;
+  view: unknown;
   camera: { matrixWorld: { elements: number[] }; updateMatrixWorld(): void };
   input: { yaw: number; pitch: number; freedAt: number };
 }

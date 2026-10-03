@@ -378,6 +378,11 @@ export class WorldView {
     return p ? PROP_LAYERS[this.world.props[p.prop].style] : Layer.concrete;
   }
 
+  /** Whether the extraction points' poles and flags stand on the island: not in Deathmatch, which has none. */
+  set showExtracts(on: boolean) {
+    this.extractGroup.visible = on;
+  }
+
   /** Green flags fly over open extraction points, red over shut ones; a called pickup flashes amber. */
   setExtracts(views: readonly ExtractView[], time: number): void {
     views.forEach((v, i) => {
