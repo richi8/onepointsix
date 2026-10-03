@@ -1527,7 +1527,12 @@ notes the chunk it came from.
   **Resolved** (2026-10-03): leaving a game notes its clock and the moment we left, and the menu
   shows that game's weather on that clock as it runs on, so rejoining it within the two minutes
   picks up where the menu has got to. A game joined after it closes, or in another mode, is a
-  new one and can still differ (see the plan's Known Issues).
+  new one and can still differ (see below).
+- **A new game can open in other weather than the menu's** (44): the menu's weather goes on along
+  the clock of the game last left, but once that game closes (two minutes empty), or when another
+  mode is picked, the game joined is a new one starting from its own clock, and the weather
+  switches to its own at once.
+  **Accepted** (2026-10-03): the user is fine with a new game switching to its own clock's weather.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

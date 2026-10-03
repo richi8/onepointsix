@@ -322,10 +322,6 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
   puddles left mirror a bright sky and read as light patches more than water.
 - **Nothing warns that the weather is clearing** (45): before rain or fog lifts, the clouds only
   brighten a little; the plan asked for warnings of rain and fog only.
-- **A new game can open in other weather than the menu's** (44): the menu's weather goes on along
-  the clock of the game last left, but once that game closes (two minutes empty), or when another
-  mode is picked, the game joined is a new one starting from its own clock, and the weather
-  switches to its own at once.
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-10-02 (see the history).
