@@ -109,6 +109,8 @@ export const MAX_REWIND = 0.5;
 
 // Population. Operators are players plus the bots that fill the empty slots.
 export const OPERATOR_CAPACITY = 8;
+/** Operators in a Deathmatch game, players and bots, and nobody else. */
+export const DEATHMATCH_CAPACITY = 20;
 /** Ground guards per outpost, besides the sentry in its watchtower. */
 export const GUARDS_PER_OUTPOST = 2;
 /** Pairs of guards walking routes between outposts. */
@@ -127,6 +129,10 @@ export const BODY_TIME = 5;
 export const DEATHCAM_BEFORE = 5;
 /** ...until this many after it. */
 export const DEATHCAM_AFTER = 1;
+/** In Deathmatch, a dead bot is back after as long as a death cam would play... */
+export const DEATHMATCH_BOT_RESPAWN = DEATHCAM_BEFORE + DEATHCAM_AFTER;
+/** ...and a player once they've watched or skipped theirs, or after this many seconds if they never say. */
+export const DEATHMATCH_RESPAWN_WAIT = 20;
 /** Seconds before an empty operator slot is filled by a new bot dropping in. */
 export const OPERATOR_REFILL = 12;
 

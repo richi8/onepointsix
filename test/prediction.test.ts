@@ -18,7 +18,7 @@ function session(delayTicks: number, loss: number) {
   const toClient: { at: number; msg: ServerMsg }[] = [];
   const toServer: { at: number; cmds: InputCmd[] }[] = [];
   const id = server.connect((msg) => toClient.push({ at: server.tick + delayTicks, msg }));
-  server.receive(id, { t: 'hello', name: 'test', world: DEFAULT_WORLD, mode: 'online' });
+  server.receive(id, { t: 'hello', name: 'test', world: DEFAULT_WORLD, mode: 'extraction' });
 
   let unacked: InputCmd[] = [];
   let ack = 0;

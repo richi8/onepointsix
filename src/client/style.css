@@ -306,6 +306,16 @@ canvas.fade-in {
   width: 92px;
 }
 
+/* Deathmatch's 20 operators, closer together so they fit. */
+.scoreboard.compact table {
+  width: min(420px, 100%);
+}
+
+.scoreboard.compact td {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
 .scoreboard th:first-child,
 .scoreboard td:first-child {
   overflow: hidden;

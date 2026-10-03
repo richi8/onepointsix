@@ -8,6 +8,8 @@ import {
   CMD_DT,
   DEATHCAM_AFTER,
   DEATHCAM_BEFORE,
+  DEATHMATCH_BOT_RESPAWN,
+  DEATHMATCH_RESPAWN_WAIT,
   DOOR_NOISE,
   DOOR_REACH,
   EYE_HEIGHT,
@@ -65,7 +67,9 @@ import { contractReward, contractView, planContracts, reachesIntel, type Contrac
 import { Cover } from './cover.ts';
 import { Extracts } from './extracts.ts';
 import { NavGrid } from './nav.ts';
-import { insertionPoint, planCommander, planGuards, planOperator, planResponse, reinforcementPoint, type BotPlan } from './population.ts';
+import {
+  arenaPoint, insertionPoint, planCommander, planFighter, planGuards, planOperator, planResponse, reinforcementPoint, type BotPlan,
+} from './population.ts';
 import { ACTOR_RESPAWN, Actor, planRange } from './range.ts';
 import type { Personality } from './personality.ts';
 import { guardSkill, SKILLS } from './skill.ts';
@@ -172,8 +176,13 @@ interface PoseRecord extends Pose {
 }
 
 export interface ServerOptions {
-  /** How the game is played, as told to clients (default 'online'). */
+  /** How the game is played, as told to clients (default 'extraction'). */
   mode?: Mode;
+  /**
+   * Everyone against everyone: no extraction, run clock or contracts, crates holding only ammo
+   * and medkits, and the dead back in at a spot away from the others (default false).
+   */
+  deathmatch?: boolean;
   /** Post guards at the outposts and send patrols between them (default false). */
   guards?: boolean;
   /** Hold this weather all game, for tests and the playtest (default the island's own, changing). */
@@ -246,7 +255,7 @@ export class GameServer {
   constructor(seed: number, options: ServerOptions = {}) {
     this.seed = seed >>> 0;
     this.options = options;
-    this.mode = options.mode ?? 'online';
+    this.mode = options.mode ?? 'extraction';
     this.forecast = new Forecast(this.seed, options.weather);
     this.world = new World(this.seed);
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
@@ -256,8 +265,8 @@ export class GameServer {
     this.nav = new NavGrid(this.world);
     // Paint the ground now rather than on the first bot's first look.
     vegetationOf(this.world);
-    this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f));
-    this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1));
+    this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f), !!options.deathmatch);
+    this.extracts = new Extracts(this.world, mulberry32(this.seed ^ 0x165667b1), !!options.deathmatch);
     this.cover = new Cover(this.world);
     this.operatorSlots = options.operators ?? 0;
     this.personality = options.personality;
@@ -313,7 +322,7 @@ export class GameServer {
     const p = this.add('player', 'operator', send);
     p.run = newRun(this.time);
     this.spawn(p);
-    if (!this.options.range) this.assignContracts(p);
+    if (!this.options.range && !this.options.deathmatch) this.assignContracts(p);
     // A human takes an operator slot from a bot: the one farthest from anyone.
     while (this.operatorSlots > 0 && this.operatorCount() > this.operatorSlots) {
       const bots = [...this.players.values()].filter((b) => b.team === 'operator' && b.plan);
@@ -362,6 +371,10 @@ export class GameServer {
       }
       case 'leave':
         this.leave(p);
+        break;
+      case 'respawn':
+        // Back in at once, at the next tick, the death cam watched or skipped.
+        if (this.options.deathmatch && p.dead) p.respawn = 0;
         break;
       case 'dev':
         this.dev(p, msg.cmd);
@@ -528,11 +541,18 @@ export class GameServer {
         this.leave(p);
         continue;
       }
-      if (p.run && !p.dead) this.runStep(p, landed);
+      if (p.run && !p.dead && !this.options.deathmatch) this.runStep(p, landed);
       if (p.deathcam && now >= p.deathcam.time + DEATHCAM_AFTER) this.sendDeathcam(p);
       if (!p.dead || !this.players.has(p.id)) continue;
       p.respawn -= SERVER_DT;
       if (p.respawn > 0) continue;
+      // In Deathmatch everyone is back in somewhere away from the others, afresh.
+      if (this.options.deathmatch) {
+        p.run = newRun(now);
+        p.deathcam = null;
+        this.spawn(p);
+        continue;
+      }
       // A fallen operator's run is over, as is a response guard's job. An outpost's guard is replaced
       // by one running in from away; a patrol at its route's start, but not in front of an operator:
       // it waits until nobody is close to it or sees it.
@@ -870,26 +890,31 @@ export class GameServer {
   // -------------------------------------------------------------- scoreboard
 
   /**
-   * A player's record, marked as changing; null for bots, and on the range, where nothing
-   * counts. A record is kept by the player's id, so their next run carries it on, under
-   * whatever name.
+   * A player's record, marked as changing; null for bots but in Deathmatch, and on the range,
+   * where nothing counts. A record is kept by the player's id, so their next run carries it on,
+   * under whatever name.
    */
   private tallyOf(p: Player): Tally | null {
-    if (p.plan || !p.joined || this.options.range) return null;
+    if ((p.plan && !this.options.deathmatch) || !p.joined || this.options.range) return null;
     let tally = this.tallies.get(p.player);
     if (!tally) this.tallies.set(p.player, (tally = { kills: 0, deaths: 0, best: 0, total: 0 }));
     this.boardChanged = true;
     return tally;
   }
 
-  /** Every player in the game now, bots left out, highest total score first. */
+  /**
+   * Every player in the game now, bots left out, highest total score first; in Deathmatch every
+   * operator, bots too, most kills first.
+   */
   private board(): BoardRow[] {
     const rows: BoardRow[] = [];
+    const dm = !!this.options.deathmatch;
     for (const p of this.players.values()) {
-      if (p.plan || !p.joined) continue;
+      if ((p.plan && !(dm && p.team === 'operator')) || !p.joined) continue;
       const t = this.tallies.get(p.player) ?? { kills: 0, deaths: 0, best: 0, total: 0 };
       rows.push({ id: p.id, name: p.name, ...t });
     }
+    if (dm) return rows.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
     return rows.sort((a, b) => b.total - a.total || b.best - a.best || b.kills - a.kills || a.deaths - b.deaths);
   }
 
@@ -975,6 +1000,11 @@ export class GameServer {
     const p = this.add(plan.name, team, () => {});
     p.joined = true;
     p.plan = plan;
+    // In Deathmatch a bot has a line on the scoreboard, for as long as it's in the game.
+    if (this.options.deathmatch) {
+      p.player = `bot-${p.id}`;
+      this.boardChanged = true;
+    }
     if (team === 'operator' && plan.role.kind !== 'actor') p.run = newRun(this.time);
     this.spawn(p);
     return p;
@@ -984,7 +1014,8 @@ export class GameServer {
   private addOperatorBot(): void {
     const others = [...this.players.values()].filter((p) => p.team === 'operator' && !p.dead);
     const taken = new Set(others.map((p) => p.name));
-    this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken, this.personality, this.options.thorough), 'operator');
+    if (this.options.deathmatch) this.addBot(planFighter(this.world, this.nav, this.botRng, others, taken), 'operator');
+    else this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken, this.personality, this.options.thorough), 'operator');
   }
 
   /** Players and bots taking operator slots. */
@@ -997,7 +1028,7 @@ export class GameServer {
   /** Someone leaves the game; an operator's slot opens up for a new bot after a while. */
   private leave(p: Player): void {
     if (!this.players.delete(p.id)) return;
-    if (p.joined && !p.plan) this.boardChanged = true;
+    if (p.joined && (!p.plan || this.options.deathmatch)) this.boardChanged = true;
     if (p.run) this.dismiss(p.run);
     // Whatever happened this tick still reaches them, such as how their run ended.
     if (p.events.length) p.send({ t: 'events', tick: this.tick, events: p.events });
@@ -1009,7 +1040,12 @@ export class GameServer {
   private spawn(p: Player, at?: Post): void {
     let post: Post;
     if (at) post = at;
-    else if (p.plan) post = p.plan.spawn;
+    else if (this.options.deathmatch) {
+      // Players and bots alike, wherever is farthest from everyone still standing.
+      const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
+      const at = arenaPoint(this.world, this.nav, this.spawnRng, others);
+      post = { ...at, yaw: yawToward(at.x, at.z, 0, 0) };
+    } else if (p.plan) post = p.plan.spawn;
     else if (this.rangeSpawn) post = this.rangeSpawn;
     else {
       const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
@@ -1263,7 +1299,8 @@ export class GameServer {
     if (attacker !== victim && !unhurt) victim.bot?.hurt(attacker, this.time);
     if (!killed) return;
     victim.dead = true;
-    victim.respawn = victim.actor ? ACTOR_RESPAWN : victim.team === 'guard' && !victim.plan?.temporary ? GUARD_RESPAWN : BODY_TIME;
+    if (this.options.deathmatch) victim.respawn = victim.plan ? DEATHMATCH_BOT_RESPAWN : DEATHMATCH_RESPAWN_WAIT;
+    else victim.respawn = victim.actor ? ACTOR_RESPAWN : victim.team === 'guard' && !victim.plan?.temporary ? GUARD_RESPAWN : BODY_TIME;
     victim.vx = victim.vy = victim.vz = 0;
     if (attacker.run && attacker !== victim) {
       if (victim.team === 'operator') attacker.run.kills++;
@@ -1283,7 +1320,8 @@ export class GameServer {
     if (victim.plan?.outpost !== undefined) this.outpostDown(victim.plan.outpost);
     // Killed by their own grenade, they watch it through their own eyes.
     if (!victim.plan) victim.deathcam = { killer: attacker, time: this.time };
-    if (victim.run) {
+    // In Deathmatch there's no run to end: they're back in once respawned.
+    if (victim.run && !this.options.deathmatch) {
       victim.run.killer = attacker === victim ? '' : attacker.name;
       const kind = attacker === victim ? undefined : kindOf(attacker);
       const death: Death = { by: attacker === victim ? 'self' : attacker.team, weapon, head: zone === 'head', ...(kind ? { kind } : {}) };
@@ -1333,9 +1371,9 @@ export class GameServer {
   }
 }
 
-/** An operator bot's personality, or undefined for anyone else. */
+/** An operator bot's personality, or undefined for anyone else, and in Deathmatch, where they all hunt. */
 function kindOf(p: Player): Personality | undefined {
-  return p.plan?.role.kind === 'operator' ? p.plan.role.personality : undefined;
+  return p.plan?.role.kind === 'operator' && !p.plan.role.supplies ? p.plan.role.personality : undefined;
 }
 
 function newRun(start: number): Run {

@@ -30,7 +30,7 @@ function body(server: GameServer, id: number): PlayerState & { run: RunState; pr
 function human(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `h${id}`, world: DEFAULT_WORLD, mode: 'online' });
+  server.receive(id, { t: 'hello', name: `h${id}`, world: DEFAULT_WORLD, mode: 'extraction' });
   let seq = 0;
   let yaw = 0;
   return {
@@ -79,7 +79,7 @@ function besideCrate(server: GameServer) {
   throw new Error('no crate to stand at');
 }
 
-const runsServer = () => new GameServer(DEFAULT_WORLD.seed, { mode: 'online' });
+const runsServer = () => new GameServer(DEFAULT_WORLD.seed, { mode: 'extraction' });
 
 describe('loot', () => {
   it('rolls the same crates from the same seed, with more in guarded ones', () => {
@@ -293,25 +293,25 @@ describe('extraction points', () => {
 describe('quick join', () => {
   it('puts players in the first game on their island and mode that is not full', () => {
     const dir = new Directory();
-    const game = dir.quickJoin(DEFAULT_WORLD, 'online');
-    expect(dir.quickJoin(DEFAULT_WORLD, 'online')).toBe(game);
+    const game = dir.quickJoin(DEFAULT_WORLD, 'extraction');
+    expect(dir.quickJoin(DEFAULT_WORLD, 'extraction')).toBe(game);
     // A game takes as many humans as it has operators; the next one gets their own island.
     for (let i = 0; i < OPERATOR_CAPACITY; i++) game.connect(() => {});
-    const next = dir.quickJoin(DEFAULT_WORLD, 'online');
+    const next = dir.quickJoin(DEFAULT_WORLD, 'extraction');
     expect(next).not.toBe(game);
-    expect(dir.quickJoin({ ...DEFAULT_WORLD, seed: 7 }, 'online')).not.toBe(next);
+    expect(dir.quickJoin({ ...DEFAULT_WORLD, seed: 7 }, 'extraction')).not.toBe(next);
     expect(dir.quickJoin(DEFAULT_WORLD, 'range').mode).toBe('range');
     expect(dir.count).toBe(4);
   });
 
   it('fills a game with operator bots that humans replace', () => {
     const dir = new Directory();
-    const game = dir.quickJoin(DEFAULT_WORLD, 'online');
+    const game = dir.quickJoin(DEFAULT_WORLD, 'extraction');
     const operators = () => game.bots().filter((b) => b.team === 'operator').length;
     expect(operators()).toBe(OPERATOR_CAPACITY);
     const id = game.connect(() => {});
     expect(operators()).toBe(OPERATOR_CAPACITY - 1);
-    expect(dir.quickJoin(DEFAULT_WORLD, 'online')).toBe(game);
+    expect(dir.quickJoin(DEFAULT_WORLD, 'extraction')).toBe(game);
     game.disconnect(id);
     expect(game.humans()).toBe(0);
   });

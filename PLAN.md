@@ -35,10 +35,13 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 
 | Mode | Description |
 |---|---|
-| **Online** | 8 operator slots, every one starting as a bot. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
+| **Extraction** | The core loop below. 8 operator slots, every one starting as a bot, and the guards. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
+| **Deathmatch** | Everyone against everyone: 20 operator slots, filled the same way, and no guards or commanders. No contracts, extraction points, run clock, bag value, score or leaderboard; crates hold only ammo and medkits. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at the spot farthest from the living. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
 | **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate, a door), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
 
-Mixed was renamed Online, and old `mode=mixed` links and scores count as Online. PvE and the
+Online was renamed Extraction on 2026-10-03 (chunk 48): old `mode=online`, `mixed` and `offline`
+links, the saved menu choice and Online's scores count as Extraction. Mixed was renamed Online,
+and old `mode=mixed` links and scores count as Online. PvE and the
 shooting range were removed after chunk 16: PvE became Offline, which has 7 bot operators, and the
 range with its target dummies is gone. Offline was removed on 2026-10-03: it played exactly as
 Online, and with a multiplayer server a game alone with bots is still just an Online game nobody
@@ -52,21 +55,24 @@ The island is 800 × 800 m, with 6 outposts.
 
 | Kind | Count | Notes |
 |---|---|---|
-| **Operators** (players and fill bots) | **8** per game | Every slot starts as a bot. Joining players replace them. |
-| **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Not in the range. |
+| **Operators** (players and fill bots) | **8** per game, **20** in Deathmatch | Every slot starts as a bot. Joining players replace them. |
+| **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Not in the range or Deathmatch. |
 
 **Why 8:** that's roughly 80,000 m² per operator, which is about a 280 m square each. Runs are
 3–10 minutes, and the aim is to meet another operator every 1–3 minutes, while guards fill the
 time in between. The plan started at 12, but chunk 12's bot playtest found that at 12 an operator
 spotted another every 42 s, 8 every 57 s and 6 every 97 s, so 8 is the middle ground until human
-playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
+playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`). Deathmatch's 20
+(`DEATHMATCH_CAPACITY`) is about 32,000 m², a 180 m square each, as nobody is there to loot.
 
 ## Core Loop
+
+Extraction's; Deathmatch keeps only the fighting (see Game Modes).
 
 1. **Drop in** at any time at an insertion point on the island. Your personal run clock starts.
 2. **Receive contracts.** You get 1–2 objectives per run, for example: grab intel from the radio
    tower, destroy a supply cache, eliminate a bot commander.
-3. **Loot, fight, sneak.** Search containers, fight AI patrols (and players in Mixed mode), and
+3. **Loot, fight, sneak.** Search containers, fight AI patrols and other operators, and
    manage noise and weight.
 4. **Extract.** Reach an extraction point that is currently open. Some extraction points need you
    to call and hold for about 20 seconds while bots converge on you.
@@ -328,7 +334,7 @@ apply: no backend, and nothing that breaks the rules that keep multiplayer easy 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 47 | **Scoreboard on Tab** | Held during a run, Tab shows every operator in the game who is a player, bots left out, with their kills, deaths, best run score and cumulative score; the server keeps each player's record over the game, across their runs in it, and sends it to every player as an event whenever it changes; Esc stays the pause screen | Holding Tab in a run shows your line, and a kill, a death or an extraction shows on it, carried on to your next run on the same island | **Done** (`src/client/scoreboard.ts`; the records are kept in `GameServer` by a random id each browser keeps and sends in its hello, not by name; kills count guards and operators alike; nothing counts on the range; checked by unit tests with two players in one game and a browser test; locally the board only ever lists you) |
-| 48 | **Extraction and Deathmatch** | Online renamed **Extraction** (`mode=extraction`; old `mode=online`, `mixed` and `offline` links, scores and the menu choice count as Extraction, and its leaderboard keeps Online's scores); a new **Deathmatch** mode, everyone against everyone: 20 operator slots, every one starting as a bot and taken by players as they join (a bot fills it again when they leave), no guards or commanders, no contracts, extraction points, run clock, MIA, bag value, score or leaderboard; crates hold only medkits and ammo; a dead player respawns when the death cam ends, or at once if they skip it (a bot after the death cam's length), at a spot away from the others, with the starting loadout; operator bots fight every other operator (no personalities' extraction goals: they roam, loot crates for ammo and medkits, and hunt by sight and noise); the Tab scoreboard shows only kills and deaths, for every operator in the game, bots included; the menu's mode picker gets Deathmatch with its own description; the directory caps Deathmatch games at 20; the weather cycle runs as in Extraction; a game has no time or kill limit and runs until its last player leaves, when the island closes; the changelog, Game Modes, World capacity and Features updated | From the menu you pick Deathmatch, land among 19 bots and no guards, kill and get killed, respawn, and Tab shows everyone's kills and deaths; Extraction plays exactly as Online did, and old Online links and scores still work | Not started |
+| 48 | **Extraction and Deathmatch** | Online renamed **Extraction** (`mode=extraction`; old `mode=online`, `mixed` and `offline` links, scores and the menu choice count as Extraction, and its leaderboard keeps Online's scores); a new **Deathmatch** mode, everyone against everyone: 20 operator slots, every one starting as a bot and taken by players as they join (a bot fills it again when they leave), no guards or commanders, no contracts, extraction points, run clock, MIA, bag value, score or leaderboard; crates hold only medkits and ammo; a dead player respawns when the death cam ends, or at once if they skip it (a bot after the death cam's length), at a spot away from the others, with the starting loadout; operator bots fight every other operator (no personalities' extraction goals: they roam, loot crates for ammo and medkits, and hunt by sight and noise); the Tab scoreboard shows only kills and deaths, for every operator in the game, bots included; the menu's mode picker gets Deathmatch with its own description; the directory caps Deathmatch games at 20; the weather cycle runs as in Extraction; a game has no time or kill limit and runs until its last player leaves, when the island closes; the changelog, Game Modes, World capacity and Features updated | From the menu you pick Deathmatch, land among 19 bots and no guards, kill and get killed, respawn, and Tab shows everyone's kills and deaths; Extraction plays exactly as Online did, and old Online links and scores still work | **Done** (`MODES.deathmatch` in `src/server/directory.ts`; the server's `deathmatch` option and its bots' `supplies` in `bot.ts`; `npm run sim 300 - - deathmatch` runs one headless; checked by `test/deathmatch.test.ts` and `e2e/deathmatch.e2e.ts`; locally the board lists you and 19 bots) |
 
 ## Known Issues
 
@@ -356,6 +362,18 @@ baseline in Decisions).
 ### Scoreboard
 Nothing open: the last were resolved or accepted on 2026-10-03 (see the history).
 
+### Deathmatch
+- **Kills while you watch your death cam go unseen** (chunk 48). The client sets aside the game's
+  events while a death cam plays, as Extraction's ends the run, so those kills miss the feed, and
+  their bodies fall without the push of the round that killed them, lying down after a short wait.
+- **A respawn can be in someone's sight** (chunk 48). The spot is the farthest from the living of
+  24 tried at random, with no check of who can see it, and there is no spawn protection for bots.
+- **Bots leave the board when a player takes their slot** (chunk 48). Their kills and deaths go
+  with them, so the totals on Tab don't add up over a game.
+- **Untuned** (chunk 48). Only bots have played it: 20 in a 10-minute headless game made about 15
+  kills a minute. How often people meet, die and run dry of ammo, and whether 20 is the right
+  count, wait for playtests. Deathmatch games aren't in the run log or the stats page.
+
 ## Future
 - **Multiplayer**
   - Node server that reuses `server/`, with WebSocket first
@@ -375,7 +393,7 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   - Anonymous identity, basic anti-cheat, deployment
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
     leaderboards kept by the server instead of in links and one browser; every run's stats sent to
-    the server; Online taking other players; names filtered and length-checked; conditions picked by
+    the server; Extraction and Deathmatch taking other players; names filtered and length-checked; conditions picked by
     the server so players don't split nine ways; snapshots and death cam clips packed; death cams
     drawn from everyone's inputs, taped only near someone, and no player sent another's inputs; the
     dev message dropped

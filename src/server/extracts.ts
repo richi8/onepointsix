@@ -24,9 +24,10 @@ export class Extracts {
   readonly points: ExtractPoint[];
   private readonly rand: () => number;
 
-  constructor(world: World, rand: () => number) {
+  /** `none` leaves the island without any, as in Deathmatch. */
+  constructor(world: World, rand: () => number, none = false) {
     this.rand = rand;
-    this.points = world.extracts.map((e, i) => ({ ...e, kind: extractKind(i), open: rand() < 0.5, next: 0, pickup: -1 }));
+    this.points = none ? [] : world.extracts.map((e, i) => ({ ...e, kind: extractKind(i), open: rand() < 0.5, next: 0, pickup: -1 }));
     if (this.points.length && !this.points.some((p) => p.open)) this.points[0].open = true;
     // Staggered, so they don't all change together.
     for (const p of this.points) p.next = this.between(p.open ? EXTRACT_OPEN : EXTRACT_CLOSED) * (0.3 + this.rand() * 0.7);

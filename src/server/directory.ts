@@ -1,4 +1,4 @@
-import { OPERATOR_CAPACITY, SERVER_DT } from '../shared/constants.ts';
+import { DEATHMATCH_CAPACITY, OPERATOR_CAPACITY, SERVER_DT } from '../shared/constants.ts';
 import type { Mode } from '../shared/protocol.ts';
 import { sameWorld, type WorldConfig } from '../shared/worldconfig.ts';
 import { GameServer, type ServerOptions } from './server.ts';
@@ -6,13 +6,18 @@ import { GameServer, type ServerOptions } from './server.ts';
 /** How each mode sets up a game, and how many humans fit in one. */
 export const MODES: Record<Mode, { options: ServerOptions; capacity: number }> = {
   // Every operator slot starts as a bot; each player who joins takes one over.
-  online: { options: { mode: 'online', guards: true, operators: OPERATOR_CAPACITY }, capacity: OPERATOR_CAPACITY },
+  extraction: { options: { mode: 'extraction', guards: true, operators: OPERATOR_CAPACITY }, capacity: OPERATOR_CAPACITY },
+  // Every operator slot starts as a bot too, and no guards: everyone against everyone.
+  deathmatch: { options: { mode: 'deathmatch', deathmatch: true, operators: DEATHMATCH_CAPACITY }, capacity: DEATHMATCH_CAPACITY },
   // Actors going through every move round an outpost, and nobody to hurt you.
   range: { options: { mode: 'range', range: true }, capacity: OPERATOR_CAPACITY },
 };
 
-/** Seconds a game with nobody in it is kept, so another run can join the same island state. */
-const IDLE_TIME = 120;
+/**
+ * Seconds a game with nobody in it is kept, so another run can join the same island state. A
+ * Deathmatch has no runs to come back for: it closes as soon as its last player leaves.
+ */
+const IDLE_TIME: Record<Mode, number> = { extraction: 120, deathmatch: 0, range: 120 };
 
 interface Entry {
   world: WorldConfig;
@@ -45,7 +50,7 @@ export class Directory {
       const g = this.games[i];
       g.server.step();
       g.idle = g.server.humans() > 0 ? 0 : g.idle + SERVER_DT;
-      if (g.idle > IDLE_TIME) this.games.splice(i, 1);
+      if (g.idle > IDLE_TIME[g.mode]) this.games.splice(i, 1);
     }
   }
 

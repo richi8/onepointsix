@@ -26,20 +26,22 @@ export interface InputCmd {
 }
 
 /**
- * How a game is played. Online is a run against guards and 8 operators, where players who join
- * take bot operators' places. The range is for trying things out: actors going through every
- * move round an outpost, and nobody to hurt you.
+ * How a game is played. Extraction is a run against guards and 8 operators, where players who
+ * join take bot operators' places. Deathmatch is 20 operators and no guards, everyone against
+ * everyone, respawning, with only kills and deaths counted. The range is for trying things out:
+ * actors going through every move round an outpost, and nobody to hurt you.
  */
-export type Mode = 'online' | 'range';
+export type Mode = 'extraction' | 'deathmatch' | 'range';
 
 /** Whether `id` will do as a player's id in hello: letters, digits and dashes, 8 to 64 of them. */
 export function validPlayerId(id: unknown): id is string {
   return typeof id === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(id);
 }
 
-/** A mode named in a link or saved setting; Mixed and Offline, from before, are now Online. */
+/** A mode named in a link or saved setting; Online, and Mixed and Offline before it, are now Extraction. */
 export function parseMode(m: string | null): Mode | null {
-  return m === 'online' || m === 'range' ? m : m === 'mixed' || m === 'offline' ? 'online' : null;
+  if (m === 'extraction' || m === 'deathmatch' || m === 'range') return m;
+  return m === 'online' || m === 'mixed' || m === 'offline' ? 'extraction' : null;
 }
 
 /** Operators are players and fill bots, each on their own side; guards defend outposts together. */
@@ -121,7 +123,10 @@ export interface Death {
   shooters?: { guards: number; operators: number };
 }
 
-/** A player's line on the scoreboard: their record over the game, across all their runs in it. */
+/**
+ * A player's line on the scoreboard: their record over the game, across all their runs in it. In
+ * Deathmatch every operator has one, bots too, and only kills and deaths count.
+ */
 export interface BoardRow {
   /** Their body in the game now. */
   id: number;
@@ -158,7 +163,7 @@ export type GameEvent =
     }
   // To everyone: `id` now carries the bounty, loot worth `value`, or with id 0, nobody does.
   | { k: 'bounty'; id: number; name: string; value: number }
-  // To every player: the scoreboard, whenever it changes. Players only, bots left out.
+  // To every player: the scoreboard, whenever it changes. Players only, bots left out, but in Deathmatch.
   | { k: 'board'; rows: BoardRow[] }
   // To everyone: an operator left the island with loot worth `value`.
   | { k: 'extract'; id: number; name: string; value: number }
@@ -223,6 +228,8 @@ export type ClientMsg =
   | { t: 'hello'; name: string; world: WorldConfig; mode: Mode; player?: string }
   // Back to the menu.
   | { t: 'leave' }
+  // In Deathmatch, dead: back in now, the death cam watched or skipped.
+  | { t: 'respawn' }
   // Carries the last few unacknowledged commands so a lost packet costs nothing.
   | { t: 'input'; cmds: InputCmd[] }
   | { t: 'ping'; time: number }

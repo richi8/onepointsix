@@ -32,14 +32,15 @@ export class Leaderboard {
 
   /** Best first. */
   entries(seed: number, mode: Mode): BoardEntry[] {
-    // Online plays as Mixed did, so it starts from Mixed's scores.
-    return this.entriesAt(key(seed, mode), mode === 'online' ? `board:${seed >>> 0}:mixed` : null);
+    // Extraction plays as Online did, and Online as Mixed, so it starts from their scores.
+    return this.entriesAt(key(seed, mode), ...(mode === 'extraction' ? [`board:${seed >>> 0}:online`, `board:${seed >>> 0}:mixed`] : []));
   }
 
-  /** The board kept under `at`, or else under `fallback`. */
-  entriesAt(at: string, fallback: string | null = null): BoardEntry[] {
+  /** The board kept under `at`, or else under the first of `fallbacks` there is. */
+  entriesAt(at: string, ...fallbacks: string[]): BoardEntry[] {
     try {
-      const saved = this.store?.getItem(at) ?? (fallback ? this.store?.getItem(fallback) : null);
+      let saved = this.store?.getItem(at) ?? null;
+      for (const k of fallbacks) saved ??= this.store?.getItem(k) ?? null;
       const raw = JSON.parse(saved ?? '[]') as unknown;
       if (!Array.isArray(raw)) return [];
       return raw.filter((e): e is BoardEntry =>
@@ -79,8 +80,8 @@ function key(seed: number, mode: Mode): string {
 
 /**
  * Tidy the boards of modes no longer played. PvE's, left in storage since it became Offline,
- * don't compare and are dropped. Offline played as Online does, so its scores join Online's
- * board, best first. Returns how many old boards went.
+ * don't compare and are dropped. Online is now Extraction, and Offline played as Online did, so
+ * their scores join Extraction's board, best first. Returns how many old boards went.
  */
 export function dropOldBoards(store: Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'> | null): number {
   if (!store) return 0;
@@ -88,15 +89,21 @@ export function dropOldBoards(store: Pick<Storage, 'length' | 'key' | 'getItem' 
     const old: string[] = [];
     for (let i = 0; i < store.length; i++) {
       const k = store.key(i);
-      if (k && /^board:\d+:(pve|offline)$/.test(k)) old.push(k);
+      if (k && /^board:\d+:(pve|offline|online)$/.test(k)) old.push(k);
     }
     const board = new Leaderboard(store);
     for (const k of old) {
       const [, seed, mode] = k.split(':');
-      if (mode === 'offline') {
-        const merged = [...board.entries(Number(seed), 'online'), ...board.entriesAt(k)]
+      if (mode !== 'pve') {
+        // Extraction's board may still be read from Online's, so the same run can come twice.
+        const seen = new Set<string>();
+        const merged = [...board.entries(Number(seed), 'extraction'), ...board.entriesAt(k)]
+          .filter((e) => {
+            const id = `${e.name}|${e.score}|${e.date}`;
+            return !seen.has(id) && !!seen.add(id);
+          })
           .sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
-        store.setItem(key(Number(seed), 'online'), JSON.stringify(merged.slice(0, BOARD_SIZE)));
+        store.setItem(key(Number(seed), 'extraction'), JSON.stringify(merged.slice(0, BOARD_SIZE)));
       }
       store.removeItem(k);
     }

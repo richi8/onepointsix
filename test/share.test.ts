@@ -4,10 +4,10 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 describe('share links', () => {
   it('round-trips the island, mode and score to beat', () => {
-    const q = shareQuery({ seed: 4242 }, 'online', { name: 'Ana Nováková', score: 5400 });
+    const q = shareQuery({ seed: 4242 }, 'extraction', { name: 'Ana Nováková', score: 5400 });
     expect(q).not.toContain('weather');
     expect(parseShareLink(q)).toEqual({
-      world: { seed: 4242 }, mode: 'online', challenge: { name: 'Ana Nováková', score: 5400 },
+      world: { seed: 4242 }, mode: 'extraction', challenge: { name: 'Ana Nováková', score: 5400 },
     });
   });
 
@@ -16,22 +16,22 @@ describe('share links', () => {
   });
 
   it('shares just the island when there is no score', () => {
-    expect(shareQuery({ seed: 7 }, 'online', { name: 'x', score: 0 })).toBe('?world=7&mode=online');
+    expect(shareQuery({ seed: 7 }, 'extraction', { name: 'x', score: 0 })).toBe('?world=7&mode=extraction');
     expect(parseShareLink('?world=7&by=x').challenge).toBeNull();
   });
 
   it('ignores nonsense', () => {
-    for (const q of ['?by=x&score=-5', '?by=x&score=1e9', '?by=x&score=12abc', '?by=%20&score=10', '?by=%20&score=10&mode=online']) {
+    for (const q of ['?by=x&score=-5', '?by=x&score=1e9', '?by=x&score=12abc', '?by=%20&score=10', '?by=%20&score=10&mode=extraction']) {
       expect(parseShareLink(q).challenge).toBeNull();
     }
-    expect(parseShareLink('?mode=deathmatch').mode).toBeNull();
     expect(parseShareLink('?mode=pve').mode).toBeNull();
     // The range is back, for trying things out.
     expect(parseShareLink('?mode=range').mode).toBe('range');
   });
 
-  it('reads old Mixed links as Online', () => {
-    expect(parseShareLink('?mode=mixed').mode).toBe('online');
+  it('reads old Online, Mixed and Offline links as Extraction', () => {
+    for (const m of ['online', 'mixed', 'offline']) expect(parseShareLink(`?mode=${m}`).mode).toBe('extraction');
+    expect(parseShareLink('?mode=deathmatch').mode).toBe('deathmatch');
   });
 
   it('keeps names short and printable', () => {

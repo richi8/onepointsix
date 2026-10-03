@@ -52,6 +52,9 @@ export class Hud {
   private readonly scope = $('scope');
   private readonly death = $('death');
   private readonly deathText = this.death.querySelector('p')!;
+  private readonly respawnNote = this.death.querySelector('.respawn') as HTMLElement;
+  /** In Deathmatch: the death notice says how to get back in. */
+  respawns = false;
   private readonly stamina = $('stamina');
   private readonly staminaFill = this.stamina.firstElementChild as HTMLElement;
   private readonly numbers: FloatingNumber[] = [];
@@ -131,6 +134,7 @@ export class Hud {
     this.stamina.classList.toggle('winded', s.winded);
 
     this.death.hidden = !s.dead || !deathNotice;
+    this.respawnNote.hidden = !this.respawns;
     if (s.dead) this.deathText.textContent = this.killer ? `by ${this.killer}${this.killerKind ? `, a ${this.killerKind}` : ''}` : '';
   }
 

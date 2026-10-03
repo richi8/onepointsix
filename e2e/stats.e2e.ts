@@ -27,17 +27,17 @@ test('Stats sums up your runs, and exports them as a file', async ({ page }) => 
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^onepointsix-runs-\d{4}-\d\d-\d\d\.json$/);
   const data = JSON.parse(await readFile((await file.path())!, 'utf8'));
-  expect(data).toMatchObject({ format: 'onepointsix-runs', version: 2, runs: [{ outcome: 'extracted', mode: 'online' }] });
+  expect(data).toMatchObject({ format: 'onepointsix-runs', version: 2, runs: [{ outcome: 'extracted', mode: 'extraction' }] });
   expect(typeof data.build).toBe('string');
   await expect(page.locator('#toast')).toHaveText('Runs exported. Send the file to the developer.');
 });
 
-test("PvE's old boards are cleared out of storage, and Offline's join Online's", async ({ page }) => {
+test("PvE's old boards are cleared out of storage, and Offline's join Extraction's", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('board:42:pve', '[{"name":"Old","score":5,"date":"2026-09-20"}]');
     localStorage.setItem('board:42:offline', '[{"name":"New","score":6,"date":"2026-09-26"}]');
   });
   await open(page);
-  expect(await page.evaluate(() => ['pve', 'offline', 'online'].map((m) => localStorage.getItem(`board:42:${m}`))))
+  expect(await page.evaluate(() => ['pve', 'offline', 'extraction'].map((m) => localStorage.getItem(`board:42:${m}`))))
     .toEqual([null, null, '[{"name":"New","score":6,"date":"2026-09-26"}]']);
 });

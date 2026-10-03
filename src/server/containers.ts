@@ -51,14 +51,18 @@ export class Containers {
   private readonly rand: () => number;
   private nextId = 0;
 
-  constructor(world: World, rand: () => number) {
+  /** Crates hold only ammo and medkits, as in Deathmatch. */
+  private readonly supplies: boolean;
+
+  constructor(world: World, rand: () => number, supplies = false) {
     this.world = world;
     this.rand = rand;
+    this.supplies = supplies;
     for (const { box, rich } of lootCrates(world)) {
       const { minX, minY, minZ, maxX, maxY, maxZ } = box;
       const id = this.nextId++;
       const c: Container = {
-        id, kind: 'crate', minX, minY, minZ, maxX, maxY, maxZ, rich, items: rollItems(rand, rich), searched: false, until: 0,
+        id, kind: 'crate', minX, minY, minZ, maxX, maxY, maxZ, rich, items: rollItems(rand, rich, this.supplies), searched: false, until: 0,
         panel: box.panel ?? -1, broken: false,
       };
       this.all.set(id, c);
@@ -87,7 +91,7 @@ export class Containers {
     c.broken = false;
     c.searched = false;
     c.until = 0;
-    c.items = rollItems(this.rand, c.rich);
+    c.items = rollItems(this.rand, c.rich, this.supplies);
   }
 
   /** Whether a bag lies inside the box. */
@@ -164,7 +168,7 @@ export class Containers {
       if (!c.searched || now < c.until) continue;
       if (c.kind === 'bag') this.all.delete(c.id);
       else {
-        c.items = rollItems(this.rand, c.rich);
+        c.items = rollItems(this.rand, c.rich, this.supplies);
         c.searched = false;
       }
     }

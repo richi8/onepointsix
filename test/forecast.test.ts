@@ -147,7 +147,7 @@ describe('the weather in a game', () => {
 
   it('is the same on the server, for its bots and on the client', () => {
     const server = new GameServer(seed);
-    const conn = new Connection({ seed }, new World(seed), 'online', 'me', pipe(server));
+    const conn = new Connection({ seed }, new World(seed), 'extraction', 'me', pipe(server));
     server.step();
     const ctx = (server as unknown as { ctx: { senses: { sight: number; hearing: number }; coming: unknown } }).ctx;
     const turn = turns(seed, 3600)[0];
@@ -177,11 +177,11 @@ describe('the weather in a game', () => {
   });
 
   it('plays a death cam in the weather the kill happened in', () => {
-    const server = new GameServer(seed, { mode: 'online', operators: 1 });
+    const server = new GameServer(seed, { mode: 'extraction', operators: 1 });
     const turn = turns(seed, 3600)[0];
     // Killed just before the weather turns.
     steps(server, turn.at - DEATHCAM_AFTER - 3);
-    const conn = new Connection({ seed }, new World(seed), 'online', 'me', pipe(server));
+    const conn = new Connection({ seed }, new World(seed), 'extraction', 'me', pipe(server));
     let killedBy: { e: DeathcamEvent; recording: ReturnType<Connection['recorded']> } | null = null;
     let ended: Weather | null = null;
     conn.onEvents = (events) => {

@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Deathmatch, and Online is now Extraction',
+    notes: [
+      'New mode, Deathmatch: 20 operators and no guards, everyone against everyone. There’s no extraction or score; hold Tab for everyone’s kills and deaths, bots included.',
+      'Killed in Deathmatch, you watch the death cam and are back in when it ends, somewhere away from the others. Press Space to skip it and respawn at once.',
+      'Crates in Deathmatch hold only ammo and medkits.',
+      'Online is now called Extraction. It plays the same, and your Online scores and links carry over.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Scoreboard on Tab',
     notes: [
       'Hold Tab during a run to see the players in your game, with their kills, deaths, best run and total score. Bots aren’t listed.',

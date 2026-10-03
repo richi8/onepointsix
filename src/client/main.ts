@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { Btn, CMD_DT, DOOR_REACH, OPERATOR_CAPACITY, PLAYER_RADIUS, SERVER_DT, THROW_TIME, WALK_SPEED } from '../shared/constants.ts';
+import {
+  Btn, CMD_DT, DEATHCAM_AFTER, DEATHMATCH_CAPACITY, DOOR_REACH, OPERATOR_CAPACITY, PLAYER_RADIUS, SERVER_DT, THROW_TIME, WALK_SPEED,
+} from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
 import { FixedLoop } from '../shared/loop.ts';
@@ -62,7 +64,7 @@ const SHAKE_RANGE = 30;
 const SHAKE_DECAY = 5;
 /** Seconds before the loading screen offers to play without waiting for the textures. */
 const SKIP_LOADING_AFTER = 8;
-const MODE_NAMES: Record<Mode, string> = { online: 'Online', range: 'Range' };
+const MODE_NAMES: Record<Mode, string> = { extraction: 'Extraction', deathmatch: 'Deathmatch', range: 'Range' };
 /** Milliseconds a click on the run dashboard keeps trying to take the mouse back. */
 const RELOCK_RETRY = 2000;
 /** Seconds after Esc that Chrome won't give the mouse back, with some to spare. */
@@ -70,7 +72,8 @@ const RELOCK_COOLDOWN = 1.5;
 /** Leaderboard rows shown on the menu. */
 const BOARD_SHOWN = 5;
 const MODE_NOTES: Record<Mode, string> = {
-  online: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators. Players who join take a bot's place.`,
+  extraction: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators. Players who join take a bot's place.`,
+  deathmatch: `Everyone against everyone: ${DEATHMATCH_CAPACITY} operators, no guards. Respawn when killed; crates hold ammo and medkits. Players who join take a bot's place.`,
   range: 'Try things out round the first outpost: soldiers going through every move, and nothing can hurt you. No scores.',
 };
 
@@ -406,9 +409,9 @@ function toast(text: string): void {
   toastTimer = window.setTimeout(() => (toastEl.hidden = true), 2500);
 }
 
-/** The score to beat from the link we came in on, if it's for `m`; a link without a mode counts for any. */
+/** The score to beat from the link we came in on, if it's for `m`; a link without a mode counts for any with scores. */
 function challengeFor(m: Mode): Challenge | null {
-  return link.challenge && (link.mode ?? m) === m ? link.challenge : null;
+  return link.challenge && m !== 'deathmatch' && (link.mode ?? m) === m ? link.challenge : null;
 }
 
 const challengeEl = document.getElementById('challenge')!;
@@ -425,7 +428,7 @@ function showBoard(): void {
     challengeEl.textContent = `${link.challenge.name} scored ${link.challenge.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
   }
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
-  const rows: { name: string; score: number; note: string; rival: boolean }[] = board.entries(config.seed, mode)
+  const rows: { name: string; score: number; note: string; rival: boolean }[] = (mode === 'deathmatch' ? [] : board.entries(config.seed, mode))
     .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), rival: false }));
   if (c) {
     const at = rows.findIndex((r) => r.score < c.score);
@@ -463,7 +466,7 @@ function showBoard(): void {
   const empty = boardEl.querySelector('.empty') as HTMLElement;
   empty.hidden = rows.length > 0;
   boardEl.classList.toggle('none', rows.length === 0);
-  empty.textContent = 'No scores yet. Get off the island with loot to post one.';
+  empty.textContent = mode === 'deathmatch' ? 'Deathmatch keeps no scores: hold Tab in a game for kills and deaths.' : 'No scores yet. Get off the island with loot to post one.';
 }
 
 function shortDate(date: string): string {
@@ -555,7 +558,7 @@ function briefingLine<K extends string>(notes: Record<K, string>): (chosen: K) =
 
 const briefMode = briefingLine(MODE_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
-let mode: Mode = 'online';
+let mode: Mode = 'extraction';
 try {
   mode = parseMode(localStorage.getItem('mode')) ?? mode;
 } catch {
@@ -694,8 +697,12 @@ function join(): void {
   conn.onSpawn = (s) => {
     input.yaw = s.yaw;
     input.pitch = s.pitch;
+    // Back in, in Deathmatch: whatever death cam was coming is for a life gone by.
+    killedBy = null;
+    stopDeathcam(false);
   };
   hud.reset();
+  hud.respawns = runHud.deathmatch = mode === 'deathmatch';
   hud.show();
   runHud.hideResults();
   // Shown until the lock succeeds, so a refused lock still leaves a way in.
@@ -789,7 +796,7 @@ let ownDeath = false;
 function playDeathcam(): void {
   if (!killedBy) return;
   if (!playback) {
-    void loadPlayback().then(playDeathcam, () => showLastResults?.());
+    void loadPlayback().then(playDeathcam, afterDeathcam);
     return;
   }
   deathcam = new playback.Deathcam(world, killedBy.e, killedBy.recording, conn?.cover ?? noCover, conn?.forecast ?? forecast);
@@ -804,7 +811,39 @@ function playDeathcam(): void {
   hudEl.classList.add('watching');
   const kind = killedBy.e.kind ? `, a ${killedBy.e.kind}` : '';
   deathcamEl.querySelector('.banner span')!.textContent = ownDeath ? 'Killed by your own grenade' : `Killed by ${deathcam.name}${kind}`;
+  // In Deathmatch the mouse stays ours, for playing on straight after.
+  deathcamEl.querySelector('.skip')!.textContent = conn?.mode === 'deathmatch' ? 'Press Space to skip and respawn' : 'Click or press Space to skip';
   deathcamEl.hidden = false;
+}
+
+/** The death cam is over, or couldn't load: the results, or in Deathmatch back in. */
+function afterDeathcam(): void {
+  if (conn?.mode === 'deathmatch') respawn();
+  else showLastResults?.();
+}
+
+/** In Deathmatch, dead: back in now, once. */
+function respawn(): void {
+  const s = conn?.predictor.state;
+  if (!conn || conn.mode !== 'deathmatch' || !s?.dead || asked === s.life) return;
+  asked = s.life;
+  killedBy = null;
+  conn.respawn();
+}
+/** The life we last asked to respawn from. */
+let asked = -1;
+
+/**
+ * In Deathmatch the death cam starts by itself, after the same moment of the
+ * death camera as before the results elsewhere, if we're still down by then.
+ */
+function deathmatchCam(): void {
+  const shown = conn;
+  const life = conn?.predictor.state?.life;
+  setTimeout(() => {
+    if (conn !== shown || !conn || deathcam || !conn.predictor.state?.dead || conn.predictor.state?.life !== life) return;
+    playDeathcam();
+  }, Math.max(RESULTS_DELAY_DEAD - DEATHCAM_AFTER, 0) * 1000);
 }
 
 /** The death cam ended or was skipped: on to the results, unless leaving anyway. */
@@ -812,12 +851,13 @@ function stopDeathcam(results = true): void {
   if (!deathcam) return;
   deathcam = null;
   deathcamEl.hidden = true;
-  hudEl.hidden = true;
+  // In Deathmatch play goes on.
+  hudEl.hidden = conn?.mode !== 'deathmatch';
   hudEl.classList.remove('watching');
   showCover(conn?.cover ?? noCover);
   bodies.clear();
   bodies.replaying = false;
-  if (results) showLastResults?.();
+  if (results) afterDeathcam();
 }
 
 deathcamEl.onclick = () => stopDeathcam();
@@ -825,7 +865,7 @@ window.addEventListener('keydown', (e) => {
   if (deathcam && (e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter')) {
     e.preventDefault();
     stopDeathcam();
-  }
+  } else if (e.code === 'Space' && conn?.mode === 'deathmatch' && conn.predictor.state?.dead) respawn();
 });
 document.getElementById('watch-deathcam')!.onclick = playDeathcam;
 
@@ -1073,7 +1113,11 @@ function onEvent(e: GameEvent, time: number, replayed = false): void {
       endRun(e);
       break;
     case 'deathcam':
-      if (conn) killedBy = { e, recording: conn.recorded() };
+      if (!conn) break;
+      // In Deathmatch, only while still down: once back in, that death is past.
+      if (conn.mode === 'deathmatch' && !conn.predictor.state?.dead) break;
+      killedBy = { e, recording: conn.recorded() };
+      if (conn.mode === 'deathmatch') deathmatchCam();
       break;
     case 'break': {
       const color = new THREE.Color();
@@ -1435,11 +1479,11 @@ renderer.setAnimationLoop(() => {
   else if (conn) {
     if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera, world.doorFacing(me.x, me.y, me.z, input.yaw, DOOR_REACH));
     else runHud.update(null, [], 0, 0, 0, camera);
-    if (!paused.hidden) runHud.updatePause(conn.run, pauseStanding());
+    if (!paused.hidden) runHud.updatePause(conn.mode === 'deathmatch' ? null : conn.run, conn.mode === 'deathmatch' ? '' : pauseStanding());
   }
   if (conn && !cam && me && !conn.over) rivalHud.update(conn.bags, conn.bounty, conn.id, camera.position, conn.lastTick * SERVER_DT, camera);
   else rivalHud.update([], null, 0, null, 0, camera);
-  scoreboard.update(conn?.board ?? [], conn?.id ?? 0, !!conn && !conn.over && !cam && !!paused.hidden);
+  scoreboard.update(conn?.board ?? [], conn?.id ?? 0, !!conn && !conn.over && !cam && !!paused.hidden, conn?.mode === 'deathmatch');
   const contracts = conn && !conn.over && !cam ? (conn.run?.contracts ?? []) : [];
   contractProps.update(contracts);
 

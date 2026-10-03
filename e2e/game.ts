@@ -55,7 +55,7 @@ export async function open(page: Page, query = ''): Promise<void> {
 }
 
 /** Start a run from the menu. */
-export async function play(page: Page, mode: Mode = 'online'): Promise<void> {
+export async function play(page: Page, mode: Mode = 'extraction'): Promise<void> {
   await page.click(`#modes [data-mode=${mode}]`);
   await page.click('#play');
   await page.waitForFunction(() => !!window.game.conn?.run);

@@ -16,7 +16,7 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 function client(server: GameServer) {
   const inbox: ServerMsg[] = [];
   const id = server.connect((m) => inbox.push(m));
-  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'online' });
+  server.receive(id, { t: 'hello', name: `p${id}`, world: DEFAULT_WORLD, mode: 'extraction' });
   let seq = 0;
   let weapon = 0;
   return {

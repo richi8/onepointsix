@@ -187,6 +187,52 @@ export function planOperator(
   return { name, role: { kind: 'operator', loot, planned, greed, personality, ...(thorough ? { thorough } : {}) }, skill, primary, spawn: { ...spawn, yaw } };
 }
 
+/** Spots tried for a Deathmatch spawn, the one farthest from everyone taken. */
+const ARENA_TRIES = 24;
+
+/**
+ * Where an operator (re)spawns in Deathmatch: of a few spots on dry land, the
+ * one farthest from the nearest of `avoid`, the living operators. Outposts are
+ * fair game, as nobody guards them.
+ */
+export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[]): Point {
+  let best: Point | null = null;
+  let bestD = -1;
+  for (let i = 0; i < ARENA_TRIES; i++) {
+    const p = world.randomLandPoint(rand);
+    if (!nav.dry(p.x, p.z) || p.y > 40) continue;
+    const d = Math.min(Infinity, ...avoid.map((a) => Math.hypot(a.x - p.x, a.z - p.z)));
+    if (d > bestD) (best = p), (bestD = d);
+  }
+  return best ?? world.randomLandPoint(rand);
+}
+
+/** Where to search every crate on an island from, worked out once per island. */
+const crateSpots = new WeakMap<World, LootSpot[]>();
+
+/**
+ * A Deathmatch operator bot: a hunter that never leaves, roaming for fights
+ * and going for the nearest crate when short of health or ammo. `taken` are
+ * callsigns already in use.
+ */
+export function planFighter(world: World, nav: NavGrid, rand: () => number, avoid: Point[], taken: Set<string>): BotPlan {
+  let supplies = crateSpots.get(world);
+  if (!supplies) {
+    supplies = lootCrates(world).map((c) => searchSpot(world, nav, c.box)).filter((s): s is LootSpot => !!s);
+    crateSpots.set(world, supplies);
+  }
+  const spawn = arenaPoint(world, nav, rand, avoid);
+  const free = CALLSIGNS.filter((c) => !taken.has(c));
+  const name = free.length ? free[Math.floor(rand() * free.length)] : `Op ${Math.floor(rand() * 100)}`;
+  const r = rand();
+  const skill: Difficulty = r < 0.2 ? 'easy' : r < 0.75 ? 'normal' : 'hard';
+  const primary = skill !== 'easy' && rand() < 0.2 ? BOLT : RIFLE;
+  return {
+    name, role: { kind: 'operator', loot: [], planned: 0, greed: 0, personality: 'hunter', supplies }, skill, primary,
+    spawn: { ...spawn, yaw: rand() * Math.PI * 2 },
+  };
+}
+
 /** Replacement guards set off from this far from their outpost... */
 const REINFORCE_DISTANCE: [number, number] = [100, 140];
 /** ...and at least this far from any other. */

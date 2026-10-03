@@ -35,6 +35,8 @@ export class RunHud {
   private readonly pause = $('paused');
   private readonly world: World;
   private readonly names: string[];
+  /** In Deathmatch there's no clock, extraction, pack or contracts: only what you face. */
+  deathmatch = false;
   /** Last rendered text of each part, so the DOM is only touched on change. */
   private shown = { extracts: '', contracts: '', prompt: '', pack: '', pause: '' };
 
@@ -48,9 +50,13 @@ export class RunHud {
    * range). `door` is the door leaf faced, or -1.
    */
   update(run: RunView | null, views: readonly ExtractView[], x: number, z: number, yaw: number, camera: THREE.Camera, door = -1): void {
-    for (const el of [this.clock, this.extracts, this.prompt, this.pack, this.markers]) el.hidden = !run;
+    for (const el of [this.clock, this.extracts, this.prompt, this.pack, this.markers]) el.hidden = !run || (this.deathmatch && el !== this.prompt);
     this.contracts.hidden = !run?.contracts.length;
     if (!run) return;
+    if (this.deathmatch) {
+      this.updatePrompt(run, views, door);
+      return;
+    }
 
     this.clock.textContent = clock(run.time);
     this.clock.classList.toggle('low', run.time < 60);

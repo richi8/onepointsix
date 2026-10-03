@@ -5,6 +5,7 @@ import {
   CMDS_PER_TICK,
   CROUCH_EYE_HEIGHT,
   CARRY_MAX,
+  CRATE_RESTOCK,
   CROUCH_SPEED,
   EXTRACT_FEE,
   EXTRACT_RADIUS,
@@ -58,8 +59,10 @@ export type Role =
   // Plays a run: search the crate at each of the first `planned` loot spots,
   // taking what it can carry up to `greed` kg, and the spots after them too
   // until it can pay for extraction; then leave at the nearest open extraction
-  // point. Its personality decides what else it does along the way.
-  | { kind: 'operator'; loot: LootSpot[]; planned: number; greed: number; personality?: Personality; thorough?: boolean }
+  // point. Its personality decides what else it does along the way. In
+  // Deathmatch, with `supplies`, it never leaves: it hunts, going to the
+  // nearest of those crates whenever it runs short of health or ammo.
+  | { kind: 'operator'; loot: LootSpot[]; planned: number; greed: number; personality?: Personality; thorough?: boolean; supplies?: LootSpot[] }
   // Doesn't think: plays one routine over and over on the range.
   | { kind: 'actor'; spec: ActorSpec };
 
@@ -509,6 +512,11 @@ export class Bot {
   private biding = false;
   /** How far it could see when it picked its camp. */
   private campSight = 1;
+  /** In Deathmatch: every crate it may go to for supplies, and when it last set off for each. Null elsewhere. */
+  private readonly supplies: readonly LootSpot[] | null;
+  private readonly suppliedAt = new Map<LootSpot, number>();
+  /** In Deathmatch, short of health or ammo as of the last think. */
+  private short = false;
 
   constructor(role: Role, skill: Skill, primary: number, yaw: number, rand: () => number) {
     this.role = role;
@@ -522,6 +530,7 @@ export class Bot {
     this.temper = this.personality ? TEMPERS[this.personality] : null;
     this.loot = role.kind === 'operator' ? [...role.loot] : [];
     this.planned = role.kind === 'operator' ? role.planned : 0;
+    this.supplies = role.kind === 'operator' ? (role.supplies ?? null) : null;
     this.state = this.routine();
   }
 
@@ -624,6 +633,7 @@ export class Bot {
     this.health = health(self);
     this.paid = (ctx.carried?.(self) ?? Infinity) >= EXTRACT_FEE;
     this.loaded = (ctx.carried?.(self) ?? 0) >= LOADED;
+    this.resupply(self);
     this.weather(ctx, self);
     if (this.isRoutine(this.state)) this.anchor = { x: self.x, y: self.y, z: self.z };
     this.perceive(ctx, self, dt);
@@ -632,6 +642,29 @@ export class Bot {
     this.checkStuck(self, dt);
     this.doors(ctx, self);
     if (this.role.kind !== 'sentry' && self.y > ctx.world.floorHeight(self.x, self.z) + 2) tally.upThinks++;
+  }
+
+  /**
+   * In Deathmatch, running short of health or ammo, it sets off for the
+   * nearest crate it hasn't been to since it was last restocked.
+   */
+  private resupply(self: Agent): void {
+    if (!this.supplies) return;
+    const gun = WEAPONS[this.primary];
+    this.short = this.health < WOUNDED || self.reserve[this.primary] < gun.magSize;
+    if (!this.short || this.step < this.loot.length) return;
+    let best: LootSpot | null = null;
+    let bestD = Infinity;
+    for (const s of this.supplies) {
+      if (this.now - (this.suppliedAt.get(s) ?? -Infinity) < CRATE_RESTOCK) continue;
+      const d = away(s, self);
+      if (d < bestD) (best = s), (bestD = d);
+    }
+    if (!best) return;
+    this.suppliedAt.set(best, this.now);
+    this.loot.length = 0;
+    this.loot.push(best);
+    this.step = 0;
   }
 
   /**
@@ -1074,7 +1107,7 @@ export class Bot {
     const standoff = (at.guards ? GUARD_STANDOFF : STALK_STANDOFF) * (this.pushes() ? RAIN_STANDOFF : 1);
     if (d < standoff) return;
     let k = (d - standoff) / d;
-    const o = ctx.world.nearestOutpost(at.x, at.z);
+    const o = this.supplies ? null : ctx.world.nearestOutpost(at.x, at.z);
     if (o && o.dist < OUTPOST_BERTH) {
       const out = o.outpost;
       const from = Math.hypot(self.x - out.x, self.z - out.z);
@@ -1434,7 +1467,8 @@ export class Bot {
     const dx = goal.x - self.x;
     const dz = goal.z - self.z;
     const len = Math.hypot(dx, dz);
-    if (len < 1) return goal;
+    // In Deathmatch nobody guards the outposts.
+    if (len < 1 || this.supplies) return goal;
     let best: Point | null = null;
     let bestAlong = Infinity;
     for (const o of ctx.world.outposts) {
@@ -1461,7 +1495,7 @@ export class Bot {
    * hurry on, a rat running too, and keep low only nearer outposts.
    */
   private travel(ctx: BotContext, self: Agent, d: number): void {
-    const near = ctx.world.nearestOutpost(self.x, self.z)?.dist ?? Infinity;
+    const near = this.supplies ? Infinity : (ctx.world.nearestOutpost(self.x, self.z)?.dist ?? Infinity);
     const bold = this.fogMoves() ? FOG_BOLDNESS : 1;
     const sneaky = !!this.temper?.sneaky && bold === 1;
     // Near an outpost, or with a guard seen about lately, it keeps low.
@@ -1484,7 +1518,7 @@ export class Bot {
       const p = ctx.nav.nearestWalkable(self.x + Math.sin(a) * r, self.z + Math.cos(a) * r, 15);
       if (!p || !ctx.nav.dry(p.x, p.z)) continue;
       const near = ctx.world.nearestOutpost(p.x, p.z)?.dist ?? Infinity;
-      if (near < OUTPOST_BERTH) continue;
+      if (near < OUTPOST_BERTH && !this.supplies) continue;
       return this.waitSpot(ctx, { x: p.x, y: ctx.world.groundHeight(p.x, p.z, ctx.world.floorHeight(p.x, p.z)), z: p.z });
     }
     return null;
@@ -1652,6 +1686,8 @@ export class Bot {
 
   private routine(): BotState {
     if (this.role.kind !== 'operator') return 'patrol';
+    // In Deathmatch there's no getting out: it hunts, and fetches supplies when short.
+    if (this.supplies) return this.short && this.step < this.loot.length ? 'loot' : 'hunt';
     const run = this.born < 0 ? 0 : this.now - this.born;
     // Badly hurt or short of time, it leaves what it hasn't searched yet, unless it can't yet pay to get out.
     if (this.step < this.loot.length && !this.paid) return 'loot';
@@ -1720,7 +1756,7 @@ export class Bot {
     let cz = 0;
     for (const t of threats) (cx += t.x / threats.length), (cz += t.z / threats.length);
     const away = Math.atan2(self.x - cx, self.z - cz);
-    const outpost = (x: number, z: number): number => Math.min(w.nearestOutpost(x, z)?.dist ?? Infinity, OUTPOST_BERTH);
+    const outpost = (x: number, z: number): number => (this.supplies ? OUTPOST_BERTH : Math.min(w.nearestOutpost(x, z)?.dist ?? Infinity, OUTPOST_BERTH));
     const from = outpost(self.x, self.z);
     let best: Spot | null = null;
     let bestScore = Infinity;

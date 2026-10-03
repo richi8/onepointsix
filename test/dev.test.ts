@@ -13,10 +13,10 @@ const GOLD = ITEMS.findIndex((i) => i.name === 'Gold bar');
 type Body = PlayerState & { run: { items: number[] } | null };
 
 function game(): { server: GameServer; id: number; events: () => GameEvent[]; me: () => Body } {
-  const server = new GameServer(DEFAULT_WORLD.seed, { mode: 'online', operators: 3 });
+  const server = new GameServer(DEFAULT_WORLD.seed, { mode: 'extraction', operators: 3 });
   const sent: ServerMsg[] = [];
   const id = server.connect((m) => sent.push(m));
-  server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'online' });
+  server.receive(id, { t: 'hello', name: 'me', world: DEFAULT_WORLD, mode: 'extraction' });
   server.step();
   const events = () => sent.flatMap((m) => (m.t === 'events' ? m.events : []));
   const me = () => (server as unknown as { players: Map<number, Body> }).players.get(id)!;

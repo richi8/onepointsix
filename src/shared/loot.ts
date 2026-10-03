@@ -46,11 +46,11 @@ const RICH_BOOST = 2.5;
 
 /**
  * A fresh crate's contents: one or two items out in the open, two to four in
- * an outpost.
+ * an outpost. With `supplies`, as in Deathmatch, only ammo and medkits.
  */
-export function rollItems(rand: () => number, rich: boolean): number[] {
+export function rollItems(rand: () => number, rich: boolean, supplies = false): number[] {
   const count = rich ? 2 + Math.floor(rand() * 3) : 1 + Math.floor(rand() * 2);
-  const weights = ITEMS.map((it) => it.rarity * (it.value >= RICH_VALUE && rich ? RICH_BOOST : 1));
+  const weights = ITEMS.map((it) => (supplies && it.use !== 'ammo' && it.use !== 'heal' ? 0 : it.rarity * (it.value >= RICH_VALUE && rich ? RICH_BOOST : 1)));
   const total = weights.reduce((a, b) => a + b, 0);
   const items: number[] = [];
   for (let i = 0; i < count; i++) {

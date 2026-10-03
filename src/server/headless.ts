@@ -1,9 +1,10 @@
 // Runs the game server in Node with its full population of bots and no
 // browser, to prove the server has no browser dependencies and to see how the
 // bots play and what they cost. The weather changes as in a game unless one is
-// named to hold. Usage: npm run sim [seconds] [seed] [weather]
+// named to hold. Usage: npm run sim [seconds] [seed] [weather|-] [mode]
 
 import { SERVER_TICK_RATE } from '../shared/constants.ts';
+import { parseMode } from '../shared/protocol.ts';
 import { parseWeather } from '../shared/weather.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
 import { MODES } from './directory.ts';
@@ -12,8 +13,9 @@ import { GameServer } from './server.ts';
 declare const process: { argv: string[] };
 
 const seconds = Number(process.argv[2] ?? 60);
-const seed = Number(process.argv[3] ?? DEFAULT_WORLD.seed);
-const server = new GameServer(seed, { ...MODES.online.options, weather: parseWeather(process.argv[4]) });
+const seed = process.argv[3] && process.argv[3] !== '-' ? Number(process.argv[3]) : DEFAULT_WORLD.seed;
+const mode = parseMode(process.argv[5] ?? null) ?? 'extraction';
+const server = new GameServer(seed, { ...MODES[mode].options, weather: parseWeather(process.argv[4]) });
 const counts = { kills: 0, headshots: 0, extracts: 0, calls: 0 };
 const killers = new Map<string, number>();
 server.onEvent = (e) => {

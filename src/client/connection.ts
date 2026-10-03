@@ -63,7 +63,7 @@ export class Connection {
   readonly predictor: Predictor;
   id = 0;
   seed = 0;
-  mode: Mode = 'online';
+  mode: Mode = 'extraction';
   /** The game's island's weather, once welcomed. */
   forecast: Forecast | null = null;
   /** The local player's run, the extraction points and the bags on the ground, as of the latest snapshot. */
@@ -119,6 +119,11 @@ export class Connection {
   /** A copy of the last TAPE_TIME seconds as this client saw them. */
   recorded(): Recording {
     return { snapshots: [...this.recording.snapshots], events: [...this.recording.events] };
+  }
+
+  /** In Deathmatch, dead: back in now. */
+  respawn(): void {
+    if (this.connected && !this.over) this.transport.send({ t: 'respawn' });
   }
 
   /** Back to the menu. */

@@ -12,14 +12,14 @@ const GOLD = ITEMS.findIndex((i) => i.name === 'Gold bar');
 function join(server: GameServer, name: string, player: string | null = `player-${name}`): { id: number; events: () => GameEvent[]; board: () => BoardRow[] | undefined } {
   const sent: ServerMsg[] = [];
   const id = server.connect((m) => sent.push(m));
-  server.receive(id, { t: 'hello', name, world: DEFAULT_WORLD, mode: 'online', ...(player === null ? {} : { player }) });
+  server.receive(id, { t: 'hello', name, world: DEFAULT_WORLD, mode: 'extraction', ...(player === null ? {} : { player }) });
   server.step();
   const events = () => sent.flatMap((m) => (m.t === 'events' ? m.events : []));
   const board = () => events().filter((e) => e.k === 'board').at(-1)?.rows;
   return { id, events, board };
 }
 
-function server(options: ServerOptions = { mode: 'online', operators: 3 }): GameServer {
+function server(options: ServerOptions = { mode: 'extraction', operators: 3 }): GameServer {
   return new GameServer(DEFAULT_WORLD.seed, options);
 }
 

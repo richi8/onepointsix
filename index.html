@@ -82,7 +82,8 @@
       <label class="name">Your name <input id="name" maxlength="16" autocomplete="nickname" spellcheck="false" /></label>
       <button id="play" type="button">Play</button>
       <div class="modes" id="modes" role="radiogroup" aria-label="Mode">
-        <button type="button" role="radio" data-mode="online">Online</button>
+        <button type="button" role="radio" data-mode="extraction">Extraction</button>
+        <button type="button" role="radio" data-mode="deathmatch">Deathmatch</button>
         <button type="button" role="radio" data-mode="range">Range</button>
       </div>
       <div class="briefing" id="briefing"></div>
@@ -158,7 +159,7 @@
         <div class="nades"></div>
       </div>
       <div class="stamina" id="stamina" hidden><div></div></div>
-      <div class="death" id="death" hidden><h2>You were killed</h2><p></p></div>
+      <div class="death" id="death" hidden><h2>You were killed</h2><p></p><small class="respawn" hidden>Space to respawn</small></div>
       <div class="hint" id="hint">
         <div class="fps" id="fps"></div>
         WASD move · Shift sprint · Space jump / mantle · C crouch · Q/E lean · LMB fire ·
