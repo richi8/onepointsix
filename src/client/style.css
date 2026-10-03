@@ -784,7 +784,7 @@ canvas.fade-in {
 .menu .briefing p {
   grid-area: 1 / 1;
   display: grid;
-  grid-template-columns: 5.2em 1fr;
+  grid-template-columns: 6.8em 1fr;
   gap: 8px;
   margin: 0;
   visibility: hidden;
