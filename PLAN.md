@@ -53,7 +53,8 @@ every animation (see `src/server/range.ts`), with actors instead of dummies.
 
 The island is 800 × 800 m, with 6 outposts. Deathmatch's island (since chunk 50) has the same
 terrain from the same seed, but three towns instead of the outposts: a harbour on the coast and
-two inland, joined by roads.
+two inland, joined by roads. Since chunk 51 they hold 58–66 buildings between them (the old
+town 24–32, the village 11–20, the harbour 13–19), against the outposts' 6.
 
 | Kind | Count | Notes |
 |---|---|---|
@@ -355,7 +356,7 @@ are still rebuilt.
 |---|---|---|---|---|
 | 49 | **Solid walls** | Walls, lintels, posts, roofs, upper floors and stairs stop breaking, in every mode: built as a few solid boxes instead of 1.6 m columns in two rows, with what only served them gone (resting and holding for walls and roofs, an upper storey falling with its posts, the light volume and roof map redone for a broken wall or roof, bots' cover going with a wall); windows, crates, fences and door leaves still break and are rebuilt as now; the outposts' perimeter walls and the ruined walls in the fields solid too; Destructible cover in Features updated | No shot or grenade breaks a wall or roof, windows, crates, fences and doors still break and come back, every test passes, and the bot playtest stays at 15% ± 3 | **Done** (each wall stretch, sill, lintel, post, roof, floor slab and stair is one plain prop, and every box says what it is (`Box.part`); panels are only fence sections, crates, door leaves, glass and tables (`timber` became `table`), and only crates rest on crates. A building's roof is one box, or two for an L. Gone with the breaking: resting, holding and `falls`, the roof map and the island map worked out again for a fallen roof, puddles on a floor left open to the sky, and the crumbling-masonry sound (its recording and credit too). Sound through a wall, sill, roof or floor is dulled as through masonry, as before. Unit tests now check walls stop rounds and grenades, and crate stacks, fences and the rebuild in place of walls; the screenshots matched as they were. Bot playtest: seeds 1–6, 18% extracted; 7–12, 19%; the last commit gave 18% and 20% on the same seeds, so no change, though both sit at the top of 15% ± 3) |
 | 50 | **Town sites** | `World` built from the seed and the mode, client and server alike; in Deathmatch no outposts, watchtowers or outpost cover, but three town sites instead: two inland and a harbour on the coast, larger, levelled ground under each, spaced round the island; roads between them; the huts, fences and field cover kept in the country; the Deathmatch board started afresh for the new island (old scores kept apart, not mixed in) | A Deathmatch island shows three levelled town sites joined by roads and no outposts, an Extraction island is exactly as before on the same seed, and the same seed gives the same towns on server and client | **Done** (`new World(seed, layoutFor(mode))`: a `Layout` of `outposts` or `towns`, and `World.towns` and `World.roads`. The harbour (Port Ash, 60 m) is placed first, along a line out from the middle to the shore and back in, on the spot with least to cut down to 2.5 m, its sea left as it is, so it wraps a cove; then the old town (Oldbridge, 48 m) and the village (Hillcombe, 52 m) inland, flat, on dry land all round and well apart. Each site is level out past its edge, blending back to the land over 30 m, and painted dirt. A road joins each pair, bowed a little, bent inland off the beach and smoothed, painted dirt 5 m wide. The country's cover, fences, huts, trees and rocks keep off the sites as off outposts, and off the roads, from the same random streams, so an Extraction island hashes exactly as before (`test/towns.test.ts`). The client builds the island for the mode picked: picking Deathmatch on the menu, or leaving it, loads the page again. Deathmatch's board is kept under `deathmatch-towns`. `?cam=t<n>,…` holds the menu camera on town n; two new screenshots. `sim:deathmatch` seeds 1–3, 120 s: 23–25 kills against 28–31 before, the island having lost the outposts' cover and crates until the towns are built) |
-| 51 | **Town generator** | Each site laid out in blocks with streets between: buildings from the four plans facing the street, back yards behind low garden walls, alleys between blocks; each town given an open place (a square, a market, a main street) beside its narrow ones; a style per town: an old town packed tight, a village terraced on its slope with retaining walls, the harbour with warehouses, stacked containers, piers and a quay; crates for ammo and medkits spread through the towns | From the menu's orbit the three towns read as towns and look unlike each other, and in each there's a narrow fight and an open one | Planned |
+| 51 | **Town generator** | Each site laid out in blocks with streets between: buildings from the four plans facing the street, back yards behind low garden walls, alleys between blocks; each town given an open place (a square, a market, a main street) beside its narrow ones; a style per town: an old town packed tight, a village terraced on its slope with retaining walls, the harbour with warehouses, stacked containers, piers and a quay; crates for ammo and medkits spread through the towns | From the menu's orbit the three towns read as towns and look unlike each other, and in each there's a narrow fight and an open one | **Done** (`src/shared/towns.ts` lays each town out in a frame of its own, axis-aligned, and `World.buildTown` builds it; `Town.open` and `Town.props` say where its open places are and which props are its own. Rows of buildings face their streets, each with a yard behind walled from the next, the gap beside the building (2.2 m clear, as wide as a doorway, or the nav grid can miss it) opening onto it, and a gate in the back wall onto the alley between back-to-back rows. **Oldbridge**: blocks of mostly two-storey houses, seven in ten built against a neighbour (end doors turned to the open side), small yards and 2.2 m alleys, round a square of about 21 × 23 m; the bands' cross streets fall out of line. **Hillcombe**: three terraces 1.6 m apart up the land's slope, their edges on the terrain's grid lines, held up by retaining walls (a block over the cell the ground ramps in, its top flush and walkable by bots) with gaps where the 10 m main street and two side alleys ramp up; a lane along each terrace, houses spread either side with long grassy yards, a green on the middle terrace. **Port Ash**: the ground cut along a straight quay (a block flush with the 2.5 m ground) down to a basin 3.5 m deep, two or three piers on posts, stacks of containers one to three high on a 18 m apron, a row of warehouses (two-room plans 15–19 × 9.5–11 m) facing the water, and blocks of houses behind with a main street up from the quay. Each town tints its walls and roofs (ochre and red tiles, whitewash and slate, grey-blue and tin), from palettes whose first colour is the plain one, so Extraction looks as it did. Loot crates: one in each house, two in each warehouse, some in deep yards, by the square, on the quay: 15–34 a town. A one-room house in a town has its table under its back window rather than its end one, as the end one could leave no way past the open door leaf on the nav grid. Bots' doors are looked up near a bot first (`botDoors`), as a town has four times the doors. Checked by `test/towns.test.ts`: every room of every town building, and every crate out of doors, reached by a bot's path from the open place on eight islands (all 24 checked once); the old town's buildings touching and the village's spread; the open places clear; the styles' parts. The Extraction island hashes as before, and its screenshots match. The towns' screenshots are now the old town, the village and the harbour, the first two from their sunny side. `sim:deathmatch` seeds 1–3, 120 s: 25, 28 and 30 kills, against 30, 25 and 23 on the bare sites (the last commit, run again) and 28–31 on the outposts; see Known Issues for its cost) |
 | 52 | **Street cover and rooftops** | Cover in the streets: car wrecks, sandbag and rubble barricades breaking up long sight lines, market stalls, low walls round the squares; one or two reachable rooftops a town (outside stairs, a container stack), with a parapet, good but open to shots back | No street is a straight open lane end to end, and each town has a rooftop a player and a bot can climb to | Planned |
 | 53 | **Towns in play** | Respawns at a town's edge or out in the country, not in its middle, still away from the others; the nav grid and bots' cover through alleys, yards and up to the rooftops; operator bots roaming between towns; the benchmark and a cold first load with the towns' buildings (each building's light volume, the panels), cut back if they don't hold; tuning from `sim:deathmatch` and a human pass | `sim:deathmatch` shows fights spread over all three towns and bots not stuck, the benchmark holds its frame time in a town, and a tester finds the towns better to fight in than the outposts | Planned |
 
@@ -376,7 +377,12 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Code and testing
-Nothing open: the last was resolved on 2026-10-03 (see the history).
+- **A one-room building's table can leave bots no way in** (chunk 51): in an outpost or a hut,
+  the table under the end window stands close enough to the open door leaf that the 1 m nav
+  grid can find no cell between them, depending on how the building falls on the grid (found
+  in the towns, where it hit 11 of about 400 rooms). Town buildings have the table under the
+  back window instead; the outposts and huts keep theirs, so Extraction's islands stay exactly
+  as they were.
 
 ### Playtest and tuning
 Nothing open: the last was accepted on 2026-10-03 (see the history, and the bot extraction
@@ -393,9 +399,43 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   rebuilt with it.
 - **Roads are only painted** (chunk 50): dirt on the terrain's 4 m grid, so their edges are
   ragged and they follow every bump of the ground, with no cutting or levelling across a slope.
-- **Fewer crates and less cover in Deathmatch until the towns are built** (chunk 50): the
-  outposts' crates, containers and walls went with them, and the town sites are bare clearings
-  until chunks 51 and 52. `sim:deathmatch` shows a few fewer kills a minute.
+- **Less cover in Deathmatch's streets until chunk 52** (chunk 50): the outposts' crates,
+  containers and walls went with them. **Resolved in part** (chunk 51): the towns have their
+  buildings, garden walls and 15–34 loot crates each, more than the outposts had, and
+  `sim:deathmatch` is back near the outposts' kills; but the streets, the square and the green are
+  bare, long open lanes, until chunk 52's street cover.
+- **Most town buildings have no light grid** (chunk 51): the indoor light keeps grids for 16
+  buildings (`MAX_BUILDINGS`, its 3D texture's depth and the shaders' uniform arrays), the first
+  16 built, so rooms in the other 40-odd town buildings are lit as if outdoors; and in the old
+  town a building's light volume can reach over its neighbour's, whose cells on the island map
+  it takes. Chunk 53's benchmark and cold load are to settle how many grids the towns can have.
+- **A bot's path to a spot it can't reach costs up to 140 ms in a town** (chunk 51): A* runs its
+  30,000 expansions, and among a town's upper floors and terraces each costs more. In
+  `sim:deathmatch`, about two server ticks in ten minutes take over 20 ms, one (seed 1) 140 ms;
+  the mean tick costs half as much again as on the bare sites. For chunk 53, with the bots in
+  the towns.
+- **Bots can't search one crate in eight inside the towns' buildings** (chunk 51): the search
+  spot, 1.4 m out from the crate, falls on no open cell of the nav grid when the crate stands
+  in a corner close to a wall or partition. The outposts' buildings have the same share (10 of
+  102 crates on islands 1–6), but the towns have four times the crates indoors. Players can
+  search them.
+- **Warehouses are big two-room houses** (chunk 51): the harbour's warehouses use the two-room
+  plan at 15–19 × 9.5–11 m, the same 3 m storey, doors and windows as a house, not a tall shed
+  with wide doors.
+- **Roads run on into the towns as paint** (chunk 50, 51): a road still runs to its town's
+  middle, painted over yards and under houses, and doesn't meet a street at the town's edge.
+- **The terraces' retaining walls are 4 m deep** (chunk 51): each is a block over the whole
+  terrain cell the ground ramps in, so its top is a plain concrete strip 4 m wide along the
+  terrace's edge, and terraces step only 1.6 m, so the ramps where streets cross stay walkable
+  for bots.
+- **The harbour's basin is cut straight** (chunk 51): the sea off the quay is 3.5 m deep in a
+  straight line along it whatever the coast did, sloping back to the shore beyond the site, so it
+  can read as a dug dock; someone who falls in can't climb back up the quay and wades to where
+  the basin's side slopes up.
+- **Houses built against each other keep their end windows** (chunk 51): in the old town and the
+  harbour, the window at a house's end can look straight into its neighbour's wall.
+- **The yards' grass is coarse** (chunk 51): the ground is painted on the terrain's 4 m grid, so
+  a yard's grass only shows where a grid point falls in it, and spills a little under walls.
 
 ## Future
 - **Multiplayer**

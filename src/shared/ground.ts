@@ -28,7 +28,8 @@ export function paint(world: World, x: number, y: number, z: number, flat: numbe
   const town = world.nearestTown(x, z);
   const dirt = Math.max(
     outpost ? smoothstep(26, 16, outpost.dist) : 0,
-    town ? smoothstep(town.town.r + 6, town.town.r - 4, town.dist) : 0,
+    // Bare in a town, bar the yards with grass in them.
+    town ? smoothstep(town.town.r + 6, town.town.r - 4, town.dist) * (world.inGreen(x, z) ? 0.15 : 1) : 0,
     smoothstep(ROAD_WIDTH / 2 + 3, ROAD_WIDTH / 2, world.roadDistance(x, z)),
   );
   const rock = smoothstep(0.86, 0.72, flat) + smoothstep(38, 52, y);

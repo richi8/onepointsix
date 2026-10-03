@@ -12,6 +12,7 @@ import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
 import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
 import type { Mode } from './protocol.ts';
 import { fbm, mulberry32 } from './rng.ts';
+import { HARBOUR_HEIGHT, planTown, specFor, TOWN_LOOK, type Spec, type TownPlan } from './towns.ts';
 
 export interface Cyl {
   kind: 'cyl';
@@ -73,8 +74,8 @@ export type PropStyle = 'crate' | 'wall' | 'wood' | 'metal' | 'fence' | 'roof' |
 export type PanelKind = 'fence' | 'crate' | 'door' | 'glass' | 'table';
 /**
  * What a prop is: `sill` the wall under a window, `floor` a concrete floor
- * slab, `step` a stair, `timber` a watchtower's woodwork, `container` a
- * shipping container, or one of the parts that can be broken.
+ * slab, `step` a stair, `timber` woodwork (a watchtower's, a pier's),
+ * `container` a shipping container, or one of the parts that can be broken.
  */
 export type Part = 'wall' | 'sill' | 'roof' | 'floor' | 'step' | 'timber' | 'container' | PanelKind;
 
@@ -241,6 +242,10 @@ export interface Town {
   /** For the harbour, which way the sea lies, as a unit vector; 0, 0 inland. */
   seaX: number;
   seaZ: number;
+  /** Its open places: a square, a green, a main street, a quay. */
+  open: Rect[];
+  /** Its props, as indices into World.props: from the first up to but not including the second. */
+  props: [number, number];
 }
 
 /** A road's width, and how far round it is kept clear of cover, huts and trees. */
@@ -284,8 +289,6 @@ const TOWNS: { name: string; style: TownStyle; r: number }[] = [
 ];
 /** Beyond its edge, a town's ground slopes back to the land's over this many metres. */
 const TOWN_BLEND = 30;
-/** The harbour's ground, metres above the sea: a quay's height. */
-const HARBOUR_HEIGHT = 2.5;
 /** Road points are this far apart. */
 const ROAD_STEP = 8;
 /** One for each outpost. */
@@ -390,13 +393,15 @@ export class World {
   readonly towns: Town[] = [];
   /** The roads between the towns, each a line of points from one town's middle to another's. */
   readonly roads: { x: number; z: number }[][] = [];
+  /** The towns' yards with grass in them. */
+  readonly greens: Rect[] = [];
   /** Where operators leave the island; the server opens and closes them. */
   readonly extracts: Point[] = [];
   readonly colliders: Collider[] = [];
   readonly panels: Panel[] = [];
   /** Each freestanding wall's outline. Buildings' walls aren't listed. */
   readonly walls: Box[] = [];
-  /** The buildings: one in each outpost, in order, then those out in the country. */
+  /** The buildings: one in each outpost, in order, or the towns', then those out in the country. */
   readonly buildings: Building[] = [];
   readonly doors: Door[] = [];
   /** Each outpost's watchtower: the props it's built from, drawn as one. */
@@ -421,11 +426,12 @@ export class World {
     }
 
     const rng = mulberry32(this.seed ^ 0x9e3779b9);
+    let towns: TownPlan[] = [];
     if (layout === 'towns') {
       // Their own random stream, so the rest is drawn from the island's as with outposts.
-      const towns = mulberry32(this.seed ^ 0x7f4a7c15);
-      this.placeTowns(towns);
-      this.placeRoads(towns);
+      const sites = mulberry32(this.seed ^ 0x7f4a7c15);
+      towns = this.placeTowns(sites, mulberry32(this.seed ^ 0x2545f491));
+      this.placeRoads(sites);
     } else this.placeOutposts(rng);
     let maxH = -Infinity;
     for (const h of this.heights) if (h > maxH) maxH = h;
@@ -437,6 +443,7 @@ export class World {
     this.scatterCover(rng);
     this.placeTrees(rng);
     this.placeRocks(rng);
+    towns.forEach((p, i) => this.buildTown(this.towns[i], p, mulberry32(this.seed ^ Math.imul(i + 1, 0x68e31da5))));
     for (const c of this.colliders) this.insert(c);
     // Its own random stream, so adding extraction points moved nothing else.
     this.placeExtracts(mulberry32(this.seed ^ 0x6a09e667));
@@ -1164,6 +1171,11 @@ export class World {
     return best;
   }
 
+  /** Whether (x, z) is in a town's yard with grass in it. */
+  inGreen(x: number, z: number): boolean {
+    return this.greens.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
+  }
+
   /** The nearest town and how far its middle is, or null with none. */
   nearestTown(x: number, z: number): { town: Town; dist: number } | null {
     let best: Town | null = null;
@@ -1234,9 +1246,9 @@ export class World {
   }
 
   /** A freestanding wall: one solid box. */
-  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): void {
+  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, tint = 0): void {
     this.walls.push({ kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0, part: 'wall' });
-    this.addProp(minX, minY, minZ, maxX, maxY, maxZ, 'wall');
+    this.addProp(minX, minY, minZ, maxX, maxY, maxZ, 'wall', tint);
   }
 
   /** Each outpost's own random stream, for its building and the cover round it. */
@@ -1244,30 +1256,19 @@ export class World {
     return this.seed ^ 0xa54ff53a ^ Math.imul(i + 1, 0x9e3779b1);
   }
 
-  /** A plan's size: `L` along its length and `D` deep, and an L's wing (`W` wide, jutting `E` out in front). */
-  private spec(plan: Plan, rng: () => number): Spec {
-    switch (plan) {
-      case 'one':
-        return { plan, L: 6 + rng(), D: 4.8 + rng() * 0.6, W: 0, E: 0 };
-      case 'two':
-        return { plan, L: 10 + rng() * 1.5, D: 6.5 + rng(), W: 0, E: 0 };
-      case 'ell': {
-        const E = 3.6 + rng() * 0.6;
-        return { plan, L: 9.5 + rng(), D: 6 + rng() * 0.6 + E, W: 4.4 + rng() * 0.4, E };
-      }
-      case 'tall':
-        return { plan, L: 7.4 + rng() * 0.8, D: 6 + rng() * 0.5, W: 0, E: 0 };
-    }
-  }
-
   /**
    * A concrete building laid out by `spec`, placed by `f` (local u along its
    * length, v from its front to its back) with its floor at `y` and its walls
    * reaching down to `base`. Walls are solid, with doorways and windows:
    * windows are glazed, and each doorway is hung with a pair of leaves. The
-   * roof is solid too. There's a table under a window, and `crates` crates in the rooms.
+   * roof is solid too. There's a table under a window, and `crates` crates in
+   * the rooms. Its walls and roof are tinted as `look` has them. With
+   * `roomy`, a one-room building's table stands under the window in its rear
+   * wall instead of the one at its end, leaving the way in from its door wider.
    */
-  private addBuilding(spec: Spec, f: Frame, y: number, base: number, rng: () => number, outpost: number, crates: number): Building {
+  private addBuilding(
+    spec: Spec, f: Frame, y: number, base: number, rng: () => number, outpost: number, crates: number, look: Look = PLAIN, roomy = false,
+  ): Building {
     const { plan, L, D, W, E } = spec;
     const T = HOUSE_WALL;
     const top = y + HOUSE_HEIGHT;
@@ -1279,7 +1280,7 @@ export class World {
     const jitter = () => (rng() - 0.5) * 0.8;
     const post = (u: number, v: number, y0: number, y1: number) => {
       const r = rect(u, v, u + T, v + T);
-      this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall');
+      this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall', look.wall);
     };
     const table = (r: Rect, floor: number) => this.addPanel(r.minX, floor - 0.2, r.minZ, r.maxX, floor + 0.8, r.maxZ, 'table');
     /** Where the crates go, most wanted first: on the ground floor or on an upper floor. */
@@ -1294,11 +1295,11 @@ export class World {
     switch (plan) {
       case 'one': {
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, base, top);
-        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(L * 0.35 + jitter() * 0.4), pane(L * 0.76)], 1, rng);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L / 2 + jitter() * 0.5)], -1, rng);
-        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [], -1, rng);
-        table(rect(T + 0.05, D / 2 - 0.9, T + 0.95, D / 2 + 0.9), y);
+        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(L * 0.35 + jitter() * 0.4), pane(L * 0.76)], 1, rng, look);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L / 2 + jitter() * 0.5)], -1, rng, look);
+        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng, look);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [], -1, rng, look);
+        table(roomy ? rect(L / 2 - 0.9, D - T - 0.95, L / 2 + 0.9, D - T - 0.05) : rect(T + 0.05, D / 2 - 0.9, T + 0.95, D / 2 + 0.9), y);
         corner(L - T - 1.15, D - T - 1.15);
         corner(T + 1.2, D - T - 1.15);
         break;
@@ -1307,12 +1308,12 @@ export class World {
         // Room A (u < p) has the front door; room B the door at the far end.
         const p = L * (0.52 + rng() * 0.06);
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, base, top);
-        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(p / 2 + jitter()), pane((p + L) / 2 + jitter())], 1, rng);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(p / 2 + jitter()), pane((p + L) / 2 + jitter())], -1, rng);
-        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng);
+        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(p / 2 + jitter()), pane((p + L) / 2 + jitter())], 1, rng, look);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(p / 2 + jitter()), pane((p + L) / 2 + jitter())], -1, rng, look);
+        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng, look);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng, look);
         // The partition between the rooms, with a doorway in the middle.
-        this.addFacade(alongV, T, D - T, p - T / 2, p + T / 2, y, base, [door(D / 2 + jitter() * 0.5)], 1, rng);
+        this.addFacade(alongV, T, D - T, p - T / 2, p + T / 2, y, base, [door(D / 2 + jitter() * 0.5)], 1, rng, look);
         table(rect(T + 0.05, D / 2 - 0.9, T + 0.95, D / 2 + 0.9), y);
         corner(p - T / 2 - 1.15, D - T - 1.15);
         corner(L - T - 1.15, D - T - 1.15);
@@ -1324,13 +1325,13 @@ export class World {
         const a = L - W;
         const mid = E + (D - E) / 2;
         for (const [u, v] of [[0, E], [0, D - T], [L - T, D - T], [L - T, 0], [a, 0]]) post(u, v, base, top);
-        this.addFacade(alongU, T, a, E, E + T, y, base, [door(a * 0.38 + jitter() * 0.3), pane(a * 0.8)], 1, rng);
+        this.addFacade(alongU, T, a, E, E + T, y, base, [door(a * 0.38 + jitter() * 0.3), pane(a * 0.8)], 1, rng, look);
         // B's side: onto the yard, then the partition with A.
-        this.addFacade(alongV, T, D - T, a, a + T, y, base, [door(E / 2), door(mid + jitter() * 0.3)], 1, rng);
-        this.addFacade(alongU, a + T, L - T, 0, T, y, base, [pane((a + L) / 2)], 1, rng);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [pane(E / 2), pane(mid)], -1, rng);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(a / 2), pane(L - W / 2)], -1, rng);
-        this.addFacade(alongV, E + T, D - T, 0, T, y, base, [pane(mid)], 1, rng);
+        this.addFacade(alongV, T, D - T, a, a + T, y, base, [door(E / 2), door(mid + jitter() * 0.3)], 1, rng, look);
+        this.addFacade(alongU, a + T, L - T, 0, T, y, base, [pane((a + L) / 2)], 1, rng, look);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [pane(E / 2), pane(mid)], -1, rng, look);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(a / 2), pane(L - W / 2)], -1, rng, look);
+        this.addFacade(alongV, E + T, D - T, 0, T, y, base, [pane(mid)], 1, rng, look);
         table(rect(T + 0.05, mid - 0.9, T + 0.95, mid + 0.9), y);
         corner(a - 1.15, D - T - 1.15);
         corner(L - T - 1.15, T + 0.15);
@@ -1348,21 +1349,21 @@ export class World {
         const sEnd = T + steps * run;
         const sv = D - T - STAIR_WIDTH;
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, base, top);
-        this.addFacade(alongU, T, L - T, 0, T, y, base, [pane(L * 0.25), door(L * 0.64 + jitter() * 0.3)], 1, rng);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L * 0.74)], -1, rng);
-        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2 - 0.4)], 1, rng);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng);
+        this.addFacade(alongU, T, L - T, 0, T, y, base, [pane(L * 0.25), door(L * 0.64 + jitter() * 0.3)], 1, rng, look);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L * 0.74)], -1, rng, look);
+        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2 - 0.4)], 1, rng, look);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng, look);
         for (let k = 0; k < steps; k++) {
           const r = rect(sEnd - (k + 1) * run, sv, sEnd - k * run, D - T);
           this.addProp(r.minX, y - 0.2, r.minZ, r.maxX, y + (HOUSE_HEIGHT * (k + 1)) / steps, r.maxZ, 'step').walk = true;
         }
         // The upper floor, with a hole over the stairs.
-        for (const r of [rect(T, T, L - T, sv), rect(sEnd, sv, L - T, D - T)]) this.addProp(r.minX, y2 - 0.2, r.minZ, r.maxX, y2, r.maxZ, 'floor').walk = true;
+        for (const r of [rect(T, T, L - T, sv), rect(sEnd, sv, L - T, D - T)]) this.addProp(r.minX, y2 - 0.2, r.minZ, r.maxX, y2, r.maxZ, 'floor', look.wall).walk = true;
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, y2, top2);
-        this.addFacade(alongU, T, L - T, 0, T, y2, y2, [pane(L * 0.28), pane(L * 0.72)], 1, rng);
-        this.addFacade(alongU, T, L - T, D - T, D, y2, y2, [pane(L * 0.62)], -1, rng);
-        this.addFacade(alongV, T, D - T, 0, T, y2, y2, [pane(D / 2 - 0.5)], 1, rng);
-        this.addFacade(alongV, T, D - T, L - T, L, y2, y2, [pane(D / 2)], -1, rng);
+        this.addFacade(alongU, T, L - T, 0, T, y2, y2, [pane(L * 0.28), pane(L * 0.72)], 1, rng, look);
+        this.addFacade(alongU, T, L - T, D - T, D, y2, y2, [pane(L * 0.62)], -1, rng, look);
+        this.addFacade(alongV, T, D - T, 0, T, y2, y2, [pane(D / 2 - 0.5)], 1, rng, look);
+        this.addFacade(alongV, T, D - T, L - T, L, y2, y2, [pane(D / 2)], -1, rng, look);
         table(rect(L - T - 1.9, T + 0.05, L - T - 0.1, T + 0.95), y2);
         // One crate upstairs, in the corner farthest from the stairs' top.
         corner(T + 0.15, T + 0.15, y2);
@@ -1375,7 +1376,7 @@ export class World {
 
     for (const [u0, v0, u1, v1] of roofs) {
       const r = rect(u0, v0, u1, v1);
-      this.addProp(r.minX, roofY, r.minZ, r.maxX, roofY + HOUSE_ROOF, r.maxZ, 'roof');
+      this.addProp(r.minX, roofY, r.minZ, r.maxX, roofY + HOUSE_ROOF, r.maxZ, 'roof', look.roof);
     }
 
     for (const { r, floor } of spots.slice(0, crates)) {
@@ -1400,7 +1401,7 @@ export class World {
    */
   private addFacade(
     frame: Frame, a0: number, a1: number, c0: number, c1: number, y: number, base: number,
-    openings: Opening[], inward: 1 | -1, rng: () => number,
+    openings: Opening[], inward: 1 | -1, rng: () => number, look: Look,
   ): void {
     const top = y + HOUSE_HEIGHT;
     const box = (u0: number, v0: number, u1: number, v1: number): Rect => rectOf(frame, u0, v0, u1, v1);
@@ -1411,13 +1412,13 @@ export class World {
       const u1 = i === sorted.length ? a1 : sorted[i].at - sorted[i].width / 2;
       if (u1 - u0 < 0.05) continue;
       const r = box(u0, c0, u1, c1);
-      this.addProp(r.minX, base, r.minZ, r.maxX, top, r.maxZ, 'wall');
+      this.addProp(r.minX, base, r.minZ, r.maxX, top, r.maxZ, 'wall', look.wall);
     }
     const mid = (c0 + c1) / 2;
     for (const o of sorted) {
       const r = box(o.at - o.width / 2, c0, o.at + o.width / 2, c1);
       if (o.kind === 'window') {
-        this.addProp(r.minX, base, r.minZ, r.maxX, y + WINDOW_SILL, r.maxZ, 'sill');
+        this.addProp(r.minX, base, r.minZ, r.maxX, y + WINDOW_SILL, r.maxZ, 'sill', look.wall);
         const g = box(o.at - o.width / 2, mid - GLASS / 2, o.at + o.width / 2, mid + GLASS / 2);
         const glass = this.addPanel(g.minX, y + WINDOW_SILL, g.minZ, g.maxX, y + WINDOW_TOP, g.maxZ, 'glass');
         this.panels[glass].box.clear = true;
@@ -1433,7 +1434,7 @@ export class World {
         this.doors[leaves[0]].pair = leaves[1];
         this.doors[leaves[1]].pair = leaves[0];
       }
-      this.addProp(r.minX, y + (o.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP), r.minZ, r.maxX, top, r.maxZ, 'wall');
+      this.addProp(r.minX, y + (o.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP), r.minZ, r.maxX, top, r.maxZ, 'wall', look.wall);
     }
   }
 
@@ -1490,9 +1491,10 @@ export class World {
   /**
    * Deathmatch's three towns: the harbour where the land meets the sea, its
    * sea side left as it is, then two inland, each on fairly flat ground, well
-   * apart, and with land all round. Each one's ground is levelled.
+   * apart, and with land all round. Each is laid out from `layout`'s stream,
+   * and its ground levelled as its plan has it. Returns the plans.
    */
-  private placeTowns(rng: () => number): void {
+  private placeTowns(rng: () => number, layout: () => number): TownPlan[] {
     const [port, ...inland] = TOWNS;
 
     // The harbour: along a line out from the middle to where the sea starts, then back inland a little.
@@ -1525,7 +1527,7 @@ export class World {
       const score = land.reduce((s, h) => s + Math.abs(h - HARBOUR_HEIGHT), 0) / land.length;
       if (score < bestScore) {
         bestScore = score;
-        best = { name: port.name, style: port.style, x, y: HARBOUR_HEIGHT, z, r: port.r, seaX: sx, seaZ: sz };
+        best = { name: port.name, style: port.style, x, y: HARBOUR_HEIGHT, z, r: port.r, seaX: sx, seaZ: sz, open: [], props: [0, 0] };
       }
     }
     if (best) this.towns.push(best);
@@ -1552,14 +1554,26 @@ export class World {
         }
         const y = ring.reduce((s, h) => s + h, 0) / ring.length;
         if (!dry || y < 4 || y > 36) continue;
-        this.towns.push({ name: spec.name, style: spec.style, x, y, z, r: spec.r, seaX: 0, seaZ: 0 });
+        this.towns.push({ name: spec.name, style: spec.style, x, y, z, r: spec.r, seaX: 0, seaZ: 0, open: [], props: [0, 0] });
       }
     }
 
-    // Level each one's ground, out past its edge by a cell and a half so every triangle in it is flat,
-    // then blend back to the land's; the harbour's sea stays.
+    const plans = this.towns.map((t) => {
+      // Which way the land rose across the site.
+      let [ux, uz] = [0, 0];
+      for (let i = 0; i < 12; i++) {
+        const b = (i / 12) * Math.PI * 2;
+        const h = this.rawHeight(t.x + Math.sin(b) * t.r, t.z + Math.cos(b) * t.r);
+        ux += Math.sin(b) * h;
+        uz += Math.cos(b) * h;
+      }
+      return planTown(t, layout, this, [ux, uz]);
+    });
+
+    // Level each one's ground as its plan has it, out past its edge by a cell and a half so every
+    // triangle in it is flat, then blend back to the land's.
     const n = this.res + 1;
-    for (const t of this.towns) {
+    this.towns.forEach((t, k) => {
       const flat = t.r + this.cell * 1.5;
       const outer = flat + TOWN_BLEND;
       for (let iz = 0; iz < n; iz++) {
@@ -1570,11 +1584,34 @@ export class World {
           const d = Math.hypot(x - t.x, z - t.z);
           if (d > outer) continue;
           const i = iz * n + ix;
-          const land = t.style === 'harbour' ? smoothstep(-2, 0.5, this.heights[i]) : 1;
-          this.heights[i] += (t.y - this.heights[i]) * smoothstep(outer, flat, d) * land;
+          this.heights[i] += (plans[k].ground(x, z, this.heights[i]) - this.heights[i]) * smoothstep(outer, flat, d);
         }
       }
+    });
+    return plans;
+  }
+
+  /** Build a town as its plan lays it out, drawing details from `rng`. */
+  private buildTown(t: Town, plan: TownPlan, rng: () => number): void {
+    const first = this.props.length;
+    const look = TOWN_LOOK[t.style];
+    for (const h of plan.houses) {
+      const { spec, rect: r, facing } = h;
+      const alongX = facing === '-z' || facing === '+z';
+      const f = frameOf(r.minX, r.minZ, spec.L, spec.D, alongX, h.flipU, facing[0] === '+');
+      this.addBuilding(spec, f, h.floor, h.floor - 0.5, rng, -1, h.crates, look, true);
     }
+    for (const { r, y0, y1 } of plan.walls) this.addWall(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, look.wall);
+    // Bots walk their tops as they do a floor.
+    for (const { r, y0, y1 } of plan.blocks) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall').walk = true;
+    for (const { r, y0, y1, tint } of plan.containers) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'container', tint);
+    for (const { r, y0, y1 } of plan.decks) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'timber').walk = true;
+    for (const { r, y0, y1 } of plan.posts) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'timber');
+    const crates: number[] = [];
+    for (const { r, y0, y1, on } of plan.crates) crates.push(this.addPanel(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'crate', on >= 0 ? [crates[on]] : [], rng()));
+    this.greens.push(...plan.greens);
+    t.open = plan.open;
+    t.props = [first, this.props.length];
   }
 
   /**
@@ -1669,7 +1706,7 @@ export class World {
 
     // The building in a corner away from the watchtower, its front toward the middle.
     const own = mulberry32(house);
-    const spec = this.spec(plan, own);
+    const spec = specFor(plan, own);
     const sx = own() < 0.5 ? 1 : -1;
     const alongX = own() < 0.5;
     const r = this.corner(o, edge, spec.L, spec.D, sx, alongX);
@@ -1826,7 +1863,7 @@ export class World {
     for (let placed = 0, tries = 0; placed < HUTS && tries < 1500; tries++) {
       const x = (rng() - 0.5) * this.size * 0.75;
       const z = (rng() - 0.5) * this.size * 0.75;
-      const spec = this.spec(rng() < 0.75 ? 'one' : 'two', rng);
+      const spec = specFor(rng() < 0.75 ? 'one' : 'two', rng);
       const alongX = rng() < 0.5;
       const flipU = rng() < 0.5;
       const flipV = rng() < 0.5;
@@ -1985,13 +2022,12 @@ export class World {
 /** Local (along, across) to world (x, z). */
 type Frame = (a: number, c: number) => [number, number];
 
-interface Spec {
-  plan: Plan;
-  L: number;
-  D: number;
-  W: number;
-  E: number;
+/** How a building's walls and roof are tinted. */
+interface Look {
+  wall: number;
+  roof: number;
 }
+const PLAIN: Look = { wall: 0, roof: 0 };
 
 /**
  * The frame for a footprint at (minX, minZ), `L` along its length and `D`

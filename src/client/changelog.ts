@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Three towns for Deathmatch',
+    notes: [
+      'Deathmatch’s three town sites are built up: streets of houses facing each other, back yards behind low garden walls, narrow gaps and alleys between them, and an open place in each town for a fight in the open.',
+      'Oldbridge, the old town, is packed tight round its square: mostly two-storey houses, many built against each other, ochre walls and red roofs.',
+      'Hillcombe, the village, steps up its slope in three terraces held up by retaining walls: whitewashed houses spread along a lane on each, grassy yards, and a main street climbing the middle past the green.',
+      'Port Ash, the harbour, has a quay with piers out over the water, shipping containers stacked up to three high, warehouses facing the sea, and houses behind.',
+      'Crates of ammo and medkits are spread through the towns: in the houses, in the yards, by the square and on the quay.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Deathmatch gets its own island',
     notes: [
       'Deathmatch is played on an island of its own: the same hills and coast, but instead of the six outposts there are three town sites, a harbour on the coast and two towns inland, joined by dirt roads. The towns themselves are still to be built; for now each is a levelled clearing.',

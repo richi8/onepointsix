@@ -116,10 +116,12 @@ for (const [name, query] of Object.entries(YARD)) {
   });
 }
 
-// Deathmatch's island (see ?cam=t in main.ts): an inland town's levelled site
-// with a road out of it, and the harbour round its cove.
+// Deathmatch's island (see ?cam=t in main.ts): its three towns from the
+// sunny side, each in its own style: the old town packed round its square,
+// the village on its terraces, and the harbour's quay, piers and containers.
 const TOWNS: Record<string, string> = {
-  'town-site': 't1,-90,70,-90,0,0,0',
+  'old-town': 't1,45,25,45,0,0,0',
+  village: 't2,45,25,45,0,0,0',
   harbour: 't0,-60,45,-110,10,0,20',
 };
 

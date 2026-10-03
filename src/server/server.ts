@@ -712,6 +712,8 @@ export class GameServer {
     const w = this.world;
     for (let i = 0; i < w.doors.length; i++) {
       const d = w.doors[i];
+      // Out of reach of its hinge: most of them, in a town.
+      if (Math.abs(d.x - x) > d.length + 1 || Math.abs(d.z - z) > d.length + 1) continue;
       if (d.open || p.y > d.y1 || p.y + PLAYER_HEIGHT < d.y0 || w.panels[d.panel].box.gone) continue;
       const [x0, z0, x1, z1] = leafRect(d, false);
       if (x > x0 - PLAYER_RADIUS && x < x1 + PLAYER_RADIUS && z > z0 - PLAYER_RADIUS && z < z1 + PLAYER_RADIUS) {

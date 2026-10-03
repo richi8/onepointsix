@@ -32,24 +32,29 @@ const FLAG_OPEN = 0x4fd06b;
 const FLAG_SHUT = 0xc4453a;
 const FLAG_CALLED = 0xf2b33d;
 
+/**
+ * A prop's colour by its style, picked by its tint: walls and roofs have the
+ * plain one first and then the towns' (see TOWN_LOOK): the old town's ochre
+ * and red tiles, the village's whitewash and slate, the harbour's grey-blue and tin.
+ */
 const PROP_COLORS: Record<PropStyle, number[]> = {
   crate: [0x8b6b3e, 0x7a5c33, 0x94784a],
-  wall: [0x8d8a82],
+  wall: [0x8d8a82, 0xa88d66, 0xc9c6bc, 0x7d858c],
   wood: [0x6b4f33],
   metal: [0x7a3b2e, 0x2f5a73, 0x4e6b3a, 0x8a7a3a, 0x5d6166],
   fence: [0x7d6a4f, 0x6e5c42],
-  roof: [0x55595c],
+  roof: [0x55595c, 0x8a4a38, 0x464b52, 0x6e7268],
   door: [0x5a4a36],
   glass: [0xa8c4c8],
 };
 /** With textures, props are tinted rather than coloured. */
 const PROP_TINTS: Record<PropStyle, number[]> = {
   crate: [0xe8e8e0, 0xe0dccc, 0xd4ccbc],
-  wall: [0xe0dcd4],
+  wall: [0xe0dcd4, 0xf2d4a6, 0xfffaf0, 0xc4ccd4],
   wood: [0xb0a292],
   metal: [0xc0584a, 0x5d8aad, 0x7d9a5e, 0xc8ae62, 0xa4a8ac],
   fence: [0xffffff, 0xe0d4c0],
-  roof: [0xa09a90],
+  roof: [0xa09a90, 0xe08a6a, 0x868c96, 0xb4b8aa],
   door: [0x8a7560],
   glass: [0xffffff],
 };
