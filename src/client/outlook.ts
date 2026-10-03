@@ -5,7 +5,9 @@ import { WEATHERS, type Forecast, type Weather } from '../shared/weather.ts';
 // worked out from the island's forecast so every client and a death cam see
 // the same: each change blended in over its half a minute to a minute, and
 // signs of it in the minute before (clouds thickening, the wind rising and
-// far thunder before rain, mist gathering in the hollows before fog). How wet
+// far thunder before rain, mist gathering in the hollows before fog; the
+// clouds breaking, the rain easing and the thunder dying away, or the fog
+// thinning, before it clears). How wet
 // the island is follows the rain that's fallen, soaking in fast and drying
 // slowly after.
 
@@ -30,12 +32,16 @@ export interface Outlook {
 /** Seconds before a change that its signs begin to show. */
 export const WARNING = 75;
 /** How far the clouds have turned toward the coming weather by the time it starts coming in. */
-const PRE_CLOUDS: Record<Weather, number> = { clear: 0.15, rain: 0.6, fog: 0.15 };
+const PRE_CLOUDS: Record<Weather, number> = { clear: 0.4, rain: 0.6, fog: 0.15 };
 /** How hard the wind blows in each weather, and how much it rises ahead of rain. */
 const WIND: Record<Weather, number> = { clear: 1, rain: 1.3, fog: 0.55 };
 const GUST = 0.7;
 /** How much mist lies in the hollows by the time a fog starts coming in. */
 const PRE_MIST = 0.75;
+/** How much the rain has eased by the time it starts to stop. */
+const PRE_EASE = 0.45;
+/** How far the air has cleared by the time a fog starts to lift. */
+const PRE_LIFT = 0.25;
 
 /** One weather alone, settled, with no change coming. */
 export function settledOutlook(weather: Weather): Outlook {
@@ -92,11 +98,14 @@ function turning(a: Weather, b: Weather, s: number, w: number): Outlook {
   const pre = PRE_CLOUDS[b] * w;
   const clouds = mix(a, b, pre + (1 - pre) * eased);
   const rain = (x: Weather) => (x === 'rain' ? 1 : 0);
+  // A fog thins and the rain eases ahead of their going, and the thunder dies away.
+  const lift = a === 'fog' ? PRE_LIFT * w : 0;
+  const ease = a === 'rain' && b !== 'rain' ? w : 0;
   return {
     clouds,
-    air: mix(a, b, eased),
-    rainfall: rain(a) * (1 - s) + rain(b) * s,
-    storm: rain(a) * (1 - s) + rain(b) * Math.max(w, s),
+    air: mix(a, b, lift + (1 - lift) * eased),
+    rainfall: rain(a) * (1 - s) * (1 - PRE_EASE * ease) + rain(b) * s,
+    storm: rain(a) * (1 - s) * (1 - ease) + rain(b) * Math.max(w, s),
     wind: WIND[a] + (WIND[b] - WIND[a]) * (pre + (1 - pre) * eased) + (b === 'rain' ? GUST * w * (1 - eased) : 0),
     // Giving way to the fog's own mist as it comes in.
     mist: b === 'fog' && a !== 'fog' ? PRE_MIST * w * (1 - eased) : 0,

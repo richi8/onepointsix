@@ -318,8 +318,6 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
   only its near and far, so the mist level is packed into the near distance's multiples of 4096
   m (`mistNear` in `fogbanks.ts`). Anything else that reads `scene.fog.near` gets the packed
   number; only the sea's underwater fog does, saving and restoring it whole.
-- **Nothing warns that the weather is clearing** (45): before rain or fog lifts, the clouds only
-  brighten a little; the plan asked for warnings of rain and fog only.
 
 ### Code and testing
 Nothing open: the last was resolved on 2026-10-02 (see the history).

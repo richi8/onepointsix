@@ -1543,6 +1543,13 @@ notes the chunk it came from.
   dull until the water is nearly full. The ground under a puddle stays soaked and dark after the
   rest has dried. The yard-drying screenshot moved from three minutes to two minutes after the
   rain, where puddles are still left.
+- **Nothing warns that the weather is clearing** (45): before rain or fog lifts, the clouds only
+  brighten a little; the plan asked for warnings of rain and fog only.
+  **Resolved** (2026-10-03): in the 75 s before it clears, the clouds turn 40% of the way to clear
+  (from 15%), so the sky lightens and more sun gets through. Before rain stops, or turns to fog,
+  it eases to 55% and the thunder dies away by the time the change starts. Before a fog goes, the
+  air clears a quarter of the way, and before it clears the wind rises with the clouds. Unit tests
+  check the signs; two new screenshots show the rain and the fog 5 s before they clear.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

@@ -90,6 +90,34 @@ describe('the weather as seen and heard', () => {
     }
   });
 
+  it('warns of clearing a minute ahead: the clouds break, the rain eases and the fog thins', () => {
+    for (let seed = 1; seed <= 4; seed++) {
+      const f = new Forecast(seed);
+      // Spells long enough to have settled before the signs begin.
+      const settled = (c: { at: number; from: Weather }) => {
+        const t = c.at - WARNING * 2;
+        return f.at(t).from === c.from && f.at(t).to === c.from;
+      };
+      const clearing = changes(f, 7200).filter((c) => c.to === 'clear' && settled(c));
+      expect(clearing.length).toBeGreaterThan(0);
+      for (const c of clearing) {
+        const calm = outlookAt(f, c.at - WARNING - 5);
+        const ahead = outlookAt(f, c.at - 10);
+        expect(ahead.clouds.clear).toBeGreaterThan(calm.clouds.clear + 0.25);
+        if (c.from === 'rain') {
+          expect(calm.rainfall).toBe(1);
+          expect(ahead.rainfall).toBeGreaterThan(0.4);
+          expect(ahead.rainfall).toBeLessThan(0.7);
+          expect(ahead.storm).toBeLessThan(0.1);
+        } else {
+          expect(calm.air.fog).toBe(1);
+          expect(ahead.air.fog).toBeGreaterThan(0.7);
+          expect(ahead.air.fog).toBeLessThan(0.85);
+        }
+      }
+    }
+  });
+
   it('is the weather alone once settled', () => {
     const o = outlookAt(Forecast.held('rain', 'rain'), 0);
     expect(o).toMatchObject({ rainfall: 1, storm: 1, mist: 0, clouds: { rain: 1 }, air: { rain: 1 } });
