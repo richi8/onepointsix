@@ -14,8 +14,8 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     date: '2026-10-03',
     title: 'Rivals who play the weather',
     notes: [
-      'Rats see a fog coming and lie low until it rolls in, then hurry through it; in fog, rats and looters search an extra crate and go nearer the outposts.',
-      'Hunters close in on fights under the cover of rain, which drowns out their steps, and come further to check on a noise.',
+      'Rats see a fog coming and lie low until it rolls in, then hurry through it; in fog, rats and looters go for an extra crate and go nearer the outposts, and drop it when they see the fog lifting.',
+      'Hunters close in on fights under the cover of rain, which drowns out their steps, and come further to check on a noise. Seeing rain on its way, they stay out hunting longer.',
       'Campers move in nearer their extraction point as rain or fog shortens the view, stop answering noises, and wait longer in fog before leaving.',
     ],
   },

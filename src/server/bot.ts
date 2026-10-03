@@ -18,7 +18,7 @@ import {
 import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
-import { CHANGE_MAX, coverOf, type Coming, type Senses } from '../shared/weather.ts';
+import { CHANGE_MAX, coverOf, type Coming, type Senses, type Weather } from '../shared/weather.ts';
 import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
@@ -283,12 +283,16 @@ const IDLE_PITCH = -0.06;
 const TURN_GAIN = 0.35;
 /** The weather's cover counts once it's at least this much in: from about halfway through a change. */
 const IN_COVER = 0.5;
-/** A rat sees fog coming this many seconds off at most, as the mist gathers, and lies low until it's in. */
-const FOG_AHEAD = 75;
+/** Bots see a change of weather coming this many seconds off at most, as its signs show: a rat lies low for fog until it's in. */
+const SIGNS_AHEAD = 75;
 /** Longest a rat waits for fog, from when it's coming. */
 const FOG_WAIT = 150;
 /** Rats and looters crossing the island in fog sneak and walk this much nearer outposts than they would. */
 const FOG_BOLDNESS = 0.4;
+/** A fog lifting, a rat or a looter gives up the crate it took on for it unless it's this close to it. */
+const FOG_LIFTING_KEEP = 30;
+/** Seconds longer a hunter stays on to hunt while rain is coming or in. */
+const RAIN_LINGER = 120;
 /** Kg more a looter carries off in fog. */
 const FOG_GREED = 6;
 /** A hunter closing in on a fight under rain stops this much nearer, runs until this close, and goes this much farther to a noise. */
@@ -334,6 +338,10 @@ export const tally = {
   /** Rats lying low for fog seen coming, and crates searched past the plan in fog by rats and looters. */
   fogWaits: 0,
   fogCrates: 0,
+  /** Of those, crates given up as the fog was seen lifting. */
+  fogLifts: 0,
+  /** Hunters turned back from heading out to hunt as rain was seen coming. */
+  rainHunts: 0,
   /** Fights a hunter closed in on under rain. */
   rainStalks: 0,
   /** Camps moved nearer an extraction point as sight shortened. */
@@ -492,6 +500,10 @@ export class Bot {
   private sight = 1;
   /** Whether it has taken a crate more for the fog that's in, and the change of weather it last lay low for, by when it comes. */
   private fogCrate = false;
+  /** Whether that crate is one more than it meant to search. */
+  private fogExtra = false;
+  /** The next change of weather, as of the last think. */
+  private coming: Coming | undefined;
   private bidedFor = -Infinity;
   /** Lying low for fog to come in. */
   private biding = false;
@@ -612,7 +624,7 @@ export class Bot {
     this.health = health(self);
     this.paid = (ctx.carried?.(self) ?? Infinity) >= EXTRACT_FEE;
     this.loaded = (ctx.carried?.(self) ?? 0) >= LOADED;
-    this.weather(ctx);
+    this.weather(ctx, self);
     if (this.isRoutine(this.state)) this.anchor = { x: self.x, y: self.y, z: self.z };
     this.perceive(ctx, self, dt);
     this.decide(ctx, self);
@@ -622,22 +634,48 @@ export class Bot {
     if (this.role.kind !== 'sentry' && self.y > ctx.world.floorHeight(self.x, self.z) + 2) tally.upThinks++;
   }
 
-  /** Reads the weather; fog setting in, a rat or a looter takes a crate more than it meant to while it hides them. */
-  private weather(ctx: BotContext): void {
+  /**
+   * Reads the weather and the signs of the next change. Fog setting in, a rat
+   * or a looter takes a crate more than it meant to while it hides them, and
+   * seeing the fog lift, gives it up again if it isn't nearly there. A hunter
+   * heading out turns back to hunt on seeing rain coming.
+   */
+  private weather(ctx: BotContext, self: Agent): void {
     const cover = coverOf(ctx.senses);
     this.fog = cover.fog;
     this.rain = cover.rain;
     this.sight = ctx.senses.sight;
+    this.coming = ctx.coming;
+    if (this.role.kind !== 'operator' || this.role.thorough) return;
+    if (this.personality === 'hunter' && this.state === 'extract' && this.routine() === 'hunt' && !this.waiting(ctx, self)) {
+      tally.rainHunts++;
+      this.enter('hunt');
+    }
     if (!this.fogMoves()) {
-      this.fogCrate = false;
+      this.fogCrate = this.fogExtra = false;
       return;
     }
-    if (this.fogCrate || this.role.kind !== 'operator' || this.role.thorough) return;
-    this.fogCrate = true;
-    if (this.step < this.planned && this.planned < this.loot.length && this.health >= WOUNDED) {
-      this.planned++;
-      tally.fogCrates++;
+    if (!this.fogCrate) {
+      this.fogCrate = true;
+      if (this.step < this.planned && this.planned < this.loot.length && this.health >= WOUNDED) {
+        this.planned++;
+        this.fogExtra = true;
+        tally.fogCrates++;
+      }
     }
+    if (!this.fogExtra || !this.seesComing('fog', false)) return;
+    const extra = this.loot[this.planned - 1];
+    if (this.step > this.planned - 1 || (this.step === this.planned - 1 && away(extra, self) < FOG_LIFTING_KEEP)) return;
+    this.planned--;
+    this.fogExtra = false;
+    tally.fogLifts++;
+    if (this.state === 'loot' && this.routine() !== 'loot') this.enter(this.routine());
+  }
+
+  /** Whether it sees a change to (or with `to` false, away from) `w` coming, by its signs. */
+  private seesComing(w: Weather, to = true): boolean {
+    const c = this.coming;
+    return !!c && c.in <= SIGNS_AHEAD && (c.weather === w) === to;
   }
 
   /** Whether fog is in, and it's a rat or a looter, who make the most of it. */
@@ -657,7 +695,7 @@ export class Bot {
    */
   private bidesForFog(ctx: BotContext, self: Agent): boolean {
     const c = ctx.coming;
-    if (this.personality !== 'rat' || !c || c.weather !== 'fog' || c.in > FOG_AHEAD || this.fog >= IN_COVER) return false;
+    if (this.personality !== 'rat' || !c || c.weather !== 'fog' || c.in > SIGNS_AHEAD || this.fog >= IN_COVER) return false;
     if (this.role.kind !== 'operator' || this.role.thorough || this.waiting(ctx, self)) return false;
     const comes = this.now + c.in;
     if (Math.abs(comes - this.bidedFor) < 1 || this.now - this.born + c.in + CHANGE_MAX > RUN_TIME - LEAVE_BY) return false;
@@ -1620,8 +1658,9 @@ export class Bot {
     if (this.step < this.planned && this.health >= WOUNDED && run < RUN_TIME - LEAVE_BY) return 'loot';
     // Hunters and campers stay on a while once done looting, but leave in time.
     const t = this.temper;
-    // A camper stays on longer while sight is short.
-    const linger = t ? t.linger + (this.personality === 'camper' ? CAMP_LINGER * (1 - this.sight) : 0) : 0;
+    // A camper stays on longer while sight is short; a hunter while rain is coming or in, to hunt under it.
+    const rainy = this.personality === 'hunter' && (this.rain >= IN_COVER || this.seesComing('rain'));
+    const linger = t ? t.linger + (this.personality === 'camper' ? CAMP_LINGER * (1 - this.sight) : 0) + (rainy ? RAIN_LINGER : 0) : 0;
     if (t && run < Math.min(linger, RUN_TIME - LEAVE_BY) && this.health >= WOUNDED) {
       if (this.personality === 'hunter') return 'hunt';
       if (this.personality === 'camper' && !this.campDone) return 'camp';

@@ -2063,6 +2063,20 @@ notes the chunk it came from.
   **Resolved** (2026-10-02): the developer played it and liked it: staying too long in a cleared
   outpost means fighting the replacements coming in, which is the rush it was meant to add. The
   15 s delay stays, and the unchecked way in was accepted as it is.
+- **Nobody has played against the weather-wise bots yet** (46): chunk 46's human pass was to
+  come, to see whether a tester notices the bots playing the weather and uses the weather turning
+  themselves.
+  **Resolved** (2026-10-03): the developer played it; how the bots use the weather was hard to
+  judge in play but looked fine, and they accepted it.
+- **Bots only read the signs of fog** (46): a rat lay low for fog it saw coming, but no bot acted
+  on rain or clearing seen coming, such as a hunter setting out as the thunder rolls or a rat
+  hurrying to get out before a fog lifts.
+  **Resolved** (2026-10-03): bots are given the next change as its signs show it, up to 75 s
+  ahead. A hunter stays on 120 s longer to hunt while rain is coming or in, and turns back from
+  heading out to do so; a rat or a looter seeing a fog lift gives up the crate it took on for
+  the fog, unless within 30 m of it, and gets on with its run. In the bot playtest (seeds 1–6)
+  68 of 86 fog crates were given up as the fog lifted, and operator bots extracted from 15% of
+  runs. Campers need no signs: they move with sight as it changes.
 ## Dropped
 
 Open issues taken off the plan on 2026-09-28 as not worth pursuing: records of what was measured

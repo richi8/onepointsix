@@ -95,8 +95,8 @@ console.log(
   `doors shut behind them ${tally.shuts}, ${tally.slams} of them on someone chasing; thinks spent upstairs or up a tower ${tally.upThinks}`,
 );
 console.log(
-  `weather: rats lying low for fog seen coming ${tally.fogWaits}, crates searched past the plan in fog ${tally.fogCrates}, ` +
-  `fights hunters closed in on under rain ${tally.rainStalks}, camps moved nearer as sight shortened ${tally.campsCloser}`,
+  `weather: rats lying low for fog seen coming ${tally.fogWaits}, crates taken on for fog ${tally.fogCrates} (given up as it lifted ${tally.fogLifts}), ` +
+  `fights hunters closed in on under rain ${tally.rainStalks}, hunters turned back to hunt as rain came ${tally.rainHunts}, camps moved nearer as sight shortened ${tally.campsCloser}`,
 );
 console.log(`drop-ins with no spot clear of outposts and other operators, so anywhere: ${share(dropIns.anywhere, dropIns.picked)}`);
 

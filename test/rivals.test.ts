@@ -430,6 +430,43 @@ describe('playing the weather', () => {
     }
   });
 
+  it('rats and looters give up the crate they took on for the fog once they see it lifting', () => {
+    const at = openSpot(250);
+    const self = agent(1, 'operator', at.x, at.z);
+    const crates = [{ x: at.x - 150, y: self.y, z: at.z }, { x: at.x + 150, y: self.y, z: at.z }];
+    for (const p of ['rat', 'looter'] as const) {
+      const role: Role = { kind: 'operator', loot: crates.map((c) => ({ ...c, look: c })), planned: 1, greed: 20, personality: p };
+      const bot = new Bot(role, SKILLS.normal, RIFLE, 0, mulberry32(2));
+      const ctx: BotContext = { ...context([self]), senses: fog, coming: { weather: 'clear', in: 200 } };
+      think(bot, ctx, self, 1);
+      expect(inside(bot).planned).toBe(2);
+      ctx.coming = { weather: 'clear', in: 60 };
+      think(bot, ctx, self, 0.5, 1);
+      expect(inside(bot).planned, p).toBe(1);
+      // And it doesn't take one on again for the same fog.
+      think(bot, ctx, self, 0.5, 1.5);
+      expect(inside(bot).planned).toBe(1);
+    }
+  });
+
+  it('a hunter heading out turns back to hunt on seeing rain coming', () => {
+    const at = openSpot(150);
+    const self = agent(1, 'operator', at.x, at.z);
+    const hunter = operator('hunter');
+    const ctx: BotContext = { ...context([self]), coming: { weather: 'rain', in: 200 } };
+    think(hunter, ctx, self, 0.5);
+    expect(hunter.state).toBe('hunt');
+    think(hunter, ctx, self, 0.5, TEMPERS.hunter.linger + 1);
+    expect(hunter.state).toBe('extract');
+    ctx.coming = { weather: 'rain', in: 60 };
+    think(hunter, ctx, self, 0.5, TEMPERS.hunter.linger + 2);
+    expect(hunter.state).toBe('hunt');
+    // Once the rain has been and gone, it leaves.
+    ctx.coming = { weather: 'fog', in: 200 };
+    think(hunter, ctx, self, 0.5, TEMPERS.hunter.linger + 3);
+    expect(hunter.state).toBe('extract');
+  });
+
   it('a hunter under rain closes in nearer a fight than in the clear', () => {
     const at = openSpot(250);
     const self = agent(1, 'operator', at.x, at.z);

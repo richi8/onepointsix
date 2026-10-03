@@ -55,27 +55,29 @@ describe('the weather cycle', () => {
   });
 
   it('never repeats a weather, and blends each change over 30 to 60 s', () => {
+    // Collected rather than asserted at each step, which takes too long with every test running at once.
+    const wrong: string[] = [];
     for (let seed = 1; seed <= 20; seed++) {
       const f = new Forecast(seed);
       let changeStart = -1;
       let last: WeatherNow = f.at(0);
       for (let t = 0; t < 3 * 3600; t += 0.5) {
         const w = f.at(t);
-        expect(w.blend).toBeGreaterThanOrEqual(0);
-        expect(w.blend).toBeLessThanOrEqual(1);
+        const at = `seed ${seed} at ${t} s`;
+        if (w.blend < 0 || w.blend > 1) wrong.push(`${at}: blend ${w.blend}`);
         const changing = w.from !== w.to;
         if (changing && changeStart < 0) changeStart = t;
         if (!changing && changeStart >= 0) {
           const took = t - changeStart;
-          expect(took).toBeGreaterThanOrEqual(CHANGE_MIN - 0.5);
-          expect(took).toBeLessThanOrEqual(CHANGE_MAX + 0.5);
-          expect(w.to).toBe(last.to);
+          if (took < CHANGE_MIN - 0.5 || took > CHANGE_MAX + 0.5) wrong.push(`${at}: a change took ${took} s`);
+          if (w.to !== last.to) wrong.push(`${at}: settled on ${w.to}, not ${last.to}`);
           changeStart = -1;
         }
-        if (changing && last.from === w.from && last.to === w.to) expect(w.blend).toBeGreaterThanOrEqual(last.blend);
+        if (changing && last.from === w.from && last.to === w.to && w.blend < last.blend) wrong.push(`${at}: blend went back`);
         last = w;
       }
     }
+    expect(wrong).toEqual([]);
   });
 
   it('keeps clear longest: about 5 min of it, 3 of rain and 2 of fog in every 10', () => {
