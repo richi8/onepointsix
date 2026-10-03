@@ -5,7 +5,10 @@ export const BOARD_SIZE = 10;
 
 export interface BoardEntry {
   name: string;
+  /** A run's score; for a Deathmatch game, its kills. */
   score: number;
+  /** For a Deathmatch game, its deaths: fewer rank higher on the same kills. */
+  deaths?: number;
   /** When it was set, as YYYY-MM-DD. */
   date: string;
 }
@@ -45,7 +48,7 @@ export class Leaderboard {
       if (!Array.isArray(raw)) return [];
       return raw.filter((e): e is BoardEntry =>
         !!e && typeof e.name === 'string' && typeof e.score === 'number' && typeof e.date === 'string')
-        .map(({ name, score, date }) => ({ name, score, date }));
+        .map(({ name, score, date, deaths }) => ({ name, score, date, ...(typeof deaths === 'number' ? { deaths } : {}) }));
     } catch {
       return [];
     }
@@ -55,8 +58,8 @@ export class Leaderboard {
   add(seed: number, mode: Mode, entry: BoardEntry): number {
     if (entry.score <= 0) return 0;
     const list = this.entries(seed, mode);
-    // Ties go to whoever set the score first.
-    let place = list.findIndex((e) => e.score < entry.score);
+    // Ties go to fewer deaths, then to whoever set the score first.
+    let place = list.findIndex((e) => e.score < entry.score || (e.score === entry.score && (e.deaths ?? 0) > (entry.deaths ?? 0)));
     if (place < 0) place = list.length;
     if (place >= BOARD_SIZE) return 0;
     list.splice(place, 0, entry);

@@ -13,7 +13,7 @@ async function me(page: import('@playwright/test').Page): Promise<{ life: number
 test('Deathmatch: no clock or extraction, every operator on Tab, and back in after the death cam', async ({ page }) => {
   await open(page);
   await page.click('#modes [data-mode=deathmatch]');
-  await expect(page.locator('#board .empty')).toHaveText('Deathmatch keeps no scores: hold Tab in a game for kills and deaths.');
+  await expect(page.locator('#board .empty')).toHaveText('No games yet. Leave a Deathmatch game with a kill to post it.');
   await play(page, 'deathmatch');
   await expect(page.locator('#clock')).toBeHidden();
   await expect(page.locator('#extracts')).toBeHidden();
@@ -55,4 +55,13 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
     return !s.dead && s.life > life;
   }, second.life);
   expect(await page.evaluate(() => !!window.game.deathcam)).toBe(false);
+
+  // Leaving posts the game's kills and deaths to this island's board.
+  await dev(page, { act: 'rival' });
+  await dev(page, { act: 'kill' });
+  await page.waitForFunction(() => window.game.conn!.board.some((r) => r.id === window.game.conn!.id && r.kills === 1));
+  await page.evaluate(() => document.exitPointerLock());
+  await expect(page.locator('#paused')).toBeVisible();
+  await page.click('#leave');
+  await expect(page.locator('#board li').first()).toContainText('1 kill · 2 deaths');
 });

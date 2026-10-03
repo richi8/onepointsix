@@ -31,6 +31,15 @@ describe('leaderboard', () => {
     expect(board.entries(1, 'extraction')[1].name).toBe('later');
   });
 
+  it('ranks Deathmatch games by kills, then fewest deaths, keeping the deaths', () => {
+    const board = new Leaderboard(memory());
+    expect(board.add(1, 'deathmatch', { ...run(5), deaths: 4 })).toBe(1);
+    expect(board.add(1, 'deathmatch', { ...run(5), deaths: 2 })).toBe(1);
+    expect(board.add(1, 'deathmatch', { ...run(5), deaths: 3 })).toBe(2);
+    expect(board.entries(1, 'deathmatch').map((e) => e.deaths)).toEqual([2, 3, 4]);
+    expect(board.entries(1, 'extraction')).toEqual([]);
+  });
+
   it('drops the weather and time of day old scores were kept with', () => {
     const store = memory();
     const board = new Leaderboard(store);

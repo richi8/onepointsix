@@ -33,6 +33,7 @@ interface Game {
     transport: { send(msg: { t: string }): void; sent?: string[] };
     bounty: { id: number; name: string; x: number; z: number } | null;
     bags: { x: number; z: number; value?: number; kind?: string }[];
+    board: { id: number; kills: number; deaths: number }[];
     predictor: { state: { x: number; z: number } };
   } | null;
   deathcam: object | null;

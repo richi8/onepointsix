@@ -428,8 +428,8 @@ function showBoard(): void {
     challengeEl.textContent = `${link.challenge.name} scored ${link.challenge.score.toLocaleString('en-US')} on this island${where}. Beat it.`;
   }
   boardEl.querySelector('h3')!.textContent = `Your best here · ${MODE_NAMES[mode]}`;
-  const rows: { name: string; score: number; note: string; rival: boolean }[] = (mode === 'deathmatch' ? [] : board.entries(config.seed, mode))
-    .map((e) => ({ name: e.name, score: e.score, note: shortDate(e.date), rival: false }));
+  const rows: { name: string; score: number; deaths?: number; note: string; rival: boolean }[] = board.entries(config.seed, mode)
+    .map((e) => ({ name: e.name, score: e.score, deaths: e.deaths, note: shortDate(e.date), rival: false }));
   if (c) {
     const at = rows.findIndex((r) => r.score < c.score);
     rows.splice(at < 0 ? rows.length : at, 0, { name: c.name, score: c.score, note: 'to beat', rival: true });
@@ -457,7 +457,8 @@ function showBoard(): void {
     const name = document.createElement('span');
     name.textContent = r.name;
     const score = document.createElement('b');
-    score.textContent = r.score.toLocaleString('en-US');
+    // A Deathmatch game's kills and deaths.
+    score.textContent = mode === 'deathmatch' ? `${r.score} kill${r.score === 1 ? '' : 's'} · ${r.deaths ?? 0} death${r.deaths === 1 ? '' : 's'}` : r.score.toLocaleString('en-US');
     const note = document.createElement('small');
     note.textContent = r.note;
     li.append(rank, name, score, note);
@@ -466,7 +467,7 @@ function showBoard(): void {
   const empty = boardEl.querySelector('.empty') as HTMLElement;
   empty.hidden = rows.length > 0;
   boardEl.classList.toggle('none', rows.length === 0);
-  empty.textContent = mode === 'deathmatch' ? 'Deathmatch keeps no scores: hold Tab in a game for kills and deaths.' : 'No scores yet. Get off the island with loot to post one.';
+  empty.textContent = mode === 'deathmatch' ? 'No games yet. Leave a Deathmatch game with a kill to post it.' : 'No scores yet. Get off the island with loot to post one.';
 }
 
 function shortDate(date: string): string {
@@ -953,8 +954,24 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && !statsEl.hidden) showStats(false);
 });
 
+/**
+ * Leaving a Deathmatch game: post its kills and deaths to this island's board,
+ * as Extraction posts a run's score. A game without a kill isn't kept.
+ */
+function postDeathmatch(): void {
+  if (conn?.mode !== 'deathmatch' || conn.over || posted === conn) return;
+  posted = conn;
+  const row = conn.board.find((r) => r.id === conn!.id);
+  if (row) board.add(config.seed, 'deathmatch', { name: playerName(), score: row.kills, deaths: row.deaths, date: today() });
+}
+/** The game last posted, so closing the page after leaving doesn't post it again. */
+let posted: Connection | null = null;
+// Closing the page leaves the game too.
+window.addEventListener('pagehide', postDeathmatch);
+
 function toMenu(): void {
   stopDeathcam(false);
+  postDeathmatch();
   // The game is kept a while after we leave, its weather turning on: the menu's goes along with it.
   if (conn?.forecast) menuWeather = { forecast: conn.forecast, time: conn.renderTime(), at: performance.now() / 1000 };
   conn?.leave();
