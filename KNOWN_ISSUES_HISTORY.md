@@ -1505,6 +1505,18 @@ notes the chunk it came from.
   anywhere over an hour on ten islands, signs ahead of each change, wetting the same followed
   along or after a jump), screenshot tests part way through changes, and a game in the browser
   fed a change 70 s ahead, at 60 fps throughout.
+- **The mist ahead of a fog shows mostly by the sea and in valleys** (45): it lay by height above
+  the sea, not in hollows of the ground round it, so from a hilltop or high ground inland it was
+  faint, and a player there was warned of fog mainly by the greying sky.
+  **Resolved** (2026-10-03): the mist now lies from a level a texture gives across the island:
+  the ground blurred over about 80 m round each point (two box blurs of 10 cells), less 6 m,
+  never below the sea. The island's hollows sit only a few metres under it (95% within 4 m), so
+  inland the mist stands near as thick over the ground as by the sea, deepest in the hollows,
+  and ridges rise clear. One texture is shared by every fogged material (three.js clones each
+  material's uniforms, so it clones to itself), read per vertex, and laid anew for each island
+  shown; GPU timer queries in the benchmark found no cost beyond the noise. Checked by
+  a new screenshot test from the island's top at eye height ahead of a fog, where the far
+  inland ground now greys over as well as the low valleys.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds

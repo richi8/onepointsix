@@ -7,7 +7,7 @@ import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import type { GroundCover } from './groundcover.ts';
 import { Layer } from '../shared/layers.ts';
-import { mistNear, patchFog } from './fogbanks.ts';
+import { mistNear, patchFog, setMistGround } from './fogbanks.ts';
 import { lightingOf, type Lighting } from './lighting.ts';
 import { outlookMoved, settledOutlook, type Outlook } from './outlook.ts';
 import { Rain, type Shelter } from './rain.ts';
@@ -122,6 +122,7 @@ export class WorldView {
   constructor(world: World, weather: Weather, scene = new THREE.Scene()) {
     this.scene = scene;
     patchFog();
+    setMistGround(world);
     this.outlook = settledOutlook(weather);
     this.lighting = lightingOf(this.outlook.clouds, this.outlook.air);
     this.wet = this.puddles = this.outlook.rainfall;

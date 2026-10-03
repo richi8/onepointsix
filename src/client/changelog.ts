@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-10-03',
+    title: 'Mist inland',
+    notes: [
+      'The mist before a fog, and the low mist in fog and rain, now lies over the ground all across the island, not only by the sea: it settles in hollows inland and up on the high ground too, while ridges and hilltops stand clear. From a hilltop you can see the fog coming over the land.',
+    ],
+  },
+  {
     date: '2026-10-02',
     title: 'Weather you can see coming',
     notes: [
