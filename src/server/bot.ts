@@ -24,7 +24,7 @@ import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import { type Bush, CONCEALED, VEG_CELL, bagShows, vegetationOf } from '../shared/vegetation.ts';
-import { inBuilding, type Point, type World } from '../shared/world.ts';
+import { inBuilding, type Point, type Rect, type World } from '../shared/world.ts';
 import type { ExtractPoint } from './extracts.ts';
 import { reached, type NavGrid, type Waypoint } from './nav.ts';
 import { TEMPERS, type Personality, type Temper } from './personality.ts';
@@ -1515,7 +1515,10 @@ export class Bot {
     for (let i = 0; i < 6; i++) {
       const a = this.rand() * Math.PI * 2;
       const r = HUNT_RANGE * (0.4 + this.rand() * 0.6);
-      const p = ctx.nav.nearestWalkable(self.x + Math.sin(a) * r, self.z + Math.cos(a) * r, 15);
+      let [x, z] = [self.x + Math.sin(a) * r, self.z + Math.cos(a) * r];
+      // A map is smaller than that: anywhere on it.
+      if (ctx.world.map) [x, z] = within(ctx.world.bounds, this.rand(), this.rand());
+      const p = ctx.nav.nearestWalkable(x, z, 15);
       if (!p || !ctx.nav.dry(p.x, p.z)) continue;
       const near = ctx.world.nearestOutpost(p.x, p.z)?.dist ?? Infinity;
       if (near < OUTPOST_BERTH && !this.supplies) continue;
@@ -2132,6 +2135,11 @@ function standing(ctx: BotContext, p: Point): Point {
   const w = ctx.nav.nearestWalkable(p.x, p.z, 3, p.y);
   if (!w) return p;
   return { x: w.x, y: w.y ?? ctx.world.groundHeight(w.x, w.z, ctx.world.floorHeight(w.x, w.z)), z: w.z };
+}
+
+/** The point `u` of the way across `b` along x and `v` along z. */
+function within(b: Rect, u: number, v: number): [number, number] {
+  return [b.minX + (b.maxX - b.minX) * u, b.minZ + (b.maxZ - b.minZ) * v];
 }
 
 /** How far a place is to get to, across the ground, and up or down if it's on another floor. */

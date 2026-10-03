@@ -27,7 +27,7 @@ export interface InputCmd {
 
 /**
  * How a game is played. Extraction is a run against guards and 8 operators, where players who
- * join take bot operators' places. Deathmatch is 20 operators and no guards, everyone against
+ * join take bot operators' places. Deathmatch is 16 operators and no guards, everyone against
  * everyone, respawning, with only kills and deaths counted. The range is for trying things out:
  * actors going through every move round an outpost, and nobody to hurt you.
  */

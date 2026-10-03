@@ -188,7 +188,9 @@ function singleFile(): Plugin {
 function simulationHash(): string {
   const hash = createHash('sha256');
   for (const dir of ['src/shared', 'src/server']) {
-    for (const f of readdirSync(dir).sort()) {
+    // Folders in them too, such as the maps.
+    for (const f of (readdirSync(dir, { recursive: true }) as string[]).sort()) {
+      if (statSync(join(dir, f)).isDirectory()) continue;
       hash.update(f);
       hash.update(readFileSync(join(dir, f)));
     }

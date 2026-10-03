@@ -13,7 +13,8 @@ import { cleanName, parseShareLink, type Challenge } from '../shared/share.ts';
 import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/weapons.ts';
 import { LagTransport } from '../shared/transport.ts';
 import { Forecast, mainWeather, parseWeather } from '../shared/weather.ts';
-import { layoutFor, leafRect, World } from '../shared/world.ts';
+import { mapFor } from '../shared/maps/index.ts';
+import { leafRect, World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
@@ -96,8 +97,8 @@ try {
 } catch {
   // Nothing picked, then.
 }
-/** The island, with outposts or, for Deathmatch, towns. */
-const world = new World(config.seed, layoutFor(mode));
+/** The island from the seed, or the mode's fixed map: Deathmatch's. */
+const world = new World(config.seed, mapFor(mode));
 /** Its weather over a game, as the server works it out. */
 const forecast = new Forecast(config.seed);
 /**
@@ -108,8 +109,8 @@ const forecast = new Forecast(config.seed);
 const heldSky = import.meta.env.DEV ? parseHeldSky(new URLSearchParams(location.search).get('sky')) : null;
 /** Behind the menu, the weather a game on the island opens in. */
 const view = new WorldView(world, mainWeather(forecast.at(0)));
-// Deathmatch's island has no extraction points, on the menu either.
-view.showExtracts = world.layout === 'outposts';
+// A map has no extraction points, on the menu either.
+view.showExtracts = !world.map;
 /** Drawn into by every island in turn. */
 const scene = view.scene;
 
@@ -317,11 +318,17 @@ function warmPlayers(): PlayerSnap[] {
   }));
 }
 
+/**
+ * Where the warming frames' effects go: the island's middle, or off a map,
+ * so they don't hang over it in screenshots, where time stands still.
+ */
+const WARM_AT = world.map ? { x: world.bounds.minX - 60, z: world.bounds.minZ - 60 } : { x: 0, z: 0 };
+
 /** A round, a hit and a broken panel with its debris, and a grenade going off, for the warming frames. */
 function warmEffects(): void {
-  const y = world.floorHeight(0, 0);
-  const at = new THREE.Vector3(0, y + 1, 2);
-  effects.tracer(new THREE.Vector3(0, y + 1, 10), at);
+  const y = world.floorHeight(WARM_AT.x, WARM_AT.z);
+  const at = new THREE.Vector3(WARM_AT.x, y + 1, WARM_AT.z + 2);
+  effects.tracer(new THREE.Vector3(WARM_AT.x, y + 1, WARM_AT.z + 10), at);
   effects.impact(at, 'world', new THREE.Vector3(0, 1, 0));
   effects.impact(at, 'body', new THREE.Vector3(0, 1, 0));
   const panel = world.panels[0];
@@ -579,8 +586,8 @@ const briefMode = briefingLine(MODE_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
 
 function selectMode(m: Mode): void {
-  if (layoutFor(m) !== world.layout) {
-    // Deathmatch has an island of its own (towns, not outposts): the page loads again to build it.
+  if (mapFor(m) !== world.map) {
+    // Deathmatch is played on a map of its own: the page loads again to build it.
     try {
       localStorage.setItem('mode', m);
       sessionStorage.setItem('pickedMode', m);
@@ -1005,7 +1012,7 @@ function toMenu(): void {
   paused.hidden = true;
   menu.hidden = false;
   view.preview = true;
-  view.showExtracts = world.layout === 'outposts';
+  view.showExtracts = !world.map;
   bodies.clear();
   bags.update([]);
   grenades.update([]);
@@ -1291,16 +1298,13 @@ const own = { x: 0, z: 0, stride: 0, air: false, fall: 0 };
 /**
  * In development, `?cam=x,y,z,tx,ty,tz` holds the menu camera at (x, y, z)
  * looking at (tx, ty, tz), with `o` meaning relative to outpost o, e.g.
- * `?cam=o0,-20,6,-20,0,2,0`, or `t` to town t (with `mode=deathmatch`). For
- * screenshots of one spot.
+ * `?cam=o0,-20,6,-20,0,2,0`. For screenshots of one spot.
  */
 const devCam = ((): number[] | null => {
   const v = import.meta.env.DEV ? new URLSearchParams(location.search).get('cam') : null;
   if (!v) return null;
   const parts = v.split(',');
-  const origin = { x: 0, y: 0, z: 0 };
-  const site = /^[ot]\d+$/.test(parts[0]) ? parts.shift()! : null;
-  const at = (site && (site[0] === 'o' ? world.outposts : world.towns)[Number(site.slice(1))]) || origin;
+  const at = parts[0].startsWith('o') ? world.outposts[Number(parts.shift()!.slice(1))] : { x: 0, y: 0, z: 0 };
   const n = parts.map(Number);
   return [n[0] + at.x, n[1] + at.y, n[2] + at.z, n[3] + at.x, n[4] + at.y, n[5] + at.z];
 })();
@@ -1333,6 +1337,19 @@ function sceneTime(): number {
   return Number.isNaN(still) ? performance.now() / 1000 : still;
 }
 
+/**
+ * What the menu's camera circles, and how far out and how high: the whole
+ * island from well above it, or a map from close over its middle.
+ */
+const menuOrbit = ((): { x: number; z: number; r: number; y: number; lookY: number } => {
+  if (!world.map) return { x: 0, z: 0, r: MENU_ORBIT_RADIUS, y: world.maxHeight + 90, lookY: 0 };
+  const b = world.bounds;
+  const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
+  const ground = world.terrainHeight(x, z);
+  const r = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.8 + 30;
+  return { x, z, r, y: ground + r * 0.6, lookY: ground };
+})();
+
 function orbitCamera(now: number): void {
   if (devCam) {
     // Seen as someone standing there would, not through the menu's thinned fog.
@@ -1344,9 +1361,10 @@ function orbitCamera(now: number): void {
     return;
   }
   const a = (now - start) * MENU_ORBIT_SPEED + 0.6;
-  camera.position.set(Math.sin(a) * MENU_ORBIT_RADIUS, world.maxHeight + 90, Math.cos(a) * MENU_ORBIT_RADIUS);
-  camera.lookAt(0, 0, 0);
-  focus.set(0, 0, 0);
+  const o = menuOrbit;
+  camera.position.set(o.x + Math.sin(a) * o.r, o.y, o.z + Math.cos(a) * o.r);
+  camera.lookAt(o.x, o.lookY, o.z);
+  focus.set(o.x, o.lookY, o.z);
   view.update(camera, focus, MENU_SHADOWS, world.half, sceneTime());
 }
 
@@ -1485,9 +1503,9 @@ renderer.setAnimationLoop(() => {
     ? { time: cam.time, at: (t: number) => cam.everyoneAt(t) }
     : conn ? { time: conn.renderTime(), at: (t: number) => conn!.everyoneAt(t) } : undefined;
   bodies.update(players, bodyDt, camera, clock);
-  const y0 = world.floorHeight(0, 0);
-  bags.update(conn?.bags ?? (warming ? [{ id: -1, x: 0, y: y0, z: 1 }] : []), bodyDt);
-  grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? (warming ? [{ id: -1, x: 1, y: y0 + 0.5, z: 1 }] : [])));
+  const y0 = world.floorHeight(WARM_AT.x, WARM_AT.z);
+  bags.update(conn?.bags ?? (warming ? [{ id: -1, x: WARM_AT.x, y: y0, z: WARM_AT.z + 1 }] : []), bodyDt);
+  grenades.update(cam ? cam.grenades() : (conn?.grenades() ?? (warming ? [{ id: -1, x: WARM_AT.x + 1, y: y0 + 0.5, z: WARM_AT.z + 1 }] : [])));
   if (conn) view.setExtracts(conn.extracts, now);
   // The weather of the moment shown: the kill's in a death cam, and on the menu the game last left's, going on as it does.
   if (cam) showWeather(cam.forecast, cam.time);

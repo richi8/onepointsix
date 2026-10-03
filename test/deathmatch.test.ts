@@ -10,7 +10,7 @@ import type { GameEvent, ServerMsg } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
-// Deathmatch: 20 operators and no guards, everyone against everyone, respawning, kills and deaths only.
+// Deathmatch: 16 operators and no guards on its own map, everyone against everyone, respawning, kills and deaths only.
 
 type Snapshot = Extract<ServerMsg, { t: 'snapshot' }>;
 
@@ -33,7 +33,7 @@ function steps(server: GameServer, seconds: number): void {
 }
 
 describe('deathmatch', () => {
-  it('puts 20 operators on the island and no guards, a player taking a bot’s place', () => {
+  it('puts 16 operators on its map and no guards, a player taking a bot’s place', () => {
     const server = game();
     expect(server.bots().length).toBe(DEATHMATCH_CAPACITY);
     expect(server.bots().every((b) => b.team === 'operator')).toBe(true);
@@ -90,17 +90,31 @@ describe('deathmatch', () => {
     expect(server.bots().length).toBe(DEATHMATCH_CAPACITY - 1);
   });
 
-  it('respawns nobody within reach of another operator', () => {
+  it('respawns at the map’s spawn points, the farthest from everyone if none is clear', () => {
     const server = game();
     const me = join(server, 'me');
+    const spawns = server.world.spawns;
     for (let i = 0; i < 5; i++) {
       server.receive(me.id, { t: 'dev', cmd: { act: 'end', outcome: 'killed', self: true } });
       server.step();
+      // Where everyone else stands as we come back.
+      const others = me.snap().players.filter((p) => p.id !== me.id && !p.dead);
       server.receive(me.id, { t: 'respawn' });
       server.step();
       const you = me.snap().you;
-      const others = me.snap().players.filter((p) => p.id !== me.id && !p.dead);
-      expect(Math.min(...others.map((p) => Math.hypot(p.x - you.x, p.z - you.z)))).toBeGreaterThanOrEqual(ARENA_CLEAR);
+      const at = spawns.find((s) => Math.hypot(s.x - you.x, s.z - you.z) < 1);
+      expect(at).toBeDefined();
+      const nearest = (s: { x: number; z: number }) => Math.min(...others.map((p) => Math.hypot(p.x - s.x, p.z - s.z)));
+      if (nearest(at!) < ARENA_CLEAR) expect(nearest(at!)).toBeGreaterThanOrEqual(Math.max(...spawns.map(nearest)) - 2);
+    }
+  });
+
+  it('keeps everyone on its map as they fight', () => {
+    const server = game();
+    const b = server.world.bounds;
+    for (let t = 0; t < 30; t++) {
+      steps(server, 1);
+      for (const { state: s } of server.bots()) expect(s.x >= b.minX && s.x <= b.maxX && s.z >= b.minZ && s.z <= b.maxZ).toBe(true);
     }
   });
 
@@ -120,9 +134,9 @@ describe('deathmatch', () => {
     const server = game();
     for (const b of server.bots()) b.state.reserve = b.state.reserve.map(() => 0);
     steps(server, 0.5);
-    // Those not already in a fight.
+    // Those not already in a fight: on the small test street, most are at once.
     const calm = server.bots().filter((b) => ['hunt', 'loot'].includes(b.bot.state));
-    expect(calm.length).toBeGreaterThan(DEATHMATCH_CAPACITY / 2);
+    expect(calm.length).toBeGreaterThan(0);
     expect(calm.every((b) => b.bot.state === 'loot')).toBe(true);
   });
 

@@ -566,7 +566,9 @@ export class NavGrid {
     // Door leaves are left out: bots open a shut door on their way through.
     // So is anything low enough to step up onto, such as a raised floor's edge.
     const pad = PLAYER_RADIUS + MARGIN;
-    const state = !w.clear(x, y, z, PLAYER_HEIGHT, pad, false, STEP_UP) || this.nearLeaf(i, x, y, z, pad) ? BLOCKED
+    // On a map, nothing beyond its bounds.
+    const out = !!w.map && !w.inBounds(x, z, pad);
+    const state = out || !w.clear(x, y, z, PLAYER_HEIGHT, pad, false, STEP_UP) || this.nearLeaf(i, x, y, z, pad) ? BLOCKED
       : w.terrainHeight(x, z) < WET_BELOW ? WET : OPEN;
     if (floored) this.surveyFloors(i, x, state === BLOCKED ? -Infinity : y, z);
     return state;

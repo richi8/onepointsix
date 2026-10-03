@@ -36,7 +36,7 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 | Mode | Description |
 |---|---|
 | **Extraction** | The core loop below. 8 operator slots, every one starting as a bot, and the guards. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
-| **Deathmatch** | Everyone against everyone: 20 operator slots, filled the same way, and no guards or commanders. Played on an island of its own: the same terrain, with three towns in place of the outposts (see Phase 8). No contracts, extraction points, run clock, bag value or score; crates hold only ammo and medkits. Leaving a game with a kill posts its kills and deaths to the menu's board for the island, best by kills, then fewest deaths. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at a random spot nobody living is within 80 m of or sees from within 200 m. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
+| **Deathmatch** | Everyone against everyone: 16 operator slots, filled the same way, and no guards or commanders. Played on a fixed map of its own, the same whatever the world link's seed (see Phase 8): for now a test street, the town to come. No contracts, extraction points, run clock, bag value or score; crates hold only ammo and medkits. Leaving a game with a kill posts its kills and deaths to the menu's board for the map, best by kills, then fewest deaths. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at one of the map's spawn points: one taken at random that nobody living is within 80 m of or sees from within 200 m, or else the one farthest from them. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
 | **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate, a door), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
 
 Online was renamed Extraction on 2026-10-03 (chunk 48): old `mode=online`, `mixed` and `offline`
@@ -51,22 +51,22 @@ every animation (see `src/server/range.ts`), with actors instead of dummies.
 
 ### World capacity
 
-The island is 800 × 800 m, with 6 outposts. Deathmatch's island (since chunk 50) has the same
-terrain from the same seed, but three towns instead of the outposts: a harbour on the coast and
-two inland, joined by roads. Since chunk 51 they hold 58–66 buildings between them (the old
-town 24–32, the village 11–20, the harbour 13–19), against the outposts' 6.
+The island is 800 × 800 m, with 6 outposts. Deathmatch is played on a fixed map instead (since
+chunk 52): for now a test street of 56 × 36 m, in time the town of about 140 × 120 m (see
+Phase 8), set on an island of its own as a backdrop that nobody reaches.
 
 | Kind | Count | Notes |
 |---|---|---|
-| **Operators** (players and fill bots) | **8** per game, **20** in Deathmatch | Every slot starts as a bot. Joining players replace them. |
+| **Operators** (players and fill bots) | **8** per game, **16** in Deathmatch | Every slot starts as a bot. Joining players replace them. |
 | **Guards** (world AI) | ~24 | About 3 per outpost, plus patrols. Not in the range or Deathmatch. |
 
 **Why 8:** that's roughly 80,000 m² per operator, which is about a 280 m square each. Runs are
 3–10 minutes, and the aim is to meet another operator every 1–3 minutes, while guards fill the
 time in between. The plan started at 12, but chunk 12's bot playtest found that at 12 an operator
 spotted another every 42 s, 8 every 57 s and 6 every 97 s, so 8 is the middle ground until human
-playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`). Deathmatch's 20
-(`DEATHMATCH_CAPACITY`) is about 32,000 m², a 180 m square each, as nobody is there to loot.
+playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`). Deathmatch's 16
+(`DEATHMATCH_CAPACITY`) on the town's 140 × 120 m is about 1,000 m² each, a 32 m square, as on
+the proven maps it's modelled on: a fight round every corner.
 
 ## Core Loop
 
@@ -148,7 +148,8 @@ Extraction's; Deathmatch keeps only the fighting (see Game Modes).
 - The world config (the seed) is encoded in the URL. The weather follows from the seed and the
   game's clock (chunk 44), so it isn't in the link.
 - Each island has its own leaderboard, whatever the weather: stored locally first, on the server
-  once there is multiplayer.
+  once there is multiplayer. A mode on a fixed map (Deathmatch) keeps its board by the map, whatever
+  the seed.
 - No share buttons for now (2026-10-02): sharing comes back with multiplayer (see Future).
   Links made before still open their island with the score to beat.
 - Holding Tab in a run shows the scoreboard (chunk 47): the players in the game, bots left out,
@@ -379,7 +380,7 @@ were renumbered.
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 49 | **Solid walls** | Walls, lintels, posts, roofs, upper floors and stairs stop breaking, in every mode: built as a few solid boxes instead of 1.6 m columns in two rows, with what only served them gone (resting and holding for walls and roofs, an upper storey falling with its posts, the light volume and roof map redone for a broken wall or roof, bots' cover going with a wall); windows, crates, fences and door leaves still break and are rebuilt as now; the outposts' perimeter walls and the ruined walls in the fields solid too; Destructible cover in Features updated | No shot or grenade breaks a wall or roof, windows, crates, fences and doors still break and come back, every test passes, and the bot playtest stays at 15% ± 3 | **Done** (each wall stretch, sill, lintel, post, roof, floor slab and stair is one plain prop, and every box says what it is (`Box.part`); panels are only fence sections, crates, door leaves, glass and tables (`timber` became `table`), and only crates rest on crates. A building's roof is one box, or two for an L. Gone with the breaking: resting, holding and `falls`, the roof map and the island map worked out again for a fallen roof, puddles on a floor left open to the sky, and the crumbling-masonry sound (its recording and credit too). Sound through a wall, sill, roof or floor is dulled as through masonry, as before. Unit tests now check walls stop rounds and grenades, and crate stacks, fences and the rebuild in place of walls; the screenshots matched as they were. Bot playtest: seeds 1–6, 18% extracted; 7–12, 19%; the last commit gave 18% and 20% on the same seeds, so no change, though both sit at the top of 15% ± 3) |
-| 52 | **A fixed map for Deathmatch** | Remove the towns: Deathmatch's island, `Layout`, `towns.ts`, the town sites, roads, greens, `?cam=t`, the town tests and screenshots, and their changelog's promise (a new entry says what replaced them); their Known Issues move to the history as Moot. Keep what serves every mode (`botDoors`' look-up near the bot, palettes' extra colours if used). A map format: one typed file per map (`src/shared/maps/`) giving the ground (a coarse height grid shaped by hand, with the backdrop round it), the play area's bounds, the buildings (by the kit's data, below), walls, stairs, props and the spawn points; `World` is built from it for Deathmatch, the same on server and client, and from the seed as now for every other mode. `DEATHMATCH_CAPACITY` 16; respawns at the map's spawn points (the farthest clear ones from the living, as now from random spots); the menu's orbit over the map; Deathmatch's board started afresh under the map's name; the weather's seed kept from the game's. A first test map: one street with two plain buildings | Picking Deathmatch loads the test map, 16 bots fight on it and respawn at its spawn points, the server and client build the same world from it, and Extraction's island hashes exactly as before | Planned |
+| 52 | **A fixed map for Deathmatch** | Remove the towns: Deathmatch's island, `Layout`, `towns.ts`, the town sites, roads, greens, `?cam=t`, the town tests and screenshots, and their changelog's promise (a new entry says what replaced them); their Known Issues move to the history as Moot. Keep what serves every mode (`botDoors`' look-up near the bot, palettes' extra colours if used). A map format: one typed file per map (`src/shared/maps/`) giving the ground (a coarse height grid shaped by hand, with the backdrop round it), the play area's bounds, the buildings (by the kit's data, below), walls, stairs, props and the spawn points; `World` is built from it for Deathmatch, the same on server and client, and from the seed as now for every other mode. `DEATHMATCH_CAPACITY` 16; respawns at the map's spawn points (the farthest clear ones from the living, as now from random spots); the menu's orbit over the map; Deathmatch's board started afresh under the map's name; the weather's seed kept from the game's. A first test map: one street with two plain buildings | Picking Deathmatch loads the test map, 16 bots fight on it and respawn at its spawn points, the server and client build the same world from it, and Extraction's island hashes exactly as before | **Done** (`src/shared/maps/`: `index.ts` holds the format and `mapFor(mode)`, `teststreet.ts` the test map; `new World(seed, map)` builds the map's world, the same whatever the game's seed, with the map's own seed giving the island round it as the backdrop, its trees and rocks kept off the map's ground and that ground bare. A map's buildings are the island's plans, sized by hand, until the kit. `World.bounds` keeps players in (the island's whole square elsewhere) and the nav grid blocks the cells beyond it; hunters roam anywhere on a map. The town tests and screenshots gave way to `test/maps.test.ts`, which also checks Extraction's islands hash as chunk 49 left them, and two screenshots of the test street. Its board is kept under `board:test-street:deathmatch`. On the test street the 16 bots fight at once and no spawn point is ever clear: `sim:deathmatch` over 300 s had 85 kills a minute and 409 of 416 deaths within 15 s of spawning, left for the blockout) |
 | 53 | **Building kit** | Buildings for the map from data, not the four plans: any footprint of one or more rectangles, one to three storeys, each wall's doors and windows placed where wanted (and archways right through), shared walls with the next building, stairs inside between floors, a way onto the roof (a stair to a roof hatch, or an outside stair along a wall), parapets round flat roofs, balconies; a door and its leaves, windows and glass as now. Its parts are props as now, so collision, shots, sound and the rain carry over. A test street built from it in the test map | Every room, floor and roof of the test street is reached by a bot's path and walked by a player; shots and grenades stop at its walls; the rain stays off its floors | Planned |
 | 54 | **Blockout** | The whole town in the map file, plain-textured: the levels, the three lanes, the cross streets, the square and its landmark, the harbour front, the ways up to the roofs, the edges, and 24–32 spawn points spread round it. A dev view from straight above, with the lanes and spawn points drawn, to check it against a sketch | 16 bots play ten minutes on it with no one stuck and no spawn in sight of a living operator; a human walks every street, house and roof | Planned |
 | 55 | **Flow** | `sim:deathmatch` sums where kills and deaths happen (a heat map written to a picture) and which spots kill most from afar; bots use what the town has: upper floors and windows, the roofs and their stairs, the lanes' cover, flanking along cross streets; the map tuned until no spot dominates: windows that see too far given a wall, lanes broken by a cart or an arch, extra ways into houses that get held; respawn spots tuned the same way | The heat map shows fights over the whole town, not one lane; no window or roof gets more than a tenth of the kills; a tester finds it plays like a proven map | Planned |
@@ -422,10 +423,19 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
 
 ### Deathmatch
 - **Picking Deathmatch on the menu reloads the page** (chunk 50): its world differs from the
-  other modes' (the towns' island now, a fixed map from chunk 52), and the client builds one
-  world per page load, so switching into or out of Deathmatch loads the page again, with its
+  other modes' (a fixed map since chunk 52), and the client builds one world per page load, so switching into or out of Deathmatch loads the page again, with its
   loading screen and, on a cold cache, the shaders compiled again. Building the new world in
   place would need everything made from it (the view, bodies, sound, HUDs) rebuilt with it.
+- **The test street is far too small for 16** (chunk 52): at 56 × 36 m no spawn point is ever
+  80 m from everyone or out of their sight, so a respawn takes the farthest and is shot at
+  once: in `sim:deathmatch` 409 of 416 deaths came within 15 s of spawning. It stands in for
+  the town until the blockout (chunk 54), whose spawn points are to be checked against it.
+- **A map's edge is an invisible wall** (chunk 52): players are held inside its bounds, and the
+  nav grid ends there. The test street has walls along its edges, so nobody meets it there, but
+  the town's edges are to be built so it never shows (chunk 54).
+- **Bots don't go up onto roofs** (chunk 52): the test street's outside stair takes a player onto
+  a roof, but a roof isn't a floor to the nav grid, so bots stay below and fight up at them.
+  The building kit's ways up to the roofs are to be walkable (chunk 53).
 
 ## Future
 - **Multiplayer**

@@ -10,9 +10,8 @@ import {
 } from './constants.ts';
 import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
 import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
-import type { Mode } from './protocol.ts';
+import type { GameMap, MapGround, MapStair } from './maps/index.ts';
 import { fbm, mulberry32 } from './rng.ts';
-import { HARBOUR_HEIGHT, planTown, specFor, TOWN_LOOK, type Spec, type TownPlan } from './towns.ts';
 
 export interface Cyl {
   kind: 'cyl';
@@ -74,8 +73,8 @@ export type PropStyle = 'crate' | 'wall' | 'wood' | 'metal' | 'fence' | 'roof' |
 export type PanelKind = 'fence' | 'crate' | 'door' | 'glass' | 'table';
 /**
  * What a prop is: `sill` the wall under a window, `floor` a concrete floor
- * slab, `step` a stair, `timber` woodwork (a watchtower's, a pier's),
- * `container` a shipping container, or one of the parts that can be broken.
+ * slab, `step` a stair, `timber` a watchtower's woodwork, `container` a
+ * shipping container, or one of the parts that can be broken.
  */
 export type Part = 'wall' | 'sill' | 'roof' | 'floor' | 'step' | 'timber' | 'container' | PanelKind;
 
@@ -214,43 +213,6 @@ export interface Point {
   z: number;
 }
 
-/**
- * What stands on an island besides the country: Extraction's (and the range's)
- * six walled outposts, or Deathmatch's three towns.
- */
-export type Layout = 'outposts' | 'towns';
-
-/** The island a mode is played on. */
-export function layoutFor(mode: Mode): Layout {
-  return mode === 'deathmatch' ? 'towns' : 'outposts';
-}
-
-/**
- * Each town's character: an old town packed tight, a village on its slope,
- * and a harbour on the coast.
- */
-export type TownStyle = 'old' | 'village' | 'harbour';
-
-/** A town's site: levelled ground at height `y` out to `r` from its middle. */
-export interface Town {
-  name: string;
-  style: TownStyle;
-  x: number;
-  y: number;
-  z: number;
-  r: number;
-  /** For the harbour, which way the sea lies, as a unit vector; 0, 0 inland. */
-  seaX: number;
-  seaZ: number;
-  /** Its open places: a square, a green, a main street, a quay. */
-  open: Rect[];
-  /** Its props, as indices into World.props: from the first up to but not including the second. */
-  props: [number, number];
-}
-
-/** A road's width, and how far round it is kept clear of cover, huts and trees. */
-export const ROAD_WIDTH = 5;
-
 /** Height of a watchtower's platform above its outpost, and its offset from the outpost's centre on both axes. */
 const TOWER_TOP = 4;
 const TOWER_OFFSET = -6;
@@ -279,18 +241,6 @@ export interface Body {
 const GRID_CELL = 8;
 const GRID_OFFSET = 1024;
 const OUTPOST_NAMES = ['Fort Ash', 'Radio Hill', 'Quarry', 'Old Mill', 'Pinecrest', 'Lookout'];
-/** An outpost's walls stand this far out from its middle. */
-const OUTPOST_EDGE = 14;
-/** The towns, in the order they're placed: the harbour first, as the coast has fewest places for it. */
-const TOWNS: { name: string; style: TownStyle; r: number }[] = [
-  { name: 'Port Ash', style: 'harbour', r: 60 },
-  { name: 'Oldbridge', style: 'old', r: 48 },
-  { name: 'Hillcombe', style: 'village', r: 52 },
-];
-/** Beyond its edge, a town's ground slopes back to the land's over this many metres. */
-const TOWN_BLEND = 30;
-/** Road points are this far apart. */
-const ROAD_STEP = 8;
 /** One for each outpost. */
 const EXTRACT_COUNT = 6;
 /**
@@ -312,6 +262,11 @@ const HOUSE_HEIGHT = 3;
 export const HOUSE_ROOF = 0.2;
 /** How wide a two-storey building's stairs are: room for a bot's path up them beside the upper floor's edge. */
 const STAIR_WIDTH = 1.5;
+/** A stair's rise and run, as a two-storey building's: a step up at a time, and room for a foot. */
+const STEP_RISE = 0.5;
+const STEP_RUN = 0.55;
+/** A shipping container's height. */
+const CONTAINER_HEIGHT = 2.6;
 /** Doorways are wide enough that a bot's path always finds a way through, and take a pair of leaves. */
 const DOOR_WIDTH = 2.2;
 const DOOR_HEIGHT = 2.2;
@@ -373,7 +328,8 @@ function rayBox(c: Box, ox: number, oy: number, oz: number, dx: number, dy: numb
 /**
  * The static game world, generated deterministically from a seed. Both the
  * server and every client build their own copy, so only the seed ever needs to
- * be sent over the network.
+ * be sent over the network. A mode played on a fixed map (see maps/) builds
+ * it from the map instead, on the island its seed makes as a backdrop.
  */
 export class World {
   readonly seed: number;
@@ -387,21 +343,20 @@ export class World {
   /** The faces every rock is drawn from, in its own frame (see rock.ts). */
   readonly rockShape: Float64Array;
   readonly props: Prop[] = [];
-  readonly layout: Layout;
+  /** The fixed map it's built from, or null for an island made from its seed alone. */
+  readonly map: GameMap | null;
+  /** Where the game is played: the whole island, or a map's bounds. */
+  readonly bounds: Rect;
+  /** On a map, where operators come into the game. */
+  readonly spawns: (Point & { yaw: number })[] = [];
   readonly outposts: Outpost[] = [];
-  /** Deathmatch's towns; none with outposts. */
-  readonly towns: Town[] = [];
-  /** The roads between the towns, each a line of points from one town's middle to another's. */
-  readonly roads: { x: number; z: number }[][] = [];
-  /** The towns' yards with grass in them. */
-  readonly greens: Rect[] = [];
   /** Where operators leave the island; the server opens and closes them. */
   readonly extracts: Point[] = [];
   readonly colliders: Collider[] = [];
   readonly panels: Panel[] = [];
   /** Each freestanding wall's outline. Buildings' walls aren't listed. */
   readonly walls: Box[] = [];
-  /** The buildings: one in each outpost, in order, or the towns', then those out in the country. */
+  /** The buildings: one in each outpost, in order, then those out in the country; or a map's. */
   readonly buildings: Building[] = [];
   readonly doors: Door[] = [];
   /** Each outpost's watchtower: the props it's built from, drawn as one. */
@@ -413,9 +368,11 @@ export class World {
   /** The collider the last raycast stopped at, if it was one. */
   private hit: Collider | null = null;
 
-  constructor(seed: number, layout: Layout = 'outposts') {
-    this.seed = seed >>> 0;
-    this.layout = layout;
+  constructor(seed: number, map: GameMap | null = null) {
+    this.map = map;
+    // A map is the same whatever the game's seed: its backdrop and noise come from its own.
+    this.seed = (map ? map.seed : seed) >>> 0;
+    this.bounds = map ? { ...map.bounds } : { minX: -this.half, minZ: -this.half, maxX: this.half, maxZ: this.half };
     this.rockShape = rockShape(this.seed + 23);
     const n = this.res + 1;
     this.heights = new Float32Array(n * n);
@@ -426,13 +383,8 @@ export class World {
     }
 
     const rng = mulberry32(this.seed ^ 0x9e3779b9);
-    let towns: TownPlan[] = [];
-    if (layout === 'towns') {
-      // Their own random stream, so the rest is drawn from the island's as with outposts.
-      const sites = mulberry32(this.seed ^ 0x7f4a7c15);
-      towns = this.placeTowns(sites, mulberry32(this.seed ^ 0x2545f491));
-      this.placeRoads(sites);
-    } else this.placeOutposts(rng);
+    if (map) this.shapeGround(map.ground);
+    else this.placeOutposts(rng);
     let maxH = -Infinity;
     for (const h of this.heights) if (h > maxH) maxH = h;
     this.maxHeight = maxH;
@@ -440,11 +392,15 @@ export class World {
     // The plans shuffled, so the first four outposts on an island each get a different one.
     const plans = shuffled(PLANS, mulberry32(this.seed ^ 0x1f83d9ab));
     this.outposts.forEach((o, i) => this.buildOutpost(o, i, plans[i % plans.length], rng, this.houseSeed(i)));
-    this.scatterCover(rng);
+    if (!map) this.scatterCover(rng);
     this.placeTrees(rng);
     this.placeRocks(rng);
-    towns.forEach((p, i) => this.buildTown(this.towns[i], p, mulberry32(this.seed ^ Math.imul(i + 1, 0x68e31da5))));
+    if (map) this.buildMap(map, mulberry32(this.seed ^ 0x68e31da5));
     for (const c of this.colliders) this.insert(c);
+    if (map) {
+      for (const { x, z, yaw } of map.spawns) this.spawns.push({ x, y: this.groundHeight(x, z, this.floorHeight(x, z)), z, yaw });
+      return;
+    }
     // Its own random stream, so adding extraction points moved nothing else.
     this.placeExtracts(mulberry32(this.seed ^ 0x6a09e667));
     this.placeFences(mulberry32(this.seed ^ 0x3c6ef372));
@@ -998,16 +954,33 @@ export class World {
     return this.raycast(ax, ay, az, dx / d, dy / d, dz / d, d, true) >= d - 0.05;
   }
 
+  /** Somewhere on dry land, clear of everything; on a map, within its bounds. */
   randomLandPoint(rand: () => number): { x: number; y: number; z: number } {
+    const b = this.bounds;
     for (let i = 0; i < 60; i++) {
-      const x = (rand() - 0.5) * this.size * 0.8;
-      const z = (rand() - 0.5) * this.size * 0.8;
+      const x = this.map ? b.minX + rand() * (b.maxX - b.minX) : (rand() - 0.5) * this.size * 0.8;
+      const z = this.map ? b.minZ + rand() * (b.maxZ - b.minZ) : (rand() - 0.5) * this.size * 0.8;
       const h = this.terrainHeight(x, z);
       if (h < 1.5 || h > 45) continue;
       if (this.blocked(x, z, PLAYER_RADIUS + 0.2)) continue;
       return { x, y: this.groundHeight(x, z, h), z };
     }
+    if (this.spawns.length) return { ...this.spawns[0] };
     return { x: 0, y: this.groundHeight(0, 0, this.terrainHeight(0, 0)), z: 0 };
+  }
+
+  /** Whether (x, z) is within the bounds, at least `pad` in from their edges. */
+  inBounds(x: number, z: number, pad = 0): boolean {
+    const b = this.bounds;
+    return x >= b.minX + pad && x <= b.maxX - pad && z >= b.minZ + pad && z <= b.maxZ - pad;
+  }
+
+  /** How far (x, z) is outside the map's ground: 0 on it, Infinity with no map. */
+  mapDistance(x: number, z: number): number {
+    if (!this.map) return Infinity;
+    const g = this.map.ground;
+    const [x1, z1] = groundEnd(g);
+    return Math.hypot(Math.max(g.x0 - x, 0, x - x1), Math.max(g.z0 - z, 0, z - z1));
   }
 
   nearestOutpost(x: number, z: number): { outpost: Outpost; dist: number } | null {
@@ -1140,51 +1113,8 @@ export class World {
     return false;
   }
 
-  /**
-   * Whether (x, z) is within `r` of an outpost's middle, or as far beyond a
-   * town's edge as that is beyond an outpost's walls.
-   */
   private nearOutpost(x: number, z: number, r: number): boolean {
-    return this.outposts.some((o) => Math.hypot(o.x - x, o.z - z) < r) ||
-      this.towns.some((t) => Math.hypot(t.x - x, t.z - z) < t.r + r - OUTPOST_EDGE);
-  }
-
-  /** Whether (x, z) is within `pad` of a road's side. */
-  onRoad(x: number, z: number, pad = 0): boolean {
-    return this.roadDistance(x, z) < ROAD_WIDTH / 2 + pad;
-  }
-
-  /** How far (x, z) is from the middle of the nearest road; Infinity with none. */
-  roadDistance(x: number, z: number): number {
-    let best = Infinity;
-    for (const road of this.roads) {
-      for (let i = 1; i < road.length; i++) {
-        const a = road[i - 1];
-        const b = road[i];
-        if (Math.min(Math.abs(a.x - x), Math.abs(b.x - x)) > best + ROAD_STEP || Math.min(Math.abs(a.z - z), Math.abs(b.z - z)) > best + ROAD_STEP) continue;
-        const dx = b.x - a.x;
-        const dz = b.z - a.z;
-        const t = clamp(((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1), 0, 1);
-        best = Math.min(best, Math.hypot(a.x + dx * t - x, a.z + dz * t - z));
-      }
-    }
-    return best;
-  }
-
-  /** Whether (x, z) is in a town's yard with grass in it. */
-  inGreen(x: number, z: number): boolean {
-    return this.greens.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
-  }
-
-  /** The nearest town and how far its middle is, or null with none. */
-  nearestTown(x: number, z: number): { town: Town; dist: number } | null {
-    let best: Town | null = null;
-    let bestD = Infinity;
-    for (const t of this.towns) {
-      const d = Math.hypot(t.x - x, t.z - z);
-      if (d < bestD) (best = t), (bestD = d);
-    }
-    return best ? { town: best, dist: bestD } : null;
+    return this.outposts.some((o) => Math.hypot(o.x - x, o.z - z) < r);
   }
 
   private nearProp(x: number, z: number, pad: number): boolean {
@@ -1246,9 +1176,9 @@ export class World {
   }
 
   /** A freestanding wall: one solid box. */
-  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, tint = 0): void {
+  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): void {
     this.walls.push({ kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0, part: 'wall' });
-    this.addProp(minX, minY, minZ, maxX, maxY, maxZ, 'wall', tint);
+    this.addProp(minX, minY, minZ, maxX, maxY, maxZ, 'wall');
   }
 
   /** Each outpost's own random stream, for its building and the cover round it. */
@@ -1261,13 +1191,10 @@ export class World {
    * length, v from its front to its back) with its floor at `y` and its walls
    * reaching down to `base`. Walls are solid, with doorways and windows:
    * windows are glazed, and each doorway is hung with a pair of leaves. The
-   * roof is solid too. There's a table under a window, and `crates` crates in
-   * the rooms. Its walls and roof are tinted as `look` has them. With
-   * `roomy`, a one-room building's table stands under the window in its rear
-   * wall instead of the one at its end, leaving the way in from its door wider.
+   * roof is solid too. There's a table under a window, and `crates` crates in the rooms.
    */
   private addBuilding(
-    spec: Spec, f: Frame, y: number, base: number, rng: () => number, outpost: number, crates: number, look: Look = PLAIN, roomy = false,
+    spec: Spec, f: Frame, y: number, base: number, rng: () => number, outpost: number, crates: number,
   ): Building {
     const { plan, L, D, W, E } = spec;
     const T = HOUSE_WALL;
@@ -1280,7 +1207,7 @@ export class World {
     const jitter = () => (rng() - 0.5) * 0.8;
     const post = (u: number, v: number, y0: number, y1: number) => {
       const r = rect(u, v, u + T, v + T);
-      this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall', look.wall);
+      this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall');
     };
     const table = (r: Rect, floor: number) => this.addPanel(r.minX, floor - 0.2, r.minZ, r.maxX, floor + 0.8, r.maxZ, 'table');
     /** Where the crates go, most wanted first: on the ground floor or on an upper floor. */
@@ -1295,11 +1222,11 @@ export class World {
     switch (plan) {
       case 'one': {
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, base, top);
-        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(L * 0.35 + jitter() * 0.4), pane(L * 0.76)], 1, rng, look);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L / 2 + jitter() * 0.5)], -1, rng, look);
-        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng, look);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [], -1, rng, look);
-        table(roomy ? rect(L / 2 - 0.9, D - T - 0.95, L / 2 + 0.9, D - T - 0.05) : rect(T + 0.05, D / 2 - 0.9, T + 0.95, D / 2 + 0.9), y);
+        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(L * 0.35 + jitter() * 0.4), pane(L * 0.76)], 1, rng);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L / 2 + jitter() * 0.5)], -1, rng);
+        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [], -1, rng);
+        table(rect(T + 0.05, D / 2 - 0.9, T + 0.95, D / 2 + 0.9), y);
         corner(L - T - 1.15, D - T - 1.15);
         corner(T + 1.2, D - T - 1.15);
         break;
@@ -1308,12 +1235,12 @@ export class World {
         // Room A (u < p) has the front door; room B the door at the far end.
         const p = L * (0.52 + rng() * 0.06);
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, base, top);
-        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(p / 2 + jitter()), pane((p + L) / 2 + jitter())], 1, rng, look);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(p / 2 + jitter()), pane((p + L) / 2 + jitter())], -1, rng, look);
-        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng, look);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng, look);
+        this.addFacade(alongU, T, L - T, 0, T, y, base, [door(p / 2 + jitter()), pane((p + L) / 2 + jitter())], 1, rng);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(p / 2 + jitter()), pane((p + L) / 2 + jitter())], -1, rng);
+        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2)], 1, rng);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng);
         // The partition between the rooms, with a doorway in the middle.
-        this.addFacade(alongV, T, D - T, p - T / 2, p + T / 2, y, base, [door(D / 2 + jitter() * 0.5)], 1, rng, look);
+        this.addFacade(alongV, T, D - T, p - T / 2, p + T / 2, y, base, [door(D / 2 + jitter() * 0.5)], 1, rng);
         table(rect(T + 0.05, D / 2 - 0.9, T + 0.95, D / 2 + 0.9), y);
         corner(p - T / 2 - 1.15, D - T - 1.15);
         corner(L - T - 1.15, D - T - 1.15);
@@ -1325,13 +1252,13 @@ export class World {
         const a = L - W;
         const mid = E + (D - E) / 2;
         for (const [u, v] of [[0, E], [0, D - T], [L - T, D - T], [L - T, 0], [a, 0]]) post(u, v, base, top);
-        this.addFacade(alongU, T, a, E, E + T, y, base, [door(a * 0.38 + jitter() * 0.3), pane(a * 0.8)], 1, rng, look);
+        this.addFacade(alongU, T, a, E, E + T, y, base, [door(a * 0.38 + jitter() * 0.3), pane(a * 0.8)], 1, rng);
         // B's side: onto the yard, then the partition with A.
-        this.addFacade(alongV, T, D - T, a, a + T, y, base, [door(E / 2), door(mid + jitter() * 0.3)], 1, rng, look);
-        this.addFacade(alongU, a + T, L - T, 0, T, y, base, [pane((a + L) / 2)], 1, rng, look);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [pane(E / 2), pane(mid)], -1, rng, look);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(a / 2), pane(L - W / 2)], -1, rng, look);
-        this.addFacade(alongV, E + T, D - T, 0, T, y, base, [pane(mid)], 1, rng, look);
+        this.addFacade(alongV, T, D - T, a, a + T, y, base, [door(E / 2), door(mid + jitter() * 0.3)], 1, rng);
+        this.addFacade(alongU, a + T, L - T, 0, T, y, base, [pane((a + L) / 2)], 1, rng);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [pane(E / 2), pane(mid)], -1, rng);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(a / 2), pane(L - W / 2)], -1, rng);
+        this.addFacade(alongV, E + T, D - T, 0, T, y, base, [pane(mid)], 1, rng);
         table(rect(T + 0.05, mid - 0.9, T + 0.95, mid + 0.9), y);
         corner(a - 1.15, D - T - 1.15);
         corner(L - T - 1.15, T + 0.15);
@@ -1349,21 +1276,21 @@ export class World {
         const sEnd = T + steps * run;
         const sv = D - T - STAIR_WIDTH;
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, base, top);
-        this.addFacade(alongU, T, L - T, 0, T, y, base, [pane(L * 0.25), door(L * 0.64 + jitter() * 0.3)], 1, rng, look);
-        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L * 0.74)], -1, rng, look);
-        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2 - 0.4)], 1, rng, look);
-        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng, look);
+        this.addFacade(alongU, T, L - T, 0, T, y, base, [pane(L * 0.25), door(L * 0.64 + jitter() * 0.3)], 1, rng);
+        this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L * 0.74)], -1, rng);
+        this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2 - 0.4)], 1, rng);
+        this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng);
         for (let k = 0; k < steps; k++) {
           const r = rect(sEnd - (k + 1) * run, sv, sEnd - k * run, D - T);
           this.addProp(r.minX, y - 0.2, r.minZ, r.maxX, y + (HOUSE_HEIGHT * (k + 1)) / steps, r.maxZ, 'step').walk = true;
         }
         // The upper floor, with a hole over the stairs.
-        for (const r of [rect(T, T, L - T, sv), rect(sEnd, sv, L - T, D - T)]) this.addProp(r.minX, y2 - 0.2, r.minZ, r.maxX, y2, r.maxZ, 'floor', look.wall).walk = true;
+        for (const r of [rect(T, T, L - T, sv), rect(sEnd, sv, L - T, D - T)]) this.addProp(r.minX, y2 - 0.2, r.minZ, r.maxX, y2, r.maxZ, 'floor').walk = true;
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, y2, top2);
-        this.addFacade(alongU, T, L - T, 0, T, y2, y2, [pane(L * 0.28), pane(L * 0.72)], 1, rng, look);
-        this.addFacade(alongU, T, L - T, D - T, D, y2, y2, [pane(L * 0.62)], -1, rng, look);
-        this.addFacade(alongV, T, D - T, 0, T, y2, y2, [pane(D / 2 - 0.5)], 1, rng, look);
-        this.addFacade(alongV, T, D - T, L - T, L, y2, y2, [pane(D / 2)], -1, rng, look);
+        this.addFacade(alongU, T, L - T, 0, T, y2, y2, [pane(L * 0.28), pane(L * 0.72)], 1, rng);
+        this.addFacade(alongU, T, L - T, D - T, D, y2, y2, [pane(L * 0.62)], -1, rng);
+        this.addFacade(alongV, T, D - T, 0, T, y2, y2, [pane(D / 2 - 0.5)], 1, rng);
+        this.addFacade(alongV, T, D - T, L - T, L, y2, y2, [pane(D / 2)], -1, rng);
         table(rect(L - T - 1.9, T + 0.05, L - T - 0.1, T + 0.95), y2);
         // One crate upstairs, in the corner farthest from the stairs' top.
         corner(T + 0.15, T + 0.15, y2);
@@ -1376,7 +1303,7 @@ export class World {
 
     for (const [u0, v0, u1, v1] of roofs) {
       const r = rect(u0, v0, u1, v1);
-      this.addProp(r.minX, roofY, r.minZ, r.maxX, roofY + HOUSE_ROOF, r.maxZ, 'roof', look.roof);
+      this.addProp(r.minX, roofY, r.minZ, r.maxX, roofY + HOUSE_ROOF, r.maxZ, 'roof');
     }
 
     for (const { r, floor } of spots.slice(0, crates)) {
@@ -1401,7 +1328,7 @@ export class World {
    */
   private addFacade(
     frame: Frame, a0: number, a1: number, c0: number, c1: number, y: number, base: number,
-    openings: Opening[], inward: 1 | -1, rng: () => number, look: Look,
+    openings: Opening[], inward: 1 | -1, rng: () => number,
   ): void {
     const top = y + HOUSE_HEIGHT;
     const box = (u0: number, v0: number, u1: number, v1: number): Rect => rectOf(frame, u0, v0, u1, v1);
@@ -1412,13 +1339,13 @@ export class World {
       const u1 = i === sorted.length ? a1 : sorted[i].at - sorted[i].width / 2;
       if (u1 - u0 < 0.05) continue;
       const r = box(u0, c0, u1, c1);
-      this.addProp(r.minX, base, r.minZ, r.maxX, top, r.maxZ, 'wall', look.wall);
+      this.addProp(r.minX, base, r.minZ, r.maxX, top, r.maxZ, 'wall');
     }
     const mid = (c0 + c1) / 2;
     for (const o of sorted) {
       const r = box(o.at - o.width / 2, c0, o.at + o.width / 2, c1);
       if (o.kind === 'window') {
-        this.addProp(r.minX, base, r.minZ, r.maxX, y + WINDOW_SILL, r.maxZ, 'sill', look.wall);
+        this.addProp(r.minX, base, r.minZ, r.maxX, y + WINDOW_SILL, r.maxZ, 'sill');
         const g = box(o.at - o.width / 2, mid - GLASS / 2, o.at + o.width / 2, mid + GLASS / 2);
         const glass = this.addPanel(g.minX, y + WINDOW_SILL, g.minZ, g.maxX, y + WINDOW_TOP, g.maxZ, 'glass');
         this.panels[glass].box.clear = true;
@@ -1434,7 +1361,7 @@ export class World {
         this.doors[leaves[0]].pair = leaves[1];
         this.doors[leaves[1]].pair = leaves[0];
       }
-      this.addProp(r.minX, y + (o.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP), r.minZ, r.maxX, top, r.maxZ, 'wall', look.wall);
+      this.addProp(r.minX, y + (o.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP), r.minZ, r.maxX, top, r.maxZ, 'wall');
     }
   }
 
@@ -1489,171 +1416,73 @@ export class World {
   }
 
   /**
-   * Deathmatch's three towns: the harbour where the land meets the sea, its
-   * sea side left as it is, then two inland, each on fairly flat ground, well
-   * apart, and with land all round. Each is laid out from `layout`'s stream,
-   * and its ground levelled as its plan has it. Returns the plans.
+   * A map's ground laid over the island's: its own heights over its grid,
+   * sloping back into the island's over its blend beyond.
    */
-  private placeTowns(rng: () => number, layout: () => number): TownPlan[] {
-    const [port, ...inland] = TOWNS;
-
-    // The harbour: along a line out from the middle to where the sea starts, then back inland a little.
-    let best: Town | null = null;
-    let bestScore = Infinity;
-    for (let k = 0; k < 48; k++) {
-      const a = (k / 48 + rng() / 48) * Math.PI * 2;
-      const sx = Math.sin(a);
-      const sz = Math.cos(a);
-      let shore = -1;
-      for (let d = 60; d < this.half; d += 4) {
-        if (this.rawHeight(sx * d, sz * d) < 0) {
-          shore = d;
-          break;
-        }
-      }
-      if (shore < 0) continue;
-      const d = shore - port.r * 0.35;
-      const x = sx * d;
-      const z = sz * d;
-      // Land over the inland half, low and even, and open sea off the outer edge.
-      const land: number[] = [];
-      for (let i = 0; i < 12; i++) {
-        const b = (i / 12) * Math.PI * 2;
-        const [ox, oz] = [Math.sin(b) * port.r * 0.8, Math.cos(b) * port.r * 0.8];
-        if (ox * sx + oz * sz < 0) land.push(this.rawHeight(x + ox, z + oz));
-      }
-      if (land.some((h) => h < 1.5) || this.rawHeight(sx * (shore + 40), sz * (shore + 40)) > -2) continue;
-      // Least ground to cut away down to the waterfront.
-      const score = land.reduce((s, h) => s + Math.abs(h - HARBOUR_HEIGHT), 0) / land.length;
-      if (score < bestScore) {
-        bestScore = score;
-        best = { name: port.name, style: port.style, x, y: HARBOUR_HEIGHT, z, r: port.r, seaX: sx, seaZ: sz, open: [], props: [0, 0] };
-      }
-    }
-    if (best) this.towns.push(best);
-
-    // The towns inland: spread out and flat; relax both until both fit.
-    for (const [spacing, maxRough] of [[220, 6], [190, 9], [160, 13], [130, 18], [100, 30]]) {
-      const placed = (): number => this.towns.length - (best ? 1 : 0);
-      for (let attempt = 0; attempt < 600 && placed() < inland.length; attempt++) {
-        const spec = inland[placed()];
-        const x = (rng() - 0.5) * this.size * 0.7;
-        const z = (rng() - 0.5) * this.size * 0.7;
-        if (this.towns.some((t) => Math.hypot(t.x - x, t.z - z) < spacing)) continue;
-        const ring: number[] = [this.rawHeight(x, z)];
-        for (let i = 0; i < 12; i++) {
-          const b = (i / 12) * Math.PI * 2;
-          for (const f of [0.5, 1]) ring.push(this.rawHeight(x + Math.sin(b) * spec.r * f, z + Math.cos(b) * spec.r * f));
-        }
-        if (Math.max(...ring) - Math.min(...ring) > maxRough) continue;
-        // Dry land well past the edge on every side, so nothing of it runs into the sea.
-        let dry = true;
-        for (let i = 0; i < 12 && dry; i++) {
-          const b = (i / 12) * Math.PI * 2;
-          dry = this.rawHeight(x + Math.sin(b) * (spec.r + TOWN_BLEND), z + Math.cos(b) * (spec.r + TOWN_BLEND)) > 3;
-        }
-        const y = ring.reduce((s, h) => s + h, 0) / ring.length;
-        if (!dry || y < 4 || y > 36) continue;
-        this.towns.push({ name: spec.name, style: spec.style, x, y, z, r: spec.r, seaX: 0, seaZ: 0, open: [], props: [0, 0] });
-      }
-    }
-
-    const plans = this.towns.map((t) => {
-      // Which way the land rose across the site.
-      let [ux, uz] = [0, 0];
-      for (let i = 0; i < 12; i++) {
-        const b = (i / 12) * Math.PI * 2;
-        const h = this.rawHeight(t.x + Math.sin(b) * t.r, t.z + Math.cos(b) * t.r);
-        ux += Math.sin(b) * h;
-        uz += Math.cos(b) * h;
-      }
-      return planTown(t, layout, this, [ux, uz]);
-    });
-
-    // Level each one's ground as its plan has it, out past its edge by a cell and a half so every
-    // triangle in it is flat, then blend back to the land's.
+  private shapeGround(g: MapGround): void {
+    const [x1, z1] = groundEnd(g);
     const n = this.res + 1;
-    this.towns.forEach((t, k) => {
-      const flat = t.r + this.cell * 1.5;
-      const outer = flat + TOWN_BLEND;
-      for (let iz = 0; iz < n; iz++) {
-        const z = -this.half + iz * this.cell;
-        if (Math.abs(z - t.z) > outer) continue;
-        for (let ix = 0; ix < n; ix++) {
-          const x = -this.half + ix * this.cell;
-          const d = Math.hypot(x - t.x, z - t.z);
-          if (d > outer) continue;
-          const i = iz * n + ix;
-          this.heights[i] += (plans[k].ground(x, z, this.heights[i]) - this.heights[i]) * smoothstep(outer, flat, d);
-        }
+    for (let iz = 0; iz < n; iz++) {
+      const z = -this.half + iz * this.cell;
+      const dz = Math.max(g.z0 - z, 0, z - z1);
+      if (dz >= g.blend) continue;
+      for (let ix = 0; ix < n; ix++) {
+        const x = -this.half + ix * this.cell;
+        const d = Math.hypot(Math.max(g.x0 - x, 0, x - x1), dz);
+        if (d >= g.blend) continue;
+        const i = iz * n + ix;
+        this.heights[i] += (groundAt(g, x, z) - this.heights[i]) * smoothstep(g.blend, 0, d);
+      }
+    }
+  }
+
+  /** Everything standing on a map's ground, its crates' and containers' colours drawn from `rng`. */
+  private buildMap(map: GameMap, rng: () => number): void {
+    map.buildings.forEach((m, i) => {
+      const spec: Spec = { plan: m.plan, L: m.L, D: m.D, W: m.W ?? 0, E: m.E ?? 0 };
+      const alongX = m.facing === '-z' || m.facing === '+z';
+      const [w, d] = alongX ? [m.L, m.D] : [m.D, m.L];
+      const [lo] = this.heightRange(m.x, m.z, m.x + w, m.z + d);
+      const f = frameOf(m.x, m.z, m.L, m.D, alongX, !!m.flip, m.facing[0] === '+');
+      // Each building's own stream, for where its doors and windows fall, so one changed moves no other.
+      const b = this.addBuilding(spec, f, m.floor, Math.min(lo, m.floor) - 0.5, mulberry32(this.seed ^ Math.imul(i + 1, 0x9e3779b1)), -1, m.crates ?? 0);
+      // A concrete floor over the ground, inside its walls.
+      for (const r of b.parts) {
+        this.addProp(r.minX + HOUSE_WALL, lo - 0.3, r.minZ + HOUSE_WALL, r.maxX - HOUSE_WALL, m.floor, r.maxZ - HOUSE_WALL, 'floor');
       }
     });
-    return plans;
-  }
-
-  /** Build a town as its plan lays it out, drawing details from `rng`. */
-  private buildTown(t: Town, plan: TownPlan, rng: () => number): void {
-    const first = this.props.length;
-    const look = TOWN_LOOK[t.style];
-    for (const h of plan.houses) {
-      const { spec, rect: r, facing } = h;
-      const alongX = facing === '-z' || facing === '+z';
-      const f = frameOf(r.minX, r.minZ, spec.L, spec.D, alongX, h.flipU, facing[0] === '+');
-      this.addBuilding(spec, f, h.floor, h.floor - 0.5, rng, -1, h.crates, look, true);
-    }
-    for (const { r, y0, y1 } of plan.walls) this.addWall(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, look.wall);
-    // Bots walk their tops as they do a floor.
-    for (const { r, y0, y1 } of plan.blocks) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall').walk = true;
-    for (const { r, y0, y1, tint } of plan.containers) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'container', tint);
-    for (const { r, y0, y1 } of plan.decks) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'timber').walk = true;
-    for (const { r, y0, y1 } of plan.posts) this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'timber');
-    const crates: number[] = [];
-    for (const { r, y0, y1, on } of plan.crates) crates.push(this.addPanel(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'crate', on >= 0 ? [crates[on]] : [], rng()));
-    this.greens.push(...plan.greens);
-    t.open = plan.open;
-    t.props = [first, this.props.length];
-  }
-
-  /**
-   * A road between each pair of towns: a straight line kept off the sea and
-   * the beach by bending it inland, then smoothed, following the ground.
-   */
-  private placeRoads(rng: () => number): void {
-    const dry = (x: number, z: number): boolean => this.terrainHeight(x, z) >= HARBOUR_HEIGHT - 0.1;
-    for (let i = 0; i < this.towns.length; i++) {
-      for (let j = i + 1; j < this.towns.length; j++) {
-        const a = this.towns[i];
-        const b = this.towns[j];
-        const len = Math.hypot(b.x - a.x, b.z - a.z);
-        const steps = Math.max(2, Math.round(len / ROAD_STEP));
-        // A gentle sideways bow, so the roads don't run ruler-straight.
-        const bow = (rng() - 0.5) * len * 0.25;
-        const [nx, nz] = [-(b.z - a.z) / len, (b.x - a.x) / len];
-        const road: { x: number; z: number }[] = [];
-        for (let k = 0; k <= steps; k++) {
-          const f = k / steps;
-          const side = Math.sin(f * Math.PI) * bow;
-          road.push(k === steps ? { x: b.x, z: b.z } : { x: a.x + (b.x - a.x) * f + nx * side, z: a.z + (b.z - a.z) * f + nz * side });
-        }
-        const inland = (p: { x: number; z: number }): void => {
-          const d = Math.hypot(p.x, p.z) || 1;
-          for (let s = 0; s < 60 && !dry(p.x, p.z); s++) {
-            p.x -= (p.x / d) * 4;
-            p.z -= (p.z / d) * 4;
-          }
-        };
-        for (let pass = 0; pass < 4; pass++) {
-          for (const p of road) inland(p);
-          // Smoothed, the two ends staying in their towns' middles.
-          const prev = road.map((p) => ({ ...p }));
-          for (let k = 1; k < road.length - 1; k++) {
-            road[k].x = (prev[k - 1].x + prev[k].x * 2 + prev[k + 1].x) / 4;
-            road[k].z = (prev[k - 1].z + prev[k].z * 2 + prev[k + 1].z) / 4;
-          }
-        }
-        for (const p of road) inland(p);
-        this.roads.push(road);
+    for (const w of map.walls) this.addWall(w.minX, w.y0, w.minZ, w.maxX, w.y1, w.maxZ);
+    for (const s of map.stairs) this.addStair(s);
+    // The panel of each prop, for crates stacked on it; -1 for a container.
+    const panels: number[] = [];
+    for (const p of map.props) {
+      if (p.kind === 'container') {
+        const [lo, hi] = this.heightRange(p.minX, p.minZ, p.maxX, p.maxZ);
+        this.addProp(p.minX, lo - 0.2, p.minZ, p.maxX, hi + CONTAINER_HEIGHT, p.maxZ, 'container', rng());
+        panels.push(-1);
+        continue;
       }
+      const h = p.size / 2;
+      const under = p.on === undefined ? -1 : panels[p.on];
+      const [lo, hi] = under >= 0 ? [this.panels[under].box.maxY, this.panels[under].box.maxY] : this.heightRange(p.x - h, p.z - h, p.x + h, p.z + h);
+      const bottom = under >= 0 ? lo : lo - 0.2;
+      panels.push(this.addPanel(p.x - h, bottom, p.z - h, p.x + h, hi + p.size, p.z + h, 'crate', under >= 0 ? [under] : [], rng()));
+    }
+  }
+
+  /** A flight of steps, each a floor bots climb. */
+  private addStair(s: MapStair): void {
+    const steps = Math.max(1, Math.ceil((s.y1 - s.y0) / STEP_RISE - 1e-6));
+    const [ux, uz] = { '-x': [-1, 0], '+x': [1, 0], '-z': [0, -1], '+z': [0, 1] }[s.climbs];
+    const half = s.width / 2;
+    for (let k = 0; k < steps; k++) {
+      const [a0, a1] = [k * STEP_RUN, (k + 1) * STEP_RUN];
+      const x0 = s.x + ux * a0 - Math.abs(uz) * half;
+      const x1 = s.x + ux * a1 + Math.abs(uz) * half;
+      const z0 = s.z + uz * a0 - Math.abs(ux) * half;
+      const z1 = s.z + uz * a1 + Math.abs(ux) * half;
+      const top = s.y0 + ((s.y1 - s.y0) * (k + 1)) / steps;
+      this.addProp(Math.min(x0, x1), s.y0 - 0.3, Math.min(z0, z1), Math.max(x0, x1), top, Math.max(z0, z1), 'step').walk = true;
     }
   }
 
@@ -1776,7 +1605,7 @@ export class World {
       const x = (rng() - 0.5) * this.size * 0.8;
       const z = (rng() - 0.5) * this.size * 0.8;
       const y = this.terrainHeight(x, z);
-      if (y < 1.5 || y > 40 || this.nearOutpost(x, z, 35) || this.onRoad(x, z, 5)) continue;
+      if (y < 1.5 || y > 40 || this.nearOutpost(x, z, 35)) continue;
       placed++;
       if (rng() < 0.5) {
         const len = 3 + rng() * 4;
@@ -1807,7 +1636,7 @@ export class World {
       const z = (rng() - 0.5) * this.size * 0.9;
       const h = this.terrainHeight(x, z);
       if (h < 2 || h > 14 || Math.hypot(x, z) < this.half * 0.35) continue;
-      if (this.nearOutpost(x, z, 90) || this.onRoad(x, z, 6) || this.blocked(x, z, 3)) continue;
+      if (this.nearOutpost(x, z, 90) || this.blocked(x, z, 3)) continue;
       candidates.push({ x, y: this.groundHeight(x, z, h), z });
     }
     // Greedy farthest-point picks spread them around the island.
@@ -1832,7 +1661,7 @@ export class World {
       const z = (rng() - 0.5) * this.size * 0.8;
       const alongX = rng() < 0.5;
       const count = 2 + Math.floor(rng() * 4);
-      if (this.nearOutpost(x, z, 40) || this.onRoad(x, z, (count * FENCE_PANEL) / 2 + 1) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 20)) continue;
+      if (this.nearOutpost(x, z, 40) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 20)) continue;
       const sections: [number, number, number, number, number, number][] = [];
       for (let i = 0; i < count; i++) {
         const a = (i - count / 2) * FENCE_PANEL;
@@ -1867,7 +1696,7 @@ export class World {
       const alongX = rng() < 0.5;
       const flipU = rng() < 0.5;
       const flipV = rng() < 0.5;
-      if (this.nearOutpost(x, z, 45) || this.onRoad(x, z, Math.max(spec.L, spec.D) / 2 + 2) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 30)) continue;
+      if (this.nearOutpost(x, z, 45) || this.extracts.some((e) => Math.hypot(e.x - x, e.z - z) < 30)) continue;
       if (this.buildings.some((b) => Math.hypot((b.minX + b.maxX) / 2 - x, (b.minZ + b.maxZ) / 2 - z) < 40)) continue;
       const [w, d] = alongX ? [spec.L, spec.D] : [spec.D, spec.L];
       const r: Rect = { minX: x - w / 2, minZ: z - d / 2, maxX: x + w / 2, maxZ: z + d / 2 };
@@ -1913,7 +1742,7 @@ export class World {
       const y = this.terrainHeight(x, z);
       if (y < 1.5 || y > 50) continue;
       if (fbm(x / 110, z / 110, this.seed + 99, 3) < 0.48) continue;
-      if (this.nearOutpost(x, z, 30) || this.onRoad(x, z, 2) || this.nearProp(x, z, 2)) continue;
+      if (this.nearOutpost(x, z, 30) || this.mapDistance(x, z) < 6 || this.nearProp(x, z, 2)) continue;
       const s = 0.8 + rng() * 0.7;
       this.trees.push({ x, y, z, s });
       this.colliders.push({ kind: 'cyl', x, z, r: 0.3 * s + 0.05, y0: y - 1, y1: y + 7 * s, stamp: 0 });
@@ -1971,7 +1800,7 @@ export class World {
         const x = e.x + Math.sin(a) * d;
         const z = e.z + Math.cos(a) * d;
         const y = this.terrainHeight(x, z);
-        if (y < 1.5 || this.onRoad(x, z, 3) || this.blocked(x, z, 2.5)) continue;
+        if (y < 1.5 || this.blocked(x, z, 2.5)) continue;
         // Square to the point, whichever axis is nearer.
         const alongX = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a));
         if (rng() < 0.5) {
@@ -2009,7 +1838,7 @@ export class World {
       const z = (rng() - 0.5) * this.size * 0.96;
       const y = this.terrainHeight(x, z);
       if (y < -0.5 || y > 55) continue;
-      if (this.nearOutpost(x, z, 26) || this.onRoad(x, z, 3) || this.nearProp(x, z, 3)) continue;
+      if (this.nearOutpost(x, z, 26) || this.mapDistance(x, z) < 4 || this.nearProp(x, z, 3)) continue;
       const r = 0.6 + rng() ** 2 * 2.6;
       const h = r * (0.6 + rng() * 0.6);
       const rock = { x, y, z, r, h, rot: rng() * Math.PI * 2 };
@@ -2022,12 +1851,49 @@ export class World {
 /** Local (along, across) to world (x, z). */
 type Frame = (a: number, c: number) => [number, number];
 
-/** How a building's walls and roof are tinted. */
-interface Look {
-  wall: number;
-  roof: number;
+/** A building's size: `L` along its length and `D` deep, and an L's wing (`W` wide, jutting `E` out in front). */
+interface Spec {
+  plan: Plan;
+  L: number;
+  D: number;
+  W: number;
+  E: number;
 }
-const PLAIN: Look = { wall: 0, roof: 0 };
+
+/** A plan's size, drawn from `rng`. */
+function specFor(plan: Plan, rng: () => number): Spec {
+  switch (plan) {
+    case 'one':
+      return { plan, L: 6 + rng(), D: 4.8 + rng() * 0.6, W: 0, E: 0 };
+    case 'two':
+      return { plan, L: 10 + rng() * 1.5, D: 6.5 + rng(), W: 0, E: 0 };
+    case 'ell': {
+      const E = 3.6 + rng() * 0.6;
+      return { plan, L: 9.5 + rng(), D: 6 + rng() * 0.6 + E, W: 4.4 + rng() * 0.4, E };
+    }
+    case 'tall':
+      return { plan, L: 7.4 + rng() * 0.8, D: 6 + rng() * 0.5, W: 0, E: 0 };
+  }
+}
+
+/** A map's ground grid's far corner: its greatest x and z. */
+function groundEnd(g: MapGround): [number, number] {
+  return [g.x0 + (g.heights[0].length - 1) * g.cell, g.z0 + (g.heights.length - 1) * g.cell];
+}
+
+/** A map's ground height at (x, z), between its grid's points, and as its nearest edge's beyond them. */
+function groundAt(g: MapGround, x: number, z: number): number {
+  const rows = g.heights.length;
+  const cols = g.heights[0].length;
+  const gx = clamp((x - g.x0) / g.cell, 0, cols - 1);
+  const gz = clamp((z - g.z0) / g.cell, 0, rows - 1);
+  const c = Math.min(Math.floor(gx), cols - 2);
+  const r = Math.min(Math.floor(gz), rows - 2);
+  const fx = gx - c;
+  const fz = gz - r;
+  const H = g.heights;
+  return (H[r][c] * (1 - fx) + H[r][c + 1] * fx) * (1 - fz) + (H[r + 1][c] * (1 - fx) + H[r + 1][c + 1] * fx) * fz;
+}
 
 /**
  * The frame for a footprint at (minX, minZ), `L` along its length and `D`

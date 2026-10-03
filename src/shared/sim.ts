@@ -263,8 +263,10 @@ export function applyCmd(world: World, p: PlayerState, cmd: InputCmd, dt: number
   }
 
   const height = bodyHeight(p);
-  p.x = clamp(p.x + p.vx * dt, -world.half, world.half);
-  p.z = clamp(p.z + p.vz * dt, -world.half, world.half);
+  // Nobody leaves the island, or a map's bounds.
+  const edge = world.bounds;
+  p.x = clamp(p.x + p.vx * dt, edge.minX, edge.maxX);
+  p.z = clamp(p.z + p.vz * dt, edge.minZ, edge.maxZ);
   world.collide(p, height);
 
   const wasOnGround = p.onGround;

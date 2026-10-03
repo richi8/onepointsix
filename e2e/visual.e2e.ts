@@ -116,17 +116,16 @@ for (const [name, query] of Object.entries(YARD)) {
   });
 }
 
-// Deathmatch's island (see ?cam=t in main.ts): its three towns from the
-// sunny side, each in its own style: the old town packed round its square,
-// the village on its terraces, and the harbour's quay, piers and containers.
-const TOWNS: Record<string, string> = {
-  'old-town': 't1,45,25,45,0,0,0',
-  village: 't2,45,25,45,0,0,0',
-  harbour: 't0,-60,45,-110,10,0,20',
+// Deathmatch's map (see maps/teststreet.ts): down its street from the west
+// end, the two-storey house on the left and the two-room one on the right, and
+// from above, the yards, the outside stair and the walls round it.
+const MAP: Record<string, string> = {
+  'test-street': '-26,17.7,1,10,16.5,0',
+  'test-street-above': '-30,40,30,0,16,0',
 };
 
-for (const [name, cam] of Object.entries(TOWNS)) {
-  test(`towns: ${name}`, async ({ page }) => {
+for (const [name, cam] of Object.entries(MAP)) {
+  test(`map: ${name}`, async ({ page }) => {
     await spot(page, cam, '&mode=deathmatch');
     await expect(page).toHaveScreenshot(`${name}.png`);
   });

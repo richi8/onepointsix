@@ -196,19 +196,26 @@ export const ARENA_SIGHT = 200;
 export const arenaPicks = { picked: 0, unclear: 0 };
 
 /**
- * Where an operator (re)spawns in Deathmatch: a random spot on dry land with
+ * Where an operator (re)spawns in Deathmatch, facing: a random spot on dry
+ * land, or on a map one of its spawn points taken in a random order, with
  * none of `avoid`, the living operators, within ARENA_CLEAR or seeing it from
  * within ARENA_SIGHT. If none turns up, the farthest from them of those tried.
  * Outposts are fair game, as nobody guards them.
  */
-export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[]): Point {
+export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[]): Post {
   arenaPicks.picked++;
-  let best: Point | null = null;
+  const spawns = world.map ? shuffled(world.spawns, rand) : null;
+  let best: Post | null = null;
   let bestD = -1;
-  for (let i = 0; i < ARENA_TRIES; i++) {
-    const p = world.randomLandPoint(rand);
-    if (!nav.dry(p.x, p.z) || p.y > 40) continue;
-    const y = world.groundHeight(p.x, p.z, world.floorHeight(p.x, p.z));
+  for (let i = 0; i < (spawns ? spawns.length : ARENA_TRIES); i++) {
+    let p: Post;
+    if (spawns) p = spawns[i];
+    else {
+      const at = world.randomLandPoint(rand);
+      if (!nav.dry(at.x, at.z) || at.y > 40) continue;
+      p = { ...at, yaw: yawToward(at.x, at.z, 0, 0) };
+    }
+    const y = spawns ? p.y : world.groundHeight(p.x, p.z, world.floorHeight(p.x, p.z));
     let d = Infinity;
     let seen = false;
     for (const a of avoid) {
@@ -220,7 +227,19 @@ export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid
     if (d > bestD) (best = p), (bestD = d);
   }
   arenaPicks.unclear++;
-  return best ?? world.randomLandPoint(rand);
+  if (best) return best;
+  const at = world.randomLandPoint(rand);
+  return { ...at, yaw: yawToward(at.x, at.z, 0, 0) };
+}
+
+/** A copy of `list` in an order drawn from `rand`. */
+function shuffled<T>(list: readonly T[], rand: () => number): T[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 /** Where to search every crate on an island from, worked out once per island. */

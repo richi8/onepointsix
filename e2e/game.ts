@@ -57,8 +57,8 @@ export async function open(page: Page, query = ''): Promise<void> {
 }
 
 /**
- * Pick a mode on the menu. Into or out of Deathmatch, whose island has towns
- * rather than outposts, the page loads again to build it: wait for that.
+ * Pick a mode on the menu. Into or out of Deathmatch, played on a map of its
+ * own, the page loads again to build it: wait for that.
  */
 export async function pickMode(page: Page, mode: Mode): Promise<void> {
   const current = await page.locator('#modes button.on').getAttribute('data-mode');

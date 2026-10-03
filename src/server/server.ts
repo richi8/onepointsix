@@ -60,7 +60,8 @@ import { applyCmd, copyState, eyePosition, motionOf, spawnState, type PlayerStat
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { bagShows, vegetationOf } from '../shared/vegetation.ts';
-import { inBuilding, layoutFor, leafRect, World, type Box, type Point } from '../shared/world.ts';
+import { mapFor } from '../shared/maps/index.ts';
+import { inBuilding, leafRect, World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
@@ -257,7 +258,7 @@ export class GameServer {
     this.options = options;
     this.mode = options.mode ?? 'extraction';
     this.forecast = new Forecast(this.seed, options.weather);
-    this.world = new World(this.seed, layoutFor(this.mode));
+    this.world = new World(this.seed, mapFor(this.mode));
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
     this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);
@@ -712,7 +713,7 @@ export class GameServer {
     const w = this.world;
     for (let i = 0; i < w.doors.length; i++) {
       const d = w.doors[i];
-      // Out of reach of its hinge: most of them, in a town.
+      // Out of reach of its hinge: most of them.
       if (Math.abs(d.x - x) > d.length + 1 || Math.abs(d.z - z) > d.length + 1) continue;
       if (d.open || p.y > d.y1 || p.y + PLAYER_HEIGHT < d.y0 || w.panels[d.panel].box.gone) continue;
       const [x0, z0, x1, z1] = leafRect(d, false);
@@ -1043,10 +1044,9 @@ export class GameServer {
     let post: Post;
     if (at) post = at;
     else if (this.options.deathmatch) {
-      // Players and bots alike, anywhere nobody still standing is near or sees.
+      // Players and bots alike, anywhere nobody still standing is near or sees: on a map, at its spawn points.
       const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
-      const at = arenaPoint(this.world, this.nav, this.spawnRng, others);
-      post = { ...at, yaw: yawToward(at.x, at.z, 0, 0) };
+      post = arenaPoint(this.world, this.nav, this.spawnRng, others);
     } else if (p.plan) post = p.plan.spawn;
     else if (this.rangeSpawn) post = this.rangeSpawn;
     else {

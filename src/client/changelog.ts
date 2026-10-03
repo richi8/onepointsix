@@ -12,24 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
-    title: 'Three towns for Deathmatch',
+    title: 'A map of its own for Deathmatch',
     notes: [
-      'Deathmatch’s three town sites are built up: streets of houses facing each other, back yards behind low garden walls, narrow gaps and alleys between them, and an open place in each town for a fight in the open.',
-      'Oldbridge, the old town, is packed tight round its square: mostly two-storey houses, many built against each other, ochre walls and red roofs.',
-      'Hillcombe, the village, steps up its slope in three terraces held up by retaining walls: whitewashed houses spread along a lane on each, grassy yards, and a main street climbing the middle past the green.',
-      'Port Ash, the harbour, has a quay with piers out over the water, shipping containers stacked up to three high, warehouses facing the sea, and houses behind.',
-      'Crates of ammo and medkits are spread through the towns: in the houses, in the yards, by the square and on the quay.',
-    ],
-  },
-  {
-    date: '2026-10-03',
-    title: 'Deathmatch gets its own island',
-    notes: [
-      'Deathmatch is played on an island of its own: the same hills and coast, but instead of the six outposts there are three town sites, a harbour on the coast and two towns inland, joined by dirt roads. The towns themselves are still to be built; for now each is a levelled clearing.',
-      'The huts, fences, walls and crates out in the country are still there, off the roads.',
-      'Picking Deathmatch on the menu, or leaving it for another mode, loads the page again to build its island.',
-      'Deathmatch’s board starts afresh on the new island. Games played among the outposts are kept, but not shown.',
-      'Extraction and the range are on the same island as before.',
+      'Deathmatch leaves the island for a map of its own, made by hand rather than from the world’s seed: in time a whitewashed town on a hillside above the sea, with flat roofs to fight across. The three towns built for it earlier today are gone: made up afresh for each island, they could never be laid out as well as a map shaped by hand.',
+      'Until the town is built, Deathmatch is played on a test street: two houses facing each other, yards behind them, an outside stair up to one roof and walls all round. It’s small, so expect a fight the moment you’re back in.',
+      'Deathmatch is now for 16 operators, not 20, and everyone comes back in at one of the map’s spawn points, the one farthest from the others when none is out of their way.',
+      'The map is the same whatever world link you came in on; only the weather follows the link. Deathmatch’s board is kept for the map, starting afresh.',
+      'Picking Deathmatch on the menu, or leaving it for another mode, still loads the page again to build its map. Extraction and the range are on the same island as before.',
     ],
   },
   {

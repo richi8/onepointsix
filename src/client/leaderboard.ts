@@ -1,3 +1,4 @@
+import { mapFor } from '../shared/maps/index.ts';
 import type { Mode } from '../shared/protocol.ts';
 
 /** Scores kept per island and mode. */
@@ -78,12 +79,14 @@ export class Leaderboard {
 }
 
 /**
- * Where a board is kept. Deathmatch moved to an island with towns on
- * 2026-10-03, so its board started afresh there: the games played among the
- * outposts stay under `deathmatch`, not read and not mixed in.
+ * Where a board is kept: by the island's seed, or for a mode played on a
+ * fixed map, by the map, whatever the seed. Deathmatch moved to one on
+ * 2026-10-03, so its board started afresh there: the games played on the
+ * islands stay under their seeds, not read and not mixed in.
  */
 export function boardKey(seed: number, mode: Mode): string {
-  return `board:${seed >>> 0}:${mode === 'deathmatch' ? 'deathmatch-towns' : mode}`;
+  const map = mapFor(mode);
+  return map ? `board:${map.id}:${mode}` : `board:${seed >>> 0}:${mode}`;
 }
 
 /**

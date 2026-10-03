@@ -306,7 +306,7 @@ canvas.fade-in {
   width: 92px;
 }
 
-/* Deathmatch's 20 operators, closer together so they fit. */
+/* Deathmatch's 16 operators, closer together so they fit. */
 .scoreboard.compact table {
   width: min(420px, 100%);
 }

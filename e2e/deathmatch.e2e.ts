@@ -13,11 +13,11 @@ async function me(page: import('@playwright/test').Page): Promise<{ life: number
 test('Deathmatch: no clock or extraction, every operator on Tab, and back in after the death cam', async ({ page }) => {
   await open(page);
   await pickMode(page, 'deathmatch');
-  // Its own island: three towns, and no outposts or extraction points, on the menu too.
+  // Its own map: no outposts or extraction points, on the menu too.
   expect(await page.evaluate(() => {
-    const w = window.game.world as { towns: unknown[]; outposts: unknown[]; roads: unknown[] };
-    return [w.towns.length, w.outposts.length, w.roads.length];
-  })).toEqual([3, 0, 3]);
+    const w = window.game.world as { map: { id: string } | null; outposts: unknown[] };
+    return [w.map?.id, w.outposts.length];
+  })).toEqual(['test-street', 0]);
   expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(false);
   await expect(page.locator('#board .empty')).toHaveText('No games yet. Leave a Deathmatch game with a kill to post it.');
   await play(page, 'deathmatch');
@@ -76,6 +76,7 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
 
   // Back to Extraction: its island again, outposts and all.
   await pickMode(page, 'extraction');
+  expect(await page.evaluate(() => (window.game.world as { map: unknown; outposts: unknown[] }).map)).toBeNull();
   expect(await page.evaluate(() => (window.game.world as { outposts: unknown[] }).outposts.length)).toBe(6);
   expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(true);
 });

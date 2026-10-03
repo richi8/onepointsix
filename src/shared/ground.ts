@@ -1,6 +1,6 @@
 import { clamp, smoothstep } from './geom.ts';
 import { fbm } from './rng.ts';
-import { ROAD_WIDTH, type World } from './world.ts';
+import type { World } from './world.ts';
 import { Layer } from './layers.ts';
 
 // What the ground is painted with, worked out once per terrain vertex: the
@@ -25,13 +25,8 @@ export interface Paint {
 export function paint(world: World, x: number, y: number, z: number, flat: number): Paint {
   const dry = fbm(x / 60, z / 60, world.seed + 5, 3);
   const outpost = world.nearestOutpost(x, z);
-  const town = world.nearestTown(x, z);
-  const dirt = Math.max(
-    outpost ? smoothstep(26, 16, outpost.dist) : 0,
-    // Bare in a town, bar the yards with grass in them.
-    town ? smoothstep(town.town.r + 6, town.town.r - 4, town.dist) * (world.inGreen(x, z) ? 0.15 : 1) : 0,
-    smoothstep(ROAD_WIDTH / 2 + 3, ROAD_WIDTH / 2, world.roadDistance(x, z)),
-  );
+  // Bare in an outpost, and over a map's ground.
+  const dirt = Math.max(outpost ? smoothstep(26, 16, outpost.dist) : 0, smoothstep(6, 2, world.mapDistance(x, z)));
   const rock = smoothstep(0.86, 0.72, flat) + smoothstep(38, 52, y);
   const sand = smoothstep(2.2, 0.8, y);
   const seabed = smoothstep(-0.5, -3, y);

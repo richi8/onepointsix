@@ -1,4 +1,4 @@
-// Plays Deathmatch games of 20 bots in Node, with no browser, and sums up how
+// Plays Deathmatch games of 16 bots in Node, with no browser, and sums up how
 // they went: how often people die and how long they live, how kills spread,
 // how safe respawns are, whether anyone runs out of ammo and what the bots
 // spend their time on. For tuning Deathmatch before and between playtests.
