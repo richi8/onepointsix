@@ -2132,6 +2132,60 @@ notes the chunk it came from.
   ammo, and bots searching crates 3–5% of the time. How it feels, and whether 20 is the right
   count, wait for the user's own playtest. Deathmatch games aren't in the run log or the stats page.
   **Accepted** (2026-10-03): the user finds the numbers about right, and will playtest it.
+- **Roads are only painted** (chunk 50): dirt on the terrain's 4 m grid, so their edges are
+  ragged and they follow every bump of the ground, with no cutting or levelling across a slope.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **Less cover in Deathmatch's streets until chunk 52** (chunk 50): the outposts' crates,
+  containers and walls went with them. **Resolved in part** (chunk 51): the towns have their
+  buildings, garden walls and 15–34 loot crates each, more than the outposts had, and
+  `sim:deathmatch` is back near the outposts' kills; but the streets, the square and the green are
+  bare, long open lanes, until chunk 52's street cover.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **Most town buildings have no light grid** (chunk 51): the indoor light keeps grids for 16
+  buildings (`MAX_BUILDINGS`, its 3D texture's depth and the shaders' uniform arrays), the first
+  16 built, so rooms in the other 40-odd town buildings are lit as if outdoors; and in the old
+  town a building's light volume can reach over its neighbour's, whose cells on the island map
+  it takes. Chunk 53's benchmark and cold load are to settle how many grids the towns can have.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **A bot's path to a spot it can't reach costs up to 140 ms in a town** (chunk 51): A* runs its
+  30,000 expansions, and among a town's upper floors and terraces each costs more. In
+  `sim:deathmatch`, about two server ticks in ten minutes take over 20 ms, one (seed 1) 140 ms;
+  the mean tick costs half as much again as on the bare sites. For chunk 53, with the bots in
+  the towns.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **Warehouses are big two-room houses** (chunk 51): the harbour's warehouses use the two-room
+  plan at 15–19 × 9.5–11 m, the same 3 m storey, doors and windows as a house, not a tall shed
+  with wide doors.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **Roads run on into the towns as paint** (chunk 50, 51): a road still runs to its town's
+  middle, painted over yards and under houses, and doesn't meet a street at the town's edge.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **The terraces' retaining walls are 4 m deep** (chunk 51): each is a block over the whole
+  terrain cell the ground ramps in, so its top is a plain concrete strip 4 m wide along the
+  terrace's edge, and terraces step only 1.6 m, so the ramps where streets cross stay walkable
+  for bots.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **The harbour's basin is cut straight** (chunk 51): the sea off the quay is 3.5 m deep in a
+  straight line along it whatever the coast did, sloping back to the shore beyond the site, so it
+  can read as a dug dock; someone who falls in can't climb back up the quay and wades to where
+  the basin's side slopes up.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **Houses built against each other keep their end windows** (chunk 51): in the old town and the
+  harbour, the window at a house's end can look straight into its neighbour's wall.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
+- **The yards' grass is coarse** (chunk 51): the ground is painted on the terrain's 4 m grid, so
+  a yard's grass only shows where a grid point falls in it, and spills a little under walls.
+  **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
+  chunk 52 removes their code.
 
 ## Dropped
 
