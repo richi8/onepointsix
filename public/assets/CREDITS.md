@@ -41,7 +41,7 @@ the soldiers, from Microsoft's Rocketbox avatars under the MIT License (its text
   (jackthemurray); Handgun / Pistol Removing Mag and Inserting Mag Foley (e9118586020); Bolt
   Action Rifle Reload (AugustSandberg); 1911 Reload (nioczkus); Explosion_01.wav (tommccann);
   Smash.ogg (egomassive); Glass Break (unfa); door - open 01.wav (Anthousai); Wood Door Slam.wav
-  (MootMcnoodles); Concrete Breaks Several Denoised (loganzsound); VisceralBulletImpacts.wav
+  (MootMcnoodles); VisceralBulletImpacts.wav
   (u1769092); Human Impact on Ground (alegemaate); footsteps grass.wav (Yuval); Footsteps Dirt
   Gravel (PotatokingXII); Foot_Step_grit_Sand.wav (savataivanov); Footsteps - Stone, Rock,
   Concrete, Cement (SecureSubset); Footsteps on concrete (florianreichelt); footsteps on wood

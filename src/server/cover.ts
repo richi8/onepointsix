@@ -53,7 +53,7 @@ export class Cover {
   }
 
   /**
-   * Rebuild panels that have been down long enough, bottom rows first, where
+   * Rebuild panels that have been down long enough, what they rest on first, where
    * `blocked` says nothing is in the way. Returns the panels rebuilt.
    */
   repair(now: number, blocked: (box: Box) => boolean): number[] {

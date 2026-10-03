@@ -61,7 +61,8 @@ function place(world: World, kind: ContractKind, outpost: number, rand: () => nu
     const crates: number[] = [];
     world.panels.forEach((p, i) => {
       const b = p.box;
-      if (p.kind !== 'crate' || p.restsOn.length || b.gone) return;
+      // On the ground: not stacked on another or upstairs.
+      if (p.kind !== 'crate' || p.restsOn.length || b.minY > o.y || b.gone) return;
       if (Math.hypot((b.minX + b.maxX) / 2 - o.x, (b.minZ + b.maxZ) / 2 - o.z) < CACHE_RADIUS) crates.push(i);
     });
     if (!crates.length) return null;

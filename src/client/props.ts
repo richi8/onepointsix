@@ -189,14 +189,13 @@ export const FRAME_COLOR = 0x8a8478;
 export const FRAME_TINT = 0xf0ece4;
 
 /** How a prop is drawn, from what it is and what it's part of. */
-function shapeOf(world: World, i: number, sills: Set<number>): Shape {
+function shapeOf(world: World, i: number): Shape {
   const p = world.props[i];
   if (p.style === 'glass') return 'glass';
   if (p.style === 'crate') return 'crate';
   if (p.style === 'fence') return 'fence';
   if (p.style === 'door') return 'door';
-  if (p.panel >= 0 && world.panels[p.panel].kind === 'timber') return p.box.walk ? 'step' : 'table';
-  if (p.panel >= 0 && sills.has(p.panel)) return 'sill';
+  if (p.box.part === 'step' || p.box.part === 'table' || p.box.part === 'sill') return p.box.part;
   return 'box';
 }
 
@@ -238,8 +237,7 @@ export class Props {
 
   /** Drawn for `world` in the flat colours `colour` gives, leaving out the props in `hidden`. */
   constructor(world: World, colour: (prop: number) => number, hidden: Set<number>) {
-    const sills = new Set(world.panels.filter((p) => p.kind === 'glass').map((p) => p.restsOn[0]));
-    const shapes = world.props.map((_, i) => (hidden.has(i) ? null : shapeOf(world, i, sills)));
+    const shapes = world.props.map((_, i) => (hidden.has(i) ? null : shapeOf(world, i)));
     const count = new Map<Shape, number>();
     this.at = Int32Array.from(shapes, (s) => {
       if (!s) return -1;
@@ -315,17 +313,14 @@ export class Props {
   }
 
   /**
-   * Draw the solid props with `material`, each prop in its texture `layer`,
-   * tinted `tint` and gathering puddles as much as `pool` says. The frames
-   * take the boards layer given.
+   * Draw the solid props with `material`, each prop in its texture `layer`
+   * and tinted `tint`. The frames take the boards layer given.
    */
-  texture(material: THREE.Material, layer: (i: number) => number, tint: (i: number, out: THREE.Color) => THREE.Color, pool: (i: number) => number, boards: number): void {
+  texture(material: THREE.Material, layer: (i: number) => number, tint: (i: number, out: THREE.Color) => THREE.Color, boards: number): void {
     const c = new THREE.Color();
     const layers = new Map<THREE.InstancedMesh, Float32Array>();
-    const pools = new Map<THREE.InstancedMesh, Float32Array>();
     for (const mesh of this.meshes.values()) {
       layers.set(mesh, new Float32Array(mesh.count));
-      pools.set(mesh, new Float32Array(mesh.count));
     }
     const frames = this.meshes.get('frame');
     this.mesh.forEach((mesh, i) => {
@@ -336,14 +331,12 @@ export class Props {
         return;
       }
       layers.get(mesh)![this.at[i]] = layer(i);
-      pools.get(mesh)![this.at[i]] = pool(i);
       mesh.setColorAt(this.at[i], tint(i, c));
     });
     const solid = sliced(material);
     const old = new Set<THREE.Material>();
     for (const [shape, mesh] of this.meshes) {
       mesh.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers.get(mesh)!, 1));
-      mesh.geometry.setAttribute('pool', new THREE.InstancedBufferAttribute(pools.get(mesh)!, 1));
       if (shape === 'glass') continue;
       mesh.instanceColor!.needsUpdate = true;
       old.add(mesh.material as THREE.Material);

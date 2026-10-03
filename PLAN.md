@@ -86,7 +86,7 @@ Extraction's; Deathmatch keeps only the fighting (see Game Modes).
 ### Movement (grounded, no grapple)
 - Sprint with stamina, crouch, jump
 - Mantle over walls and crates
-- Lean left and right (Q/E), which pairs with destructible cover
+- Lean left and right (Q/E) round corners and cover
 - **Carry weight.** Heavy loot slows you down and disables mantling, so loot and movement
   work against each other.
 
@@ -100,8 +100,10 @@ Extraction's; Deathmatch keeps only the fighting (see Game Modes).
 - Grenades
 
 ### Destructible cover
-- Walls, fences and crates are built from a few **breakable panels**, each with its own HP. No
-  voxels.
+- Fence sections, crates, door leaves, window glass and tables are **breakable panels**, each
+  with its own HP, rebuilt a few minutes after they break. No voxels.
+- Walls, roofs, floors and stairs are solid and never break (since chunk 49): cover that stays,
+  and roofs that can be stood on.
 - Breaking a panel is a small network event ("panel 812 broke"), so it's cheap to sync.
 - Debris and collision update in real time.
 
@@ -349,7 +351,7 @@ are still rebuilt.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 49 | **Solid walls** | Walls, lintels, posts, roofs, upper floors and stairs stop breaking, in every mode: built as a few solid boxes instead of 1.6 m columns in two rows, with what only served them gone (resting and holding for walls and roofs, an upper storey falling with its posts, the light volume and roof map redone for a broken wall or roof, bots' cover going with a wall); windows, crates, fences and door leaves still break and are rebuilt as now; the outposts' perimeter walls and the ruined walls in the fields solid too; Destructible cover in Features updated | No shot or grenade breaks a wall or roof, windows, crates, fences and doors still break and come back, every test passes, and the bot playtest stays at 15% ± 3 | Planned |
+| 49 | **Solid walls** | Walls, lintels, posts, roofs, upper floors and stairs stop breaking, in every mode: built as a few solid boxes instead of 1.6 m columns in two rows, with what only served them gone (resting and holding for walls and roofs, an upper storey falling with its posts, the light volume and roof map redone for a broken wall or roof, bots' cover going with a wall); windows, crates, fences and door leaves still break and are rebuilt as now; the outposts' perimeter walls and the ruined walls in the fields solid too; Destructible cover in Features updated | No shot or grenade breaks a wall or roof, windows, crates, fences and doors still break and come back, every test passes, and the bot playtest stays at 15% ± 3 | **Done** (each wall stretch, sill, lintel, post, roof, floor slab and stair is one plain prop, and every box says what it is (`Box.part`); panels are only fence sections, crates, door leaves, glass and tables (`timber` became `table`), and only crates rest on crates. A building's roof is one box, or two for an L. Gone with the breaking: resting, holding and `falls`, the roof map and the island map worked out again for a fallen roof, puddles on a floor left open to the sky, and the crumbling-masonry sound (its recording and credit too). Sound through a wall, sill, roof or floor is dulled as through masonry, as before. Unit tests now check walls stop rounds and grenades, and crate stacks, fences and the rebuild in place of walls; the screenshots matched as they were. Bot playtest: seeds 1–6, 18% extracted; 7–12, 19%; the last commit gave 18% and 20% on the same seeds, so no change, though both sit at the top of 15% ± 3) |
 | 50 | **Town sites** | `World` built from the seed and the mode, client and server alike; in Deathmatch no outposts, watchtowers or outpost cover, but three town sites instead: two inland and a harbour on the coast, larger, levelled ground under each, spaced round the island; roads between them; the huts, fences and field cover kept in the country; the Deathmatch board started afresh for the new island (old scores kept apart, not mixed in) | A Deathmatch island shows three levelled town sites joined by roads and no outposts, an Extraction island is exactly as before on the same seed, and the same seed gives the same towns on server and client | Planned |
 | 51 | **Town generator** | Each site laid out in blocks with streets between: buildings from the four plans facing the street, back yards behind low garden walls, alleys between blocks; each town given an open place (a square, a market, a main street) beside its narrow ones; a style per town: an old town packed tight, a village terraced on its slope with retaining walls, the harbour with warehouses, stacked containers, piers and a quay; crates for ammo and medkits spread through the towns | From the menu's orbit the three towns read as towns and look unlike each other, and in each there's a narrow fight and an open one | Planned |
 | 52 | **Street cover and rooftops** | Cover in the streets: car wrecks, sandbag and rubble barricades breaking up long sight lines, market stalls, low walls round the squares; one or two reachable rooftops a town (outside stairs, a container stack), with a parapet, good but open to shots back | No street is a straight open lane end to end, and each town has a rooftop a player and a bot can climb to | Planned |
@@ -375,8 +377,10 @@ Nothing open: the last was resolved on 2026-10-03 (see the history).
 Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Playtest and tuning
-Nothing open: the last was resolved on 2026-10-03 (see the history, and the bot extraction
-baseline in Decisions).
+- **Bot extraction at the top of its range** (chunk 49): the bot playtest over the weather cycle
+  came to 18% extracted on seeds 1–6 and 19% on seeds 7–12, against the 15% ± 3 baseline. The
+  commit before chunk 49 gave 18% and 20% on the same seeds, so solid walls didn't move it; it
+  drifted up before (chunk 46 measured 15%). Not tuned back yet.
 
 ### Scoreboard
 Nothing open: the last were resolved or accepted on 2026-10-03 (see the history).

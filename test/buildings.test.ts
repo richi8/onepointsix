@@ -208,7 +208,7 @@ describe('buildings', () => {
     // Beside a doorway, the wall holds.
     const w = new World(1);
     const b = w.buildings[0];
-    const wall = w.props.find((p) => p.style === 'wall' && p.panel >= 0 && inside(b, p.box, 0) && p.box.minY < b.floor && p.box.maxY > b.floor + 1.2
+    const wall = w.props.find((p) => p.box.part === 'wall' && inside(b, p.box, 0) && p.box.minY < b.floor && p.box.maxY > b.floor + 1.2
       && p.box.maxX - p.box.minX > 1 && Math.abs(p.box.minZ - b.minZ) < 1e-6)!.box;
     const x = (wall.minX + wall.maxX) / 2;
     const p = spawnState(x, w.groundHeight(x, wall.minZ - 2, b.floor), wall.minZ - 2);
@@ -255,7 +255,10 @@ describe('buildings', () => {
     const { p, i } = glass[0];
     const b = p.box;
     expect(b.clear).toBe(true);
-    expect(w.panels[p.restsOn[0]].box.maxY).toBeCloseTo(b.minY, 9);
+    expect(p.restsOn).toEqual([]);
+    // On a sill.
+    expect(w.props.some((q) => q.box.part === 'sill' && Math.abs(q.box.maxY - b.minY) < 1e-9
+      && q.box.minX <= b.minX + 1e-9 && q.box.maxX >= b.maxX - 1e-9 && q.box.minZ <= b.minZ + 1e-9 && q.box.maxZ >= b.maxZ - 1e-9)).toBe(true);
     // Across the pane, through its middle.
     const alongX = b.maxX - b.minX > b.maxZ - b.minZ;
     const cx = (b.minX + b.maxX) / 2;
@@ -269,38 +272,22 @@ describe('buildings', () => {
     expect(w.raycast(ox, cy, oz, dx, 0, dz, 2)).toBe(Infinity);
   });
 
-  it('bring a lintel down with the wall it rests on, and the roof only once nothing holds it up', () => {
-    const w = new World(1);
-    const b = w.buildings[0];
-    const lintel = w.panels.findIndex((p) => inside(b, p.box, 0) && p.kind === 'wall' && p.restsOn.length === 2);
-    expect(lintel).toBeGreaterThanOrEqual(0);
-    const column = w.panels[lintel].restsOn[0];
-    const under = w.panels[column].restsOn[0];
-    const broke = w.breakPanel(under);
-    expect(broke).toContain(column);
-    expect(broke).toContain(lintel);
-    expect(w.supported(lintel)).toBe(false);
-
-    const strips = w.panels.map((p, i) => ({ p, i })).filter(({ p }) => p.kind === 'roof' && inside(b, p.box));
-    expect(strips.length).toBeGreaterThanOrEqual(2);
-    for (const { p } of strips) {
-      expect(p.falls).toBe('all');
-      expect(p.restsOn.length).toBeGreaterThanOrEqual(2);
-      expect(p.box.gone).toBeFalsy();
+  it('build walls, lintels, posts, roofs, floors and stairs solid, as a few boxes', () => {
+    for (const seed of SEEDS) {
+      const w = new World(seed);
+      for (const p of w.props) {
+        const solid = !['fence', 'crate', 'door', 'glass', 'table'].includes(p.box.part);
+        expect(p.panel < 0, `seed ${seed} ${p.box.part}`).toBe(solid);
+      }
+      for (const b of w.buildings) {
+        const roofs = w.props.filter((p) => p.box.part === 'roof' && inside(b, p.box));
+        expect(roofs.length, `seed ${seed} ${b.plan}`).toBe(b.plan === 'ell' ? 2 : 1);
+      }
+      // A freestanding wall is one box.
+      for (const wall of w.walls) {
+        expect(w.props.filter((p) => p.box.part === 'wall' && p.box.minX === wall.minX && p.box.maxX === wall.maxX && p.box.minZ === wall.minZ && p.box.maxZ === wall.maxZ)).toHaveLength(1);
+      }
     }
-    // Knock out everything under one section, one piece at a time: it falls with the last.
-    const { p: roof, i: id } = strips[0];
-    const holds = [...roof.restsOn];
-    for (const [k, s] of holds.entries()) {
-      const fell = w.breakPanel(s).includes(id);
-      expect(fell, `support ${k + 1} of ${holds.length}`).toBe(k === holds.length - 1 || holds.slice(k + 1).every((j) => w.panels[j].box.gone));
-      if (fell) break;
-    }
-    expect(roof.box.gone).toBe(true);
-    // It can be rebuilt once anything under it stands again.
-    expect(w.supported(id)).toBe(false);
-    w.setPanel(holds[0], true);
-    expect(w.supported(id)).toBe(true);
   });
 
   it('hold guarded loot crates, with a roof or an upper floor overhead', () => {
@@ -339,44 +326,15 @@ describe('buildings', () => {
     }
   });
 
-  it('stand the upper storey on its floor, which the posts hold up until the last of them goes', () => {
-    const w = [1, 2, 3, 42].map((s) => new World(s)).find((x) => x.buildings.some((b) => b.plan === 'tall'))!;
-    const b = w.buildings.find((h) => h.plan === 'tall')!;
-    const upper = b.upper!;
-    const floor = w.panels.findIndex((p) => p.kind === 'floor' && inside(b, p.box, 0) && p.carries.length > 0);
-    expect(floor).toBeGreaterThanOrEqual(0);
-    const slab = w.panels[floor];
-    expect(slab.falls).toBe('all');
-    expect(slab.restsOn).toHaveLength(4);
-    expect(slab.box.walk).toBe(true);
-    const ids = w.panels.map((p, i) => ({ p, i })).filter(({ p }) => inside(b, p.box));
-    const upstairs = ids.filter(({ p }) => p.box.minY >= upper - 1e-6);
-    const downstairs = ids.filter(({ p, i }) => p.kind === 'wall' && p.box.maxY <= upper + 1e-6 && !slab.restsOn.includes(i));
-    // Upstairs: its walls, posts, table, crate and roof.
-    expect(upstairs.some(({ p }) => p.kind === 'crate')).toBe(true);
-    expect(upstairs.some(({ p }) => p.kind === 'roof')).toBe(true);
-    const [last, ...others] = slab.restsOn;
-    for (const post of others) {
-      w.breakPanel(post);
-      expect(slab.box.gone).toBeFalsy();
-    }
-    const broke = w.breakPanel(last);
-    expect(broke).toContain(floor);
-    for (const { p, i } of upstairs) expect(p.box.gone, `panel ${i} (${p.kind})`).toBe(true);
-    // The ground floor's walls still stand.
-    expect(downstairs.filter(({ p }) => !p.box.gone).length).toBeGreaterThan(10);
-  });
-
-  it('break everywhere: posts, stairs, tables and floors are panels too', () => {
+  it('only break fences, crates, doors, glass and tables, with nothing resting on the building', () => {
     for (const seed of SEEDS) {
       const w = new World(seed);
-      for (const b of w.buildings) {
-        const solid = w.props.filter((p) => inside(b, p.box, 0) && p.style !== 'crate' && p.panel < 0);
-        expect(solid, `seed ${seed} ${b.plan}`).toEqual([]);
-      }
+      for (const p of w.panels) expect(['fence', 'crate', 'door', 'glass', 'table']).toContain(p.kind);
+      // Crates rest only on crates.
+      for (const p of w.panels) for (const i of p.restsOn) expect(w.panels[i].kind).toBe('crate');
       // A hut's floor is concrete.
       const hut = w.buildings.find((h) => h.outpost < 0)!;
-      expect(w.panels.some((p) => p.kind === 'floor' && inside(hut, p.box, 0))).toBe(true);
+      expect(w.props.some((p) => p.box.part === 'floor' && inside(hut, p.box, 0))).toBe(true);
     }
   });
 });

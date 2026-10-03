@@ -238,13 +238,13 @@ describe('noise', () => {
 
   it('is made by breaking cover, heard by guards around', () => {
     const { server, g, me, hear } = guardAndHuman(0);
-    const wall = server.world.panels.findIndex((p) => {
+    const crate = server.world.panels.findIndex((p) => {
       const b = p.box;
-      return p.kind === 'wall' && !p.restsOn.length && Math.hypot((b.minX + b.maxX) / 2 - g.state.x, (b.minZ + b.maxZ) / 2 - g.state.z) < 60;
+      return p.kind === 'crate' && !p.restsOn.length && Math.hypot((b.minX + b.maxX) / 2 - g.state.x, (b.minZ + b.maxZ) / 2 - g.state.z) < 60;
     });
-    expect(wall).toBeGreaterThanOrEqual(0);
-    const broke = server.cover.damage(wall, 1e6, server.time);
+    expect(crate).toBeGreaterThanOrEqual(0);
+    const broke = server.cover.damage(crate, 1e6, server.time);
     internals(server).panelsBroke(broke, 0, 0, 0, me);
-    expect(hear).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ radius: 140, source: me.id }), expect.any(Number));
+    expect(hear).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ radius: 70, source: me.id }), expect.any(Number));
   });
 });

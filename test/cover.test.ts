@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GameServer } from '../src/server/server.ts';
 import { NavGrid } from '../src/server/nav.ts';
 import {
-  Btn, CMD_DT, CMDS_PER_TICK, DEATHCAM_AFTER, EYE_HEIGHT, GRENADE_FUSE, GRENADES, PANEL_HP, PANEL_REPAIR, SERVER_DT, SERVER_TICK_RATE,
+  BAG_TIME, Btn, CMD_DT, CMDS_PER_TICK, DEATHCAM_AFTER, EYE_HEIGHT, GRENADE_FUSE, GRENADES, PANEL_HP, PANEL_REPAIR, SERVER_DT, SERVER_TICK_RATE,
 } from '../src/shared/constants.ts';
 import { launchGrenade, stepGrenade } from '../src/shared/grenade.ts';
 import { hitboxes } from '../src/shared/hitbox.ts';
@@ -27,25 +27,34 @@ function tallWall(world: World): Box {
   })!;
 }
 
-/** The panels of a wall at x, bottom first. */
-function column(world: World, wall: Box, x: number): number[] {
-  return world.panels
-    .map((p, i) => ({ p, i }))
-    .filter(({ p }) => p.kind === 'wall' && p.box.minX <= x && p.box.maxX >= x && p.box.minZ >= wall.minZ - 1e-6 && p.box.maxZ <= wall.maxZ + 1e-6)
-    .sort((a, b) => a.p.box.minY - b.p.box.minY)
-    .map(({ i }) => i);
+/** A crate with another stacked on it, out in an outpost: [bottom, top]. */
+function stack(world: World): [number, number] {
+  const top = world.panels.findIndex((p) => p.kind === 'crate' && p.restsOn.length === 1);
+  return [world.panels[top].restsOn[0], top];
+}
+
+/** A run of fence with open ground either side of its middle section. */
+function fence(world: World): { ids: number[]; box: Box } {
+  const runs = world.panels.map((p, i) => ({ p, i })).filter(({ p }) => p.kind === 'fence');
+  for (const { p } of runs) {
+    const b = p.box;
+    if (b.maxZ - b.minZ > 0.5) continue;
+    const x = (b.minX + b.maxX) / 2;
+    const y = world.terrainHeight(x, b.minZ);
+    if (!world.fits(x, y, b.maxZ + 1.5, 1.8) || !world.fits(x, y, b.minZ - 1.5, 1.8)) continue;
+    // It and its neighbours along the run, so the gap is wide enough wherever the grid's cells fall.
+    const ids = runs.filter(({ p: q }) => Math.abs(q.box.minZ - b.minZ) < 1e-6 && Math.abs((q.box.minX + q.box.maxX) / 2 - x) < 2.5).map(({ i: k }) => k);
+    if (ids.length === 3) return { ids, box: b };
+  }
+  throw new Error('no fence');
 }
 
 describe('breakable panels', () => {
-  it('builds walls from columns of panels, the top row resting on the bottom', () => {
+  it('builds walls solid: a round stops at one without breaking anything', () => {
     const wall = tallWall(w);
     const x = (wall.minX + wall.maxX) / 2;
-    const [bottom, top] = column(w, wall, x);
-    expect(w.panels[top].restsOn).toEqual([bottom]);
-    expect(w.panels[bottom].carries).toEqual([top]);
-    const width = w.panels[bottom].box.maxX - w.panels[bottom].box.minX;
-    expect(width).toBeGreaterThan(1.2);
-    expect(width).toBeLessThan(2.2);
+    const z = wall.maxZ + 1;
+    expect(w.raycastPanel(x, wall.maxY - 2, z, 0, 0, -1, 5)).toEqual({ t: expect.closeTo(z - wall.maxZ, 6), panel: -1 });
     expect(w.panels.every((p) => w.props[p.prop].box === p.box && p.box.panel === w.panels.indexOf(p))).toBe(true);
   });
 
@@ -56,23 +65,19 @@ describe('breakable panels', () => {
     expect(shape(new World(1))).toEqual(shape(w));
   });
 
-  it('breaks a panel along with what rests on it, and rays and bodies pass the hole', () => {
+  it('breaks a panel along with what rests on it, and rays pass where it stood', () => {
     const world = new World(1);
-    const wall = tallWall(world);
-    const x = (wall.minX + wall.maxX) / 2;
-    const [bottom, top] = column(world, wall, x);
-    const y = world.panels[top].box.maxY - 3;
-    const z = wall.maxZ + 1;
-    expect(world.raycastPanel(x, y + 1, z, 0, 0, -1, 5)).toEqual({ t: expect.closeTo(z - wall.maxZ, 6), panel: bottom });
+    const [bottom, top] = stack(world);
+    const b = world.panels[top].box;
+    const x = (b.minX + b.maxX) / 2;
+    const y = (b.minY + b.maxY) / 2;
+    const z = b.maxZ + 1;
+    expect(world.raycastPanel(x, y, z, 0, 0, -1, 1.5)).toEqual({ t: expect.closeTo(z - b.maxZ, 6), panel: top });
 
     expect(world.breakPanel(bottom)).toEqual([bottom, top]);
     expect(world.breakPanel(bottom)).toEqual([]);
-    expect(world.raycast(x, y + 1, z, 0, 0, -1, 5)).toBe(Infinity);
-    expect(world.brokenPanels()).toEqual([bottom, top]);
-
-    const p = spawnState(x, world.groundHeight(x, z, y), z);
-    for (let i = 0; i < 60; i++) applyCmd(world, p, { seq: i, buttons: Btn.Forward, yaw: 0, pitch: 0 }, CMD_DT);
-    expect(p.z).toBeLessThan(wall.minZ);
+    expect(world.raycast(x, y, z, 0, 0, -1, 1.5)).toBe(Infinity);
+    expect(world.brokenPanels()).toEqual([bottom, top].sort((p, q) => p - q));
 
     expect(world.supported(top)).toBe(false);
     world.syncPanels([top]);
@@ -80,20 +85,21 @@ describe('breakable panels', () => {
     expect(world.supported(top)).toBe(true);
   });
 
-  it('lets bots path through a hole once it opens', () => {
+  it('lets bodies and bots through a fence once it breaks', () => {
     const world = new World(1);
     const nav = new NavGrid(world);
-    const wall = tallWall(world);
-    const x = (wall.minX + wall.maxX) / 2;
-    const a = nav.nearestWalkable(x, wall.maxZ + 1.5, 1)!;
-    const b = nav.nearestWalkable(x, wall.minZ - 1.5, 1)!;
+    const { ids, box } = fence(world);
+    const x = (box.minX + box.maxX) / 2;
+    const a = nav.nearestWalkable(x, box.maxZ + 1.5, 1)!;
+    const b = nav.nearestWalkable(x, box.minZ - 1.5, 1)!;
     expect(nav.lineWalkable(a.x, a.z, b.x, b.z)).toBe(false);
-    // Three columns side by side, so the hole is wide enough wherever the grid's cells fall.
-    for (const cx of [x - 1.6, x, x + 1.6]) {
-      const [bottom] = column(world, wall, cx);
-      for (const i of world.breakPanel(bottom)) nav.refresh(world.panels[i].box);
-    }
+    for (const id of ids) for (const i of world.breakPanel(id)) nav.refresh(world.panels[i].box);
     expect(nav.lineWalkable(a.x, a.z, b.x, b.z)).toBe(true);
+
+    const z = box.maxZ + 1.5;
+    const p = spawnState(x, world.groundHeight(x, z, world.terrainHeight(x, z)), z);
+    for (let i = 0; i < 60; i++) applyCmd(world, p, { seq: i, buttons: Btn.Forward, yaw: 0, pitch: 0 }, CMD_DT);
+    expect(p.z).toBeLessThan(box.minZ);
   });
 });
 
@@ -192,12 +198,38 @@ function atWall(server: GameServer) {
   return { wall, x, target, c };
 }
 
+/** A shooter 5 m from a crate standing alone on the ground, with a clear shot at it. */
+function atCrate(server: GameServer) {
+  const world = server.world;
+  for (const [id, p] of world.panels.entries()) {
+    const b = p.box;
+    if (p.kind !== 'crate' || p.restsOn.length || p.carries.length) continue;
+    const cx = (b.minX + b.maxX) / 2;
+    const cy = (b.minY + b.maxY) / 2;
+    const cz = (b.minZ + b.maxZ) / 2;
+    for (let k = 0; k < 8; k++) {
+      const x = cx + Math.sin((k * Math.PI) / 4) * 5;
+      const z = cz + Math.cos((k * Math.PI) / 4) * 5;
+      const y = world.groundHeight(x, z, b.maxY);
+      if (y > b.maxY - 0.5 || !world.fits(x, y, z, 1.8)) continue;
+      const [dx, dy, dz] = [cx - x, cy - y - EYE_HEIGHT, cz - z];
+      const len = Math.hypot(dx, dy, dz);
+      if (world.raycastPanel(x, y + EYE_HEIGHT, z, dx / len, dy / len, dz / len, 6).panel !== id) continue;
+      const c = client(server);
+      const s = body(server, c.id);
+      Object.assign(s, { x, y, z, vx: 0, vz: 0 });
+      tick(server, [c], 1);
+      return { id, c, at: [cx, cy, cz] as const };
+    }
+  }
+  throw new Error('no crate in the open');
+}
+
 describe('cover on the server', () => {
-  it('blows a hole in a wall with a grenade, then shoots through it', () => {
+  it('stands a wall up to a grenade and rounds, sheltering whoever is behind it', () => {
     const server = new GameServer(1);
     const { wall, x, target, c } = atWall(server);
     const y = wall.maxY - 3;
-    const [bottom, top] = column(server.world, wall, x);
     c.wield(BOLT);
     tick(server, [c], SERVER_TICK_RATE, Btn.Aim);
 
@@ -214,34 +246,31 @@ describe('cover on the server', () => {
     expect(server.grenades).toEqual([]);
     const events = c.events();
     expect(events.some((e) => e.k === 'boom')).toBe(true);
-    const broke = events.find((e) => e.k === 'break');
-    expect(broke?.k === 'break' && broke.panels).toEqual(expect.arrayContaining([bottom, top]));
-    expect(server.world.panels[bottom].box.gone).toBe(true);
+    expect(events.some((e) => e.k === 'break')).toBe(false);
     // The wall shielded the target from the blast.
     expect(body(server, target).hp).toBe(100);
 
-    tick(server, [c], SERVER_TICK_RATE * 2, Btn.Aim);
-    aim();
-    tick(server, [c], 1, Btn.Aim | Btn.Fire);
-    expect(c.events().filter((e) => e.k === 'hit' && e.target === target)).toEqual([
-      expect.objectContaining({ zone: 'head', killed: true }),
-    ]);
+    for (let i = 0; i < 5; i++) {
+      tick(server, [c], SERVER_TICK_RATE * 1.5, Btn.Aim);
+      aim();
+      tick(server, [c], 1, Btn.Aim | Btn.Fire);
+    }
+    expect(c.events().filter((e) => (e.k === 'hit' && e.target === target) || e.k === 'break')).toEqual([]);
   });
 
-  it('wears a panel down with rounds until it breaks', () => {
+  it('wears a crate down with rounds until it breaks', () => {
     const server = new GameServer(1);
-    const { wall, x, c } = atWall(server);
-    const [bottom] = column(server.world, wall, x);
+    const { id, c, at } = atCrate(server);
     c.wield(BOLT);
-    c.lookAt(x, wall.maxY - 3 + 0.5, wall.maxZ);
-    const shots = Math.ceil(PANEL_HP.wall / 105);
+    c.lookAt(...at);
+    const shots = Math.ceil(PANEL_HP.crate / 105);
     for (let i = 0; i < shots; i++) {
-      expect(server.cover.health(bottom)).toBeGreaterThan(0);
+      expect(server.cover.health(id)).toBeGreaterThan(0);
       tick(server, [c], SERVER_TICK_RATE * 1.5, Btn.Aim);
       tick(server, [c], 1, Btn.Aim | Btn.Fire);
     }
-    expect(server.cover.health(bottom)).toBe(0);
-    expect(c.events().some((e) => e.k === 'break' && e.panels[0] === bottom)).toBe(true);
+    expect(server.cover.health(id)).toBe(0);
+    expect(c.events().some((e) => e.k === 'break' && e.panels[0] === id)).toBe(true);
   });
 
   it('throws grenades on a fresh press, which hurt bodies in sight', () => {
@@ -308,10 +337,13 @@ describe('cover on the server', () => {
 
   it('rebuilds broken panels after a while, bottom first, and tells everyone', () => {
     const server = new GameServer(1);
-    const { wall, x, c } = atWall(server);
-    const [bottom, top] = column(server.world, wall, x);
-    server.grenades.push(launchGrenade(99, c.id, { seq: 0, x, y: wall.maxY - 3 + 0.1, z: wall.maxZ + 0.1, vx: 0, vy: 0, vz: 0 }, 0.1));
+    const c = client(server);
+    tick(server, [c], 1);
+    const [bottom, top] = stack(server.world);
+    const b = server.world.panels[bottom].box;
+    server.grenades.push(launchGrenade(99, c.id, { seq: 0, x: (b.minX + b.maxX) / 2, y: b.minY + 0.3, z: b.maxZ + 0.1, vx: 0, vy: 0, vz: 0 }, 0.1));
     tick(server, [c], 5);
+    expect(server.world.panels[bottom].box.gone).toBe(true);
     expect(server.world.panels[top].box.gone).toBe(true);
 
     // Told to everyone, whoever is still alive by then.
@@ -321,10 +353,15 @@ describe('cover on the server', () => {
     server.step();
     expect(late.inbox[0]).toEqual(expect.objectContaining({ t: 'welcome', broken: expect.arrayContaining([bottom, top]) }));
 
+    // Not while the bag the crates spilled lies where they stood.
     tick(server, [c, late], (PANEL_REPAIR + 3) * SERVER_TICK_RATE);
+    expect(server.world.panels[bottom].box.gone).toBe(true);
+    tick(server, [c, late], (BAG_TIME - PANEL_REPAIR) * SERVER_TICK_RATE);
     expect(server.world.panels[bottom].box.gone).toBe(false);
     expect(server.world.panels[top].box.gone).toBe(false);
-    expect(server.cover.health(bottom)).toBe(PANEL_HP.wall);
-    expect(heard.some((e) => e.k === 'repair' && e.panels.includes(bottom) && e.panels.includes(top))).toBe(true);
+    expect(server.cover.health(bottom)).toBe(PANEL_HP.crate);
+    const told = (id: number) => heard.findIndex((e) => e.k === 'repair' && e.panels.includes(id));
+    expect(told(bottom)).toBeGreaterThanOrEqual(0);
+    expect(told(top)).toBeGreaterThanOrEqual(told(bottom));
   });
 });

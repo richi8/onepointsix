@@ -228,13 +228,12 @@ describe('hearing III', () => {
   // The one-room house of 'hearing II', its door on the east wall and a window south of it.
   const door = world.doors[0];
   const house = world.buildings.find((b) => b.plan === 'one' && door.x > b.minX && door.x < b.maxX + 0.5)!;
-  const window = 98;
+  const window = world.panels.findIndex((p) => p.kind === 'glass' && p.box.minX > house.maxX - 0.5 && p.box.minZ > house.minZ && p.box.maxZ < house.maxZ);
 
   it('finds the buildings the tests expect', () => {
     expect(tall.floor).toBeCloseTo(16.6, 1);
     expect(tall.upper).toBeCloseTo(19.6, 1);
-    expect(world.panels[window].kind).toBe('glass');
-    expect(world.panels[window].box.minX).toBeGreaterThan(house.maxX - 0.5);
+    expect(window).toBeGreaterThanOrEqual(0);
   });
 
   it('hears a shot upstairs from the stairs below, not through the floor', () => {

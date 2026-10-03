@@ -1,5 +1,5 @@
 import { WATER_LEVEL } from '../shared/constants.ts';
-import type { Collider, PanelKind, World } from '../shared/world.ts';
+import type { Collider, Part, World } from '../shared/world.ts';
 import type { SoundField } from './soundfield.ts';
 
 // How the island shapes what you hear: a sound reaches the ear through
@@ -27,14 +27,14 @@ const DETOUR_RANGE = 250;
  * tenth through, a thin door or fence two thirds, a pane of glass a third,
  * a tree trunk more still.
  */
-const THROUGH: Record<PanelKind, number> = { wall: 9, roof: 9, door: 6, fence: 4, crate: 1.2, glass: 40, floor: 9, timber: 3 };
+const THROUGH: Record<Part, number> = {
+  wall: 9, sill: 9, roof: 9, floor: 9, step: 3, timber: 3, container: 3, door: 6, fence: 4, crate: 1.2, glass: 40, table: 3,
+};
 /** Trunks are thin cylinders, rocks thick ones. */
 const TRUNK_LOSS = 0.5;
 const ROCK_LOSS = 2;
 /** Cylinders thinner than this are trunks. */
 const TRUNK_RADIUS = 0.7;
-/** Anything else solid: floors, stairs and the like. */
-const SOLID_LOSS = 3;
 /** Each metre of hill in the way. */
 const GROUND_LOSS = 0.6;
 /** Metres between checks of the ground along the way. */
@@ -123,7 +123,7 @@ export function through(world: World, ax: number, ay: number, az: number, bx: nu
   // Stop just short, so what the sound comes from doesn't hide it.
   const reach = len - 0.3;
   let loss = 0;
-  world.collidersAlong(ax, ay, az, dx / len, dy / len, dz / len, reach, (c, inside) => (loss += inside * lossOf(world, c)));
+  world.collidersAlong(ax, ay, az, dx / len, dy / len, dz / len, reach, (c, inside) => (loss += inside * lossOf(c)));
   const steps = Math.floor(reach / GROUND_STEP);
   for (let i = 1; i <= steps; i++) {
     const f = (i * GROUND_STEP) / len;
@@ -132,10 +132,9 @@ export function through(world: World, ax: number, ay: number, az: number, bx: nu
   return 1 - Math.exp(-loss);
 }
 
-function lossOf(world: World, c: Collider): number {
+function lossOf(c: Collider): number {
   if (c.kind === 'cyl') return c.r < TRUNK_RADIUS ? TRUNK_LOSS : ROCK_LOSS;
-  if (c.panel !== undefined) return THROUGH[world.panels[c.panel].kind];
-  return c.clear ? THROUGH.glass : SOLID_LOSS;
+  return THROUGH[c.part];
 }
 
 function clear(world: World, ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {

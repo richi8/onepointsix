@@ -26,17 +26,6 @@ describe('roof map', () => {
     expect(at(map, cx, cz)).toBeLessThan(b.roof + 1);
     expect(at(map, b.maxX + 3, cz)).toBe(OPEN_SKY);
   });
-
-  it('lets it in where the roof has come down', () => {
-    const over = world.panels.filter((p) => p.kind === 'roof' && p.box.minX < cx && p.box.maxX > cx && p.box.minZ < cz && p.box.maxZ > cz);
-    expect(over.length).toBeGreaterThan(0);
-    for (const p of over) p.box.gone = true;
-    try {
-      expect(at(roofHeights(world, x0, z0), cx, cz)).toBe(OPEN_SKY);
-    } finally {
-      for (const p of over) p.box.gone = false;
-    }
-  });
 });
 
 describe('far roofs', () => {
@@ -60,11 +49,11 @@ describe('far roofs', () => {
 
   it('keep the floor just inside a far wall dry and the ground outside wet', () => {
     const island = new IslandMap(world);
-    const roofs = world.panels.filter(shelters);
+    const roofs = shelters(world);
     const exact = (x: number, z: number) =>
-      roofs.reduce((top, p) => (x >= p.box.minX && x <= p.box.maxX && z >= p.box.minZ && z <= p.box.maxZ ? Math.max(top, p.box.maxY) : top), NO_ROOF);
+      roofs.reduce((top, b) => (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ ? Math.max(top, b.maxY) : top), NO_ROOF);
     // Points more than a step of the edge from any roof's or floor's edge.
-    const nearEdge = (x: number, z: number) => roofs.some(({ box: b }) =>
+    const nearEdge = (x: number, z: number) => roofs.some((b) =>
       x > b.minX - 0.13 && x < b.maxX + 0.13 && z > b.minZ - 0.13 && z < b.maxZ + 0.13
       && (Math.abs(x - b.minX) < 0.13 || Math.abs(x - b.maxX) < 0.13 || Math.abs(z - b.minZ) < 0.13 || Math.abs(z - b.maxZ) < 0.13));
     let checked = 0;
@@ -86,22 +75,17 @@ describe('far roofs', () => {
 });
 
 describe('shelter', () => {
-  it('counts a floor above as a roof once the roof has come down', () => {
+  it('counts a floor above as a roof, and the roof over the storey above it', () => {
     const b = world.buildings.find((b) => b.upper !== null)!;
     expect(b).toBeDefined();
-    const over = world.panels.filter((p) => p.kind === 'roof' && p.box.maxX > b.minX && p.box.minX < b.maxX && p.box.maxZ > b.minZ && p.box.minZ < b.maxZ);
-    for (const p of over) p.box.gone = true;
-    try {
-      const rain = new Rain(world);
-      const floor = world.panels.find((p) => p.kind === 'floor' && p.box.maxY > b.upper! - 0.05)!;
-      const x = (floor.box.minX + floor.box.maxX) / 2;
-      const z = floor.box.minZ + 0.5;
-      expect(rain.sheltered(x, b.floor + 1, z)).toBe(true);
-      expect(rain.sheltered(x, b.upper! + 1, z)).toBe(false);
-      expect(new IslandMap(world).roofAt(x, z)).toBeCloseTo(floor.box.maxY, 1);
-    } finally {
-      for (const p of over) p.box.gone = false;
-    }
+    const rain = new Rain(world);
+    const floor = world.props.find((p) => p.box.part === 'floor' && p.box.maxY > b.upper! - 0.05)!.box;
+    const x = (floor.minX + floor.maxX) / 2;
+    const z = floor.minZ + 0.5;
+    expect(rain.sheltered(x, b.floor + 1, z)).toBe(true);
+    expect(rain.sheltered(x, b.upper! + 1, z)).toBe(true);
+    expect(rain.sheltered(x, b.roof + 1, z)).toBe(false);
+    expect(new IslandMap(world).roofAt(x, z)).toBeCloseTo(b.roof + 0.2, 1);
   });
 
   it('dries something slowly under a roof and soaks it quickly in the rain', () => {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
-import type { World } from '../shared/world.ts';
+import type { Box, World } from '../shared/world.ts';
 import { ISLAND_GLSL, islandUniforms, shelters } from './islandmap.ts';
 
 // Rain: streaks falling through a box that follows the camera, as many as it's
@@ -61,7 +61,7 @@ export const rainUniforms = {
   ...islandUniforms,
 };
 
-/** GLSL: `underRoof(p)` is 1 where a standing roof covers world point `p`, else 0. */
+/** GLSL: `underRoof(p)` is 1 where a roof covers world point `p`, else 0. */
 export const ROOF_GLSL = /* glsl */ `
   uniform sampler2D roofMap;
   uniform vec3 roofCorner;
@@ -313,7 +313,8 @@ export class Rain implements Shelter {
   private readonly world: World;
   private readonly roofs = new Float32Array(ROOF_CELLS * ROOF_CELLS);
   private readonly roofAt = new THREE.Vector2(Infinity, Infinity);
-  private roofsChanged = true;
+  /** The roofs and floors. */
+  private readonly shelters: Box[];
   private readonly splashes: THREE.Points;
   private readonly splashMaterial: THREE.ShaderMaterial;
   private readonly splashPos: THREE.BufferAttribute;
@@ -335,6 +336,7 @@ export class Rain implements Shelter {
 
   constructor(world: World) {
     this.world = world;
+    this.shelters = shelters(world);
     const quad = new THREE.InstancedBufferGeometry();
     // x: which side of the streak, y: 0 at its head, 1 at its tail.
     quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, 0, 0, 1, 0, 0, -1, 1, 0, 1, 1, 0]), 3));
@@ -469,18 +471,12 @@ export class Rain implements Shelter {
     return this.fall;
   }
 
-  /** Whether a standing roof, or a floor, is over (x, y, z). */
+  /** Whether a roof, or a floor, is over (x, y, z). */
   sheltered(x: number, y: number, z: number): boolean {
-    for (const p of this.world.panels) {
-      const b = p.box;
-      if (b.maxY > y && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && shelters(p)) return true;
+    for (const b of this.shelters) {
+      if (b.maxY > y && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) return true;
     }
     return false;
-  }
-
-  /** A roof may have broken: the roof map is made again. */
-  roofChanged(): void {
-    this.roofsChanged = true;
   }
 
   /** How bright lightning is lighting the sky now, 0 to 1. */
@@ -547,11 +543,10 @@ export class Rain implements Shelter {
     this.onStrike?.(distance);
   }
 
-  /** Make the roof map again if the camera has moved far from its middle or a roof has changed. */
+  /** Make the roof map again if the camera has moved far from its middle. */
   private placeRoofs(eye: THREE.Vector3): void {
     const at = this.roofAt;
-    if (!this.roofsChanged && Math.abs(eye.x - at.x) < ROOF_SLACK && Math.abs(eye.z - at.y) < ROOF_SLACK) return;
-    this.roofsChanged = false;
+    if (Math.abs(eye.x - at.x) < ROOF_SLACK && Math.abs(eye.z - at.y) < ROOF_SLACK) return;
     at.set(Math.round(eye.x / ROOF_CELL) * ROOF_CELL, Math.round(eye.z / ROOF_CELL) * ROOF_CELL);
     const size = ROOF_CELLS * ROOF_CELL;
     const x0 = at.x - size / 2;
@@ -566,14 +561,12 @@ export class Rain implements Shelter {
 
 /**
  * The roof map with its corner at (x0, z0): for each cell, the top of the
- * highest standing roof over its middle, or OPEN_SKY; a floor counts, as the
+ * highest roof over its middle, or OPEN_SKY; a floor counts, as the
  * roof of the room under it. Rows run along z.
  */
 export function roofHeights(world: World, x0: number, z0: number, out = new Float32Array(ROOF_CELLS * ROOF_CELLS)): Float32Array {
   out.fill(OPEN_SKY);
-  for (const p of world.panels) {
-    if (!shelters(p)) continue;
-    const b = p.box;
+  for (const b of shelters(world)) {
     const i0 = Math.max(Math.ceil((b.minX - x0) / ROOF_CELL - 0.5), 0);
     const i1 = Math.min(Math.floor((b.maxX - x0) / ROOF_CELL - 0.5), ROOF_CELLS - 1);
     const j0 = Math.max(Math.ceil((b.minZ - z0) / ROOF_CELL - 0.5), 0);

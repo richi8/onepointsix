@@ -1243,7 +1243,7 @@ function eventSound(e: GameEvent): void {
       const first = world.panels[e.panels[0]];
       if (!first) break;
       const b = first.box;
-      sfx.crumble(first.kind, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 });
+      sfx.smash(first.kind, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 });
       break;
     }
   }

@@ -49,6 +49,8 @@ export interface Box {
   turn?: Turn;
   /** A floor up off the ground that bots can climb to and walk on: stairs, an upper storey, a watchtower's platform. */
   walk?: boolean;
+  /** What it is. */
+  part: Part;
 }
 
 /**
@@ -66,12 +68,19 @@ export interface Turn {
 
 export type Collider = Cyl | Box;
 export type PropStyle = 'crate' | 'wall' | 'wood' | 'metal' | 'fence' | 'roof' | 'door' | 'glass';
-/** `floor` is a concrete floor slab, `timber` the stairs and tables. */
-export type PanelKind = 'wall' | 'fence' | 'crate' | 'door' | 'glass' | 'roof' | 'floor' | 'timber';
+/** The parts that can be broken: fence sections, crates, door leaves, window glass and tables. */
+export type PanelKind = 'fence' | 'crate' | 'door' | 'glass' | 'table';
+/**
+ * What a prop is: `sill` the wall under a window, `floor` a concrete floor
+ * slab, `step` a stair, `timber` a watchtower's woodwork, `container` a
+ * shipping container, or one of the parts that can be broken.
+ */
+export type Part = 'wall' | 'sill' | 'roof' | 'floor' | 'step' | 'timber' | 'container' | PanelKind;
 
-/** How each kind of panel is drawn. */
-const PANEL_STYLE: Record<PanelKind, PropStyle> = {
-  wall: 'wall', fence: 'fence', crate: 'crate', door: 'door', glass: 'glass', roof: 'roof', floor: 'wall', timber: 'wood',
+/** How each part is drawn. */
+const PART_STYLE: Record<Part, PropStyle> = {
+  wall: 'wall', sill: 'wall', roof: 'roof', floor: 'wall', step: 'wood', timber: 'wood', container: 'metal',
+  fence: 'fence', crate: 'crate', door: 'door', glass: 'glass', table: 'wood',
 };
 
 export interface Prop {
@@ -83,8 +92,8 @@ export interface Prop {
 }
 
 /**
- * A breakable piece of cover: one column or row of a wall, a fence section or
- * a crate. Its health lives on the server; the world only knows if it stands.
+ * A breakable piece of cover: a fence section, a crate, a door leaf, a pane
+ * of glass or a table. Its health lives on the server; the world only knows if it stands.
  */
 export interface Panel {
   box: Box;
@@ -95,11 +104,6 @@ export interface Panel {
   carries: number[];
   /** Panels this one rests on; it can only be rebuilt while they stand. */
   restsOn: number[];
-  /**
-   * 'all' when it's held up by several panels and comes down only once every
-   * one of them has gone, as a roof section is; otherwise any one going brings it down.
-   */
-  falls?: 'all';
 }
 
 /**
@@ -247,10 +251,6 @@ export const OUTSKIRTS: [number, number] = [45, 130];
 const OUTSKIRT_CLUSTERS = 14;
 /** Pieces of cover round each extraction point. */
 const EXTRACT_COVER = 5;
-/** Walls are split into columns about this wide. */
-const WALL_PANEL = 1.6;
-/** Tall walls are split into rows this far above the ground: crouch cover below, a window above. */
-const WALL_SPLIT = 1.3;
 const FENCE_RUNS = 40;
 const FENCE_PANEL = 2;
 const FENCE_HEIGHT = 1.1;
@@ -271,8 +271,6 @@ const DOOR_GAP = 0.01;
 const DOORS_OPEN = 0.4;
 /** Window glass's thickness. */
 const GLASS = 0.03;
-/** Roofs are split into sections about this wide, each held by the walls under it. */
-const ROOF_STRIP = 2.4;
 /** Buildings out in the country, away from the outposts. */
 const HUTS = 9;
 const WINDOW_WIDTH = 1.2;
@@ -343,7 +341,7 @@ export class World {
   readonly extracts: Point[] = [];
   readonly colliders: Collider[] = [];
   readonly panels: Panel[] = [];
-  /** Each freestanding wall's whole outline; the wall itself is its panels. Buildings' walls aren't listed. */
+  /** Each freestanding wall's outline. Buildings' walls aren't listed. */
   readonly walls: Box[] = [];
   /** The buildings: one in each outpost, in order, then those out in the country. */
   readonly buildings: Building[] = [];
@@ -449,7 +447,7 @@ export class World {
   floorTops(x: number, z: number, r: number, roofs = false): number[] {
     const out: number[] = [];
     for (const c of this.query(x, z, r)) {
-      if (c.kind !== 'box' || !(c.walk || (roofs && c.panel !== undefined && this.panels[c.panel].kind === 'roof'))) continue;
+      if (c.kind !== 'box' || !(c.walk || (roofs && c.part === 'roof'))) continue;
       if (c.maxX <= x - r || c.minX >= x + r || c.maxZ <= z - r || c.minZ >= z + r) continue;
       if (!out.includes(c.maxY)) out.push(c.maxY);
     }
@@ -711,10 +709,7 @@ export class World {
 
   // ----------------------------------------------------------------- panels
 
-  /**
-   * Break a panel and everything resting on it, save what something else
-   * still holds up. Returns what broke, that panel first; nothing if it was already down.
-   */
+  /** Break a panel and everything resting on it. Returns what broke, that panel first; nothing if it was already down. */
   breakPanel(id: number): number[] {
     const out: number[] = [];
     const stack = [id];
@@ -722,7 +717,6 @@ export class World {
       const i = stack.pop()!;
       const panel = this.panels[i];
       if (!panel || panel.box.gone) continue;
-      if (i !== id && panel.falls === 'all' && panel.restsOn.some((j) => !this.panels[j].box.gone)) continue;
       panel.box.gone = true;
       out.push(i);
       stack.push(...panel.carries);
@@ -736,11 +730,9 @@ export class World {
     if (panel) panel.box.gone = !standing;
   }
 
-  /** Whether what a panel rests on stands, so it could be rebuilt: all of it, or for one held by several, any. */
+  /** Whether everything a panel rests on stands, so it could be rebuilt. */
   supported(id: number): boolean {
-    const p = this.panels[id];
-    if (p.falls === 'all' && p.restsOn.length) return p.restsOn.some((i) => !this.panels[i].box.gone);
-    return p.restsOn.every((i) => !this.panels[i].box.gone);
+    return this.panels[id].restsOn.every((i) => !this.panels[i].box.gone);
   }
 
   // ------------------------------------------------------------------ doors
@@ -1116,14 +1108,14 @@ export class World {
   private addProp(
     minX: number, minY: number, minZ: number,
     maxX: number, maxY: number, maxZ: number,
-    style: PropStyle, tint = 0,
+    part: Part, tint = 0,
   ): Box {
     // Every field there from the start, in one order, so the collision loops see boxes of one shape.
     const box: Box = {
       kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0,
-      panel: undefined, gone: false, clear: false, door: undefined, turn: undefined, walk: false,
+      panel: undefined, gone: false, clear: false, door: undefined, turn: undefined, walk: false, part,
     };
-    this.props.push({ box, style, tint, panel: -1 });
+    this.props.push({ box, style: PART_STYLE[part], tint, panel: -1 });
     this.colliders.push(box);
     return box;
   }
@@ -1134,7 +1126,7 @@ export class World {
     maxX: number, maxY: number, maxZ: number,
     kind: PanelKind, on: readonly number[] = [], tint = 0,
   ): number {
-    const box = this.addProp(minX, minY, minZ, maxX, maxY, maxZ, PANEL_STYLE[kind], tint);
+    const box = this.addProp(minX, minY, minZ, maxX, maxY, maxZ, kind, tint);
     const id = this.panels.length;
     box.panel = id;
     this.props[this.props.length - 1].panel = id;
@@ -1144,35 +1136,10 @@ export class World {
     return id;
   }
 
-  /**
-   * A wall of breakable panels: columns about WALL_PANEL wide, and a second
-   * row above WALL_SPLIT over `groundY` when it's tall enough. Top panels rest
-   * on the ones below, so blowing out the bottom leaves a hole to walk through.
-   * Returns each column's top panel, in order along the wall.
-   */
-  private addWall(
-    minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, groundY: number, freestanding = true,
-  ): number[] {
-    if (freestanding) this.walls.push({ kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0 });
-    const tops: number[] = [];
-    const alongX = maxX - minX >= maxZ - minZ;
-    const a0 = alongX ? minX : minZ;
-    const len = alongX ? maxX - minX : maxZ - minZ;
-    const cols = Math.max(1, Math.round(len / WALL_PANEL));
-    const split = groundY + WALL_SPLIT;
-    const rows = maxY - split > 0.5 ? [minY, split, maxY] : [minY, maxY];
-    for (let i = 0; i < cols; i++) {
-      const a = a0 + (len * i) / cols;
-      const b = a0 + (len * (i + 1)) / cols;
-      let below = -1;
-      for (let r = 0; r + 1 < rows.length; r++) {
-        below = alongX
-          ? this.addPanel(a, rows[r], minZ, b, rows[r + 1], maxZ, 'wall', [below])
-          : this.addPanel(minX, rows[r], a, maxX, rows[r + 1], b, 'wall', [below]);
-      }
-      tops.push(below);
-    }
-    return tops;
+  /** A freestanding wall: one solid box. */
+  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): void {
+    this.walls.push({ kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0, part: 'wall' });
+    this.addProp(minX, minY, minZ, maxX, maxY, maxZ, 'wall');
   }
 
   /** Each outpost's own random stream, for its building and the cover round it. */
@@ -1199,17 +1166,14 @@ export class World {
   /**
    * A concrete building laid out by `spec`, placed by `f` (local u along its
    * length, v from its front to its back) with its floor at `y` and its walls
-   * reaching down to `base`. Walls are breakable panels with doorways and
-   * windows: lintels over the openings rest on the wall either side, windows
-   * are glazed, and each doorway is hung with a pair of leaves. The roof comes
-   * in sections, each held up by the walls and posts under it until they've
-   * all gone. There's a table under a window, and `crates` crates in the rooms.
+   * reaching down to `base`. Walls are solid, with doorways and windows:
+   * windows are glazed, and each doorway is hung with a pair of leaves. The
+   * roof is solid too. There's a table under a window, and `crates` crates in the rooms.
    */
   private addBuilding(spec: Spec, f: Frame, y: number, base: number, rng: () => number, outpost: number, crates: number): Building {
     const { plan, L, D, W, E } = spec;
     const T = HOUSE_WALL;
     const top = y + HOUSE_HEIGHT;
-    const first = this.panels.length;
     const rect = (u0: number, v0: number, u1: number, v1: number): Rect => rectOf(f, u0, v0, u1, v1);
     const alongU: Frame = (a, c) => f(a, c);
     const alongV: Frame = (a, c) => f(c, a);
@@ -1218,12 +1182,12 @@ export class World {
     const jitter = () => (rng() - 0.5) * 0.8;
     const post = (u: number, v: number, y0: number, y1: number) => {
       const r = rect(u, v, u + T, v + T);
-      return this.addPanel(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall');
+      this.addProp(r.minX, y0, r.minZ, r.maxX, y1, r.maxZ, 'wall');
     };
-    const table = (r: Rect, floor: number, on: number[] = []) => this.addPanel(r.minX, floor - 0.2, r.minZ, r.maxX, floor + 0.8, r.maxZ, 'timber', on);
-    /** Where the crates go, most wanted first: on the ground floor, or on an upper floor resting on `on`. */
-    const spots: { r: Rect; floor: number; on: number[] }[] = [];
-    const corner = (u: number, v: number, floor = y, on: number[] = []) => spots.push({ r: rect(u, v, u + 1, v + 1), floor, on });
+    const table = (r: Rect, floor: number) => this.addPanel(r.minX, floor - 0.2, r.minZ, r.maxX, floor + 0.8, r.maxZ, 'table');
+    /** Where the crates go, most wanted first: on the ground floor or on an upper floor. */
+    const spots: { r: Rect; floor: number }[] = [];
+    const corner = (u: number, v: number, floor = y) => spots.push({ r: rect(u, v, u + 1, v + 1), floor });
     let parts: Rect[] = [rect(0, 0, L, D)];
     /** The roof's rectangles, overhang included, in local (u0, v0, u1, v1). */
     let roofs: [number, number, number, number][] = [[-0.3, -0.3, L + 0.3, D + 0.3]];
@@ -1286,35 +1250,25 @@ export class World {
         const steps = Math.round(HOUSE_HEIGHT / 0.5);
         const sEnd = T + steps * run;
         const sv = D - T - STAIR_WIDTH;
-        // The ground storey's posts carry the upper floor.
-        const posts = [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]].map(([u, v]) => post(u, v, base, top));
+        for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, base, top);
         this.addFacade(alongU, T, L - T, 0, T, y, base, [pane(L * 0.25), door(L * 0.64 + jitter() * 0.3)], 1, rng);
         this.addFacade(alongU, T, L - T, D - T, D, y, base, [pane(L * 0.74)], -1, rng);
         this.addFacade(alongV, T, D - T, 0, T, y, base, [pane(D / 2 - 0.4)], 1, rng);
         this.addFacade(alongV, T, D - T, L - T, L, y, base, [door(D / 2)], -1, rng);
         for (let k = 0; k < steps; k++) {
           const r = rect(sEnd - (k + 1) * run, sv, sEnd - k * run, D - T);
-          const step = this.addPanel(r.minX, y - 0.2, r.minZ, r.maxX, y + (HOUSE_HEIGHT * (k + 1)) / steps, r.maxZ, 'timber');
-          this.panels[step].box.walk = true;
+          this.addProp(r.minX, y - 0.2, r.minZ, r.maxX, y + (HOUSE_HEIGHT * (k + 1)) / steps, r.maxZ, 'step').walk = true;
         }
-        // The upper floor, with a hole over the stairs, held up by the posts
-        // until the last of them goes; everything upstairs stands on its main part.
-        const [floor] = [rect(T, T, L - T, sv), rect(sEnd, sv, L - T, D - T)].map((r) => {
-          const slab = this.addPanel(r.minX, y2 - 0.2, r.minZ, r.maxX, y2, r.maxZ, 'floor', posts);
-          this.panels[slab].falls = 'all';
-          this.panels[slab].box.walk = true;
-          return slab;
-        });
-        const upstairs = this.panels.length;
+        // The upper floor, with a hole over the stairs.
+        for (const r of [rect(T, T, L - T, sv), rect(sEnd, sv, L - T, D - T)]) this.addProp(r.minX, y2 - 0.2, r.minZ, r.maxX, y2, r.maxZ, 'floor').walk = true;
         for (const [u, v] of [[0, 0], [L - T, 0], [0, D - T], [L - T, D - T]]) post(u, v, y2, top2);
         this.addFacade(alongU, T, L - T, 0, T, y2, y2, [pane(L * 0.28), pane(L * 0.72)], 1, rng);
         this.addFacade(alongU, T, L - T, D - T, D, y2, y2, [pane(L * 0.62)], -1, rng);
         this.addFacade(alongV, T, D - T, 0, T, y2, y2, [pane(D / 2 - 0.5)], 1, rng);
         this.addFacade(alongV, T, D - T, L - T, L, y2, y2, [pane(D / 2)], -1, rng);
-        for (const i of range(upstairs, this.panels.length)) this.hold(i, floor);
-        table(rect(L - T - 1.9, T + 0.05, L - T - 0.1, T + 0.95), y2, [floor]);
+        table(rect(L - T - 1.9, T + 0.05, L - T - 0.1, T + 0.95), y2);
         // One crate upstairs, in the corner farthest from the stairs' top.
-        corner(T + 0.15, T + 0.15, y2, [floor]);
+        corner(T + 0.15, T + 0.15, y2);
         corner(L - T - 1.15, D - T - 1.15);
         roofY = top2;
         upper = y2;
@@ -1322,26 +1276,16 @@ export class World {
       }
     }
 
-    // Roof sections across the shorter way, so each spans wall to wall.
-    const strips: number[] = [];
     for (const [u0, v0, u1, v1] of roofs) {
-      const alongLength = u1 - u0 >= v1 - v0;
-      const len = alongLength ? u1 - u0 : v1 - v0;
-      const n = Math.max(1, Math.round(len / ROOF_STRIP));
-      for (let i = 0; i < n; i++) {
-        const a0 = (alongLength ? u0 : v0) + (len * i) / n;
-        const a1 = (alongLength ? u0 : v0) + (len * (i + 1)) / n;
-        const r = alongLength ? rect(a0, v0, a1, v1) : rect(u0, a0, u1, a1);
-        strips.push(this.addPanel(r.minX, roofY, r.minZ, r.maxX, roofY + HOUSE_ROOF, r.maxZ, 'roof'));
-      }
+      const r = rect(u0, v0, u1, v1);
+      this.addProp(r.minX, roofY, r.minZ, r.maxX, roofY + HOUSE_ROOF, r.maxZ, 'roof');
     }
-    this.rest(strips, roofY, range(first, this.panels.length));
 
-    for (const { r, floor, on } of spots.slice(0, crates)) {
+    for (const { r, floor } of spots.slice(0, crates)) {
       const t = this.terrainHeight((r.minX + r.maxX) / 2, (r.minZ + r.maxZ) / 2);
       // A crate on the ground reaches down into it; one upstairs stands on its floor.
       const bottom = floor === y ? Math.min(y - 0.2, t - 0.1) : floor;
-      this.addPanel(r.minX, bottom, r.minZ, r.maxX, floor + 1, r.maxZ, 'crate', on, rng());
+      this.addPanel(r.minX, bottom, r.minZ, r.maxX, floor + 1, r.maxZ, 'crate', [], rng());
     }
 
     const all = rect(0, 0, L, D);
@@ -1350,41 +1294,12 @@ export class World {
     return b;
   }
 
-  /** Stand panel `id` on panel `on` too: it comes down if that one goes. */
-  private hold(id: number, on: number): void {
-    this.panels[id].restsOn.push(on);
-    this.panels[on].carries.push(id);
-  }
-
-  /**
-   * Stand the panels `ids` whose bottom is at height `y` on whatever panels
-   * among `among` end there beneath them: they stay up while any of those do.
-   */
-  private rest(ids: readonly number[], y: number, among: readonly number[]): void {
-    for (const id of ids) {
-      const p = this.panels[id].box;
-      if (Math.abs(p.minY - y) > 1e-6) continue;
-      const under = among.filter((j) => {
-        const b = this.panels[j].box;
-        return j !== id && Math.abs(b.maxY - y) < 1e-6
-          && Math.min(b.maxX, p.maxX) - Math.max(b.minX, p.minX) > 0.01 && Math.min(b.maxZ, p.maxZ) - Math.max(b.minZ, p.minZ) > 0.01;
-      });
-      if (!under.length) continue;
-      this.panels[id].falls = 'all';
-      for (const j of under) {
-        this.panels[id].restsOn.push(j);
-        this.panels[j].carries.push(id);
-      }
-    }
-  }
-
   /**
    * One wall of a building from a0 to a1 along `frame`'s first axis, between
    * c0 and c1 across it, with `openings` in it, standing on the floor at `y`
-   * and reaching down to `base`. Solid stretches are ordinary wall columns; a
-   * window has a sill panel below it and glass on the sill, a doorway a pair
-   * of leaves that swing toward `inward` across the wall, and every opening a
-   * lintel above it resting on the columns either side.
+   * and reaching down to `base`. Solid stretches are a box each; a window has
+   * a sill below it and glass on the sill, a doorway a pair of leaves that
+   * swing toward `inward` across the wall, and every opening a lintel above it.
    */
   private addFacade(
     frame: Frame, a0: number, a1: number, c0: number, c1: number, y: number, base: number,
@@ -1393,30 +1308,21 @@ export class World {
     const top = y + HOUSE_HEIGHT;
     const box = (u0: number, v0: number, u1: number, v1: number): Rect => rectOf(frame, u0, v0, u1, v1);
     const sorted = [...openings].sort((p, q) => p.at - q.at);
-    // Each solid stretch's top panels in order along the wall: before the first opening, between each pair, after the last.
-    const runs: number[][] = [];
+    // The solid stretches: before the first opening, between each pair, after the last.
     for (let i = 0; i <= sorted.length; i++) {
       const u0 = i === 0 ? a0 : sorted[i - 1].at + sorted[i - 1].width / 2;
       const u1 = i === sorted.length ? a1 : sorted[i].at - sorted[i].width / 2;
-      if (u1 - u0 < 0.05) {
-        runs.push([]);
-        continue;
-      }
+      if (u1 - u0 < 0.05) continue;
       const r = box(u0, c0, u1, c1);
-      const tops = this.addWall(r.minX, base, r.minZ, r.maxX, top, r.maxZ, y, false);
-      // addWall orders its columns along the world axis, which may run against the wall's.
-      const [ax, az] = frame(u0, c0);
-      const [bx, bz] = frame(u1, c0);
-      const reversed = Math.abs(bx - ax) > Math.abs(bz - az) ? bx < ax : bz < az;
-      runs.push(reversed ? tops.reverse() : tops);
+      this.addProp(r.minX, base, r.minZ, r.maxX, top, r.maxZ, 'wall');
     }
     const mid = (c0 + c1) / 2;
-    sorted.forEach((o, i) => {
+    for (const o of sorted) {
       const r = box(o.at - o.width / 2, c0, o.at + o.width / 2, c1);
       if (o.kind === 'window') {
-        const sill = this.addPanel(r.minX, base, r.minZ, r.maxX, y + WINDOW_SILL, r.maxZ, 'wall');
+        this.addProp(r.minX, base, r.minZ, r.maxX, y + WINDOW_SILL, r.maxZ, 'sill');
         const g = box(o.at - o.width / 2, mid - GLASS / 2, o.at + o.width / 2, mid + GLASS / 2);
-        const glass = this.addPanel(g.minX, y + WINDOW_SILL, g.minZ, g.maxX, y + WINDOW_TOP, g.maxZ, 'glass', [sill]);
+        const glass = this.addPanel(g.minX, y + WINDOW_SILL, g.minZ, g.maxX, y + WINDOW_TOP, g.maxZ, 'glass');
         this.panels[glass].box.clear = true;
       } else {
         const open = rng() < DOORS_OPEN;
@@ -1430,10 +1336,8 @@ export class World {
         this.doors[leaves[0]].pair = leaves[1];
         this.doors[leaves[1]].pair = leaves[0];
       }
-      const left = runs[i].at(-1) ?? -1;
-      const right = runs[i + 1][0] ?? -1;
-      this.addPanel(r.minX, y + (o.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP), r.minZ, r.maxX, top, r.maxZ, 'wall', [left, right]);
-    });
+      this.addProp(r.minX, y + (o.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP), r.minZ, r.maxX, top, r.maxZ, 'wall');
+    }
   }
 
   /** A door leaf hinged at (x, z), reaching `length` along (sx, sz) shut and along (ox, oz) open. Returns its index. */
@@ -1498,27 +1402,27 @@ export class World {
         const roll = rng();
         if (roll < 0.2) continue;
         const h = roll < 0.4 ? 1.2 : 3;
-        if (side === 0) this.addWall(o.x + a, y - 0.5, o.z - S - T, o.x + b, y + h, o.z - S + T, y);
-        if (side === 1) this.addWall(o.x + a, y - 0.5, o.z + S - T, o.x + b, y + h, o.z + S + T, y);
-        if (side === 2) this.addWall(o.x - S - T, y - 0.5, o.z + a, o.x - S + T, y + h, o.z + b, y);
-        if (side === 3) this.addWall(o.x + S - T, y - 0.5, o.z + a, o.x + S + T, y + h, o.z + b, y);
+        if (side === 0) this.addWall(o.x + a, y - 0.5, o.z - S - T, o.x + b, y + h, o.z - S + T);
+        if (side === 1) this.addWall(o.x + a, y - 0.5, o.z + S - T, o.x + b, y + h, o.z + S + T);
+        if (side === 2) this.addWall(o.x - S - T, y - 0.5, o.z + a, o.x - S + T, y + h, o.z + b);
+        if (side === 3) this.addWall(o.x + S - T, y - 0.5, o.z + a, o.x + S + T, y + h, o.z + b);
       }
     }
 
     // Watchtower: raised platform with parapets, reached by stairs on +x.
     const firstProp = this.props.length;
     const { x: px, y: top, z: pz } = watchtower(o);
-    this.addProp(px - 2, top - 0.4, pz - 2, px + 2, top, pz + 2, 'wood').walk = true;
+    this.addProp(px - 2, top - 0.4, pz - 2, px + 2, top, pz + 2, 'timber').walk = true;
     for (const cx of [-1.75, 1.75]) {
       for (const cz of [-1.75, 1.75]) {
-        this.addProp(px + cx - 0.2, y - 0.5, pz + cz - 0.2, px + cx + 0.2, top - 0.4, pz + cz + 0.2, 'wood');
+        this.addProp(px + cx - 0.2, y - 0.5, pz + cz - 0.2, px + cx + 0.2, top - 0.4, pz + cz + 0.2, 'timber');
       }
     }
-    this.addProp(px - 2, top, pz - 2, px + 2, top + 1, pz - 1.8, 'wood');
-    this.addProp(px - 2, top, pz + 1.8, px + 2, top + 1, pz + 2, 'wood');
-    this.addProp(px - 2, top, pz - 2, px - 1.8, top + 1, pz + 2, 'wood');
+    this.addProp(px - 2, top, pz - 2, px + 2, top + 1, pz - 1.8, 'timber');
+    this.addProp(px - 2, top, pz + 1.8, px + 2, top + 1, pz + 2, 'timber');
+    this.addProp(px - 2, top, pz - 2, px - 1.8, top + 1, pz + 2, 'timber');
     for (let i = 0; i < 7; i++) {
-      this.addProp(px + 2 + i, y - 0.5, pz - 0.8, px + 3 + i, top - 0.5 - 0.5 * i, pz + 0.8, 'wood').walk = true;
+      this.addProp(px + 2 + i, y - 0.5, pz - 0.8, px + 3 + i, top - 0.5 - 0.5 * i, pz + 0.8, 'timber').walk = true;
     }
     this.towers.push({ outpost: index, props: range(firstProp, this.props.length) });
 
@@ -1575,7 +1479,7 @@ export class World {
       if (!free(cx - hx, cz - hz, cx + hx, cz + hz)) continue;
       taken.push({ minX: cx - hx, minZ: cz - hz, maxX: cx + hx, maxZ: cz + hz });
       const tint = rng();
-      if (build) this.addProp(cx - hx, y - 0.2, cz - hz, cx + hx, y + 2.6, cz + hz, 'metal', tint);
+      if (build) this.addProp(cx - hx, y - 0.2, cz - hz, cx + hx, y + 2.6, cz + hz, 'container', tint);
       placed++;
     }
 
@@ -1614,7 +1518,7 @@ export class World {
         const hx = alongX ? len / 2 : 0.3;
         const hz = alongX ? 0.3 : len / 2;
         const [lo, hi] = this.heightRange(x - hx, z - hz, x + hx, z + hz);
-        this.addWall(x - hx, lo - 0.3, z - hz, x + hx, hi + h, z + hz, hi);
+        this.addWall(x - hx, lo - 0.3, z - hz, x + hx, hi + h, z + hz);
       } else {
         const count = 1 + Math.floor(rng() * 3);
         for (let k = 0; k < count; k++) {
@@ -1718,7 +1622,7 @@ export class World {
       const f = frameOf(r.minX, r.minZ, spec.L, spec.D, alongX, flipU, flipV);
       this.addBuilding(spec, f, floor, lo - 0.3, rng, -1, 1);
       // A concrete floor over the uneven ground.
-      this.addPanel(r.minX + HOUSE_WALL, lo - 0.3, r.minZ + HOUSE_WALL, r.maxX - HOUSE_WALL, floor, r.maxZ - HOUSE_WALL, 'floor');
+      this.addProp(r.minX + HOUSE_WALL, lo - 0.3, r.minZ + HOUSE_WALL, r.maxX - HOUSE_WALL, floor, r.maxZ - HOUSE_WALL, 'floor');
       placed++;
     }
     for (let i = start; i < this.colliders.length; i++) this.insert(this.colliders[i]);
@@ -1810,7 +1714,7 @@ export class World {
           const hz = alongX ? 0.3 : len / 2;
           const [lo, hi] = this.heightRange(x - hx, z - hz, x + hx, z + hz);
           if (hi - lo > 1) continue;
-          this.addWall(x - hx, lo - 0.3, z - hz, x + hx, hi + h, z + hz, hi);
+          this.addWall(x - hx, lo - 0.3, z - hz, x + hx, hi + h, z + hz);
         } else {
           // Boulders rather than crates, which would be loot crates by the exit.
           const count = 2 + Math.floor(rng() * 2);

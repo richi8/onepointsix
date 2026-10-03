@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Solid walls',
+    notes: [
+      'Walls, roofs, floors and stairs no longer break, in every mode: no round or grenade gets through a wall, and a building’s roof and upper floor always hold.',
+      'Windows, doors, crates, fences and tables still break as before, and are put back after a while.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Deathmatch, and Online is now Extraction',
     notes: [
       'New mode, Deathmatch: 20 operators and no guards, everyone against everyone. There’s no extraction or score; hold Tab for everyone’s kills and deaths, bots included.',

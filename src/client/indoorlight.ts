@@ -5,15 +5,14 @@ import { ISLAND_GLSL, islandUniforms, type IslandMap } from './islandmap.ts';
 // How much of the sky's light reaches each point inside the buildings, and
 // in what colour. Each building has a small grid of cells over it, and each
 // cell holds the share of directions up to the sky that leave the building
-// through a doorway, a window or a hole in the roof without meeting a wall,
+// through a doorway or a window without meeting a wall,
 // each counted as much as the sky that way isn't hidden outside, by hills,
 // trees and other buildings. To that is added the light bounced once off the
 // floor, walls and ceiling round it, each as lit as the room is beside it and
 // in its own colour, and off the ground outside a doorway: so a room is lit
 // from its windows and doors and dark in its far corners, a floor in a pool of
 // light brightens the ceiling over it, and a wooden room is warmer than a
-// concrete one. A room facing a hill is darker than one facing the sea, and a
-// blown-out wall or a fallen roof lets the light in. The grids are stacked in
+// concrete one. A room facing a hill is darker than one facing the sea. The grids are stacked in
 // one 3D texture that materials sample, finding a building's grid from the
 // island's map (see islandmap.ts); a building's grid is worked out again, a
 // little each frame, when its doors or panels change, and so is any other's

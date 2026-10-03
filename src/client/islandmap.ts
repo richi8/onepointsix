@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
-import type { Panel, Rect, World } from '../shared/world.ts';
+import type { Box, Rect, World } from '../shared/world.ts';
 
 // One coarse map over the whole island that the rain and the light inside
 // buildings both read, so it costs materials a single texture:
-// - red: the top of the highest standing roof over each cell, or NO_ROOF,
+// - red: the top of the highest roof over each cell, or NO_ROOF,
 //   so floors under roofs far off stay dry (the rain's own map is sharper,
 //   but reaches only 32 m round the camera);
 // - alpha: which part of the cell the roofs cover, where an edge crosses
@@ -30,7 +30,7 @@ const HOLLOW_FULL = 0.12;
 const HOLLOW_SLOPE = 0.08;
 /** Ground about this flat, such as an outpost's yard, gathers some water wherever it's a touch lower. */
 const LEVEL_SLOPE = 0.025;
-export const LEVEL_GATHER = 0.35;
+const LEVEL_GATHER = 0.35;
 
 export const islandUniforms = {
   islandMap: { value: new THREE.DataTexture(new Uint16Array(4), 1, 1, THREE.RGBAFormat, THREE.HalfFloatType) },
@@ -38,9 +38,9 @@ export const islandUniforms = {
   islandCorner: { value: new THREE.Vector4(0, 0, 1, 1) },
 };
 
-/** Whether a panel keeps the rain off what's below it: a roof, or a floor with a room under it. */
-export function shelters(p: Panel): boolean {
-  return (p.kind === 'roof' || p.kind === 'floor') && !p.box.gone;
+/** What keeps the rain off what's below it: the roofs, and the floors, each the roof of what's under it. */
+export function shelters(world: World): Box[] {
+  return world.props.filter((p) => p.box.part === 'roof' || p.box.part === 'floor').map((p) => p.box);
 }
 
 /**
@@ -132,7 +132,7 @@ export const ISLAND_GLSL = /* glsl */ `
   #endif
 `;
 
-/** The island's map, kept up to date as roofs fall; one per island. */
+/** The island's map; one per island. */
 export class IslandMap {
   private readonly world: World;
   readonly cells: number;
@@ -153,8 +153,8 @@ export class IslandMap {
     islandUniforms.islandCorner.value.set(-world.half, -world.half, 1 / (this.cells * ISLAND_CELL), this.cells);
   }
 
-  /** Work out the roofs again, after one has fallen or been rebuilt: everywhere, or only over `area`. */
-  roofs(area?: Rect): void {
+  /** Work out the roofs. */
+  private roofs(): void {
     const n = this.cells;
     const x0 = -this.world.half;
     // Cells any part of which is under the rectangle.
@@ -164,23 +164,18 @@ export class IslandMap {
       Math.max(Math.floor((r.minZ - x0) / ISLAND_CELL), 0),
       Math.min(Math.ceil((r.maxZ - x0) / ISLAND_CELL) - 1, n - 1),
     ];
-    // The area's cells, a cell more all round.
-    const [a0, a1, b0, b1] = area ? cellsOf({ minX: area.minX - ISLAND_CELL, maxX: area.maxX + ISLAND_CELL, minZ: area.minZ - ISLAND_CELL, maxZ: area.maxZ + ISLAND_CELL }) : [0, n - 1, 0, n - 1];
-    const w = a1 - a0 + 1;
-    const top = new Float32Array(w * (b1 - b0 + 1)).fill(NO_ROOF);
+    const top = new Float32Array(n * n).fill(NO_ROOF);
     // Cells covered whole, and for those covered in part, which steps of them (see coverCode).
     const whole = new Uint8Array(top.length);
     const masks = new Map<number, Uint8Array>();
     const steps = (lo: number, hi: number): [number, number] => [
       Math.max(Math.floor(lo * EDGE_STEPS), 0), Math.min(Math.ceil(hi * EDGE_STEPS), EDGE_STEPS) - 1,
     ];
-    for (const p of this.world.panels) {
-      if (!shelters(p)) continue;
-      const b = p.box;
+    for (const b of shelters(this.world)) {
       const [i0, i1, j0, j1] = cellsOf(b);
-      for (let j = Math.max(j0, b0); j <= Math.min(j1, b1); j++) {
-        for (let i = Math.max(i0, a0); i <= Math.min(i1, a1); i++) {
-          const k = (j - b0) * w + (i - a0);
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          const k = j * n + i;
           top[k] = Math.max(top[k], b.maxY);
           if (whole[k]) continue;
           const cx = x0 + i * ISLAND_CELL;
@@ -198,13 +193,10 @@ export class IslandMap {
         }
       }
     }
-    for (let j = b0; j <= b1; j++) {
-      for (let i = a0; i <= a1; i++) {
-        const k = (j - b0) * w + (i - a0);
-        const mask = masks.get(k);
-        this.data[(j * n + i) * 4] = THREE.DataUtils.toHalfFloat(top[k]);
-        this.data[(j * n + i) * 4 + 3] = THREE.DataUtils.toHalfFloat(mask ? coverCode(mask) : 0);
-      }
+    for (let k = 0; k < n * n; k++) {
+      const mask = masks.get(k);
+      this.data[k * 4] = THREE.DataUtils.toHalfFloat(top[k]);
+      this.data[k * 4 + 3] = THREE.DataUtils.toHalfFloat(mask ? coverCode(mask) : 0);
     }
     this.texture.needsUpdate = true;
   }

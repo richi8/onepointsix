@@ -530,12 +530,12 @@ export class Sfx {
     if (straight < SCARE_RANGE * 2) this.scare();
   }
 
-  /** Cover breaking: wood splinters, masonry crumbles and glass smashes. */
-  crumble(kind: PanelKind, at: At): void {
+  /** Cover breaking: wood splinters and glass smashes. */
+  smash(kind: PanelKind, at: At): void {
     const h = this.hear(at);
     const d = h.d;
     const gain = (kind === 'glass' ? 0.6 : 0.7) * (HALF_DISTANCE / (HALF_DISTANCE + d)) * (1 - h.occ * 0.5) * this.drowned(d);
-    const clip = kind === 'wall' || kind === 'roof' || kind === 'floor' ? 'crumble' : kind === 'glass' ? 'glass' : 'splinter';
+    const clip = kind === 'glass' ? 'glass' : 'splinter';
     this.play(clip, { at: h, gain, rate: jitter(0.08), delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, h.occ, d), send: 0.3, space: sourceSpace(this.world, at) });
   }
 

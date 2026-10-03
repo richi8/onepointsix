@@ -13,7 +13,7 @@ import { lightingOf, type Lighting } from './lighting.ts';
 import { outlookMoved, settledOutlook, type Outlook } from './outlook.ts';
 import { Rain, type Shelter } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
-import { IslandMap, LEVEL_GATHER } from './islandmap.ts';
+import { IslandMap } from './islandmap.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
@@ -280,12 +280,10 @@ export class WorldView {
 
     const props = this.world.props;
     this.props.texture(
-      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: 'puddles' }), this.world),
+      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true }), this.world),
       // Roofs are corrugated metal only on top: underneath, a plain ceiling.
       (i) => (props[i].style === 'roof' ? -1 - PROP_LAYERS.roof : PROP_LAYERS[props[i].style]),
       (i, c) => c.setHex(pick(PROP_TINTS[props[i].style], props[i].tint)).multiplyScalar(GAIN[props[i].style] ?? 1),
-      // A concrete floor the rain reaches, once the roof over it is down, gathers puddles as level ground does.
-      (i) => (props[i].panel >= 0 && this.world.panels[props[i].panel].kind === 'floor' ? LEVEL_GATHER : 0),
       Layer.boards,
     );
 
@@ -314,19 +312,12 @@ export class WorldView {
     this.world.panels.forEach((_, i) => this.showPanel(i));
     this.props.moved();
     this.light3d.changed();
-    this.rain.roofChanged();
-    this.island.roofs();
     this.sun.redraw();
   }
 
   /** Show one panel as the world has it. */
   updatePanel(id: number): void {
     if (!this.world.panels[id]) return;
-    const kind = this.world.panels[id].kind;
-    if (kind === 'roof' || kind === 'floor') {
-      this.rain.roofChanged();
-      this.island.roofs(this.world.panels[id].box);
-    }
     this.showPanel(id);
     this.props.moved();
     this.light3d.changed();
@@ -404,7 +395,7 @@ export class WorldView {
     this.sky.position.copy(camera.position);
     groundEye.value.copy(camera.position);
     this.sun.update(focus, near, far);
-    // Broken walls and swung doors reach the island's shadow map now and then, not every time one changes.
+    // Broken cover and swung doors reach the island's shadow map now and then, not every time one changes.
     if (this.castersChanged && (time - this.redrawnAt > 2 || time < this.redrawnAt)) {
       this.castersChanged = false;
       this.redrawnAt = time;

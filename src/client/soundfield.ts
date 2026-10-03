@@ -132,7 +132,7 @@ export class SoundField {
     this.tilesPerSide = Math.ceil(this.n / TILE);
     this.tiles = new Uint8Array(this.tilesPerSide * this.tilesPerSide);
     for (const c of world.colliders) {
-      if (c.kind !== 'box' || !(c.walk || (c.panel !== undefined && world.panels[c.panel].kind === 'roof'))) continue;
+      if (c.kind !== 'box' || !(c.walk || c.part === 'roof')) continue;
       for (let iz = this.cell(c.minZ - CELL); iz <= this.cell(c.maxZ + CELL); iz++) {
         for (let ix = this.cell(c.minX - CELL); ix <= this.cell(c.maxX + CELL); ix++) this.floored.add(this.index(ix, iz));
       }
