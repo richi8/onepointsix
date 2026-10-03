@@ -320,12 +320,15 @@ transition rather than switching. The core loop stays as it is.
 ### Phase 7: ready for other players (still local only, Chrome only)
 
 Pieces of Future's multiplayer that can be built and tested locally first, so they are in place
-when a multiplayer server arrives. Started on 2026-10-03 with the scoreboard. The same rules
+when a multiplayer server arrives. Started on 2026-10-03 with the scoreboard. Deathmatch was added on
+2026-10-03 as a second way to play for when others join: a plain fight among operators beside
+Extraction's runs. The same rules
 apply: no backend, and nothing that breaks the rules that keep multiplayer easy to add later.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 47 | **Scoreboard on Tab** | Held during a run, Tab shows every operator in the game who is a player, bots left out, with their kills, deaths, best run score and cumulative score; the server keeps each player's record over the game, across their runs in it, and sends it to every player as an event whenever it changes; Esc stays the pause screen | Holding Tab in a run shows your line, and a kill, a death or an extraction shows on it, carried on to your next run on the same island | **Done** (`src/client/scoreboard.ts`; the records are kept in `GameServer` by a random id each browser keeps and sends in its hello, not by name; kills count guards and operators alike; nothing counts on the range; checked by unit tests with two players in one game and a browser test; locally the board only ever lists you) |
+| 48 | **Extraction and Deathmatch** | Online renamed **Extraction** (`mode=extraction`; old `mode=online`, `mixed` and `offline` links, scores and the menu choice count as Extraction, and its leaderboard keeps Online's scores); a new **Deathmatch** mode, everyone against everyone: 20 operator slots, every one starting as a bot and taken by players as they join (a bot fills it again when they leave), no guards or commanders, no contracts, extraction points, run clock, MIA, bag value, score or leaderboard; crates hold only medkits and ammo; a dead operator respawns after a few seconds at a spot away from the others, with the starting loadout, and the death cam plays in between; operator bots fight every other operator (no personalities' extraction goals: they roam, loot crates for ammo and medkits, and hunt by sight and noise); the Tab scoreboard shows only kills and deaths, for every operator in the game, bots included; the menu's mode picker gets Deathmatch with its own description; the directory caps Deathmatch games at 20; the weather cycle runs as in Extraction; the changelog, Game Modes, World capacity and Features updated | From the menu you pick Deathmatch, land among 19 bots and no guards, kill and get killed, respawn, and Tab shows everyone's kills and deaths; Extraction plays exactly as Online did, and old Online links and scores still work | Not started |
 
 ## Known Issues
 
