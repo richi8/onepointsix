@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Puddles look like water after rain',
+    notes: [
+      "Once the rain stops, the puddles left behind now lie smooth and mirror the sky, instead of looking crinkled and frosted, like ice.",
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Outposts retaken sooner',
     notes: [
       "A fresh squad now sets off to retake a cleared outpost 10 seconds after its last guard falls, instead of 15.",

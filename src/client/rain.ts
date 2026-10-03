@@ -157,11 +157,11 @@ export function addWet(shader: THREE.WebGLProgramParametersWithUniforms, pos: st
       // Soaked soil and grass stay mostly matte; only a thin film on the flat
       // catches the sky. A puddle's rim stays dull rather than half glossy,
       // which would show a bright sky as a pale haze.
-      roughnessFactor = mix(mix(mix(roughnessFactor, 0.9, soaked), 0.78, wet.z), 0.03, smoothstep(0.6, 1.0, wet.y));`)
+      roughnessFactor = mix(mix(mix(roughnessFactor, 0.9, soaked), 0.78, wet.z), 0.03, smoothstep(0.9, 1.0, wet.y));`)
     // A puddle lies flat, whatever the ground's bumps, but for its ripples.
     .replace('#include <lights_fragment_begin>', /* glsl */ `
-      if (wet.y > 0.0 && rainfall > 0.0) {
-        vec2 ripple = rippleAt(${pos}.xz);
+      if (wet.y > 0.0) {
+        vec2 ripple = rainfall > 0.0 ? rippleAt(${pos}.xz) : vec2(0.0);
         normal = normalize(mix(normal, (viewMatrix * vec4(normalize(vec3(-ripple.x, 1.0, -ripple.y)), 0.0)).xyz, wet.y));
       }
       #include <lights_fragment_begin>`);
