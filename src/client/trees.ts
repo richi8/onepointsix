@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../shared/rng.ts';
+import { CROWN_BASE, CROWN_REACH as REACH, crownReach, TREE_HEIGHT } from '../shared/vegetation.ts';
 import type { World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import type { Impostors } from './impostors.ts';
@@ -24,7 +25,7 @@ import { wetMaterial, type WetOptions } from './rain.ts';
 /** Metres across a tile of trees. */
 const TILE = 100;
 /** A unit tree is this tall, matching the collider height in World.placeTrees. */
-export const TREE_HEIGHT = 7;
+export { TREE_HEIGHT };
 const HEIGHT = TREE_HEIGHT;
 const WHORLS = 16;
 /** The bark's colour before its texture loads. */
@@ -385,10 +386,6 @@ export function needles<M extends THREE.MeshStandardMaterial>(material: M, norma
   return material;
 }
 
-/** Where the crown's lowest living whorl starts, and how far its longest limbs reach, in unit-tree metres. */
-const CROWN_BASE = 1.3;
-const REACH = 2.35;
-
 /**
  * A unit spruce: its wood (a trunk flaring at the foot, limbs and a few bare
  * twigs low down, as one shape) and its foliage, sprays of needles along each
@@ -424,11 +421,7 @@ export function fir(seed: number, near: boolean): { wood: THREE.BufferGeometry; 
   }
   tube(wood, trunk, radii, near ? 9 : 6);
 
-  /** Horizontal reach of the limbs at height `y`: a spruce's narrow cone, rounded at the foot. */
-  const reachAt = (y: number) => {
-    const f = Math.min(Math.max((y - CROWN_BASE) / (HEIGHT - 0.2 - CROWN_BASE), 0), 1);
-    return REACH * (1 - f) ** 0.95 * (0.82 + 0.18 * Math.min(1, f * 6)) + 0.2;
-  };
+  const reachAt = crownReach;
   /**
    * A spray of needles, one of the picture's two, from `base` along `dir`,
    * its tip drooping by `droop`. With `shade`, it's that dark all over and

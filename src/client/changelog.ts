@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Trees hide you',
+    notes: [
+      "Guards and other bots can no longer see you through a tree's branches. A spruce's crown hides you as it looks: thick near the trunk, thinner at its edges, and not at all once you're clear of it or above it. Standing close against a trunk under the low limbs hides you too, while a bot standing there still sees out.",
+      "The branches still don't stop bullets, and a muzzle flash shows through the thinner parts of a crown.",
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Rivals who play the weather',
     notes: [
       'Rats see a fog coming and lie low until it rolls in, then hurry through it; in fog, rats and looters go for an extra crate and go nearer the outposts, and drop it when they see the fog lifting.',

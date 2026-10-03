@@ -3,14 +3,15 @@ import { clamp } from './geom.ts';
 import { GROUND_LAYERS, groundWeights } from './ground.ts';
 import { Layer } from './layers.ts';
 import { mulberry32 } from './rng.ts';
-import { inBuilding, OUTSKIRTS, type World } from './world.ts';
+import { inBuilding, OUTSKIRTS, type Tree, type World } from './world.ts';
 
-// The bushes and grass on the ground, as far as sight is concerned. Both are
-// scattered here, tuft by tuft and bush by bush, the same on every client and
-// the server, so the ones a player crouches behind are the ones the bots can't
-// see through: a lone tuft hides a little and a gap in a field hides nothing.
-// Neither stops bullets or bodies. Someone inside a bush sees out through it,
-// as its leaves are pushed aside right in front of their eyes.
+// The bushes and grass on the ground, and the trees' crowns, as far as sight
+// is concerned. Bushes and grass are scattered here, tuft by tuft and bush by
+// bush, the same on every client and the server, so the ones a player crouches
+// behind are the ones the bots can't see through: a lone tuft hides a little
+// and a gap in a field hides nothing. None of them stops bullets or bodies.
+// Someone inside a bush sees out through it, as its leaves are pushed aside
+// right in front of their eyes.
 
 /** Metres square each cell of scattered bushes covers. */
 export const VEG_CELL = 8;
@@ -53,6 +54,35 @@ const COVER_BUSH = 0.8;
 const COVER_GRASS = 1.2;
 /** Grass cells kept before they're all let go and scattered again as needed. */
 const GRASS_CELLS = 3000;
+
+/**
+ * A spruce's shape, in metres for a tree of scale 1 standing on its foot: how
+ * tall it is, where the crown's lowest living whorl starts and how far its
+ * longest limbs reach. The trees are drawn to this.
+ */
+export const TREE_HEIGHT = 7;
+export const CROWN_BASE = 1.3;
+export const CROWN_REACH = 2.35;
+/** How far the lowest limbs droop below CROWN_BASE, per metre out from the trunk. */
+const CROWN_DROOP = 0.35;
+/** Widest a crown gets, for a tree of scale 1. */
+const CROWN_WIDEST = CROWN_REACH + 0.2;
+/**
+ * Share of a sight line lost per metre of needles it crosses, near the trunk;
+ * the crown thins out toward its edges to CROWN_THIN of that.
+ */
+const CROWN_DENSITY = 1.6;
+const CROWN_THIN = 0.4;
+/** Metres between samples along a sight line through a crown. */
+const CROWN_STEP = 0.2;
+/** Needles this close to someone's eyes are pushed aside: they see out of a tree they stand in. */
+const CROWN_ASIDE = 1.2;
+
+/** Horizontal reach of a scale-1 spruce's limbs at height `y` above its foot: a narrow cone, rounded at the foot. */
+export function crownReach(y: number): number {
+  const f = Math.min(Math.max((y - CROWN_BASE) / (TREE_HEIGHT - 0.2 - CROWN_BASE), 0), 1);
+  return CROWN_REACH * (1 - f) ** 0.95 * (0.82 + 0.18 * Math.min(1, f * 6)) + 0.2;
+}
 
 /** Floats per tuft in Tufts.data. */
 export const TUFT_STRIDE = 10;
@@ -115,12 +145,20 @@ export class Vegetation {
   private readonly weights: Float32Array;
   private readonly cells = new Map<number, Bush[]>();
   private readonly grass = new Map<number, Tufts>();
+  /** The trees standing in each cell, by key. */
+  private readonly trees = new Map<number, Tree[]>();
   /** 1 m squares of ground a sight line passes low over, by key; reused. */
   private readonly squares = new Set<number>();
 
   constructor(world: World) {
     this.world = world;
     this.weights = groundWeights(world);
+    for (const t of world.trees) {
+      const key = (Math.floor(t.x / VEG_CELL) + 4096) * 8192 + Math.floor(t.z / VEG_CELL) + 4096;
+      const list = this.trees.get(key);
+      if (list) list.push(t);
+      else this.trees.set(key, [t]);
+    }
   }
 
   /** The bushes in cell (ix, iz), scattered the first time they're asked for. */
@@ -261,9 +299,10 @@ export class Vegetation {
   }
 
   /**
-   * How much of a sight line from a to b gets past the bushes and grass
-   * between them, from 1 (nothing in the way) down to 0. `a` is the one
-   * looking: a bush they're in doesn't hide what's outside it from them.
+   * How much of a sight line from a to b gets past the bushes, grass and
+   * tree crowns between them, from 1 (nothing in the way) down to 0. `a` is
+   * the one looking: a bush they're in doesn't hide what's outside it from
+   * them, nor do the needles right in front of their eyes.
    * Solid things are World.hasLineOfSight's business.
    */
   seeThrough(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
@@ -305,7 +344,65 @@ export class Vegetation {
         }
       }
     }
+    through *= this.crownsThrough(ax, ay, az, dx, dy, dz, len);
+    if (through < 0.01) return 0;
     return through * this.grassThrough(ax, ay, az, dx, dy, dz, len);
+  }
+
+  /** How much of a sight line gets past the tree crowns it runs through, 1 down to 0. */
+  private crownsThrough(ax: number, ay: number, az: number, dx: number, dy: number, dz: number, len: number): number {
+    const reach = CROWN_WIDEST * 1.5;
+    const len2 = len * len;
+    const len3 = Math.hypot(len, dy);
+    const seen = new Set<number>();
+    let thick = 0;
+    const steps = Math.max(1, Math.ceil(len / (VEG_CELL / 2)));
+    for (let s = 0; s <= steps; s++) {
+      const px = ax + (dx * s) / steps;
+      const pz = az + (dz * s) / steps;
+      const x0 = Math.floor((px - VEG_CELL / 4 - reach) / VEG_CELL);
+      const x1 = Math.floor((px + VEG_CELL / 4 + reach) / VEG_CELL);
+      const z0 = Math.floor((pz - VEG_CELL / 4 - reach) / VEG_CELL);
+      const z1 = Math.floor((pz + VEG_CELL / 4 + reach) / VEG_CELL);
+      for (let iz = z0; iz <= z1; iz++) {
+        for (let ix = x0; ix <= x1; ix++) {
+          const key = (ix + 4096) * 8192 + iz + 4096;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const trees = this.trees.get(key);
+          if (!trees) continue;
+          for (const t of trees) {
+            // Where the line, seen from above, crosses the circle the crown stands in.
+            const widest = CROWN_WIDEST * t.s;
+            if (len < 1e-6) continue;
+            const mid = ((t.x - ax) * dx + (t.z - az) * dz) / len2;
+            const off2 = (ax + dx * mid - t.x) ** 2 + (az + dz * mid - t.z) ** 2;
+            if (off2 >= widest * widest) continue;
+            const half = Math.sqrt(widest * widest - off2) / len;
+            const t0 = Math.max(mid - half, 0);
+            const t1 = Math.min(mid + half, 1);
+            if (t1 <= t0) continue;
+            // Sample along it, adding up the needles crossed.
+            const foot = t.y - 0.2;
+            const n = Math.ceil(((t1 - t0) * len3) / CROWN_STEP);
+            const step = ((t1 - t0) * len3) / n;
+            for (let k = 0; k < n; k++) {
+              const u = t0 + ((t1 - t0) * (k + 0.5)) / n;
+              if (u * len3 < CROWN_ASIDE) continue;
+              const h = (ay + dy * u - foot) / t.s;
+              if (h > TREE_HEIGHT) continue;
+              const r = Math.hypot(ax + dx * u - t.x, az + dz * u - t.z) / t.s;
+              if (h < CROWN_BASE - 0.2 - CROWN_DROOP * r) continue;
+              const edge = crownReach(Math.max(h, CROWN_BASE));
+              if (r >= edge) continue;
+              thick += step * CROWN_DENSITY * (CROWN_THIN + (1 - CROWN_THIN) * (1 - r / edge));
+            }
+            if (thick > 4.6) return 0;
+          }
+        }
+      }
+    }
+    return Math.exp(-thick);
   }
 
   /** How much of a sight line gets past the grass tufts it runs through, 1 down to 0. */

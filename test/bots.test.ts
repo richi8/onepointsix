@@ -10,6 +10,7 @@ import type { GameEvent, ServerMsg, Team } from '../src/shared/protocol.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { spawnState, type PlayerState } from '../src/shared/sim.ts';
 import { RIFLE } from '../src/shared/weapons.ts';
+import { vegetationOf } from '../src/shared/vegetation.ts';
 import { inBuilding, watchtower, World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
@@ -32,6 +33,7 @@ function openGround(dist: number): { ax: number; az: number; bx: number; bz: num
     if (!nav.dry(a.x, a.z) || !nav.dry(bx, bz)) continue;
     if (!world.hasLineOfSight(a.x, a.y + 1.6, a.z, bx, by + 1.0, bz)) continue;
     if (!world.hasLineOfSight(a.x, a.y + 1.6, a.z, bx, by + 1.6, bz)) continue;
+    if (vegetationOf(world).seeThrough(a.x, a.y + 1.6, a.z, bx, by + 1.0, bz) < 0.9) continue;
     return { ax: a.x, az: a.z, bx, bz };
   }
 }

@@ -16,6 +16,17 @@ function bigBush(): Bush {
   throw new Error('no big bush');
 }
 
+/** A tree on flat ground with open ground to one side of it. */
+function loneTree() {
+  for (const t of w.trees) {
+    if (Math.abs(w.terrainHeight(t.x - 30, t.z) - t.y) > 1 || Math.abs(w.terrainHeight(t.x + 2, t.z) - t.y) > 0.3) continue;
+    if (w.trees.some((o) => o !== t && Math.abs(o.z - t.z) < 6 && o.x > t.x - 32 && o.x < t.x + 4)) continue;
+    if (!w.hasLineOfSight(t.x - 30, w.terrainHeight(t.x - 30, t.z) + EYE_HEIGHT, t.z, t.x, t.y + 1.2, t.z + 0.6)) continue;
+    return t;
+  }
+  throw new Error('no lone tree');
+}
+
 describe('vegetation', () => {
   it('scatters the same bushes every time', () => {
     expect(vegetationOf(new World(1)).bushes(3, -2)).toEqual(veg.bushes(3, -2));
@@ -109,5 +120,25 @@ describe('vegetation', () => {
     const eyeY = w.terrainHeight(eyeX, b.z) + EYE_HEIGHT;
     const behind = b.x + b.size * 0.4;
     expect(bagShows(w, eyeX, eyeY, b.z, behind, w.terrainHeight(behind, b.z), b.z)).toBe(false);
+  });
+
+  it("hides someone standing in or behind a tree's crown, but not beside it", () => {
+    const t = loneTree();
+    const eyeX = t.x - 30;
+    const eyeY = w.terrainHeight(eyeX, t.z) + EYE_HEIGHT;
+    const by = (x: number, z: number) => w.terrainHeight(x, z) + 1.2;
+    // Against the trunk, just off the line through it, under the drooping limbs.
+    expect(veg.seeThrough(eyeX, eyeY, t.z, t.x + 0.3, by(t.x + 0.3, t.z + 0.6), t.z + 0.6)).toBeLessThan(0.3);
+    // A little way behind it.
+    expect(veg.seeThrough(eyeX, eyeY, t.z, t.x + 2, by(t.x + 2, t.z + 0.5), t.z + 0.5)).toBeLessThan(0.3);
+    // Well clear of it to the side.
+    expect(veg.seeThrough(eyeX, eyeY, t.z, t.x, by(t.x, t.z + 5), t.z + 5)).toBeGreaterThan(0.9);
+  });
+
+  it('lets someone under a tree see out of it', () => {
+    const t = loneTree();
+    const x = t.x - 0.6;
+    const out = { x: t.x - 30, y: w.terrainHeight(t.x - 30, t.z) + 1.2, z: t.z };
+    expect(veg.seeThrough(x, w.terrainHeight(x, t.z) + EYE_HEIGHT, t.z, out.x, out.y, out.z)).toBeGreaterThan(0.3);
   });
 });
