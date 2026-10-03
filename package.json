@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc && tsc -p e2e",
     "sim": "node src/server/headless.ts",
+    "sim:deathmatch": "node src/server/dmsim.ts",
     "playtest": "node src/server/playtest.ts",
     "test": "vitest run",
     "test:browser": "playwright test --project=chromium",
