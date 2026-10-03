@@ -333,11 +333,7 @@ Nothing open: the last was resolved on 2026-10-03 (see the history).
 Nothing open: the last was resolved on 2026-10-02 (see the history).
 
 ### Playtest and tuning
-- Bots' sight through tree crowns treats each crown as a smooth cone of needles, densest at the
-  trunk, rather than the limbs and gaps actually drawn, and doesn't sway with the wind. Bots also
-  don't yet seek out trees to hide in, as they do bushes. (2026-10-03, bots seeing through trees)
-
-Otherwise nothing open: the last was resolved on 2026-10-03 (see the history, and the bot extraction
+Nothing open: the last was resolved on 2026-10-03 (see the history, and the bot extraction
 baseline in Decisions).
 
 ## Future

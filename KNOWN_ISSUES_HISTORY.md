@@ -2618,3 +2618,8 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   **Accepted** (2026-09-30): operator bots extract from about 15% of runs by day and 20% at night
   in rain, which the user set as the baseline (15% ± 3, see Decisions), so their getaways are left
   as they are.
+- **Bots see through tree crowns as smooth cones** (2026-10-03, bots seeing through trees). Each
+  crown is a cone of needles, densest at the trunk, rather than the limbs and gaps actually drawn,
+  and doesn't sway with the wind. Bots also don't seek out trees to hide in, as they do bushes. Day
+  extraction moved from 14% to 17% in the bot playtest (seeds 1–6, clear).
+  **Accepted** (2026-10-03): the user accepted it as it is, and the 17% rate with it.
