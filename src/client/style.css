@@ -242,6 +242,114 @@ canvas.fade-in {
   opacity: 0.6;
 }
 
+/* ------------------------------------------------------------------ scoreboard */
+
+/* Held on Tab: every player in the game, over the view but not taking the mouse. */
+.scoreboard {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 96px 16px 16px;
+  color: #fff;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.scoreboard[hidden] {
+  display: none;
+}
+
+.scoreboard table {
+  width: min(600px, 100%);
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: rgb(14 16 18 / 0.97);
+  border-top: 4px solid #e8c35a;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreboard caption {
+  padding: 10px 16px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  color: #e8c35a;
+  background: rgb(14 16 18 / 0.97);
+  border-radius: 6px 6px 0 0;
+}
+
+.scoreboard caption small {
+  margin-left: 8px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: #fff;
+  opacity: 0.6;
+}
+
+.scoreboard th,
+.scoreboard td {
+  padding: 6px 16px;
+  text-align: right;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.scoreboard th:not(:first-child) {
+  width: 92px;
+}
+
+.scoreboard th:first-child,
+.scoreboard td:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.scoreboard th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.scoreboard tbody tr {
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.scoreboard tr.you {
+  font-weight: 700;
+  color: #e8c35a;
+  background: rgb(232 195 90 / 0.1);
+}
+
+@media (max-width: 480px) {
+  .scoreboard table {
+    font-size: 13px;
+  }
+
+  .scoreboard th,
+  .scoreboard td {
+    padding: 6px 8px;
+  }
+
+  .scoreboard th:not(:first-child) {
+    width: 60px;
+  }
+
+  .scoreboard th {
+    white-space: normal;
+  }
+}
+
 /* ------------------------------------------------------------------ HUD */
 
 .hud {

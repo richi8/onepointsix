@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'Scoreboard on Tab',
+    notes: [
+      'Hold Tab during a run to see the players in your game, with their kills, deaths, best run and total score. Bots aren’t listed.',
+      'Your line carries on from run to run while you keep playing the same island; it starts afresh on another island or after a couple of minutes back on the menu.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'Offline is gone',
     notes: [
       'Offline played exactly as Online, so it has been removed: runs are now always Online, and players who join take a bot’s place.',

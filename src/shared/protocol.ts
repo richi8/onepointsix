@@ -116,6 +116,19 @@ export interface Death {
   shooters?: { guards: number; operators: number };
 }
 
+/** A player's line on the scoreboard: their record over the game, across all their runs in it. */
+export interface BoardRow {
+  /** Their body in the game now. */
+  id: number;
+  name: string;
+  /** Everyone they killed, guards and operators. */
+  kills: number;
+  deaths: number;
+  /** Their best run's score and all their runs' scores added up; only extracting scores. */
+  best: number;
+  total: number;
+}
+
 /** Something that happened during a server tick, sent reliably to whoever should hear. */
 export type GameEvent =
   // To the shooter: their round hit `target` for `damage` at (x, y, z).
@@ -140,6 +153,8 @@ export type GameEvent =
     }
   // To everyone: `id` now carries the bounty, loot worth `value`, or with id 0, nobody does.
   | { k: 'bounty'; id: number; name: string; value: number }
+  // To every player: the scoreboard, whenever it changes. Players only, bots left out.
+  | { k: 'board'; rows: BoardRow[] }
   // To everyone: an operator left the island with loot worth `value`.
   | { k: 'extract'; id: number; name: string; value: number }
   // To everyone: someone called in a pickup at extraction point `index`.

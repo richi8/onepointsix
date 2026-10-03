@@ -1,7 +1,7 @@
 import { INTERP_DELAY, SERVER_DT } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp } from '../shared/geom.ts';
 import type {
-  BagSnap, BountyView, ClientMsg, CoverState, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
+  BagSnap, BoardRow, BountyView, ClientMsg, CoverState, ExtractView, GameEvent, GrenadeSnap, InputCmd, Mode, PlayerSnap, RunView, ServerMsg,
 } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { TAPE_TIME } from '../shared/tape.ts';
@@ -71,6 +71,8 @@ export class Connection {
   extracts: ExtractView[] = [];
   bags: BagSnap[] = [];
   bounty: BountyView | null = null;
+  /** The scoreboard, as last sent: every player in the game, best first. */
+  board: BoardRow[] = [];
   /** Set once the run has ended: no more commands are sent. */
   over = false;
   /** Panels down right now, as the server says; what the world shows can differ while a death cam plays. */
@@ -218,6 +220,7 @@ export class Connection {
           if (e.k === 'break') for (const i of e.panels) this.broken.add(i);
           if (e.k === 'repair') for (const i of e.panels) this.broken.delete(i);
           if (e.k === 'door') for (const i of e.doors) (e.open ? this.open.add(i) : this.open.delete(i));
+          if (e.k === 'board') this.board = e.rows;
         }
         this.trimRecording(msg.tick * SERVER_DT);
         this.onEvents?.(msg.events, msg.tick * SERVER_DT);

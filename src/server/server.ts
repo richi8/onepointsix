@@ -49,7 +49,7 @@ import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
 import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loot.ts';
 import type {
-  Action, BagSnap, BountyView, ClientMsg, Death, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
+  Action, BagSnap, BoardRow, BountyView, ClientMsg, Death, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
 } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
@@ -154,6 +154,14 @@ interface Player extends PlayerState {
   threw: boolean;
 }
 
+/** A player's kills, deaths and scores over a game; see BoardRow. */
+interface Tally {
+  kills: number;
+  deaths: number;
+  best: number;
+  total: number;
+}
+
 interface PoseRecord extends Pose {
   id: number;
   dead: boolean;
@@ -220,6 +228,13 @@ export class GameServer {
   private readonly ctx: BotContext;
   /** Where everyone stood at the end of each recent tick, oldest first, for rewinding shots. */
   private readonly history: { tick: number; poses: PoseRecord[] }[] = [];
+  /**
+   * Each player's record over the game, kept by name across their runs for as long as the game
+   * goes on, so leaving and joining again carries on where they were.
+   */
+  private readonly tallies = new Map<string, Tally>();
+  /** The scoreboard changed and goes out to every player this tick. */
+  private boardChanged = false;
   private nextId = 1;
   private nextGrenade = 1;
   /** How it was set up. */
@@ -321,6 +336,7 @@ export class GameServer {
       case 'hello':
         p.joined = true;
         p.name = msg.name.slice(0, 24) || 'player';
+        this.boardChanged = true;
         p.send({
           t: 'welcome', id, seed: this.seed, tick: this.tick, tickRate: SERVER_TICK_RATE, mode: this.mode,
           broken: this.world.brokenPanels(), open: this.world.openDoors(),
@@ -530,6 +546,11 @@ export class GameServer {
     if (this.history.length > HISTORY_TICKS) this.history.shift();
 
     const joined = [...this.players.values()].filter((p) => p.joined);
+    if (this.boardChanged) {
+      this.boardChanged = false;
+      const rows = this.board();
+      for (const p of joined) if (!p.plan) p.events.push({ k: 'board', rows });
+    }
     const players = joined.map(snapOf);
     let extracts: ExtractView[] | null = null;
     let bags: BagSnap[] | null = null;
@@ -754,6 +775,11 @@ export class GameServer {
     };
     p.events.push(end);
     this.onRunEnd?.(end, p.plan);
+    const tally = this.tallyOf(p);
+    if (tally && outcome === 'extracted') {
+      tally.best = Math.max(tally.best, score);
+      tally.total += score;
+    }
     this.dismiss(run);
     if (outcome === 'extracted') this.broadcast({ k: 'extract', id: p.id, name: p.name, value });
     if (outcome === 'killed') this.containers.drop(p.x, p.y, p.z, run.items, this.time, kindOf(p));
@@ -834,6 +860,31 @@ export class GameServer {
     for (const p of this.players.values()) {
       if (p.bot && !p.dead && p.team === 'operator') p.bot.bountyCalled(p, holder.id, b, now);
     }
+  }
+
+  // -------------------------------------------------------------- scoreboard
+
+  /**
+   * A player's record, marked as changing; null for bots, and on the range, where nothing
+   * counts. A record is kept by name, so another run under the same name carries it on.
+   */
+  private tallyOf(p: Player): Tally | null {
+    if (p.plan || !p.joined || this.options.range) return null;
+    let tally = this.tallies.get(p.name);
+    if (!tally) this.tallies.set(p.name, (tally = { kills: 0, deaths: 0, best: 0, total: 0 }));
+    this.boardChanged = true;
+    return tally;
+  }
+
+  /** Every player in the game now, bots left out, highest total score first. */
+  private board(): BoardRow[] {
+    const rows: BoardRow[] = [];
+    for (const p of this.players.values()) {
+      if (p.plan || !p.joined) continue;
+      const t = this.tallies.get(p.name) ?? { kills: 0, deaths: 0, best: 0, total: 0 };
+      rows.push({ id: p.id, name: p.name, ...t });
+    }
+    return rows.sort((a, b) => b.total - a.total || b.best - a.best || b.kills - a.kills || a.deaths - b.deaths);
   }
 
   /** The operator bots hear who carries the bounty now, as players read it in the feed. Guards aren't told. */
@@ -940,6 +991,7 @@ export class GameServer {
   /** Someone leaves the game; an operator's slot opens up for a new bot after a while. */
   private leave(p: Player): void {
     if (!this.players.delete(p.id)) return;
+    if (p.joined && !p.plan) this.boardChanged = true;
     if (p.run) this.dismiss(p.run);
     // Whatever happened this tick still reaches them, such as how their run ended.
     if (p.events.length) p.send({ t: 'events', tick: this.tick, events: p.events });
@@ -1211,6 +1263,10 @@ export class GameServer {
       if (victim.team === 'operator') attacker.run.kills++;
       else if (victim.team === 'guard') attacker.run.guardKills++;
     }
+    const tally = attacker === victim ? null : this.tallyOf(attacker);
+    if (tally) tally.kills++;
+    const dying = this.tallyOf(victim);
+    if (dying) dying.deaths++;
     const victimKind = kindOf(victim);
     this.broadcast({
       k: 'kill', killer: attacker.id, victim: victim.id, killerName: attacker.name, victimName: victim.name,

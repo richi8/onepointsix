@@ -140,6 +140,8 @@ playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`).
   once there is multiplayer.
 - No share buttons for now (2026-10-02): sharing comes back with multiplayer (see Future).
   Links made before still open their island with the score to beat.
+- Holding Tab in a run shows the scoreboard (chunk 47): the players in the game, bots left out,
+  with each one's kills, deaths, best run and total score over the game.
 
 ### Death cam (cheap because the simulation is deterministic)
 - The simulation runs on inputs, so the killer's last seconds can be sent as their inputs and
@@ -315,6 +317,16 @@ transition rather than switching. The core loop stays as it is.
 | 45 | **Transitions and warnings** | Each change blends over 30–60 s: fog density, sky, sun and ambient light, rain streaks, splashes and the rain bed, the sound muffling, fog banks drifting in and thinning out; surfaces wetting as rain starts, drying slowly after, and puddles filling and draining; about a minute's warning before a change (clouds thickening, the wind rising and far thunder before rain, mist gathering in hollows before fog); a benchmark case for the crossover, when rain and fog both run | Screenshot tests mid-transition look right, a player can tell rain or fog is coming before it arrives, and the benchmark's crossover frame holds the budget | **Done** (`src/client/outlook.ts`, from the forecast and the clock of the moment shown: the clouds turn first, the air's reach blends by ratio, rain comes in as fewer streaks, splashes and ripples and a quieter bed, and the wind sways trees and grass harder or softer and sounds it. Signs start 75 s ahead: before rain the sky greys 60% of the way, the wind nearly doubles, birds hush and thunder rolls 3–4.5 km off, once or twice; before fog, mist gathers by the sea and in valleys and the banks spread from their deepest. The ground soaks in 30 s and dries over 3 min, the puddles fill over 90 s and drain over 6, and soldiers dry in the open once it stops. `Forecast.next` gives the coming change, `Forecast.held` and `?sky=from,to,x` hold any moment for screenshots and the benchmark; six screenshot tests part way through changes. Seen in a game in the browser fed a change 70 s ahead, at 60 fps. The benchmark's rain-to-fog crossover: 11.8 to 14.7 ms a frame over four runs, within 0.4 ms of the rain frame each time and under 16.7 ms at the 95th percentile; runs alternated with the last commit's matched it within the noise, and the baseline was kept from one run. Bots don't use the signs: chunk 46) |
 | 46 | **Playing the weather** | Operator bots use the weather: rats and looters move in fog, hunters push under rain's cover, campers hold as sight shortens; the bot playtest run over the cycle instead of fixed day and rainy-night runs; the changelog, Features and Vision updated; a human pass on how the changes feel in play | The bot playtest stays at 15% ± 3 with the cycle running, and a tester notices and uses the weather turning | **Done** (`coverOf` in `src/shared/weather.ts` reads fog's and rain's cover from the senses, so it blends with each change; bots are given `Forecast.next`, as anyone outside sees the signs. Rats seeing fog under 75 s off lie low in a bush near where they are until it's halfway in, unless that would leave too little time to get out; in fog rats and looters plan a crate more, a looter carries 6 kg more, and both keep low only 40% as far from outposts, a rat sprinting and leaving the bushes for straight paths. A hunter under rain stops half as far from a fight, runs in to 45 m rather than 90 and goes twice as far to a noise. A camper moves its camp nearer as sight shortens (the ring scaled by sight, down to 12–22 m in fog), picks again when sight changes by a quarter, ignores noises below 85% of clear sight, and stays up to 90 s longer in fog. The playtest now runs over the cycle by default (since chunk 44) and splits runs by the weather they ended in and by kind and weather. Bot playtest, seeds 1–6: 13% extracted against 15% at the last commit; seeds 7–12: 21% against 18%, so over both, 17% against 16.5%: within the noise. In seeds 1–6, 53 rats lay low for fog, 87 crates were planned more in fog, hunters closed in under rain 47 times, and camps moved nearer 20 times. Four unit tests. Afterwards the bots came to read the other signs too: a hunter stays on 120 s longer to hunt while rain is coming or in, turning back from heading out if it has to, and a rat or a looter seeing a fog lift gives up the crate it took on for it unless within 30 m of it; seeds 1–6 then came to 15% (seeds 7–12: 19%), with 68 of 86 fog crates given up as the fog lifted. The human pass: the developer played it, found it hard to judge but fine, and accepted it) |
 
+### Phase 7: ready for other players (still local only, Chrome only)
+
+Pieces of Future's multiplayer that can be built and tested locally first, so they are in place
+when a multiplayer server arrives. Started on 2026-10-03 with the scoreboard. The same rules
+apply: no backend, and nothing that breaks the rules that keep multiplayer easy to add later.
+
+| # | Chunk | Scope | Done when | Status |
+|---|---|---|---|---|
+| 47 | **Scoreboard on Tab** | Held during a run, Tab shows every operator in the game who is a player, bots left out, with their kills, deaths, best run score and cumulative score; the server keeps each player's record over the game, across their runs in it, and sends it to every player as an event whenever it changes; Esc stays the pause screen | Holding Tab in a run shows your line, and a kill, a death or an extraction shows on it, carried on to your next run on the same island | **Done** (`src/client/scoreboard.ts`; the records are kept in `GameServer` by name, see Known Issues; kills count guards and operators alike; nothing counts on the range; checked by unit tests with two players in one game and a browser test; locally the board only ever lists you) |
+
 ## Known Issues
 
 Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
@@ -338,6 +350,16 @@ Nothing open: the last was resolved on 2026-10-03 (see the history).
 Nothing open: the last was resolved on 2026-10-03 (see the history, and the bot extraction
 baseline in Decisions).
 
+### Scoreboard
+- **Records kept by name** (chunk 47): the server keeps each player's line under the name typed
+  on the menu, so two players with the same name share one line, and anyone can carry on another's
+  record by taking their name. Waits on anonymous identity (Future).
+- **Records last only as long as the game** (chunk 47): the cumulative score is over one game on
+  one island; back on the menu for more than 2 minutes (the game closes) or playing another
+  island starts everyone afresh, and nothing is kept in the browser.
+- **Only ever you, locally** (chunk 47): without a multiplayer server the board lists one line;
+  several players in one game are covered by unit tests only, not seen on screen.
+
 ## Future
 - **Multiplayer**
   - Node server that reuses `server/`, with WebSocket first
@@ -351,9 +373,8 @@ baseline in Decisions).
     2026-10-02 until then. The plan for it: Share link makes a fresh, randomly seeded private
     island that only players with the link join, so friends take its bots' slots and quick join
     never fills it with strangers (built once and reverted, commit 5ea65d8)
-  - **Scoreboard on Tab:** held during a run, it shows every operator in the game who is a
-    player, bots left out, with their kills and deaths, best run score and cumulative score. Esc
-    stays the pause screen it is now
+  - **Scoreboard on Tab:** built locally in chunk 47; with a server it lists everyone playing in
+    the game, and keeps records by identity rather than by name
   - Anonymous identity, basic anti-cheat, deployment
   - Left from the local build (see "Moved to Future" in `KNOWN_ISSUES_HISTORY.md`): scores and
     leaderboards kept by the server instead of in links and one browser; every run's stats sent to

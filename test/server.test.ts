@@ -95,6 +95,7 @@ describe('GameServer joining', () => {
     expect(inbox).toEqual([]);
     server.receive(id, { t: 'hello', name: 'late', world: DEFAULT_WORLD, mode: 'online' });
     server.step();
-    expect(inbox.map((m) => m.t)).toEqual(['welcome', 'snapshot']);
+    // The scoreboard, now listing them, comes with the first snapshot.
+    expect(inbox.map((m) => m.t)).toEqual(['welcome', 'snapshot', 'events']);
   });
 });

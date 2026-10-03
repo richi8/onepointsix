@@ -35,6 +35,7 @@ import { wobble } from './water.ts';
 import { RunLog } from './runlog.ts';
 import { exportRuns, renderStats } from './stats.ts';
 import { RivalHud } from './rivalhud.ts';
+import { Scoreboard } from './scoreboard.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
 import { surfaceMaterial } from './surfaces.ts';
@@ -129,6 +130,7 @@ bags.soakNear = (x, y, z) => bodies.soakNear(x, y, z);
 const hud = new Hud();
 const runHud = new RunHud(world);
 const rivalHud = new RivalHud(world);
+const scoreboard = new Scoreboard(window, () => !!conn && !conn.over);
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
 view.onThunder = (distance) => sfx.thunder(distance);
@@ -1415,6 +1417,7 @@ renderer.setAnimationLoop(() => {
   }
   if (conn && !cam && me && !conn.over) rivalHud.update(conn.bags, conn.bounty, conn.id, camera.position, conn.lastTick * SERVER_DT, camera);
   else rivalHud.update([], null, 0, null, 0, camera);
+  scoreboard.update(conn?.board ?? [], conn?.id ?? 0, !!conn && !conn.over && !cam && !!paused.hidden);
   const contracts = conn && !conn.over && !cam ? (conn.run?.contracts ?? []) : [];
   contractProps.update(contracts);
 
