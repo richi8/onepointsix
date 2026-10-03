@@ -116,9 +116,10 @@ for (const [name, query] of Object.entries(YARD)) {
   });
 }
 
-// Deathmatch's map (see maps/teststreet.ts): down its street from the west
-// end, the two-storey house on the left and the two-room one on the right, and
-// from above, the yards, the outside stair and the walls round it.
+// Deathmatch's map (see maps/teststreet.ts), built from the kit: down its
+// street from the west end, the row of houses sharing walls on the left and
+// the balcony over the street on the right, and from above, the roofs and
+// their parapets, the yards and the walls round it.
 const MAP: Record<string, string> = {
   'test-street': '-26,17.7,1,10,16.5,0',
   'test-street-above': '-30,40,30,0,16,0',

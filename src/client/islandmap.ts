@@ -12,11 +12,14 @@ import type { Box, Rect, World } from '../shared/world.ts';
 // - green: how much water gathers there in rain, 0 to 1: hollows in the
 //   ground, where it's flat enough to hold a puddle, and a little on level
 //   ground;
-// - blue: which building's light volume covers the cell, its slot plus one,
-//   or 0 for none (see indoorlight.ts).
+// - blue: which buildings' light volumes cover the cell, as SLOT_PAIR (see
+//   indoorlight.ts): the first's slot plus one, and where a second's meets
+//   it, as two buildings sharing a wall do, SLOT_PAIR times its slot plus one.
 
 /** Metres across a cell. */
 export const ISLAND_CELL = 2;
+/** The blue channel holds a cell's first building's slot plus one, plus this times a second's. */
+export const SLOT_PAIR = 17;
 /** Roof height where there's none. */
 export const NO_ROOF = -1000;
 /** Steps across a cell in which a roof's edge is placed. */
@@ -201,7 +204,11 @@ export class IslandMap {
     this.texture.needsUpdate = true;
   }
 
-  /** Mark each building's cells with its slot plus one, from `bounds(slot)`: its light volume's corners on the ground. */
+  /**
+   * Mark each building's cells with its slot plus one, from `bounds(slot)`:
+   * its light volume's corners on the ground. A cell already marked takes it
+   * as its second, and a third is left out.
+   */
   slots(count: number, bounds: (slot: number) => [number, number, number, number]): void {
     const n = this.cells;
     const x0 = -this.world.half;
@@ -211,7 +218,10 @@ export class IslandMap {
       const one = THREE.DataUtils.toHalfFloat(s + 1);
       for (let j = Math.max(Math.floor((minZ - x0) / ISLAND_CELL), 0); j <= Math.min(Math.floor((maxZ - x0) / ISLAND_CELL), n - 1); j++) {
         for (let i = Math.max(Math.floor((minX - x0) / ISLAND_CELL), 0); i <= Math.min(Math.floor((maxX - x0) / ISLAND_CELL), n - 1); i++) {
-          this.data[(j * n + i) * 4 + 2] = one;
+          const k = (j * n + i) * 4 + 2;
+          const had = Math.round(THREE.DataUtils.fromHalfFloat(this.data[k]));
+          if (had === 0) this.data[k] = one;
+          else if (had < SLOT_PAIR) this.data[k] = THREE.DataUtils.toHalfFloat(had + SLOT_PAIR * (s + 1));
         }
       }
     }

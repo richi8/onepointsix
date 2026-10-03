@@ -1,5 +1,5 @@
 import type { Mode } from '../protocol.ts';
-import type { Plan, Rect } from '../world.ts';
+import type { Rect } from '../world.ts';
 import { TEST_STREET } from './teststreet.ts';
 
 // A fixed map: the ground, buildings and everything else a mode is played on,
@@ -25,25 +25,88 @@ export interface MapGround {
   blend: number;
 }
 
+/** What fills a gap in a wall: a doorway hung with a pair of leaves, a glazed window, or an archway with nothing in it. */
+export type OpeningKind = 'door' | 'window' | 'arch';
+
 /**
- * A building, until the building kit: one of the island's plans with its
- * size given. Its footprint starts at (x, z), its length `L` along x for a
- * front facing ±z and along z for one facing ±x, and `D` deep; an L's wing is
- * `W` wide and juts `E` out in front. With `flip`, its plan runs the other way
- * along its front. Its floor is at `floor`, `crates` crates in its rooms.
+ * A gap in one of a block's walls, on storey `storey` (0, the ground's, if
+ * left out), its middle `at` metres along the wall's line from the block's
+ * corner with the lesser x or z. A door is 2.2 m wide, a window 1.2 and an
+ * arch 2.4, unless `width` says otherwise; an arch reaches `height` above its
+ * floor, 2.6 m if left out, and the full storey at 3. On a wall shared with
+ * the next block, either block's openings go through it, and a door's leaves
+ * swing into the block that has it.
  */
-export interface MapBuilding {
-  plan: Plan;
+export interface MapOpening {
+  side: Facing;
+  at: number;
+  kind: OpeningKind;
+  storey?: number;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * A balcony off a block's wall on `storey` (1 or more): a slab `width` wide
+ * and `depth` deep, its middle `at` along the wall as an opening's, railed
+ * round. A door or an arch onto it is an opening of its own.
+ */
+export interface MapBalcony {
+  side: Facing;
+  storey: number;
+  at: number;
+  width: number;
+  depth: number;
+}
+
+/**
+ * One rectangle of a building, its walls standing on its edges (the
+ * rectangle runs along their middles, so a block beside it shares the wall),
+ * `storeys` storeys of 3 m high under a flat roof railed round by a parapet.
+ * With `from`, the storeys below that one are left open: a passage under it,
+ * walled by the blocks either side.
+ */
+export interface MapBlock extends Rect {
+  storeys: number;
+  from?: number;
+  openings?: MapOpening[];
+  balconies?: MapBalcony[];
+}
+
+/**
+ * A flight of stairs inside a building, from storey `storey`'s floor up to
+ * the next one's, or from a block's top storey through a hatch onto its roof:
+ * its foot's middle at (x, z), on the floor where it starts, climbing toward
+ * `climbs`, `width` wide (1.5 m if left out). The floor above has a hole over
+ * it, railed along its open side up to its last steps, where it's stepped off.
+ */
+export interface MapFlight {
   x: number;
   z: number;
-  L: number;
-  D: number;
-  W?: number;
-  E?: number;
-  facing: Facing;
-  flip?: boolean;
+  climbs: Facing;
+  storey: number;
+  width?: number;
+}
+
+/** A crate inside a building, its middle at (x, z) on storey `storey`'s floor (0 if left out), `size` a side (1.1 m if left out). */
+export interface MapCrate {
+  x: number;
+  z: number;
+  storey?: number;
+  size?: number;
+}
+
+/**
+ * A building: blocks side by side on one ground floor, at `floor`, joined by
+ * their shared walls' openings, with flights of stairs between their storeys
+ * and crates in their rooms. Blocks of one building and the next share walls
+ * just the same.
+ */
+export interface MapBuilding {
   floor: number;
-  crates?: number;
+  blocks: MapBlock[];
+  flights?: MapFlight[];
+  crates?: MapCrate[];
 }
 
 /** A solid box from `y0` up to `y1`: a freestanding wall. */
@@ -53,8 +116,9 @@ export interface MapBox extends Rect {
 }
 
 /**
- * A flight of steps `width` wide, its foot's middle at (x, z) on the ground
- * at `y0`, climbing toward `climbs` to `y1`, where it ends.
+ * A flight of steps outside, `width` wide, its foot's middle at (x, z) on
+ * the ground at `y0`, climbing toward `climbs` to `y1`, where it ends. Coming
+ * up beside a roof as high, it opens the roof's parapet round its top steps.
  */
 export interface MapStair {
   x: number;

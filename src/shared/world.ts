@@ -10,6 +10,7 @@ import {
 } from './constants.ts';
 import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
 import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
+import { buildKit, flightSteps } from './kit.ts';
 import type { GameMap, MapGround, MapStair } from './maps/index.ts';
 import { fbm, mulberry32 } from './rng.ts';
 
@@ -164,8 +165,9 @@ export interface Rock {
 
 /**
  * A roofed building: its outer footprint's bounds, the floor it stands on and
- * the underside of its roof. `parts` are the rectangles its walls enclose:
- * one, or two for an L.
+ * the underside of its (highest) roof. `parts` are the rectangles its walls
+ * enclose: one, or two for an L; a map's buildings are built from the kit
+ * (see kit.ts), any number of rectangles of up to three storeys.
  */
 export interface Building {
   minX: number;
@@ -174,10 +176,12 @@ export interface Building {
   maxZ: number;
   floor: number;
   roof: number;
-  plan: Plan;
+  plan: Plan | 'kit';
   parts: Rect[];
   /** The upper storey's floor, or null with only one. */
   upper: number | null;
+  /** A building of the kit's floors above the ground's, lowest first; `upper` is the first. */
+  uppers?: number[];
   /** Index into World.outposts, or -1 for a building out in the country. */
   outpost: number;
 }
@@ -222,11 +226,17 @@ export function watchtower(o: Outpost): Point {
   return { x: o.x + TOWER_OFFSET, y: o.y + TOWER_TOP, z: o.z + TOWER_OFFSET };
 }
 
-/** A doorway or window in a building's wall, centred `at` along it. */
+/**
+ * A doorway, window or archway in a building's wall, centred `at` along it:
+ * a doorway's leaves swing toward `inward` across the wall if it's given, and
+ * an archway reaches `height` above its floor.
+ */
 interface Opening {
   at: number;
   width: number;
-  kind: 'door' | 'window';
+  kind: 'door' | 'window' | 'arch';
+  inward?: 1 | -1;
+  height?: number;
 }
 
 /** Anything that moves through the world with a player-sized collision hull. */
@@ -262,9 +272,6 @@ const HOUSE_HEIGHT = 3;
 export const HOUSE_ROOF = 0.2;
 /** How wide a two-storey building's stairs are: room for a bot's path up them beside the upper floor's edge. */
 const STAIR_WIDTH = 1.5;
-/** A stair's rise and run, as a two-storey building's: a step up at a time, and room for a foot. */
-const STEP_RISE = 0.5;
-const STEP_RUN = 0.55;
 /** A shipping container's height. */
 const CONTAINER_HEIGHT = 2.6;
 /** Doorways are wide enough that a bot's path always finds a way through, and take a pair of leaves. */
@@ -1324,7 +1331,8 @@ export class World {
    * c0 and c1 across it, with `openings` in it, standing on the floor at `y`
    * and reaching down to `base`. Solid stretches are a box each; a window has
    * a sill below it and glass on the sill, a doorway a pair of leaves that
-   * swing toward `inward` across the wall, and every opening a lintel above it.
+   * swing toward `inward` across the wall (or its own), an archway nothing,
+   * and every opening a lintel above it.
    */
   private addFacade(
     frame: Frame, a0: number, a1: number, c0: number, c1: number, y: number, base: number,
@@ -1349,19 +1357,20 @@ export class World {
         const g = box(o.at - o.width / 2, mid - GLASS / 2, o.at + o.width / 2, mid + GLASS / 2);
         const glass = this.addPanel(g.minX, y + WINDOW_SILL, g.minZ, g.maxX, y + WINDOW_TOP, g.maxZ, 'glass');
         this.panels[glass].box.clear = true;
-      } else {
+      } else if (o.kind === 'door') {
         const open = rng() < DOORS_OPEN;
         const half = o.width / 2;
         const leaves = [-1, 1].map((side) => {
           const [hx, hz] = frame(o.at + side * half, mid);
           const [sx, sz] = frame(o.at + side * half - side, mid);
-          const [ix, iz] = frame(o.at + side * half, mid + inward);
+          const [ix, iz] = frame(o.at + side * half, mid + (o.inward ?? inward));
           return this.addDoor(hx, hz, sx - hx, sz - hz, ix - hx, iz - hz, half - DOOR_GAP / 2, y + 0.02, y + DOOR_HEIGHT - 0.04, open);
         });
         this.doors[leaves[0]].pair = leaves[1];
         this.doors[leaves[1]].pair = leaves[0];
       }
-      this.addProp(r.minX, y + (o.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP), r.minZ, r.maxX, top, r.maxZ, 'wall');
+      const lintel = y + (o.kind === 'door' ? DOOR_HEIGHT : o.kind === 'window' ? WINDOW_TOP : (o.height ?? DOOR_HEIGHT));
+      if (top - lintel > 0.01) this.addProp(r.minX, lintel, r.minZ, r.maxX, top, r.maxZ, 'wall');
     }
   }
 
@@ -1436,21 +1445,24 @@ export class World {
     }
   }
 
-  /** Everything standing on a map's ground, its crates' and containers' colours drawn from `rng`. */
+  /**
+   * Everything standing on a map's ground, its crates' and containers'
+   * colours drawn from `rng`: its buildings from the kit, their doors found
+   * open or shut from a stream of their own.
+   */
   private buildMap(map: GameMap, rng: () => number): void {
-    map.buildings.forEach((m, i) => {
-      const spec: Spec = { plan: m.plan, L: m.L, D: m.D, W: m.W ?? 0, E: m.E ?? 0 };
-      const alongX = m.facing === '-z' || m.facing === '+z';
-      const [w, d] = alongX ? [m.L, m.D] : [m.D, m.L];
-      const [lo] = this.heightRange(m.x, m.z, m.x + w, m.z + d);
-      const f = frameOf(m.x, m.z, m.L, m.D, alongX, !!m.flip, m.facing[0] === '+');
-      // Each building's own stream, for where its doors and windows fall, so one changed moves no other.
-      const b = this.addBuilding(spec, f, m.floor, Math.min(lo, m.floor) - 0.5, mulberry32(this.seed ^ Math.imul(i + 1, 0x9e3779b1)), -1, m.crates ?? 0);
-      // A concrete floor over the ground, inside its walls.
-      for (const r of b.parts) {
-        this.addProp(r.minX + HOUSE_WALL, lo - 0.3, r.minZ + HOUSE_WALL, r.maxX - HOUSE_WALL, m.floor, r.maxZ - HOUSE_WALL, 'floor');
-      }
-    });
+    const kit = buildKit(map.buildings, map.stairs, (x, z) => this.terrainHeight(x, z));
+    const doors = mulberry32(this.seed ^ 0x1b873593);
+    for (const w of kit.walls) {
+      const frame: Frame = w.axis === 'x' ? (a, c) => [a, c] : (a, c) => [c, a];
+      this.addFacade(frame, w.a0, w.a1, w.line - HOUSE_WALL / 2, w.line + HOUSE_WALL / 2, w.y, w.base, w.openings, 1, doors);
+    }
+    for (const b of kit.boxes) this.addProp(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, b.part).walk = b.walk;
+    for (const c of kit.crates) this.addPanel(c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ, 'crate', [], rng());
+    for (const b of kit.buildings) {
+      const { uppers, ...rest } = b;
+      this.buildings.push({ ...rest, plan: 'kit', upper: uppers[0] ?? null, uppers, outpost: -1 });
+    }
     for (const w of map.walls) this.addWall(w.minX, w.y0, w.minZ, w.maxX, w.y1, w.maxZ);
     for (const s of map.stairs) this.addStair(s);
     // The panel of each prop, for crates stacked on it; -1 for a container.
@@ -1472,17 +1484,8 @@ export class World {
 
   /** A flight of steps, each a floor bots climb. */
   private addStair(s: MapStair): void {
-    const steps = Math.max(1, Math.ceil((s.y1 - s.y0) / STEP_RISE - 1e-6));
-    const [ux, uz] = { '-x': [-1, 0], '+x': [1, 0], '-z': [0, -1], '+z': [0, 1] }[s.climbs];
-    const half = s.width / 2;
-    for (let k = 0; k < steps; k++) {
-      const [a0, a1] = [k * STEP_RUN, (k + 1) * STEP_RUN];
-      const x0 = s.x + ux * a0 - Math.abs(uz) * half;
-      const x1 = s.x + ux * a1 + Math.abs(uz) * half;
-      const z0 = s.z + uz * a0 - Math.abs(ux) * half;
-      const z1 = s.z + uz * a1 + Math.abs(ux) * half;
-      const top = s.y0 + ((s.y1 - s.y0) * (k + 1)) / steps;
-      this.addProp(Math.min(x0, x1), s.y0 - 0.3, Math.min(z0, z1), Math.max(x0, x1), top, Math.max(z0, z1), 'step').walk = true;
+    for (const { r, top } of flightSteps(s.x, s.z, s.width, s.climbs, s.y0, s.y1)) {
+      this.addProp(r.minX, s.y0 - 0.3, r.minZ, r.maxX, top, r.maxZ, 'step').walk = true;
     }
   }
 

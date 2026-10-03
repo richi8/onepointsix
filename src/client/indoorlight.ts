@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { HOUSE_ROOF, inBuilding, type Box, type Building, type Tree, type World } from '../shared/world.ts';
-import { ISLAND_GLSL, islandUniforms, type IslandMap } from './islandmap.ts';
+import { ISLAND_GLSL, islandUniforms, SLOT_PAIR, type IslandMap } from './islandmap.ts';
 
 // How much of the sky's light reaches each point inside the buildings, and
 // in what colour. Each building has a small grid of cells over it, and each
@@ -114,8 +114,16 @@ export const INDOOR_GLSL = /* glsl */ `
   vec4 indoorSky(vec3 p, vec3 n, out vec3 sun) {
     sun = vec3(0.0);
     vec3 q = p + n * 0.2;
-    int slot = int(islandCell(q).b + 0.5) - 1;
+    int pair = int(islandCell(q).b + 0.5);
+    int slot = pair % ${SLOT_PAIR} - 1;
+    int other = pair / ${SLOT_PAIR} - 1;
     if (slot < 0) return vec4(1.0, 1.0, 1.0, 0.0);
+    if (other >= 0) {
+      // Two buildings side by side: the first's, within its walls (inside the
+      // ring of cells round its grid), else the second's.
+      vec2 w = (q.xz - indoorCorner[slot].xz) * indoorScale[slot].xz;
+      if (any(lessThan(w, vec2(1.0))) || any(greaterThan(w, indoorCount[slot].xz - 1.0))) slot = other;
+    }
     vec4 corner = indoorCorner[slot];
     vec3 c = (q - corner.xyz) * indoorScale[slot].xyz;
     vec3 count = indoorCount[slot];
@@ -329,7 +337,15 @@ export class IndoorLight {
     const none = data === this.sunData ? 0 : range;
     out.setRGB(none, none, none, THREE.LinearSRGBColorSpace);
     const [w, h, d] = SLOT;
-    for (let slot = 0; slot < this.grids.length; slot++) {
+    // The building whose walls it's within, as the shaders choose between two side by side; else any whose grid reaches it.
+    const within = (g: Grid) => {
+      const cx = (x - g.x0) / g.sx;
+      const cz = (z - g.z0) / g.sz;
+      return cx >= 1 && cz >= 1 && cx <= g.nx - 1 && cz <= g.nz - 1;
+    };
+    const first = this.grids.findIndex(within);
+    for (let n = 0; n < this.grids.length; n++) {
+      const slot = first >= 0 ? (first + n) % this.grids.length : n;
       const g = this.grids[slot];
       let cx = (x - g.x0) / g.sx;
       let cy = (y - g.y0) / g.sy;
@@ -919,18 +935,19 @@ function crossesCrown(tree: Tree, ox: number, oy: number, oz: number, dx: number
 const TREE_HEIGHT = 7;
 const CROWN_RADIUS = 2.4;
 
-/** A building's cells: a whole number across its footprint each way, and one more all round. */
+/** A building's cells: a whole number across its footprint each way, and one more all round; up it, enough to reach over its roof. */
 function gridFor(world: World, b: Building): Grid {
   const w = b.maxX - b.minX;
   const d = b.maxZ - b.minZ;
   const sx = w / Math.max(1, Math.round(w / CELL));
   const sz = d / Math.max(1, Math.round(d / CELL));
-  const sy = CELL;
   const nx = Math.min(Math.round(w / sx) + 2, SLOT[0]);
   const nz = Math.min(Math.round(d / sz) + 2, SLOT[2]);
   const top = b.roof + HOUSE_ROOF;
   const y0 = b.floor - 0.5;
-  const ny = Math.min(Math.ceil((top + 0.6 - y0) / sy), SLOT[1]);
+  // A building too tall for its slot's cells, as one of three storeys, takes taller ones.
+  const sy = Math.max(CELL, (top + 0.6 - y0) / SLOT[1]);
+  const ny = Math.min(Math.ceil((top + 0.6 - y0) / sy - 1e-6), SLOT[1]);
   const x0 = b.minX - sx;
   const z0 = b.minZ - sz;
   const boxes = world.colliders.filter((c): c is Box =>

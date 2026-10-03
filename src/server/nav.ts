@@ -39,8 +39,12 @@ const SQRT2 = Math.SQRT2;
 /** 8-connected neighbours: x step, z step. Then the cell itself, whose nodes on stairs are a step apart. */
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [0, 0]];
 const SAME = 8;
-/** Floors a cell can have over its ground, and the most there can be on the island. */
-const MAX_LEVELS = 3;
+/**
+ * Floors a cell can have over its ground, and the most there can be on the
+ * island: in a three-storey building, the steps of a flight over another's,
+ * between the floors, come to seven.
+ */
+const MAX_LEVELS = 8;
 const MAX_FLOOR_NODES = 1 << 16;
 /**
  * A floor node stands where a body fits this close to anything in the way,

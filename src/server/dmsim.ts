@@ -1,11 +1,13 @@
 // Plays Deathmatch games of 16 bots in Node, with no browser, and sums up how
 // they went: how often people die and how long they live, how kills spread,
 // how safe respawns are, whether anyone runs out of ammo and what the bots
-// spend their time on. For tuning Deathmatch before and between playtests.
+// spend their time on, and where: on the ground, upstairs or on the roofs.
+// For tuning Deathmatch before and between playtests.
 // Usage: npm run sim:deathmatch [seconds] [seeds, comma-separated]
 
 import { DEATHMATCH_CAPACITY, EYE_HEIGHT, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
+import { inBuilding } from '../shared/world.ts';
 import { MODES } from './directory.ts';
 import { ARENA_SIGHT, arenaPicks } from './population.ts';
 import { GameServer } from './server.ts';
@@ -36,6 +38,8 @@ for (const seed of seeds) {
   const dry = new Set<number>();
   let ranDry = 0;
   const stateTicks = new Map<string, number>();
+  /** Ticks bots spent alive on the ground (a ground floor included), upstairs and on the roofs. */
+  const where = { ground: 0, upstairs: 0, roofs: 0 };
   server.onEvent = (e) => {
     if (e.k !== 'kill') return;
     kills.push({ killer: e.killer, victim: e.victim, head: e.head });
@@ -53,6 +57,12 @@ for (const seed of seeds) {
     for (const b of bots) {
       const s = b.state;
       stateTicks.set(b.bot.state, (stateTicks.get(b.bot.state) ?? 0) + 1);
+      if (!s.dead) {
+        const house = server.world.buildings.find((h) => inBuilding(h, s.x, s.z));
+        if (!house || s.y < house.floor + 1) where.ground++;
+        else if (s.y > house.roof) where.roofs++;
+        else where.upstairs++;
+      }
       const life = lastLife.get(b.id);
       if (life === undefined) spawnedAt.set(b.id, server.time);
       else if (s.life !== life) {
@@ -90,4 +100,6 @@ for (const seed of seeds) {
   console.log(`  life before dying: median ${median(lives).toFixed(0)} s; ${lives.filter((l) => l < SPAWN_KILL).length} died within ${SPAWN_KILL} s of spawning`);
   console.log(`  respawns ${spawns.length}: nearest living operator median ${median(spawns.map((s) => s.nearest)).toFixed(0)} m, least ${Math.min(...spawns.map((s) => s.nearest)).toFixed(0)} m; ${spawns.filter((s) => s.seen).length} in sight; ${unclear} of ${picked} spawns found no clear spot`);
   console.log(`  ran out of ammo ${ranDry} times; time spent: ${states.join(', ')}`);
+  const alive = where.ground + where.upstairs + where.roofs;
+  console.log(`  where: ${Object.entries(where).map(([k, n]) => `${k} ${Math.round((n / alive) * 100)}%`).join(', ')}`);
 }

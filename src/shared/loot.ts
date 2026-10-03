@@ -83,7 +83,7 @@ export function runScore(value: number, kills: number, guardKills: number, contr
 
 /** Crates standing on the ground or on a building's upper floor, in outposts and out in the open; stacked ones are just cover. */
 export function lootCrates(world: World): { box: Box; rich: boolean }[] {
-  const upper = new Set(world.buildings.map((b) => b.upper));
+  const upper = new Set(world.buildings.flatMap((b) => b.uppers ?? [b.upper]));
   return world.props
     .filter((p) => p.style === 'crate' && (p.box.minY < world.terrainHeight((p.box.minX + p.box.maxX) / 2, (p.box.minZ + p.box.maxZ) / 2) || upper.has(p.box.minY)))
     .map(({ box }) => {

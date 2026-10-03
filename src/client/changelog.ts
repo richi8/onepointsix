@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-03',
+    title: 'A busier test street',
+    notes: [
+      'Deathmatch’s test street has five buildings now, built the way the town’s will be. On its north side a row of houses shares its walls: a two-storey one with a balcony and a hatch onto its roof, a three-storey one, a room over a passage through to the yard behind, and a one-storey one whose roof you reach from that room. On its south side a two-room house has an outside stair to its roof, and a two-storey one a balcony over the street and an arched way through to its yard.',
+      'Stairs inside take you up from floor to floor, railed round where the floor above opens over them, and the last flight comes up through a hatch onto the roof.',
+      'Every roof is flat, railed round by a waist-high parapet where it looks out over a drop, and runs straight on into a roof beside it at the same height. Doors open onto the lower roofs next door.',
+      'Bots coming after you can find their way up the stairs and onto the roofs, though they don’t go up there of their own accord yet.',
+    ],
+  },
+  {
+    date: '2026-10-03',
     title: 'A map of its own for Deathmatch',
     notes: [
       'Deathmatch leaves the island for a map of its own, made by hand rather than from the world’s seed: in time a whitewashed town on a hillside above the sea, with flat roofs to fight across. The three towns built for it earlier today are gone: made up afresh for each island, they could never be laid out as well as a map shaped by hand.',
