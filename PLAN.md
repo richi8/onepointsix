@@ -318,9 +318,6 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
   only its near and far, so the mist level is packed into the near distance's multiples of 4096
   m (`mistNear` in `fogbanks.ts`). Anything else that reads `scene.fog.near` gets the packed
   number; only the sea's underwater fog does, saving and restoring it whole.
-- **Thunder isn't the same for everyone** (45): when lightning strikes and how far is random on
-  each client, as before, so two players hear different thunder and a death cam doesn't replay
-  the thunder of its moment. Only how stormy it is comes from the forecast.
 - **Puddles in the sun after rain look pale** (45): once the ground has dried round them, the
   puddles left mirror a bright sky and read as light patches more than water.
 - **Nothing warns that the weather is clearing** (45): before rain or fog lifts, the clouds only

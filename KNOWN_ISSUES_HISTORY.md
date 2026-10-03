@@ -1517,6 +1517,10 @@ notes the chunk it came from.
   shown; GPU timer queries in the benchmark found no cost beyond the noise. Checked by
   a new screenshot test from the island's top at eye height ahead of a fog, where the far
   inland ground now greys over as well as the low valleys.
+- **Thunder isn't the same for everyone** (45): when lightning strikes and how far is random on
+  each client, as before, so two players hear different thunder and a death cam doesn't replay
+  the thunder of its moment. Only how stormy it is comes from the forecast.
+  **Accepted** (2026-10-03): the user is fine with each player hearing their own thunder.
 
 ### Death cam
 - **The replay uses today's cover** (10). Panels that broke or were rebuilt during those seconds
