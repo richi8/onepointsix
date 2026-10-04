@@ -133,6 +133,21 @@ for (const [name, cam] of Object.entries(MAP)) {
   });
 }
 
+// The building kit's later pieces on their test map (see maps/kityard.ts,
+// shown by ?map): the yard from above, with its pitched roofs, the courtyard
+// and the ramp up to the terrace; and the arcade from the street.
+const KIT: Record<string, string> = {
+  'kit-yard': '-60,45,55,0,10,-5',
+  'kit-arcade': '22,11.7,-3,22,11.5,-14',
+};
+
+for (const [name, cam] of Object.entries(KIT)) {
+  test(`kit: ${name}`, async ({ page }) => {
+    await spot(page, cam, '&map=kit-yard');
+    await expect(page).toHaveScreenshot(`${name}.png`);
+  });
+}
+
 // Soldiers stood on the island (see ?stand in main.ts): one in a tree's
 // shadow out in the open, shaded, beside one in the sun; one wading, mirrored
 // in the sea.

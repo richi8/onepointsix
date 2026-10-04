@@ -13,7 +13,8 @@ import { onTiles } from './terrain.ts';
 // container with corner posts, rails, ribbed walls and a pair of doors with
 // their locking bars. Each is one geometry, drawn once per tower or
 // container. What they collide as is unchanged, so every part stays inside
-// the boxes the world has for them.
+// the boxes the world has for them. A map's pitched roofs are drawn here too:
+// two tiled slopes over the layers they collide as, and a gable at each end.
 
 /** Wood's colour: flat, and as a tint over the boards texture once textured. */
 const WOOD_FLAT = 0x6b4f33;
@@ -23,6 +24,71 @@ const PAINT_FLAT = [0x7a3b2e, 0x2f5a73, 0x4e6b3a, 0x8a7a3a, 0x5d6166];
 const PAINT_TINT = [0xc0584a, 0x5d8aad, 0x7d9a5e, 0xc8ae62, 0xa4a8ac];
 /** The corrugated texture is bright galvanised steel: paint darkens it. */
 const PAINT_SHADE = new THREE.Color(0.62, 0.62, 0.62);
+
+/** Wall plaster: the plain grey of a building given no colour, flat and as a tint over concrete; flat, a colour is this much darker than its tint. */
+const PLASTER_FLAT = 0x8d8a82;
+const PLASTER_TINT = 0xe0dcd4;
+const PLASTER_SHADE = 0.63;
+/** Roof tiles' terracotta, flat and as a tint over concrete. */
+const TILES_FLAT = 0x8a4330;
+const TILES_TINT = 0xc8735a;
+/** How far a pitched roof reaches past its walls, at its eaves and its gables. */
+const OVERHANG = 0.25;
+
+/** A map building's plaster `colour` (or the plain grey), flat or as a tint over the concrete texture. */
+export function plasterColor(colour: number | undefined, textured: boolean, out: THREE.Color): THREE.Color {
+  if (colour === undefined) return out.setHex(textured ? PLASTER_TINT : PLASTER_FLAT);
+  out.setHex(colour);
+  return textured ? out : out.multiplyScalar(PLASTER_SHADE);
+}
+
+/**
+ * Every pitched roof of a map as one geometry: two slopes from the eaves up
+ * to the ridge, out past the walls, and a gable at each end over its wall,
+ * with `plaster` telling each vertex whether it's a gable's (and whose) or tiles' (-1).
+ */
+function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster: number[] } {
+  const pos: number[] = [];
+  const plaster: number[] = [];
+  const tri = (a: number[], b: number[], c: number[], who: number) => {
+    pos.push(...a, ...b, ...c);
+    plaster.push(who, who, who);
+  };
+  const quad = (a: number[], b: number[], c: number[], d: number[], who: number) => {
+    tri(a, b, c, who);
+    tri(a, c, d, who);
+  };
+  world.gables.forEach((g, i) => {
+    const alongX = g.ridge === 'x';
+    // Along the ridge (u) and across it (v), to world x, y, z.
+    const at = (u: number, v: number, y: number) => (alongX ? [u, y, v] : [v, y, u]);
+    const [u0, u1] = alongX ? [g.rect.minX, g.rect.maxX] : [g.rect.minZ, g.rect.maxZ];
+    const [v0, v1] = alongX ? [g.rect.minZ, g.rect.maxZ] : [g.rect.minX, g.rect.maxX];
+    const vm = (v0 + v1) / 2;
+    const top = g.y + g.rise;
+    const drop = (OVERHANG * g.rise * 2) / (v1 - v0);
+    const [a0, a1] = [u0 - OVERHANG, u1 + OVERHANG];
+    // The slopes, each wound to face up and out whichever way the axes run.
+    const flip = alongX ? 1 : -1;
+    for (const [ve, side] of [[v0 - OVERHANG, -1], [v1 + OVERHANG, 1]] as const) {
+      const eave = [at(a0, ve, g.y - drop), at(a1, ve, g.y - drop)];
+      const ridge = [at(a0, vm, top), at(a1, vm, top)];
+      if (side * flip > 0) quad(eave[0], eave[1], ridge[1], ridge[0], -1);
+      else quad(eave[0], ridge[0], ridge[1], eave[1], -1);
+    }
+    // The gables, over the walls' outer faces.
+    for (const [u, side] of [[u0, -1], [u1, 1]] as const) {
+      const [p, q, r] = [at(u, v0, g.y), at(u, v1, g.y), at(u, vm, top)];
+      if (side * flip > 0) tri(p, r, q, i);
+      else tri(p, q, r, i);
+    }
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.length).fill(1), 3));
+  geometry.computeVertexNormals();
+  return { geometry, plaster };
+}
 
 /** A container's size, as the world builds it: long half-length, half-width and height, from 0.2 below its ground. */
 const HALF_LONG = 3;
@@ -188,6 +254,9 @@ export class Structures {
   readonly group = new THREE.Group();
   private readonly towers: THREE.InstancedMesh;
   private readonly containers: THREE.InstancedMesh;
+  /** The pitched roofs, and which gable's plaster each vertex wears, or -1 for tiles. */
+  private readonly gables: THREE.Mesh;
+  private readonly plaster: number[];
   private readonly world: World;
   /** Each container's paint, from the world: 0 to 1. */
   private readonly paint: number[] = [];
@@ -214,16 +283,33 @@ export class Structures {
       this.containers.setColorAt(i, c.setHex(pick(PAINT_FLAT, tint)));
       this.paint.push(tint);
     });
-    for (const mesh of [this.towers, this.containers]) {
+    const gables = gableGeometry(world);
+    this.plaster = gables.plaster;
+    this.gables = new THREE.Mesh(gables.geometry, onTiles(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }), world));
+    this.colourGables(false);
+    for (const mesh of [this.towers, this.containers, this.gables]) {
       mesh.castShadow = mesh.receiveShadow = true;
       this.group.add(mesh);
     }
+  }
+
+  /** Each gable in its building's plaster and the slopes in tiles, flat or as tints. */
+  private colourGables(textured: boolean): void {
+    const colours = this.gables.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const c = new THREE.Color();
+    this.plaster.forEach((who, i) => {
+      if (who < 0) c.setHex(textured ? TILES_TINT : TILES_FLAT);
+      else plasterColor(this.world.gables[who].colour, textured, c);
+      colours.setXYZ(i, c.r, c.g, c.b);
+    });
+    colours.needsUpdate = true;
   }
 
   /** The props these are drawn in place of: every tower's and container's. */
   static replaces(world: World): Set<number> {
     const out = new Set<number>();
     for (const t of world.towers) for (const i of t.props) out.add(i);
+    for (const g of world.gables) for (const i of g.props) out.add(i);
     world.props.forEach((p, i) => p.style === 'metal' && out.add(i));
     return out;
   }
@@ -231,7 +317,9 @@ export class Structures {
   /** Swap the flat colours for textures: boards for the towers, painted steel for the containers. */
   applyAssets(assets: Assets): void {
     const world = this.world;
-    const old = [this.towers.material, this.containers.material] as THREE.Material[];
+    const old = [this.towers.material, this.containers.material, this.gables.material] as THREE.Material[];
+    this.gables.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.concrete }, { vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }, 1, { wet: true }), world);
+    this.colourGables(true);
     this.towers.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.boards }, { color: WOOD_TINT, vertexColors: true, roughness: 0.85 }, 1, { indoor: true, wet: true }), world);
     this.containers.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.metal }, { color: PAINT_SHADE, vertexColors: true, roughness: 0.55, metalness: 0.25 }, 0.3, { indoor: true, wet: true }), world);
     const c = new THREE.Color();

@@ -39,6 +39,8 @@ export type OpeningKind = 'door' | 'window' | 'arch';
  */
 export interface MapOpening {
   side: Facing;
+  /** On the block's courtyard's wall on that side, not its outside's. */
+  court?: boolean;
   at: number;
   kind: OpeningKind;
   storey?: number;
@@ -60,15 +62,39 @@ export interface MapBalcony {
 }
 
 /**
+ * A ground storey open on one side between pillars: `bays` arches 2.6 m
+ * high across the whole side, `pillar` metres wide between them and at the
+ * corners (0.6 if left out).
+ */
+export interface MapArcade {
+  side: Facing;
+  bays: number;
+  pillar?: number;
+}
+
+/**
  * One rectangle of a building, its walls standing on its edges (the
  * rectangle runs along their middles, so a block beside it shares the wall),
- * `storeys` storeys of 3 m high under a flat roof railed round by a parapet.
+ * `storeys` storeys of its building's storey height (3 m unless it says
+ * otherwise) under a roof. The roof is flat, walked and railed round by a
+ * parapet; or `pitched`, tiled and out of reach, its ridge along `ridge`
+ * (the longer side if left out), its gable ends over the other two walls.
  * With `from`, the storeys below that one are left open: a passage under it,
- * walled by the blocks either side.
+ * walled by the blocks either side. `floor` stands it on a floor of its own,
+ * not its building's: a room over a lane at whatever height it needs.
+ * With `court`, a rectangle inside it is left open to the sky, a courtyard,
+ * walled round as the block's outside is; its walls' openings are given as
+ * the block's, with `court` set, `at` from the courtyard's corner. The
+ * rooms round it are joined on every storey by archways at their corners.
  */
 export interface MapBlock extends Rect {
   storeys: number;
   from?: number;
+  floor?: number;
+  roof?: 'flat' | 'pitched';
+  ridge?: 'x' | 'z';
+  court?: Rect;
+  arcade?: MapArcade;
   openings?: MapOpening[];
   balconies?: MapBalcony[];
 }
@@ -100,10 +126,14 @@ export interface MapCrate {
  * A building: blocks side by side on one ground floor, at `floor`, joined by
  * their shared walls' openings, with flights of stairs between their storeys
  * and crates in their rooms. Blocks of one building and the next share walls
- * just the same.
+ * just the same. Its storeys are `storey` metres floor to floor (3 if left
+ * out: taller for a church), and its walls are plastered `colour` (a plain
+ * grey if left out).
  */
 export interface MapBuilding {
   floor: number;
+  storey?: number;
+  colour?: number;
   blocks: MapBlock[];
   flights?: MapFlight[];
   crates?: MapCrate[];
@@ -129,6 +159,18 @@ export interface MapStair {
   x: number;
   z: number;
   width: number;
+  climbs: Facing;
+  y0: number;
+  y1: number;
+}
+
+/**
+ * A ramp: the rectangle's ground made a walked slope, from `y0` at its foot
+ * up toward `climbs` to `y1` at its head, in steps too low to notice, filled
+ * solid down to the ground: a road climbing where the terrain's 4 m grid
+ * can't, with a face of its own over lower ground beside it.
+ */
+export interface MapRamp extends Rect {
   climbs: Facing;
   y0: number;
   y1: number;
@@ -168,6 +210,7 @@ export interface GameMap {
   buildings: MapBuilding[];
   walls: MapBox[];
   stairs: MapStair[];
+  ramps?: MapRamp[];
   props: MapProp[];
   spawns: MapSpawn[];
   /** Its lanes and streets, for the dev view. */
@@ -190,9 +233,15 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
     ...map,
     ground: { ...map.ground, x0: map.ground.x0 + dx, z0: map.ground.z0 + dz },
     bounds: rect(map.bounds),
-    buildings: map.buildings.map((b) => ({ ...b, blocks: b.blocks.map(rect), flights: b.flights?.map(at), crates: b.crates?.map(at) })),
+    buildings: map.buildings.map((b) => ({
+      ...b,
+      blocks: b.blocks.map((k) => ({ ...rect(k), ...(k.court ? { court: rect(k.court) } : {}) })),
+      flights: b.flights?.map(at),
+      crates: b.crates?.map(at),
+    })),
     walls: map.walls.map(rect),
     stairs: map.stairs.map(at),
+    ramps: map.ramps?.map(rect),
     props: map.props.map((p) => (p.kind === 'crate' ? at(p) : rect(p))),
     spawns: map.spawns.map(at),
     lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),

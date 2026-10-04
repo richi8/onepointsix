@@ -6,12 +6,13 @@ import { GameServer } from '../src/server/server.ts';
 import { Btn, CMD_DT, SERVER_DT, SERVER_TICK_RATE } from '../src/shared/constants.ts';
 import { yawToward } from '../src/shared/geom.ts';
 import { launchGrenade, stepGrenade } from '../src/shared/grenade.ts';
-import { flightSteps, KIT_WALL, SLAB, STOREY } from '../src/shared/kit.ts';
+import { flightSteps, KIT_WALL, placeBlocks, rampSteps, SLAB, STOREY } from '../src/shared/kit.ts';
 import { groundWeights } from '../src/shared/ground.ts';
 import { Layer } from '../src/shared/layers.ts';
 import { lootCrates } from '../src/shared/loot.ts';
 import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 import { mapFor, type GameMap, type MapBlock } from '../src/shared/maps/index.ts';
+import { KIT_YARD } from '../src/shared/maps/kityard.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
 import { reached } from '../src/server/nav.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
@@ -30,27 +31,35 @@ function fingerprint(w: World): string {
 
 const street = new World(1, TEST_STREET);
 const town = new World(1, CALABIANCA);
+const yard = new World(1, KIT_YARD);
+/** The kit yard's ground. */
+const GROUND_AT = KIT_YARD.ground.heights[0][0];
 /** The test street's buildings' ground floors. */
 const FLOOR_AT = TEST_STREET.buildings[0].floor;
 
-/** Every room of a map's buildings, a storey of a block at a time, and every roof: where its floor is, and the inside of its walls. */
+/** Every room of a map's buildings, a storey of a block at a time, and every flat roof: where its floor is, its height, and the inside of its walls. */
 interface Room {
   name: string;
   block: MapBlock;
   y: number;
+  height: number;
   inner: Rect;
   roof: boolean;
 }
 function roomsOf(map: GameMap): Room[] {
-  return map.buildings.flatMap((b, i) => b.blocks.flatMap((block, j) => {
+  const placed = placeBlocks(map.buildings);
+  return placed.flatMap((p) => {
+    const { block } = p;
+    const i = map.buildings.indexOf(p.building);
+    const j = placed.filter((q) => q.building === p.building).indexOf(p);
     const inner = { minX: block.minX + KIT_WALL / 2, minZ: block.minZ + KIT_WALL / 2, maxX: block.maxX - KIT_WALL / 2, maxZ: block.maxZ - KIT_WALL / 2 };
     const rooms = Array.from({ length: block.storeys - (block.from ?? 0) }, (_, k): Room => {
       const s = k + (block.from ?? 0);
-      return { name: `building ${i} block ${j} storey ${s}`, block, y: b.floor + STOREY * s, inner, roof: false };
+      return { name: `building ${i} block ${j} storey ${s}`, block, y: p.floor + p.height * s, height: p.height, inner, roof: false };
     });
-    rooms.push({ name: `building ${i} block ${j} roof`, block, y: b.floor + STOREY * block.storeys + SLAB, inner, roof: true });
+    if (!p.pitched) rooms.push({ name: `building ${i} block ${j} roof`, block, y: p.top + SLAB, height: p.height, inner, roof: true });
     return rooms;
-  }));
+  });
 }
 
 /** The footprints of a map's flights of stairs, inside and out. */
@@ -227,9 +236,119 @@ describe('The building kit, on the test street', () => {
   });
 });
 
+describe('The building kit\'s later pieces, in the kit yard', () => {
+  const [house, cottage, court, arcade, hall, lane, terrace] = KIT_YARD.buildings;
+  const middle = (r: Rect) => ({ x: (r.minX + r.maxX) / 2, z: (r.minZ + r.maxZ) / 2 });
+
+  it('pitches roofs over the walls, out of reach and shedding the rain, the shots stopping at the slopes', () => {
+    expect(yard.gables.length).toBe(3);
+    for (const b of [house, cottage, hall]) {
+      const k = b.blocks[0];
+      const { x, z } = middle(k);
+      const g = yard.gables.find((q) => x > q.rect.minX && x < q.rect.maxX && z > q.rect.minZ && z < q.rect.maxZ)!;
+      expect(g.colour).toBe(b.colour);
+      const eaves = b.floor + (b.storey ?? STOREY) * k.storeys + SLAB;
+      expect(g.y).toBeCloseTo(eaves, 6);
+      expect(g.ridge).toBe(k.ridge ?? (k.maxX - k.minX >= k.maxZ - k.minZ ? 'x' : 'z'));
+      // Its layers aren't walked, and none is a ledge to climb onto.
+      for (const i of g.props) {
+        expect(yard.props[i].box.part).toBe('tiles');
+        expect(yard.props[i].box.walk).toBe(false);
+      }
+      expect(yard.ledgeHeight(x, z, eaves, eaves + g.rise + 1)).toBe(-Infinity);
+      expect(yard.floorTops(x, z, 0.5).some((y) => y > eaves - 0.5)).toBe(false);
+      // A round from above stops at the ridge's layers, not the slab under them; a round along the slope from beside the eaves too.
+      expect(yard.raycast(x, eaves + 10, z, 0, -1, 0, 20)).toBeLessThan(10 - g.rise + 0.7);
+      const across = g.ridge === 'x' ? [0, 1] : [1, 0];
+      const half = g.ridge === 'x' ? (g.rect.maxZ - g.rect.minZ) / 2 : (g.rect.maxX - g.rect.minX) / 2;
+      expect(yard.raycast(x - across[0] * (half + 3), eaves + g.rise / 4, z - across[1] * (half + 3), across[0], 0, across[1], 10)).toBeLessThan(3 + half / 2 + 0.7);
+      // The rain stays off the floor under it.
+      const x0 = x - (ROOF_CELLS * ROOF_CELL) / 2;
+      const z0 = z - (ROOF_CELLS * ROOF_CELL) / 2;
+      const cover = roofHeights(yard, x0, z0);
+      expect(cover[Math.floor((z - z0) / ROOF_CELL) * ROOF_CELLS + Math.floor((x - x0) / ROOF_CELL)]).toBeGreaterThan(eaves);
+    }
+  });
+
+  it('builds a block round a courtyard open to the sky, its rooms going round it on every storey', () => {
+    const c = court.blocks[0].court!;
+    const { x, z } = middle(c);
+    expect(yard.buildings.some((b) => inBuilding(b, x, z))).toBe(false);
+    const x0 = x - (ROOF_CELLS * ROOF_CELL) / 2;
+    const z0 = z - (ROOF_CELLS * ROOF_CELL) / 2;
+    expect(roofHeights(yard, x0, z0)[Math.floor((z - z0) / ROOF_CELL) * ROOF_CELLS + Math.floor((x - x0) / ROOF_CELL)]).toBeLessThan(court.floor);
+    // From the street through the south range's arches into the courtyard, at a walk.
+    const nav = new NavGrid(yard);
+    const from = { x: -8, z: 0 };
+    const path = nav.findPath(from.x, from.z, x, z);
+    expect(path).not.toBeNull();
+    expect(path!.length).toBeLessThan(25);
+    // Upstairs, from the north range's room to the south range's, the way round.
+    const up = court.floor + STOREY;
+    const north = nav.findPath(-8, -24, -8, -6, up, up);
+    expect(north?.at(-1)?.y).toBeCloseTo(up, 1);
+    expect(north!.every((p) => p.y === undefined || p.y > up - 0.5)).toBe(true);
+  });
+
+  it('opens an arcade between pillars along the ground storey, with the floor over it', () => {
+    const k = arcade.blocks[1];
+    const y = arcade.floor + 1.5;
+    const arches = yard.props.filter((p) => p.box.part === 'wall' && Math.abs((p.box.minZ + p.box.maxZ) / 2 - k.maxZ) < 1e-6 && p.box.minY < y && p.box.maxY > y && p.box.maxX - p.box.minX < 1);
+    // Six pillars, the corners' standing out as far as the walls either side.
+    expect(arches.length).toBe(6);
+    const bay = (k.maxX - k.minX - KIT_WALL - 6 * 0.6) / 5;
+    for (let i = 0; i < 5; i++) {
+      const ax = k.minX + KIT_WALL / 2 + 0.6 + bay / 2 + i * (bay + 0.6);
+      // Through a bay to the rooms' wall behind; at the pillar beside it, stopped at the front.
+      expect(yard.raycast(ax, y, k.maxZ + 3, 0, 0, -1, 20)).toBeGreaterThan(3 + (k.maxZ - k.minZ) - 0.5);
+      expect(yard.raycast(ax + bay / 2 + 0.3, y, k.maxZ + 3, 0, 0, -1, 20)).toBeLessThan(3);
+    }
+    expect(yard.raycast(22, y, -13.5, 0, 1, 0, 10)).toBeLessThan(STOREY);
+  });
+
+  it('builds a hall a storey 6 m tall', () => {
+    const { x, z } = middle(hall.blocks[0]);
+    expect(yard.raycast(x, hall.floor + 1, z, 0, 1, 0, 10)).toBeCloseTo(5, 1);
+    const walls = yard.props.filter((p) => p.box.part === 'wall' && inBuilding(yard.buildings[4], (p.box.minX + p.box.maxX) / 2, (p.box.minZ + p.box.maxZ) / 2, 0.01));
+    expect(Math.max(...walls.map((p) => p.box.maxY))).toBeCloseTo(hall.floor + 6, 3);
+  });
+
+  it('bridges a lane with a room at the terrace\'s level, the lane walked under it', () => {
+    const k = terrace.blocks[1];
+    const y = terrace.floor;
+    // The room over the lane is on the terrace's floor, a storey over the lane house's ground floor.
+    expect(k.floor! + STOREY * k.from!).toBeCloseTo(lane.floor + STOREY, 6);
+    expect(y).toBeCloseTo(lane.floor + STOREY, 6);
+    const { z } = middle(k);
+    expect(yard.groundHeight(34, z, y + 0.3)).toBeCloseTo(y, 2);
+    // Along the lane under it, nothing in the way, and room to stand.
+    expect(yard.raycast(27, GROUND_AT + 1.5, z, 1, 0, 0, 12)).toBe(Infinity);
+    expect(yard.ceilingHeight(34, z, GROUND_AT + 1.8)).toBeGreaterThan(GROUND_AT + 2.5);
+  });
+
+  it('takes a player up the ramp onto the terrace', () => {
+    const [r] = KIT_YARD.ramps!;
+    expect(rampSteps(r).every((s, i, all) => i === 0 || s.top - all[i - 1].top < 0.3)).toBe(true);
+    const zm = (r.minZ + r.maxZ) / 2;
+    const p = spawnState(r.minX - 2, GROUND_AT, zm);
+    for (let i = 0; i < 6 / CMD_DT && p.x < r.maxX + 4; i++) applyCmd(yard, p, { seq: i, buttons: Btn.Forward, yaw: -Math.PI / 2, pitch: 0 }, CMD_DT);
+    expect(p.x).toBeGreaterThan(r.maxX + 3);
+    expect(p.y).toBeCloseTo(r.y1, 2);
+  });
+
+  it('plasters each building its own colour, and only a map\'s', () => {
+    const colours = new Set(yard.props.filter((p) => p.box.part === 'wall' && p.box.maxY - p.box.minY > 2.5).map((p) => p.colour));
+    for (const b of KIT_YARD.buildings) expect(colours.has(b.colour)).toBe(true);
+    // The yard's own walls round it are left as they were.
+    expect(colours.has(undefined)).toBe(true);
+    expect(new World(1).props.some((p) => p.colour !== undefined)).toBe(false);
+  });
+});
+
 describe.each([
   ['the test street', TEST_STREET, street],
   ['Calabianca', CALABIANCA, town],
+  ['the kit yard', KIT_YARD, yard],
 ] as const)('The building kit, on %s', (_, map, world) => {
   const rooms = roomsOf(map);
   const flights = flightsOf(map);
@@ -292,7 +411,7 @@ describe.each([
         for (let z = room.inner.minZ + 0.3; z < room.inner.maxZ - 0.2; z += 0.5) {
           if (onFlight(flights, x, z)) continue;
           expect(cover[Math.floor((z - z0) / ROOF_CELL) * ROOF_CELLS + Math.floor((x - x0) / ROOF_CELL)], `${room.name} at ${x}, ${z}`).toBeGreaterThan(room.y + 2);
-          expect(world.raycast(x, room.y + 1, z, 0, 1, 0, 10), `${room.name} at ${x}, ${z}`).toBeLessThan(STOREY);
+          expect(world.raycast(x, room.y + 1, z, 0, 1, 0, 10), `${room.name} at ${x}, ${z}`).toBeLessThan(room.height);
         }
       }
     }

@@ -28,7 +28,7 @@ const DETOUR_RANGE = 250;
  * a tree trunk more still.
  */
 const THROUGH: Record<Part, number> = {
-  wall: 9, sill: 9, roof: 9, floor: 9, step: 3, timber: 3, container: 3, door: 6, fence: 4, crate: 1.2, glass: 40, table: 3,
+  wall: 9, sill: 9, roof: 9, tiles: 9, floor: 9, step: 3, timber: 3, container: 3, door: 6, fence: 4, crate: 1.2, glass: 40, table: 3,
 };
 /** Trunks are thin cylinders, rocks thick ones. */
 const TRUNK_LOSS = 0.5;

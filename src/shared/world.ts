@@ -10,8 +10,8 @@ import {
 } from './constants.ts';
 import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
 import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
-import { buildKit, flightSteps } from './kit.ts';
-import type { GameMap, MapGround, MapStair } from './maps/index.ts';
+import { buildKit, flightSteps, type KitGable, rampSteps } from './kit.ts';
+import type { GameMap, MapGround, MapRamp, MapStair } from './maps/index.ts';
 import { fbm, mulberry32 } from './rng.ts';
 
 export interface Cyl {
@@ -77,11 +77,11 @@ export type PanelKind = 'fence' | 'crate' | 'door' | 'glass' | 'table';
  * slab, `step` a stair, `timber` a watchtower's woodwork, `container` a
  * shipping container, or one of the parts that can be broken.
  */
-export type Part = 'wall' | 'sill' | 'roof' | 'floor' | 'step' | 'timber' | 'container' | PanelKind;
+export type Part = 'wall' | 'sill' | 'roof' | 'tiles' | 'floor' | 'step' | 'timber' | 'container' | PanelKind;
 
 /** How each part is drawn. */
 const PART_STYLE: Record<Part, PropStyle> = {
-  wall: 'wall', sill: 'wall', roof: 'roof', floor: 'wall', step: 'wood', timber: 'wood', container: 'metal',
+  wall: 'wall', sill: 'wall', roof: 'roof', tiles: 'roof', floor: 'wall', step: 'wood', timber: 'wood', container: 'metal',
   fence: 'fence', crate: 'crate', door: 'door', glass: 'glass', table: 'wood',
 };
 
@@ -89,6 +89,8 @@ export interface Prop {
   box: Box;
   style: PropStyle;
   tint: number;
+  /** A map's building's plaster, over its walls, in place of the style's colour. */
+  colour?: number;
   /** Index into World.panels, or -1 if it can't be broken. */
   panel: number;
 }
@@ -368,6 +370,8 @@ export class World {
   readonly doors: Door[] = [];
   /** Each outpost's watchtower: the props it's built from, drawn as one. */
   readonly towers: { outpost: number; props: number[] }[] = [];
+  /** A map's pitched roofs: the layers each collides as (`props`), drawn as its slopes. */
+  readonly gables: (KitGable & { props: number[] })[] = [];
   readonly maxHeight: number;
   private readonly grid = new Map<number, Collider[]>();
   private readonly nearby: Collider[] = [];
@@ -476,19 +480,20 @@ export class World {
   floorTops(x: number, z: number, r: number, roofs = false): number[] {
     const out: number[] = [];
     for (const c of this.query(x, z, r)) {
-      if (c.kind !== 'box' || !(c.walk || (roofs && c.part === 'roof'))) continue;
+      if (c.kind !== 'box' || !(c.walk || (roofs && (c.part === 'roof' || c.part === 'tiles')))) continue;
       if (c.maxX <= x - r || c.minX >= x + r || c.maxZ <= z - r || c.minZ >= z + r) continue;
       if (!out.includes(c.maxY)) out.push(c.maxY);
     }
     return out.sort((a, b) => a - b);
   }
 
-  /** Top of the highest obstacle over (x, z) with its top in (minY, maxY], or -Infinity. */
+  /** Top of the highest obstacle over (x, z) with its top in (minY, maxY], or -Infinity. A pitched roof's layers are no ledge: nobody climbs onto the tiles. */
   ledgeHeight(x: number, z: number, minY: number, maxY: number): number {
     let best = -Infinity;
     for (const c of this.query(x, z, 0)) {
       const top = topOf(c);
       if (top <= minY || top > maxY || top <= best) continue;
+      if (c.kind === 'box' && c.part === 'tiles') continue;
       if (overlapsFootprint(c, x, z, 0)) best = top;
     }
     return best;
@@ -1336,9 +1341,9 @@ export class World {
    */
   private addFacade(
     frame: Frame, a0: number, a1: number, c0: number, c1: number, y: number, base: number,
-    openings: Opening[], inward: 1 | -1, rng: () => number,
+    openings: Opening[], inward: 1 | -1, rng: () => number, height = HOUSE_HEIGHT,
   ): void {
-    const top = y + HOUSE_HEIGHT;
+    const top = y + height;
     const box = (u0: number, v0: number, u1: number, v1: number): Rect => rectOf(frame, u0, v0, u1, v1);
     const sorted = [...openings].sort((p, q) => p.at - q.at);
     // The solid stretches: before the first opening, between each pair, after the last.
@@ -1459,11 +1464,23 @@ export class World {
     };
     const kit = buildKit(map.buildings, map.stairs, (x, z) => this.terrainHeight(x, z), surface);
     const doors = mulberry32(this.seed ^ 0x1b873593);
+    /** Plaster the props from `from` on that are walls. */
+    const plaster = (from: number, colour: number | undefined) => {
+      if (colour === undefined) return;
+      for (let i = from; i < this.props.length; i++) if (this.props[i].style === 'wall') this.props[i].colour = colour;
+    };
     for (const w of kit.walls) {
       const frame: Frame = w.axis === 'x' ? (a, c) => [a, c] : (a, c) => [c, a];
-      this.addFacade(frame, w.a0, w.a1, w.line - HOUSE_WALL / 2, w.line + HOUSE_WALL / 2, w.y, w.base, w.openings, 1, doors);
+      const from = this.props.length;
+      this.addFacade(frame, w.a0, w.a1, w.line - HOUSE_WALL / 2, w.line + HOUSE_WALL / 2, w.y, w.base, w.openings, 1, doors, w.height);
+      plaster(from, w.colour);
     }
-    for (const b of kit.boxes) this.addProp(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, b.part).walk = b.walk;
+    for (const g of kit.gables) this.gables.push({ ...g, props: [] });
+    for (const b of kit.boxes) {
+      this.addProp(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, b.part).walk = b.walk;
+      plaster(this.props.length - 1, b.colour);
+      if (b.gable !== undefined) this.gables[b.gable].props.push(this.props.length - 1);
+    }
     for (const c of kit.crates) this.addPanel(c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ, 'crate', [], rng());
     for (const b of kit.buildings) {
       const { uppers, ...rest } = b;
@@ -1471,6 +1488,7 @@ export class World {
     }
     for (const w of map.walls) this.addWall(w.minX, w.y0, w.minZ, w.maxX, w.y1, w.maxZ).walk = !!w.walk;
     for (const s of map.stairs) this.addStair(s);
+    for (const r of map.ramps ?? []) this.addRamp(r);
     // The panel of each prop, for crates stacked on it; -1 for a container.
     const panels: number[] = [];
     for (const p of map.props) {
@@ -1492,6 +1510,14 @@ export class World {
   private addStair(s: MapStair): void {
     for (const { r, top } of flightSteps(s.x, s.z, s.width, s.climbs, s.y0, s.y1)) {
       this.addProp(r.minX, s.y0 - 0.3, r.minZ, r.maxX, top, r.maxZ, 'step').walk = true;
+    }
+  }
+
+  /** A ramp's steps, each a floor bots walk, filled down into the ground. */
+  private addRamp(r: MapRamp): void {
+    for (const { r: q, top } of rampSteps(r)) {
+      const [lo] = this.heightRange(q.minX, q.minZ, q.maxX, q.maxZ);
+      this.addProp(q.minX, Math.min(lo, r.y0) - 0.3, q.minZ, q.maxX, top, q.maxZ, 'step').walk = true;
     }
   }
 

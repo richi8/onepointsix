@@ -41,9 +41,9 @@ export const islandUniforms = {
   islandCorner: { value: new THREE.Vector4(0, 0, 1, 1) },
 };
 
-/** What keeps the rain off what's below it: the roofs, and the floors, each the roof of what's under it. */
+/** What keeps the rain off what's below it: the roofs, flat or pitched, and the floors, each the roof of what's under it. */
 export function shelters(world: World): Box[] {
-  return world.props.filter((p) => p.box.part === 'roof' || p.box.part === 'floor').map((p) => p.box);
+  return world.props.filter((p) => p.box.part === 'roof' || p.box.part === 'tiles' || p.box.part === 'floor').map((p) => p.box);
 }
 
 /**

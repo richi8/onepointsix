@@ -1,5 +1,6 @@
 import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 import type { GameMap } from '../src/shared/maps/index.ts';
+import { KIT_YARD } from '../src/shared/maps/kityard.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
 import { World } from '../src/shared/world.ts';
 import { drawSketch } from './sketchdraw.ts';
@@ -14,7 +15,7 @@ import { SKETCH } from './townsketch.ts';
 // dev/townsketch.ts) over it: its buildings' outlines, ways and spawn zones.
 
 const q = new URLSearchParams(location.search);
-const MAPS: Record<string, GameMap> = { calabianca: CALABIANCA, 'test-street': TEST_STREET };
+const MAPS: Record<string, GameMap> = { calabianca: CALABIANCA, 'test-street': TEST_STREET, 'kit-yard': KIT_YARD };
 const map = MAPS[q.get('map') ?? 'calabianca'] ?? CALABIANCA;
 const world = new World(1, map);
 const b = world.bounds;

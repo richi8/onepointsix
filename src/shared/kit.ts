@@ -1,14 +1,15 @@
 import { STEP_HEIGHT } from './constants.ts';
-import type { Facing, MapBlock, MapBuilding, MapOpening, MapStair } from './maps/index.ts';
+import type { Facing, MapBlock, MapBuilding, MapOpening, MapRamp, MapStair } from './maps/index.ts';
 import type { Part, Rect } from './world.ts';
 
 // The building kit: a map's buildings, given as blocks of storeys with their
 // doors, windows, arches, balconies, stairs and crates (see maps/index.ts),
 // worked out as the boxes the world is made of. Walls stand on the blocks'
 // edges, so two blocks side by side, of one building or of two, share one
-// wall, with the openings either asks for cut through it. Roofs are flat and
+// wall, with the openings either asks for cut through it. Flat roofs are
 // walked on, railed by a parapet where they look out over a drop, and run on
-// without one into a roof beside them at the same height.
+// without one into a roof beside them at the same height. Pitched roofs are
+// stepped layers under the slopes drawn over them, not walked and not climbed.
 
 /** A wall's thickness, a storey's height floor to floor, and a roof's or a floor's thickness. */
 export const KIT_WALL = 0.3;
@@ -28,6 +29,16 @@ const OFF_SIDE = 1.1;
 const WIDTH: Record<MapOpening['kind'], number> = { door: 2.2, window: 1.2, arch: 2.4 };
 const ARCH_HEIGHT = 2.6;
 const CRATE = 1.1;
+/** A pitched roof's rise over its run, and the least height of each layer it collides as: more than a step, so none is walked up. */
+const PITCH = 0.5;
+const LAYER = 0.6;
+/** The archways joining the rooms round a courtyard at its corners: their width and height. */
+const CORNER_WIDTH = 2.4;
+const CORNER_HEIGHT = 2.4;
+/** An arcade's pillars' width, unless a map says otherwise. */
+const PILLAR = 0.6;
+/** The most a ramp's steps rise each. */
+const RAMP_RISE = 0.25;
 /** How far round an outside stair's top steps a parapet is left open, to step onto the roof from it. */
 const STAIR_LANDING = 0.6;
 /** Heights this near are taken as the same. */
@@ -53,8 +64,11 @@ export interface KitWall {
   a0: number;
   a1: number;
   y: number;
+  /** Floor to floor. */
+  height: number;
   base: number;
   openings: KitOpening[];
+  colour?: number;
 }
 
 export interface KitBox extends Rect {
@@ -62,6 +76,22 @@ export interface KitBox extends Rect {
   maxY: number;
   part: Part;
   walk: boolean;
+  colour?: number;
+  /** A layer of the pitched roof `gable` (an index into Kit.gables), drawn as its slopes. */
+  gable?: number;
+}
+
+/**
+ * A pitched roof over a block's walls' outer faces, `rect`: from its eaves at
+ * `y` it rises `rise` to a ridge along `ridge` down the middle, its gable ends
+ * over the other two walls, plastered `colour` as they are.
+ */
+export interface KitGable {
+  rect: Rect;
+  y: number;
+  rise: number;
+  ridge: 'x' | 'z';
+  colour?: number;
 }
 
 /** What a building of the kit is, for the world's list of buildings. */
@@ -80,14 +110,22 @@ export interface Kit {
   /** Crates, each its own box. */
   crates: KitBox[];
   buildings: KitBuilding[];
+  gables: KitGable[];
 }
 
-/** A block with what it's worked out from: its building's floor and its own roof's underside. */
-interface Placed {
+/**
+ * A block as it's built: a courtyard's ring split into four, an arcade made
+ * its archways, with its floor, its storeys' height and its own roof's
+ * underside.
+ */
+export interface Placed {
   block: MapBlock;
   building: MapBuilding;
   floor: number;
+  /** Floor to floor. */
+  height: number;
   top: number;
+  pitched: boolean;
 }
 
 const DIR: Record<Facing, [number, number]> = { '-x': [-1, 0], '+x': [1, 0], '-z': [0, -1], '+z': [0, 1] };
@@ -137,6 +175,97 @@ function intersect(a: Rect, b: Rect): Rect | null {
   return r.maxX > r.minX && r.maxZ > r.minZ ? r : null;
 }
 
+/** A block's openings with its arcade's archways among them. */
+function withArcade(b: MapBlock): MapOpening[] {
+  const openings = b.openings ?? [];
+  if (!b.arcade) return openings;
+  const { side, bays } = b.arcade;
+  const pillar = b.arcade.pillar ?? PILLAR;
+  const { lo, hi } = sideOf(b, side);
+  const width = (hi - lo - KIT_WALL - (bays + 1) * pillar) / bays;
+  if (width < 1) throw new Error(`An arcade of ${bays} bays doesn't fit a side ${hi - lo} m long`);
+  const arches = Array.from({ length: bays }, (_, i): MapOpening => ({ side, at: KIT_WALL / 2 + pillar + width / 2 + i * (width + pillar), kind: 'arch', width }));
+  return [...openings, ...arches];
+}
+
+/**
+ * A block round a courtyard as four: a strip along each side, the north and
+ * south ones the whole width, its openings and balconies each given to the
+ * strip whose wall it's in, and archways at the ring's four inside corners on
+ * every storey, so its rooms go round.
+ */
+function ring(b: MapBlock): MapBlock[] {
+  const c = b.court!;
+  if (!(c.minX > b.minX && c.maxX < b.maxX && c.minZ > b.minZ && c.maxZ < b.maxZ)) throw new Error('A courtyard has to lie inside its block');
+  // Each range's ridge runs along it.
+  const { court: _, arcade: __, openings: ___, balconies: ____, ridge: _____, ...rest } = b;
+  const north: MapBlock = { ...rest, maxZ: c.minZ, openings: [], balconies: [] };
+  const south: MapBlock = { ...rest, minZ: c.maxZ, openings: [], balconies: [] };
+  const west: MapBlock = { ...rest, maxX: c.minX, minZ: c.minZ, maxZ: c.maxZ, openings: [], balconies: [] };
+  const east: MapBlock = { ...rest, minX: c.maxX, minZ: c.minZ, maxZ: c.maxZ, openings: [], balconies: [] };
+  /** The strip with the wall on `side` of the ring (or of the court) at `a` metres along that line, and its own side there. */
+  const strip = (side: Facing, a: number, court: boolean): [MapBlock, Facing] => {
+    if (court) return side === '-z' ? [north, '+z'] : side === '+z' ? [south, '-z'] : side === '-x' ? [west, '+x'] : [east, '-x'];
+    if (side === '-z') return [north, side];
+    if (side === '+z') return [south, side];
+    return [a < c.minZ ? north : a > c.maxZ ? south : side === '-x' ? west : east, side];
+  };
+  const place = <T extends { side: Facing; at: number }>(o: T, court: boolean, put: (k: MapBlock, o: T) => void) => {
+    // Where it is along its line, and so along its strip's side.
+    const along = o.side === '-z' || o.side === '+z';
+    const from = court ? (along ? c.minX : c.minZ) : along ? b.minX : b.minZ;
+    const [k, side] = strip(o.side, from + o.at, court);
+    put(k, { ...o, side, at: from + o.at - (along ? k.minX : k.minZ), court: undefined });
+  };
+  for (const o of withArcade(b)) place(o, !!o.court, (k, q) => k.openings!.push(q));
+  for (const bal of b.balconies ?? []) place(bal, false, (k, q) => k.balconies!.push(q));
+  for (let s = b.from ?? 0; s < b.storeys; s++) {
+    for (const x of [(b.minX + c.minX) / 2, (c.maxX + b.maxX) / 2]) {
+      const corner = { kind: 'arch' as const, width: CORNER_WIDTH, height: CORNER_HEIGHT, storey: s, at: x - b.minX };
+      north.openings!.push({ ...corner, side: '+z' });
+      south.openings!.push({ ...corner, side: '-z' });
+    }
+  }
+  return [north, south, west, east];
+}
+
+/** A map's blocks as they're built (see Placed), building by building. */
+export function placeBlocks(buildings: readonly MapBuilding[]): Placed[] {
+  return buildings.flatMap((building) => {
+    const height = building.storey ?? STOREY;
+    return building.blocks.flatMap((b) => (b.court ? ring(b) : [{ ...b, openings: withArcade(b), arcade: undefined }])).map((block): Placed => {
+      const floor = block.floor ?? building.floor;
+      return { block, building, floor, height, top: floor + height * block.storeys, pitched: block.roof === 'pitched' };
+    });
+  });
+}
+
+/** A pitched roof's rise over a span `span` across its ridge. */
+function riseOf(span: number): number {
+  return (span / 2) * PITCH;
+}
+
+/** Which way a pitched block's ridge runs. */
+function ridgeOf(b: MapBlock): 'x' | 'z' {
+  return b.ridge ?? (b.maxX - b.minX >= b.maxZ - b.minZ ? 'x' : 'z');
+}
+
+/** A ramp's steps: each one's footprint and top, filled solid down to the ground. */
+export function rampSteps(r: MapRamp): { r: Rect; top: number }[] {
+  const steps = Math.max(1, Math.ceil(Math.abs(r.y1 - r.y0) / RAMP_RISE - 1e-6));
+  const alongX = r.climbs === '-x' || r.climbs === '+x';
+  const [lo, hi] = alongX ? [r.minX, r.maxX] : [r.minZ, r.maxZ];
+  const up = r.climbs === '+x' || r.climbs === '+z';
+  const out: { r: Rect; top: number }[] = [];
+  for (let k = 0; k < steps; k++) {
+    // The k-th from the foot.
+    const [a, b] = up ? [lo + ((hi - lo) * k) / steps, lo + ((hi - lo) * (k + 1)) / steps] : [hi - ((hi - lo) * (k + 1)) / steps, hi - ((hi - lo) * k) / steps];
+    const q = alongX ? { minX: a, maxX: b, minZ: r.minZ, maxZ: r.maxZ } : { minX: r.minX, maxX: r.maxX, minZ: a, maxZ: b };
+    out.push({ r: q, top: r.y0 + ((r.y1 - r.y0) * (k + 1)) / steps });
+  }
+  return out;
+}
+
 /** The steps of a flight `width` wide, its foot's middle at (x, z), climbing toward `climbs` from `y0` to `y1`: each step's footprint and top. */
 export function flightSteps(x: number, z: number, width: number, climbs: Facing, y0: number, y1: number): { r: Rect; top: number }[] {
   const steps = Math.max(1, Math.ceil((y1 - y0) / STEP_RISE - 1e-6));
@@ -166,7 +295,9 @@ export function buildKit(
   const T = KIT_WALL;
   const boxes: KitBox[] = [];
   const crates: KitBox[] = [];
-  const box = (r: Rect, minY: number, maxY: number, part: Part, walk = false) => boxes.push({ ...r, minY, maxY, part, walk });
+  const gables: KitGable[] = [];
+  const box = (r: Rect, minY: number, maxY: number, part: Part, walk = false, colour?: number) =>
+    boxes.push({ ...r, minY, maxY, part, walk, ...(colour === undefined ? {} : { colour }) });
   const lowest = (r: Rect) => {
     let lo = Infinity;
     for (let x = r.minX; x <= r.maxX + 1e-6; x += Math.max((r.maxX - r.minX) / Math.ceil(r.maxX - r.minX), 0.01)) {
@@ -174,25 +305,32 @@ export function buildKit(
     }
     return lo;
   };
-  const placed: Placed[] = buildings.flatMap((b) => b.blocks.map((block) => ({ block, building: b, floor: b.floor, top: b.floor + STOREY * block.storeys })));
+  const placed = placeBlocks(buildings);
+  /** How high a block's roof reaches: its ridge, if it's pitched. */
+  const peak = (p: Placed) => {
+    if (!p.pitched) return p.top;
+    const b = p.block;
+    return p.top + SLAB + riseOf((ridgeOf(b) === 'x' ? b.maxZ - b.minZ : b.maxX - b.minX) + T);
+  };
   /** The highest roof over (x, z) among the blocks, or -Infinity. */
   const roofOver = (x: number, z: number) => {
     let top = -Infinity;
-    for (const p of placed) if (inside(p.block, x, z)) top = Math.max(top, p.top);
+    for (const p of placed) if (inside(p.block, x, z)) top = Math.max(top, peak(p));
     return top;
   };
 
   // Holes in the floors and roofs over flights, by the height of the floor's top.
   const holes: { r: Rect; y: number }[] = [];
   /** Railings round the holes, to clip to the floor round them: the strip, its floor's top and the block's inside. */
-  const rails: { r: Rect; y: number; room: Rect }[] = [];
+  const rails: { r: Rect; y: number; room: Rect; colour?: number }[] = [];
   for (const b of buildings) {
     for (const f of b.flights ?? []) {
       const [ux, uz] = DIR[f.climbs];
       const p = placed.find((q) => q.building === b && inside(q.block, f.x + ux * 0.3, f.z + uz * 0.3));
       if (!p) throw new Error(`A flight at (${f.x}, ${f.z}) stands in no block of its building`);
-      const y0 = b.floor + STOREY * f.storey;
-      const y1 = f.storey + 1 < p.block.storeys ? y0 + STOREY : p.top + SLAB;
+      if (p.pitched && f.storey + 1 >= p.block.storeys) throw new Error(`A flight at (${f.x}, ${f.z}) climbs through a pitched roof`);
+      const y0 = p.floor + p.height * f.storey;
+      const y1 = f.storey + 1 < p.block.storeys ? y0 + p.height : p.top + SLAB;
       const width = f.width ?? FLIGHT_WIDTH;
       const steps = flightSteps(f.x, f.z, width, f.climbs, y0, y1);
       for (const s of steps) box(s.r, y0 - SLAB, s.top, 'step', true);
@@ -209,15 +347,15 @@ export function buildKit(
         return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
       };
       const half = width / 2;
-      rails.push({ r: along(footA, 0, -half - RAIL_THICK, half + RAIL_THICK), y: y1, room });
-      for (const s of [-1, 1]) rails.push({ r: along(footA, run - OFF_SIDE, s * half, s * (half + RAIL_THICK)), y: y1, room });
+      rails.push({ r: along(footA, 0, -half - RAIL_THICK, half + RAIL_THICK), y: y1, room, colour: b.colour });
+      for (const s of [-1, 1]) rails.push({ r: along(footA, run - OFF_SIDE, s * half, s * (half + RAIL_THICK)), y: y1, room, colour: b.colour });
     }
   }
   /** A floor or roof slab, less the holes in it. */
-  const slab = (r: Rect, y0: number, y1: number, part: Part, walk: boolean) => {
+  const slab = (r: Rect, y0: number, y1: number, part: Part, walk: boolean, colour?: number) => {
     let pieces = [r];
     for (const h of holes) if (Math.abs(h.y - y1) < 1e-6) pieces = pieces.flatMap((q) => subtract(q, h.r));
-    for (const q of pieces) box(q, y0, y1, part, walk);
+    for (const q of pieces) box(q, y0, y1, part, walk, colour);
   };
 
   // Walls, a storey of a side at a time, merged along each line.
@@ -226,16 +364,16 @@ export function buildKit(
     const b = p.block;
     const base = lowest(grown(b, T / 2)) - 0.5;
     for (let s = b.from ?? 0; s < b.storeys; s++) {
-      const y = p.floor + STOREY * s;
+      const y = p.floor + p.height * s;
       for (const side of SIDES) {
         const { axis, line, out, lo, hi } = sideOf(b, side);
         const [a0, a1] = axis === 'x' ? [lo - T / 2, hi + T / 2] : [lo + T / 2, hi - T / 2];
         const openings = (b.openings ?? [])
           .filter((o) => o.side === side && (o.storey ?? 0) === s)
           .map((o): KitOpening => ({ at: lo + o.at, width: o.width ?? WIDTH[o.kind], kind: o.kind, inward: out === 1 ? -1 : 1, height: o.kind === 'arch' ? (o.height ?? ARCH_HEIGHT) : undefined }));
-        const key = `${axis} ${line.toFixed(3)} ${y.toFixed(3)}`;
+        const key = `${axis} ${line.toFixed(3)} ${y.toFixed(3)} ${p.height}`;
         const list = spans.get(key) ?? [];
-        list.push({ axis, line, a0, a1, y, base: s === 0 ? base : y, openings });
+        list.push({ axis, line, a0, a1, y, height: p.height, base: s === 0 ? base : y, openings, colour: p.building.colour });
         spans.set(key, list);
       }
     }
@@ -245,13 +383,15 @@ export function buildKit(
     list.sort((p, q) => p.a0 - q.a0);
     let cur: KitWall | null = null;
     for (const w of list) {
-      if (cur && w.a0 <= cur.a1 + 1e-6) {
+      // Stretches running on into each other are one wall, unless they're plastered differently and only meet at a corner.
+      if (cur && w.a0 <= cur.a1 + 1e-6 && (w.colour === cur.colour || w.a0 < cur.a1 - T - 1e-6)) {
         cur.a1 = Math.max(cur.a1, w.a1);
         cur.base = Math.min(cur.base, w.base);
         for (const o of w.openings) if (!cur.openings.some((q) => Math.abs(q.at - o.at) < 1e-6)) cur.openings.push(o);
       } else {
+        const a0: number = cur ? Math.max(w.a0, cur.a1) : w.a0;
         if (cur) walls.push(cur);
-        cur = { ...w, openings: [...w.openings] };
+        cur = { ...w, a0, openings: [...w.openings] };
       }
     }
     if (cur) walls.push(cur);
@@ -261,7 +401,7 @@ export function buildKit(
     if (w.base >= w.y - 1e-6) continue;
     for (const o of w.openings) {
       if (o.kind === 'window') continue;
-      box(onLine(w.axis, o.at - o.width / 2, o.at + o.width / 2, w.line - T / 2, w.line + T / 2), w.base, w.y, 'floor');
+      box(onLine(w.axis, o.at - o.width / 2, o.at + o.width / 2, w.line - T / 2, w.line + T / 2), w.base, w.y, 'floor', false, w.colour);
     }
   }
 
@@ -270,20 +410,22 @@ export function buildKit(
     const b = p.block;
     const from = b.from ?? 0;
     const room = grown(b, -T / 2);
-    if (from === 0) box(room, lowest(grown(b, T / 2)) - 0.3, p.floor, 'floor');
+    const colour = p.building.colour;
+    // Raised over the ground, as on a terrace, it's a floor bots walk.
+    if (from === 0) box(room, lowest(grown(b, T / 2)) - 0.3, p.floor, 'floor', p.floor > ground((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2) + STEP_HEIGHT, colour);
     for (let s = Math.max(from, 1); s < b.storeys; s++) {
-      const y = p.floor + STOREY * s;
+      const y = p.floor + p.height * s;
       // Over a passage, the floor reaches across the walls' tops either side.
-      slab(s === from ? grown(b, T / 2) : room, y - SLAB, y, 'floor', true);
+      slab(s === from ? grown(b, T / 2) : room, y - SLAB, y, 'floor', true, colour);
     }
-    slab(room, p.top, p.top + SLAB, 'roof', true);
+    slab(room, p.top, p.top + SLAB, 'roof', !p.pitched);
   }
 
   // The railings round the holes, where there's floor beside them.
-  for (const { r, y, room } of rails) {
+  for (const { r, y, room, colour } of rails) {
     const q = intersect(r, room);
     if (!q || Math.min(q.maxX - q.minX, q.maxZ - q.minZ) < RAIL_THICK - 1e-6) continue;
-    box(q, y, y + RAIL, 'wall');
+    box(q, y, y + RAIL, 'wall', false, colour);
   }
 
   // Where outside stairs come up to a roof: round their top steps, a step below the top.
@@ -293,8 +435,9 @@ export function buildKit(
     for (const st of steps) if (st.top >= s.y1 - STEP_HEIGHT) landings.push({ r: grown(st.r, STAIR_LANDING), top: s.y1 });
   }
 
-  // Each roof's edges: a parapet over a drop, a strip over the wall into a roof as high, nothing against a wall going on up.
+  // Each flat roof's edges: a parapet over a drop, a strip over the wall into a roof as high, nothing against a wall going on up.
   for (const p of placed) {
+    if (p.pitched) continue;
     const b = p.block;
     const roofTop = p.top + SLAB;
     for (const side of SIDES) {
@@ -331,9 +474,29 @@ export function buildKit(
         const a0 = r.a0 === lo ? lo - grow : r.a0;
         const a1 = r.a1 === hi ? hi + grow : r.a1;
         const rect = onLine(axis, a0, a1, line - T / 2, line + T / 2);
-        if (r.kind === 'parapet') box(rect, p.top, roofTop + PARAPET, 'wall');
+        if (r.kind === 'parapet') box(rect, p.top, roofTop + PARAPET, 'wall', false, p.building.colour);
         else box(rect, p.top, roofTop, 'roof', true);
       }
+    }
+  }
+
+  // Pitched roofs: layers stepping in toward the ridge, each more than a step high, the slopes drawn over them.
+  for (const p of placed) {
+    if (!p.pitched) continue;
+    const outer = grown(p.block, T / 2);
+    const ridge = ridgeOf(p.block);
+    const [c0, c1] = ridge === 'x' ? [outer.minZ, outer.maxZ] : [outer.minX, outer.maxX];
+    const rise = riseOf(c1 - c0);
+    const y = p.top + SLAB;
+    const gable = gables.length;
+    gables.push({ rect: outer, y, rise, ridge, ...(p.building.colour === undefined ? {} : { colour: p.building.colour }) });
+    const layers = Math.max(1, Math.floor(rise / LAYER));
+    const mid = (c0 + c1) / 2;
+    for (let k = 0; k < layers; k++) {
+      // As wide as the slopes halfway up it.
+      const half = ((c1 - c0) / 2) * (1 - (k + 0.5) / layers);
+      const r = ridge === 'x' ? { ...outer, minZ: mid - half, maxZ: mid + half } : { ...outer, minX: mid - half, maxX: mid + half };
+      boxes.push({ ...r, minY: y + (rise * k) / layers, maxY: y + (rise * (k + 1)) / layers, part: 'tiles', walk: false, gable });
     }
   }
 
@@ -341,20 +504,22 @@ export function buildKit(
   for (const p of placed) {
     for (const bal of p.block.balconies ?? []) {
       const { axis, line, out, lo } = sideOf(p.block, bal.side);
-      const y = p.floor + STOREY * bal.storey;
+      const y = p.floor + p.height * bal.storey;
       const [a0, a1] = [lo + bal.at - bal.width / 2, lo + bal.at + bal.width / 2];
       const c0 = line + (out * T) / 2;
       const c1 = c0 + out * bal.depth;
-      box(onLine(axis, a0, a1, c0, c1), y - SLAB, y, 'floor', true);
-      box(onLine(axis, a0, a1, c1 - out * RAIL_THICK, c1), y, y + RAIL, 'wall');
-      for (const [e0, e1] of [[a0, a0 + RAIL_THICK], [a1 - RAIL_THICK, a1]]) box(onLine(axis, e0, e1, c0, c1 - out * RAIL_THICK), y, y + RAIL, 'wall');
+      const colour = p.building.colour;
+      box(onLine(axis, a0, a1, c0, c1), y - SLAB, y, 'floor', true, colour);
+      box(onLine(axis, a0, a1, c1 - out * RAIL_THICK, c1), y, y + RAIL, 'wall', false, colour);
+      for (const [e0, e1] of [[a0, a0 + RAIL_THICK], [a1 - RAIL_THICK, a1]]) box(onLine(axis, e0, e1, c0, c1 - out * RAIL_THICK), y, y + RAIL, 'wall', false, colour);
     }
   }
 
   // Crates in the rooms.
   for (const b of buildings) {
     for (const c of b.crates ?? []) {
-      const y = b.floor + STOREY * (c.storey ?? 0);
+      const p = placed.find((q) => q.building === b && inside(q.block, c.x, c.z));
+      const y = (p?.floor ?? b.floor) + (p?.height ?? STOREY) * (c.storey ?? 0);
       const h = (c.size ?? CRATE) / 2;
       const r = { minX: c.x - h, minZ: c.z - h, maxX: c.x + h, maxZ: c.z + h };
       const bottom = (c.storey ?? 0) === 0 ? Math.min(y - SLAB, ground(c.x, c.z) - 0.1) : y;
@@ -363,14 +528,19 @@ export function buildKit(
   }
 
   const records = buildings.map((b): KitBuilding => {
-    const parts = b.blocks.map((k) => grown(k, T / 2));
-    const most = Math.max(...b.blocks.map((k) => k.storeys));
-    const uppers = Array.from({ length: most - 1 }, (_, i) => b.floor + STOREY * (i + 1));
+    const own = placed.filter((p) => p.building === b);
+    const parts = own.map((p) => grown(p.block, T / 2));
+    const floors = new Set<number>();
+    for (const p of own) {
+      // A block on a floor of its own above the building's, over a lane, counts its lowest storey too.
+      const first = p.floor > b.floor + EPS ? (p.block.from ?? 0) : 1;
+      for (let s = first; s < p.block.storeys; s++) floors.add(p.floor + p.height * s);
+    }
     return {
       minX: Math.min(...parts.map((r) => r.minX)), minZ: Math.min(...parts.map((r) => r.minZ)),
       maxX: Math.max(...parts.map((r) => r.maxX)), maxZ: Math.max(...parts.map((r) => r.maxZ)),
-      floor: b.floor, roof: b.floor + STOREY * most, parts, uppers,
+      floor: b.floor, roof: Math.max(...own.map((p) => p.top)), parts, uppers: [...floors].sort((u, v) => u - v),
     };
   });
-  return { walls, boxes, crates, buildings: records };
+  return { walls, boxes, crates, buildings: records, gables };
 }

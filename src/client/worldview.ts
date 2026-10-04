@@ -19,7 +19,7 @@ import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
 import { REFLECTED, Water } from './water.ts';
 import { PROP_SHADOW_SIDE, Props } from './props.ts';
-import { Structures } from './structures.ts';
+import { plasterColor, Structures } from './structures.ts';
 import { wind, windStrength } from './wind.ts';
 
 // The island starts out in flat colours and takes on its textures once the
@@ -143,7 +143,7 @@ export class WorldView {
     this.world = world;
     this.island = new IslandMap(world);
     // Light bounces off each prop in its own colour, as it's drawn untextured.
-    const colours = new Map(world.props.map(({ box, style, tint }) => [box, pick(PROP_COLORS[style], tint)]));
+    const colours = new Map(world.props.map((_, i) => [world.props[i].box, flatColour(world, i)]));
     this.light3d = new IndoorLight(world, this.island, (box) => colours.get(box) ?? PROP_COLORS.wall[0]);
     this.light3d.setSun(this.lighting.sunDir, SUN_LIGHT.copy(this.lighting.sunColor).multiplyScalar(this.lighting.sunIntensity));
     const extracts = makeExtracts(world);
@@ -151,7 +151,7 @@ export class WorldView {
     this.extractGroup = extracts.group;
     // Towers and containers are drawn from their parts, not as their boxes.
     this.structures = new Structures(world);
-    this.props = new Props(world, (i) => pick(PROP_COLORS[world.props[i].style], world.props[i].tint), Structures.replaces(world));
+    this.props = new Props(world, (i) => flatColour(world, i), Structures.replaces(world));
     this.drawn = Float32Array.from(world.doors, (d) => d.swing);
     this.drawn.forEach((_, i) => this.placeDoor(i));
     this.terrain = new Terrain(world);
@@ -283,7 +283,7 @@ export class WorldView {
       onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true }), this.world),
       // Roofs are corrugated metal only on top: underneath, a plain ceiling.
       (i) => (props[i].style === 'roof' ? -1 - PROP_LAYERS.roof : PROP_LAYERS[props[i].style]),
-      (i, c) => c.setHex(pick(PROP_TINTS[props[i].style], props[i].tint)).multiplyScalar(GAIN[props[i].style] ?? 1),
+      (i, c) => (props[i].colour !== undefined ? plasterColor(props[i].colour, true, c) : c.setHex(pick(PROP_TINTS[props[i].style], props[i].tint)).multiplyScalar(GAIN[props[i].style] ?? 1)),
       Layer.boards,
     );
 
@@ -528,6 +528,13 @@ function makeSky(): THREE.Mesh {
   sky.frustumCulled = false;
   return sky;
 }
+
+/** Prop `i`'s flat colour: its style's, or its building's plaster. */
+function flatColour(world: World, i: number): number {
+  const p = world.props[i];
+  return p.colour !== undefined ? plasterColor(p.colour, false, FLAT).getHex() : pick(PROP_COLORS[p.style], p.tint);
+}
+const FLAT = new THREE.Color();
 
 function pick(palette: number[], t: number): number {
   return palette[Math.min(palette.length - 1, Math.floor(t * palette.length))];

@@ -97,8 +97,19 @@ try {
 } catch {
   // Nothing picked, then.
 }
+/**
+ * In development, `?map=kit-yard` or `?map=test-street` shows that test map
+ * behind the menu, to look at the building kit: only to look at, as a game
+ * started from it is played on the mode's own.
+ */
+const devMap = import.meta.env.DEV ? new URLSearchParams(location.search).get('map') : null;
 /** The island from the seed, or the mode's fixed map: Deathmatch's. */
-const world = new World(config.seed, mapFor(mode));
+const world = new World(
+  config.seed,
+  devMap === 'kit-yard' ? (await import('../shared/maps/kityard.ts')).KIT_YARD
+    : devMap === 'test-street' ? (await import('../shared/maps/teststreet.ts')).TEST_STREET
+    : mapFor(mode),
+);
 /** Its weather over a game, as the server works it out. */
 const forecast = new Forecast(config.seed);
 /**
@@ -586,7 +597,7 @@ const briefMode = briefingLine(MODE_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
 
 function selectMode(m: Mode): void {
-  if (mapFor(m) !== world.map) {
+  if (mapFor(m) !== world.map && !devMap) {
     // Deathmatch is played on a map of its own: the page loads again to build it.
     try {
       localStorage.setItem('mode', m);
