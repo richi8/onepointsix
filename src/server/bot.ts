@@ -30,6 +30,7 @@ import { reached, type NavGrid, type Waypoint } from './nav.ts';
 import { TEMPERS, type Personality, type Temper } from './personality.ts';
 import type { Skill } from './skill.ts';
 import type { ActorSpec } from './range.ts';
+import { vantageOver, vantages } from './vantage.ts';
 
 // A bot is a player without a keyboard. It perceives the world through the
 // same senses for everyone (sight limited by range, view cone, cover and the
@@ -294,6 +295,29 @@ const FOG_WAIT = 150;
 const FOG_BOLDNESS = 0.4;
 /** A fog lifting, a rat or a looter gives up the crate it took on for it unless it's this close to it. */
 const FOG_LIFTING_KEEP = 30;
+/**
+ * On a map: a fight is closed in on to this far, and watched from a window
+ * or a roof's edge that sees it, this near to this far from it, as often as
+ * this; or from the street beside something to keep behind. A hunter roams
+ * to such a window or roof this often.
+ */
+const MAP_STANDOFF = 20;
+const MAP_WATCH: [number, number] = [10, 40];
+/** Gunfire this near the fight being closed in on is the same fight. */
+const SAME_FIGHT = 15;
+const WATCH_HIGH = 0.5;
+/** Making for a post or at it, a bot checks only on noises this close. */
+const POST_NOTICE = 10;
+/** A hunter roams to a post this near, if there's one. */
+const ROAM_POST = 50;
+/** Close enough to a post to watch from it. */
+const POST_ARRIVE = 0.6;
+const ROAM_HIGH = 0.4;
+/** A spot in the street to wait at is looked for this far round where it's wanted, and has something solid this close beside it. */
+const STREET_SEARCH = 6;
+const BESIDE = 1.2;
+/** A flank on a map goes this near to this far from where the target was, to a spot that sees it from the side. */
+const MAP_FLANK: [number, number] = [10, 30];
 /** Seconds longer a hunter stays on to hunt while rain is coming or in. */
 const RAIN_LINGER = 120;
 /** Kg more a looter carries off in fog. */
@@ -349,10 +373,19 @@ export const tally = {
   rainStalks: 0,
   /** Camps moved nearer an extraction point as sight shortened. */
   campsCloser: 0,
+  /** On a map: places taken to watch from at a window or a roof's edge, and in the street beside cover. */
+  posts: 0,
+  streetSpots: 0,
+  /** Of the posts, those got to. */
+  postsHeld: 0,
 };
 
-/** A place to go to, and whether it's in a bush, where it has to be reached more exactly. */
-type Spot = Point & { bush?: boolean };
+/**
+ * A place to go to, and whether it's in a bush, where it has to be reached
+ * more exactly, or a post at a window or a roof's edge, which is watched from
+ * standing and has to be reached at its height.
+ */
+type Spot = Point & { bush?: boolean; post?: boolean };
 
 interface Contact {
   /** 0 unnoticed to 1 spotted. */
@@ -441,6 +474,10 @@ export class Bot {
   private step = 0;
   private waitUntil = 0;
   private spot: Spot | null = null;
+  /** The life it last roamed in, to tell its first roam after spawning. */
+  private roamedLife = -1;
+  /** The way a post's window or roof's edge looks out, or null. */
+  private spotYaw: number | null = null;
   private spotUntil = 0;
   private heard: (Point & { at: number }) | null = null;
   private hurtAt = -Infinity;
@@ -974,7 +1011,9 @@ export class Bot {
     }
 
     // Someone else's fight, or the bounty called nearby: go and see who's left. Not once heading out or hurt.
-    if ((this.isRoutine(this.state) && this.state !== 'extract') || this.state === 'stalk') {
+    // Making for a post to watch from, or at it, it keeps to it.
+    const posted = this.state === 'stalk' && !!this.spot?.post;
+    if ((this.isRoutine(this.state) && this.state !== 'extract') || (this.state === 'stalk' && !posted)) {
       const lure = health(self) >= WOUNDED ? this.lured(ctx, self) : null;
       if (lure) {
         this.stalk(ctx, self, lure);
@@ -993,7 +1032,7 @@ export class Bot {
       const h = this.heard;
       this.heard = null;
       const d = Math.hypot(h.x - self.x, h.z - self.z);
-      if (d > this.curiosity()) return;
+      if (d > (posted || this.spot?.post && this.state === 'hunt' ? POST_NOTICE : this.curiosity())) return;
       this.investigate(ctx, h);
     }
   }
@@ -1104,8 +1143,35 @@ export class Bot {
     this.stalkAt = at.at;
     const d = Math.hypot(at.x - self.x, at.z - self.z);
     // A hunter under rain stops nearer, unheard.
-    const standoff = (at.guards ? GUARD_STANDOFF : STALK_STANDOFF) * (this.pushes() ? RAIN_STANDOFF : 1);
+    const map = !!ctx.world.map;
+    const standoff = (map ? MAP_STANDOFF : at.guards ? GUARD_STANDOFF : STALK_STANDOFF) * (this.pushes() ? RAIN_STANDOFF : 1);
     if (d < standoff) return;
+    // In a town: from a window or a roof that sees it, or from the street beside something solid.
+    if (map) {
+      const w = ctx.world;
+      // Still the same fight: keep to the place picked to watch it.
+      if (this.state === 'stalk' && this.fightAt && Math.hypot(at.x - this.fightAt.x, at.z - this.fightAt.z) < SAME_FIGHT) return;
+      const fight = { x: at.x, y: w.groundHeight(at.x, at.z, at.y + 0.5), z: at.z };
+      const post = this.rand() < WATCH_HIGH ? vantageOver(w, vantages(w), fight, self, MAP_WATCH, [], this.rand) : null;
+      let spot: Spot | null = post ? { x: post.x, y: post.y, z: post.z, post: true } : null;
+      if (!spot) {
+        const k = (d - standoff) / d;
+        const p = ctx.nav.nearestWalkable(self.x + (at.x - self.x) * k, self.z + (at.z - self.z) * k, 10);
+        if (!p) return;
+        spot = this.streetSpot(ctx, { x: p.x, y: w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z)), z: p.z }, fight);
+      }
+      if (post) tally.posts++;
+      const shooter = at.source !== undefined ? ctx.agent(at.source) : undefined;
+      if (shooter && this.state !== 'stalk') {
+        tally.joins++;
+        tally.guessOff += Math.hypot(shooter.x - at.x, shooter.z - at.z);
+      }
+      this.enter('stalk', true);
+      this.spot = spot;
+      this.spotYaw = post?.yaw ?? null;
+      this.fightAt = fight;
+      return;
+    }
     let k = (d - standoff) / d;
     const o = this.supplies ? null : ctx.world.nearestOutpost(at.x, at.z);
     if (o && o.dist < OUTPOST_BERTH) {
@@ -1261,16 +1327,17 @@ export class Bot {
           this.spot = this.roamPoint(ctx, self);
           this.waitUntil = 0;
         }
-        const d = this.spot ? Math.hypot(this.spot.x - self.x, this.spot.z - self.z) : 0;
+        const d = this.spot ? spotAway(this.spot, self) : 0;
         if (this.spot && d > arrival(this.spot, ARRIVE * 2)) {
           this.goTo(this.around(ctx, self, this.spot));
           this.travel(ctx, self, d);
           break;
         }
         this.goTo(null);
-        this.crouch = true;
+        this.crouch = !this.spot?.post;
+        if (this.waitUntil === 0 && this.spot?.post) tally.postsHeld++;
         if (this.waitUntil === 0) this.waitUntil = now + this.between(LOOK_AROUND) * 1.5;
-        this.lookAround(now, this.yaw);
+        this.lookAround(now, this.spot?.post && this.spotYaw !== null ? this.spotYaw : this.yaw);
         break;
       }
 
@@ -1329,7 +1396,7 @@ export class Bot {
 
       case 'stalk': {
         const spot = this.spot!;
-        const d = Math.hypot(spot.x - self.x, spot.z - self.z);
+        const d = spotAway(spot, self);
         const fight = this.fightAt ?? spot;
         const toFight = Math.hypot(fight.x - self.x, fight.z - self.z);
         if (d > arrival(spot, ARRIVE * 2) && this.waitUntil === 0) {
@@ -1344,7 +1411,8 @@ export class Bot {
           }
         } else {
           this.goTo(null);
-          this.crouch = true;
+          this.crouch = !spot.post;
+          if (this.waitUntil === 0 && spot.post) tally.postsHeld++;
           if (this.waitUntil === 0) this.waitUntil = now + this.between(LOOK_AROUND) * 2;
           this.lookAround(now, yawToward(self.x, self.z, fight.x, fight.z));
           if (now >= this.waitUntil) this.enter(this.routine());
@@ -1437,7 +1505,7 @@ export class Bot {
       case 'flank': {
         const spot = this.spot!;
         const c = this.contacts.get(this.target);
-        const d = Math.hypot(spot.x - self.x, spot.z - self.z);
+        const d = spotAway(spot, self);
         this.goTo(d > ARRIVE ? spot : null);
         this.pace = d > 15 ? 'sprint' : 'walk';
         if (c && Math.hypot(c.x - self.x, c.z - self.z) < 20) this.focus = { x: c.x, y: c.y + EYE_HEIGHT, z: c.z };
@@ -1505,7 +1573,29 @@ export class Bot {
   }
 
   /** Somewhere for a hunter to go looking: an extraction point, or a random spot within reach. */
-  private roamPoint(ctx: BotContext, self: Agent): Point | null {
+  private roamPoint(ctx: BotContext, self: Agent): Spot | null {
+    this.spotYaw = null;
+    const w = ctx.world;
+    if (w.map) {
+      // In a town: a window or a roof's edge near it, or a spot in the street beside something solid, anywhere;
+      // just in, it sets off along the street rather than holing up by its spawn point.
+      const fresh = self.life !== this.roamedLife;
+      this.roamedLife = self.life;
+      const posts = fresh ? [] : vantages(w).filter((v) => Math.hypot(v.x - self.x, v.z - self.z) < ROAM_POST);
+      if (posts.length && this.rand() < ROAM_HIGH) {
+        const post = posts[Math.floor(this.rand() * posts.length)];
+        tally.posts++;
+        this.spotYaw = post.yaw;
+        return { x: post.x, y: post.y, z: post.z, post: true };
+      }
+      for (let i = 0; i < 6; i++) {
+        const [x, z] = within(w.bounds, this.rand(), this.rand());
+        const p = ctx.nav.nearestWalkable(x, z, 15);
+        if (!p || p.y !== undefined || !ctx.nav.dry(p.x, p.z)) continue;
+        return this.streetSpot(ctx, { x: p.x, y: w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z)), z: p.z });
+      }
+      return null;
+    }
     const exits = ctx.extracts.filter((e) => Math.hypot(e.x - self.x, e.z - self.z) < HUNT_RANGE * 2);
     if (exits.length && this.rand() < 0.4) {
       const e = exits[Math.floor(this.rand() * exits.length)];
@@ -1515,9 +1605,7 @@ export class Bot {
     for (let i = 0; i < 6; i++) {
       const a = this.rand() * Math.PI * 2;
       const r = HUNT_RANGE * (0.4 + this.rand() * 0.6);
-      let [x, z] = [self.x + Math.sin(a) * r, self.z + Math.cos(a) * r];
-      // A map is smaller than that: anywhere on it.
-      if (ctx.world.map) [x, z] = within(ctx.world.bounds, this.rand(), this.rand());
+      const [x, z] = [self.x + Math.sin(a) * r, self.z + Math.cos(a) * r];
       const p = ctx.nav.nearestWalkable(x, z, 15);
       if (!p || !ctx.nav.dry(p.x, p.z)) continue;
       const near = ctx.world.nearestOutpost(p.x, p.z)?.dist ?? Infinity;
@@ -1593,6 +1681,37 @@ export class Bot {
     }
     if (!best) return near;
     tally.bushWaits++;
+    return best;
+  }
+
+  /**
+   * Somewhere in a town's street near `near` to wait at, keeping close to
+   * something solid (a wall, a corner, a truck) rather than out in the open:
+   * the spot within STREET_SEARCH with the most beside it, nearest `near`, of
+   * those that see `watch` if given; or `near` itself.
+   */
+  private streetSpot(ctx: BotContext, near: Point, watch?: Point): Spot {
+    const w = ctx.world;
+    let best: Spot = near;
+    let bestScore = Infinity;
+    const turn = this.rand() * Math.PI * 2;
+    for (let i = 0; i < 13; i++) {
+      const a = turn + i * 2.4;
+      const r = i === 0 ? 0 : 1.5 + (i % 3) * ((STREET_SEARCH - 1.5) / 2);
+      const p = ctx.nav.nearestWalkable(near.x + Math.sin(a) * r, near.z + Math.cos(a) * r, 1.5);
+      if (!p || p.y !== undefined || !ctx.nav.dry(p.x, p.z)) continue;
+      const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
+      if (Math.abs(y - near.y) > 2) continue;
+      if (watch && !w.hasLineOfSight(p.x, y + EYE_HEIGHT, p.z, watch.x, watch.y + 1, watch.z)) continue;
+      let beside = 0;
+      for (let k = 0; k < 8; k++) {
+        const b = (k / 8) * Math.PI * 2;
+        if (!w.hasLineOfSight(p.x, y + CROUCH_EYE_HEIGHT, p.z, p.x + Math.sin(b) * BESIDE, y + CROUCH_EYE_HEIGHT, p.z + Math.cos(b) * BESIDE)) beside++;
+      }
+      const score = Math.hypot(p.x - near.x, p.z - near.z) * 0.4 - Math.min(beside, 3) * 2;
+      if (score < bestScore) (best = { x: p.x, y, z: p.z }), (bestScore = score);
+    }
+    if (best !== near) tally.streetSpots++;
     return best;
   }
 
@@ -1830,6 +1949,7 @@ export class Bot {
     const dz = self.z - c.z;
     const d = Math.hypot(dx, dz);
     if (d < 10) return false;
+    if (ctx.world.map) return this.flankInTown(ctx, self, c, d);
     const turn = (this.rand() < 0.5 ? -1 : 1) * (1 + this.rand() * 0.5);
     const r = clamp(d * 0.8, 12, 40);
     const x = c.x + ((dx * Math.cos(turn) - dz * Math.sin(turn)) / d) * r;
@@ -1837,6 +1957,34 @@ export class Bot {
     const p = ctx.nav.nearestWalkable(x, z);
     if (!p) return false;
     const spot = this.leashed(ctx, { x: p.x, y: c.y, z: p.z });
+    this.enter('flank', true);
+    this.spot = spot;
+    return true;
+  }
+
+  /**
+   * In a town, circling round means another street, or up: a spot off to
+   * one side of the way it's looking now, near enough the target's last
+   * known place, that sees it; sometimes a window or a roof over it.
+   */
+  private flankInTown(ctx: BotContext, self: Agent, c: Contact, d: number): boolean {
+    const w = ctx.world;
+    const at = { x: c.x, y: c.y, z: c.z };
+    const post = this.rand() < WATCH_HIGH ? vantageOver(w, vantages(w), at, self, MAP_FLANK, [], this.rand) : null;
+    let spot: Spot | null = post && Math.abs(angleDiff(yawToward(c.x, c.z, post.x, post.z), yawToward(c.x, c.z, self.x, self.z))) > 0.6
+      ? { x: post.x, y: post.y, z: post.z, post: true } : null;
+    for (let i = 0; i < 8 && !spot; i++) {
+      const turn = (this.rand() < 0.5 ? -1 : 1) * (0.8 + this.rand() * 0.9);
+      const r = MAP_FLANK[0] + this.rand() * (Math.min(d, MAP_FLANK[1]) - MAP_FLANK[0]);
+      const a = yawToward(c.x, c.z, self.x, self.z) + turn;
+      const p = ctx.nav.nearestWalkable(c.x - Math.sin(a) * r, c.z - Math.cos(a) * r, 4);
+      if (!p || p.y !== undefined) continue;
+      const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
+      if (!w.hasLineOfSight(p.x, y + EYE_HEIGHT, p.z, c.x, c.y + 1, c.z)) continue;
+      spot = { x: p.x, y, z: p.z };
+    }
+    if (!spot) return false;
+    if (post && spot.post) tally.posts++;
     this.enter('flank', true);
     this.spot = spot;
     return true;
@@ -2122,9 +2270,14 @@ function doorwayMiddle(w: World, id: number): [number, number] {
   return [d.x + (d.shutX * d.length) / 2, d.z + (d.shutZ * d.length) / 2];
 }
 
-/** How close to a spot counts as there: in a bush, near its middle. */
+/** How far a spot is to get to: up or down too, for a post. */
+function spotAway(spot: Spot, self: Agent): number {
+  return spot.post ? away(spot, self) : Math.hypot(spot.x - self.x, spot.z - self.z);
+}
+
+/** How close to a spot counts as there: in a bush or at a post, near its middle. */
 function arrival(spot: Spot, near: number): number {
-  return spot.bush ? IN_BUSH : near;
+  return spot.bush ? IN_BUSH : spot.post ? POST_ARRIVE : near;
 }
 
 /**

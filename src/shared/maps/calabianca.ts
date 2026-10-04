@@ -377,9 +377,10 @@ const MARKET: Spec[] = [
   },
   {
     name: 'hotel', district: 'market', level: 6,
-    blocks: [{ ...HOTEL, storeys: 3, openings: [arch('-x', 8, 4), arch('+x', 8, 4), door('+z', 8), door('-z', 8, 2), door('-x', 4, 2)], balconies: [{ side: '-x', storey: 2, at: 4, width: 3.2, depth: 1.4 }] }],
+    // Its arches don't line up, so the way through bends and doesn't see from the market up the road.
+    blocks: [{ ...HOTEL, storeys: 3, openings: [arch('-x', 8, 4), arch('+x', 12.5, 4), door('+z', 8), door('-z', 8, 2), door('-x', 4, 2)], balconies: [{ side: '-x', storey: 2, at: 4, width: 3.2, depth: 1.4 }] }],
     flights: [along(HOTEL, '-z', 'lo', 0), along(HOTEL, '+z', 'hi', 1), along(HOTEL, '-z', 'lo', 2)],
-    crates: [{ x: 28.5, z: 28.5 }, { x: 15.5, z: 28.5, storey: 2 }],
+    crates: [{ x: 28.5, z: 15.5 }, { x: 15.5, z: 28.5, storey: 2 }],
   },
   {
     name: 'caffè', district: 'market', level: 6,
@@ -604,6 +605,7 @@ function withWindows(specs: readonly Spec[]): MapBuilding[] {
       return { ...k, openings };
     });
     return {
+      name: s.name ?? `${s.district} house`,
       floor, colour: PLASTER[s.district], blocks,
       ...(s.storey ? { storey: s.storey } : {}),
       ...(s.flights ? { flights: s.flights } : {}),
@@ -678,6 +680,10 @@ const FEATURES: MapBox[] = [
   solid(-14, -11, 27, 29, 1.1),
   solid(2, 5, 25, 27, 1.1),
   solid(6, 9, 17, 19, 1.1),
+  // Carts: in the yard at the road's hairpin, and two along the high street, breaking up its long views.
+  solid(32.5, 34.5, 17, 20, 1.3),
+  solid(-32, -29, -42.5, -40.5, 1.3),
+  solid(-4.5, -1.5, -41, -39, 1.3),
   // The piazza: the fountain, the plane trees, the war memorial and the kiosk.
   solid(-11, -5, -11, -5, 0.9),
   trunk(-23.5, -11.5, 5, 0.8),
@@ -709,9 +715,13 @@ const PROPS: MapProp[] = [
   { kind: 'crate', x: 67.35, z: 54.6, size: 1.2 },
   { kind: 'crate', x: -38, z: 50, size: 1.2 },
   { kind: 'crate', x: 12, z: 46, size: 1.4 },
+  // Outside the boat shed's east arch, across the quay's long view.
+  { kind: 'crate', x: -41, z: 47.3, size: 1.4 },
+  { kind: 'crate', x: -41, z: 47.3, size: 1.1, on: 8 },
   // The market.
   { kind: 'crate', x: -16, z: 18, size: 1.2 },
   { kind: 'crate', x: 9, z: 29, size: 1.4 },
+  { kind: 'crate', x: 35.2, z: 30.5, size: 1.2 },
   // The piazza and the high street.
   { kind: 'crate', x: -2, z: 0, size: 1.2 },
   { kind: 'crate', x: 34, z: -24, size: 1.4 },

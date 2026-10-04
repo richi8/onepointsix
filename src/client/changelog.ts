@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-04',
+    title: 'Bots use the town',
+    notes: [
+      'In Deathmatch, bots now climb to the upper windows and the flat roofs to watch a fight from above, and wait in the streets beside a wall or a corner rather than out in the open.',
+      'Losing sight of you, a bot may circle round by another street, or go up to a window, to find you from a new side.',
+      'You no longer come back in near a fight that’s going on: spawn points within 25 m of shots fired in the last few seconds are passed over while another is clear.',
+      'The hotel’s way through bends now, and carts and crates break up the long views along the high street, across the quay by the boat shed and in the yard where the quay steps come up beside the hotel.',
+    ],
+  },
+  {
+    date: '2026-10-04',
     title: 'Calabianca, rebuilt',
     notes: [
       'Calabianca is built afresh. The rows of houses on four terraces are gone: the fights now turn round three places, the market low in the middle with its crashed truck, stalls and arcaded loggia; the piazza above it, in front of the church and its bell tower, reached by a grand stair; and the palazzo’s courtyard to the east, overlooked by its three floors.',

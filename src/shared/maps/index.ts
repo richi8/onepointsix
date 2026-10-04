@@ -131,6 +131,8 @@ export interface MapCrate {
  * grey if left out).
  */
 export interface MapBuilding {
+  /** What it's called, if it has a name: for the Deathmatch simulation's report of where fights happen. */
+  name?: string;
   floor: number;
   storey?: number;
   colour?: number;

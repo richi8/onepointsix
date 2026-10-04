@@ -195,18 +195,20 @@ export const ARENA_SIGHT = 200;
 /** Deathmatch spawns picked; of those, how many found no clear spot, and how many found none out of sight either. */
 export const arenaPicks = { picked: 0, unclear: 0, seen: 0 };
 
-/** On a map, a spawn point is clear with nobody this close to it, nor anyone in sight of it. */
+/** On a map, a spawn point is clear with nobody this close to it, nor anyone in sight of it, nor shots fired this close lately. */
 export const MAP_CLEAR = 30;
+export const FIGHT_CLEAR = 25;
 
 /**
  * Where an operator (re)spawns in Deathmatch, facing: a random spot on dry
  * land, or on a map one of its spawn points taken in a random order, with
  * none of `avoid`, the living operators, within ARENA_CLEAR (MAP_CLEAR on a
- * map) or seeing it from within ARENA_SIGHT. If none turns up, the farthest
- * from them of those tried that nobody sees, or failing that of them all.
- * Outposts are fair game, as nobody guards them.
+ * map) or seeing it from within ARENA_SIGHT; on a map, nor within
+ * FIGHT_CLEAR of `fights`, where shots were fired lately. If none turns up,
+ * the farthest from them all of those tried that nobody sees, or failing
+ * that of them all. Outposts are fair game, as nobody guards them.
  */
-export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[]): Post {
+export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[], fights: readonly Point[] = []): Post {
   arenaPicks.picked++;
   const spawns = world.map ? shuffled(world.spawns, rand) : null;
   const clear = spawns ? MAP_CLEAR : ARENA_CLEAR;
@@ -230,6 +232,8 @@ export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid
       d = Math.min(d, ad);
       if (!seen && ad < ARENA_SIGHT && world.hasLineOfSight(a.x, a.y + EYE_HEIGHT, a.z, p.x, y + EYE_HEIGHT, p.z)) seen = true;
     }
+    // A fight going on nearby counts as someone that much nearer.
+    if (spawns) for (const f of fights) d = Math.min(d, Math.hypot(f.x - p.x, f.z - p.z) + clear - FIGHT_CLEAR);
     if (d >= clear && !seen) return p;
     if (d > bestD) (best = p), (bestD = d);
     if (!seen && d > hiddenD) (hidden = p), (hiddenD = d);

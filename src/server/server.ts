@@ -92,6 +92,8 @@ const CALL_NOISE = 180;
 const RESPONSE_STAY = 60;
 /** Bots this close to where a hostile grenade settles take it as incoming fire. */
 const GRENADE_SCARE = 8;
+/** Seconds a shot fired keeps Deathmatch's spawns on a map away from it. */
+const FIGHT_FRESH = 6;
 
 /** An operator's run: from dropping in to extracting, dying or running out of time. */
 interface Run {
@@ -241,6 +243,8 @@ export class GameServer {
   private readonly ctx: BotContext;
   /** Where everyone stood at the end of each recent tick, oldest first, for rewinding shots. */
   private readonly history: { tick: number; poses: PoseRecord[] }[] = [];
+  /** In Deathmatch on a map: where shots were fired lately, kept FIGHT_FRESH seconds, which nobody is spawned near. */
+  private readonly fights: (Point & { at: number })[] = [];
   /**
    * Each player's record over the game, by the id from their hello, kept across their runs for as
    * long as the game goes on, so leaving and joining again carries on where they were.
@@ -1046,7 +1050,7 @@ export class GameServer {
     else if (this.options.deathmatch) {
       // Players and bots alike, anywhere nobody still standing is near or sees: on a map, at its spawn points.
       const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
-      post = arenaPoint(this.world, this.nav, this.spawnRng, others);
+      post = arenaPoint(this.world, this.nav, this.spawnRng, others, this.fights.filter((f) => this.time - f.at <= FIGHT_FRESH));
     } else if (p.plan) post = p.plan.spawn;
     else if (this.rangeSpawn) post = this.rangeSpawn;
     else {
@@ -1126,6 +1130,10 @@ export class GameServer {
     // Rain drowns sounds out.
     radius *= this.ctx.senses.hearing;
     const n: Noise = { x, y, z, radius, source, gunfire };
+    if (gunfire && this.options.deathmatch && this.world.map) {
+      while (this.fights.length && this.time - this.fights[0].at > FIGHT_FRESH) this.fights.shift();
+      this.fights.push({ x, y, z, at: this.time });
+    }
     const from = this.players.get(source);
     for (const p of this.players.values()) {
       if (!p.bot || p.dead || (who && !who(p)) || Math.hypot(p.x - x, p.z - z) > radius) continue;

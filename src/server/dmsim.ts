@@ -3,26 +3,83 @@
 // how safe respawns are, whether anyone runs out of ammo and what the bots
 // spend their time on, and where: on the ground, upstairs or on the roofs;
 // and any bot stuck, trying to go somewhere and not getting 2 m in 30 s.
-// For tuning Deathmatch before and between playtests.
+// On a map, where the fights happen: the places killers stood that killed the
+// most (a room's storey, a roof, or a few metres of street), those that
+// killed most from afar, and the spawn points whose operators died soonest;
+// and a heat map of every game, written to test-results/deathmatch-<seed>.png
+// (see heatmap.ts). For tuning Deathmatch before and between playtests.
 // Usage: npm run sim:deathmatch [seconds] [seeds, comma-separated]
 
 import { DEATHMATCH_CAPACITY, EYE_HEIGHT, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
-import { inBuilding } from '../shared/world.ts';
+import { inBuilding, type World } from '../shared/world.ts';
+import { heatPicture, LONG, type KillAt, type Where } from './heatmap.ts';
 import { MODES } from './directory.ts';
 import { ARENA_SIGHT, arenaPicks } from './population.ts';
+import { tally as botTally } from './bot.ts';
 import { GameServer } from './server.ts';
 
 declare const process: { argv: string[] };
 
+const fs = (await import('node:fs' as string)) as { mkdirSync(path: string, o: { recursive: boolean }): void; writeFileSync(path: string, data: Uint8Array): void };
+
 /** A death this soon after spawning counts as a spawn kill. */
 const SPAWN_KILL = 15;
+/** One this soon was killed coming in. */
+const SPAWN_KILLED = 5;
 /** A bot going somewhere that stays this near one spot this long is stuck. */
 const STUCK_SPAN = 30;
 const STUCK_REACH = 2;
 const MOVING = new Set(['hunt', 'loot', 'investigate', 'stalk', 'flank']);
 /** The opening seconds, when every bot plans its first paths at once. */
 const OPENING = 10;
+
+/** Kills from a ground spot are summed over squares this many metres a side. */
+const GROUND_SPOT = 6;
+/** Kills from this far or more count as from afar. */
+const AFAR = 30;
+/** Spots listed of each kind. */
+const LISTED = 6;
+
+/** Whether (x, y, z) is on the ground (a ground floor included), upstairs or on a roof. */
+function whereIs(world: World, x: number, y: number, z: number): Where {
+  const house = world.buildings.find((h) => inBuilding(h, x, z));
+  if (!house || y < house.floor + 1) return 'ground';
+  return y > house.roof ? 'roofs' : 'upstairs';
+}
+
+/**
+ * The place a killer stood, as the tuning cares about it: a building's
+ * storey or roof, by the map's name for it; or a square of the ground, by
+ * its middle and the nearest lane's name.
+ */
+function placeOf(world: World, x: number, y: number, z: number): string {
+  const map = world.map;
+  const where = whereIs(world, x, y, z);
+  if (map && where !== 'ground') {
+    for (const b of map.buildings) {
+      if (!b.blocks.some((k) => x > k.minX && x < k.maxX && z > k.minZ && z < k.maxZ)) continue;
+      const storey = Math.max(1, Math.round((y - b.floor) / (b.storey ?? 3)));
+      const name = `${b.name ?? 'building'} at ${Math.round((b.blocks[0].minX + b.blocks[0].maxX) / 2)}, ${Math.round((b.blocks[0].minZ + b.blocks[0].maxZ) / 2)}`;
+      return where === 'roofs' ? `${name}, roof` : `${name}, storey ${storey + 1}`;
+    }
+  }
+  const cx = (Math.floor(x / GROUND_SPOT) + 0.5) * GROUND_SPOT;
+  const cz = (Math.floor(z / GROUND_SPOT) + 0.5) * GROUND_SPOT;
+  let lane = '';
+  let laneD = 8;
+  for (const l of map?.lanes ?? []) {
+    for (let i = 1; i < l.points.length; i++) {
+      const [ax, az] = l.points[i - 1];
+      const [bx, bz] = l.points[i];
+      const len2 = (bx - ax) ** 2 + (bz - az) ** 2 || 1;
+      const t = Math.max(0, Math.min(1, ((cx - ax) * (bx - ax) + (cz - az) * (bz - az)) / len2));
+      const d = Math.hypot(ax + (bx - ax) * t - cx, az + (bz - az) * t - cz);
+      if (d < laneD) (laneD = d), (lane = l.name);
+    }
+  }
+  return `${where === 'ground' ? 'ground' : where} at ${cx}, ${cz}${lane ? ` (${lane})` : ''}`;
+}
 
 const seconds = Number(process.argv[2] ?? 600);
 const seeds = (process.argv[3] ?? String(DEFAULT_WORLD.seed)).split(',').map(Number);
@@ -35,6 +92,12 @@ function median(values: readonly number[]): number {
 for (const seed of seeds) {
   const server = new GameServer(seed, MODES.deathmatch.options);
   const kills: { killer: number; victim: number; head: boolean }[] = [];
+  /** Where each kill by someone else happened, and from where, by the place the killer stood. */
+  const killsAt: (KillAt & { place: string; range: number })[] = [];
+  /** At each map spawn point: operators spawned there, and of those how many died within SPAWN_KILL. */
+  const atSpawn = new Map<number, { spawned: number; died: number }>();
+  /** The spawn point each bot last spawned at, by bot. */
+  const spawnedOn = new Map<number, number>();
   /** Seconds each death came after its victim spawned. */
   const lives: number[] = [];
   /** When each bot last spawned, and its life count as last seen. */
@@ -53,9 +116,23 @@ for (const seed of seeds) {
   server.onEvent = (e) => {
     if (e.k !== 'kill') return;
     kills.push({ killer: e.killer, victim: e.victim, head: e.head });
-    lives.push(server.time - (spawnedAt.get(e.victim) ?? 0));
+    const life = server.time - (spawnedAt.get(e.victim) ?? 0);
+    lives.push(life);
+    const on = spawnedOn.get(e.victim);
+    if (on !== undefined && life < SPAWN_KILL) atSpawn.get(on)!.died++;
+    const k = server.bots().find((b) => b.id === e.killer)?.state;
+    const v = server.bots().find((b) => b.id === e.victim)?.state;
+    if (!k || !v || e.killer === e.victim) return;
+    const w = server.world;
+    killsAt.push({
+      kx: k.x, ky: k.y, kz: k.z, vx: v.x, vz: v.z, where: whereIs(w, k.x, k.y, k.z),
+      place: placeOf(w, k.x, k.y, k.z), range: Math.hypot(v.x - k.x, v.z - k.z),
+    });
   };
+  /** Which of the map's spawn points (x, z) is, if any. */
+  const spawnPoint = (x: number, z: number): number => server.world.spawns.findIndex((p) => Math.hypot(p.x - x, p.z - z) < 1);
   const picks = { ...arenaPicks };
+  const told = { ...botTally };
 
   let worst = 0;
   let worstAt = 0;
@@ -71,13 +148,17 @@ for (const seed of seeds) {
     for (const b of bots) {
       const s = b.state;
       stateTicks.set(b.bot.state, (stateTicks.get(b.bot.state) ?? 0) + 1);
-      if (!s.dead) {
-        const house = server.world.buildings.find((h) => inBuilding(h, s.x, s.z));
-        if (!house || s.y < house.floor + 1) where.ground++;
-        else if (s.y > house.roof) where.roofs++;
-        else where.upstairs++;
-      }
+      if (!s.dead) where[whereIs(server.world, s.x, s.y, s.z)]++;
       const life = lastLife.get(b.id);
+      if (life === undefined || s.life !== life) {
+        const on = spawnPoint(s.x, s.z);
+        if (on >= 0) {
+          const n = atSpawn.get(on) ?? { spawned: 0, died: 0 };
+          n.spawned++;
+          atSpawn.set(on, n);
+          spawnedOn.set(b.id, on);
+        } else spawnedOn.delete(b.id);
+      }
       if (life === undefined) spawnedAt.set(b.id, server.time);
       else if (s.life !== life) {
         let nearest = Infinity;
@@ -119,10 +200,42 @@ for (const seed of seeds) {
   console.log(`seed ${seed}: ${seconds} s simulated in ${took.toFixed(1)} s, worst tick ${worst.toFixed(1)} ms at ${worstAt.toFixed(0)} s, ${settled.toFixed(1)} ms after the first ${OPENING} s`);
   console.log(`  kills ${kills.length} (${((kills.length / seconds) * 60).toFixed(1)} a minute), ${kills.filter((k) => k.head).length} headshots, ${kills.filter((k) => k.killer === k.victim).length} by their own grenade`);
   console.log(`  kills per bot: best ${perBot.slice(0, 3).join(', ')}, median ${median(perBot)}, ${perBot.filter((k) => k === 0).length} of ${DEATHMATCH_CAPACITY} with none`);
-  console.log(`  life before dying: median ${median(lives).toFixed(0)} s; ${lives.filter((l) => l < SPAWN_KILL).length} died within ${SPAWN_KILL} s of spawning`);
+  console.log(`  life before dying: median ${median(lives).toFixed(0)} s; ${lives.filter((l) => l < SPAWN_KILL).length} died within ${SPAWN_KILL} s of spawning, ${lives.filter((l) => l < SPAWN_KILLED).length} within ${SPAWN_KILLED} s`);
   console.log(`  respawns ${spawns.length}: nearest living operator median ${median(spawns.map((s) => s.nearest)).toFixed(0)} m, least ${Math.min(...spawns.map((s) => s.nearest)).toFixed(0)} m; ${spawns.filter((s) => s.seen).length} in sight; ${unclear} of ${picked} spawns found no clear spot, ${seenPicks} none out of sight`);
   console.log(`  ran out of ammo ${ranDry} times; time spent: ${states.join(', ')}`);
   const alive = where.ground + where.upstairs + where.roofs;
   console.log(`  stuck ${stuck.length} times${stuck.length ? `: ${stuck.slice(0, 12).join('; ')}` : ''}`);
   console.log(`  where: ${Object.entries(where).map(([k, n]) => `${k} ${Math.round((n / alive) * 100)}%`).join(', ')}`);
+  if (!server.world.map) continue;
+  console.log(`  watched from ${botTally.posts - told.posts} windows and roofs (${botTally.postsHeld - told.postsHeld} got to), ${botTally.streetSpots - told.streetSpots} street spots beside cover; ${botTally.joins - told.joins} fights joined`);
+
+  // Where the kills came from.
+  const n = killsAt.length;
+  const pct = (k: number, of = n) => `${Math.round((k / (of || 1)) * 100)}%`;
+  const from = { ground: 0, upstairs: 0, roofs: 0 };
+  for (const k of killsAt) from[k.where]++;
+  console.log(`  kills from: ${Object.entries(from).map(([w, k]) => `${w} ${pct(k)}`).join(', ')}; ${pct(killsAt.filter((k) => k.range >= AFAR).length)} from ${AFAR} m or more, ${pct(killsAt.filter((k) => k.range >= LONG).length)} from ${LONG} m, median ${median(killsAt.map((k) => k.range)).toFixed(0)} m`);
+  const places = new Map<string, { all: number; afar: number; ranges: number[]; up: boolean }>();
+  for (const k of killsAt) {
+    const p = places.get(k.place) ?? { all: 0, afar: 0, ranges: [], up: k.where !== 'ground' };
+    p.all++;
+    if (k.range >= AFAR) p.afar++;
+    p.ranges.push(k.range);
+    places.set(k.place, p);
+  }
+  const ranked = [...places].sort((a, b) => b[1].all - a[1].all);
+  const line = ([name, p]: [string, { all: number; afar: number; ranges: number[] }]) =>
+    `${name}: ${p.all} (${pct(p.all)}), ${p.afar} from afar, median ${median(p.ranges).toFixed(0)} m`;
+  console.log(`  killing most:\n${ranked.slice(0, LISTED).map((e) => `    ${line(e)}`).join('\n')}`);
+  const afar = [...places].filter(([, p]) => p.afar > 0).sort((a, b) => b[1].afar - a[1].afar);
+  console.log(`  killing most from afar:\n${afar.slice(0, LISTED).map((e) => `    ${line(e)}`).join('\n')}`);
+  const up = ranked.find(([, p]) => p.up);
+  console.log(`  the most from one window or roof: ${up ? line(up) : 'none'}`);
+  const spawnsRanked = [...atSpawn].filter(([, s]) => s.spawned >= 4).sort((a, b) => b[1].died / b[1].spawned - a[1].died / a[1].spawned);
+  console.log(`  spawn points dying soonest: ${spawnsRanked.slice(0, LISTED).map(([i, s]) => `#${i} at ${server.world.spawns[i].x.toFixed(0)}, ${server.world.spawns[i].z.toFixed(0)}: ${s.died} of ${s.spawned}`).join('; ')}`);
+
+  fs.mkdirSync('test-results', { recursive: true });
+  const file = `test-results/deathmatch-${seed}.png`;
+  fs.writeFileSync(file, await heatPicture(server.world, killsAt));
+  console.log(`  heat map: ${file}`);
 }

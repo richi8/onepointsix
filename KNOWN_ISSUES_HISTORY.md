@@ -2227,6 +2227,17 @@ notes the chunk it came from.
   path goes now starts from the nearest spot it walks to in a straight line, and walks to it
   first; and the town's doors are kept from opening into slots by a corner, a flight's foot or
   a crate, checked by a test. Six 10-minute games found nobody stuck.
+- **Bots don't go up onto roofs** (chunk 52), **resolved in part** (chunk 53): the kit's roofs,
+  upper floors, inside stairs and hatches are floors to the nav grid, and a bot following a
+  noise or a sighting paths to its height, so it can come up after someone. But nothing sends
+  bots up of their own accord: they roam to spots on the ground. In the town `sim:deathmatch`
+  had them on the ground 92–96% of the time, upstairs 4–7% and on the roofs 1% (chunk 57).
+  Left for the flow (chunk 58).
+  **Resolved** (58): on a map, a bot closing in on a fight watches it half the time from a
+  window or a roof's edge that sees it, a hunter roams to one within 50 m 40% of the time, and a
+  bot flanking a lost target goes up to one half the time; they're found from the world's
+  windows and walked roofs (`src/server/vantage.ts`). In six 10-minute games bots were upstairs
+  10–15% of the time and on the roofs 3–5%, and 5–12% of kills came from windows and roofs.
 
 ## Dropped
 
