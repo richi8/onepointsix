@@ -357,20 +357,40 @@ map, after the user found the generated towns couldn't be made to play or look l
 (their commits are `a719a0b` and `0afe4ee`; chunk 52 removes their code). The chunks after 49
 were renumbered.
 
+Replanned on 2026-10-04, after the blockout (chunk 54): it played linear and looked the same
+everywhere. Four rows of near-identical houses on four full-width terraces, with lanes and cross
+streets running straight through, made a grid with no places to tell apart. The town is
+rebuilt round three hubs and distinct districts, taking from Crash and Strike (hubs joined by
+an open street, a tight alley and a way through a building), Inferno and Mirage (streets that
+bend or tee every 20–40 m, named places with a feel of their own, fights inside apartments
+over the street), Toujane (a road through, alleys winding beside it, roofs reached but
+exposed) and Ascent (a landmark staircase, courtyards, arcades). The new chunks 55–57 come
+before the flow, look and dressing, renumbered 58–60.
+
 **The map, as aimed for** (the blockout settles the numbers):
 - **Size and players:** about 140 × 120 m of play for **16 operators** (`DEATHMATCH_CAPACITY`
   down from 20), every slot starting as a bot as now. Free-for-all, so no sides: loops
   everywhere and few dead ends.
-- **Shape:** the town falls from a high street at the back to a harbour front at the sea, in
-  three or four levels joined by stairs and ramps. Three lanes run down the slope, crossed by
-  streets along it, round a landmark square in the middle (as Crash's downed helicopter: here a
-  church with its bell tower, or a crashed truck in the market). Long views down the lanes,
-  short ones across them.
-- **Buildings:** about 25–35, one to three storeys, many sharing walls along a street, with
-  flat roofs behind parapets. Most can be entered, some go through from one street to the next,
-  and an archway or two carries a street under a building. Every block has a way up to its
-  roofs (an outside stair, a stair to the roof inside, a ladder-like run of crates), so the
-  roofs make a fourth lane, open to shots from below and from higher roofs.
+- **Shape:** the town falls from a high street at the back to a harbour front at the sea. Fights
+  turn round three hubs: the **market** low in the middle (a crashed truck, stalls, an arcaded
+  loggia), the **piazza** above it in front of the church and its bell tower, joined to the
+  market by a grand stair, and the **palazzo**'s courtyard to the east, overlooked by its
+  floors and balconies. Each pair of hubs is joined by an open way, a tight one and one through
+  a building. Round them, districts that play and look different: **west**, steep stepped alleys
+  with arches and rooms bridging them, close fights; **east**, a road climbing in hairpins with
+  middling views along each leg, an olive garden between them; the **quay** along the sea,
+  split by a warehouse, with a boat yard at its west end and a fish market at its east; the
+  **cemetery** with a ruined tower at the top west, and a villa and water tower at the top east.
+  Each district climbs its own way (many short flights, the grand stair, the road's ramps), not
+  on terraces across the whole town. No street runs straight through: each bends, tees or meets
+  a building within about 40 m; the quay and the high street, the longest, are broken by cover
+  and a jog.
+- **Buildings:** about 35–45, from 6 × 8 m cottages to the 24 × 24 m palazzo, one to four
+  storeys, many sharing walls along a street. Some roofs are flat behind parapets and walked;
+  others pitched and tiled, out of reach, so the roofs make a fourth lane in chosen places, not
+  everywhere, open to shots from below and from higher roofs. Most buildings can be entered,
+  some go through from one street to the next, arches and rooms carry over lanes, and there
+  are courtyards and arcades. Each district has its own plaster colour even before the look.
 - **Edges:** the sea at the front (seen, not played), and the hillside, a cemetery wall and
   tall buildings round the rest, so nobody meets an invisible wall. Beyond, the same kind of
   ground and backdrop as the island's, drawn but not reached.
@@ -383,9 +403,12 @@ were renumbered.
 | 52 | **A fixed map for Deathmatch** | Remove the towns: Deathmatch's island, `Layout`, `towns.ts`, the town sites, roads, greens, `?cam=t`, the town tests and screenshots, and their changelog's promise (a new entry says what replaced them); their Known Issues move to the history as Moot. Keep what serves every mode (`botDoors`' look-up near the bot, palettes' extra colours if used). A map format: one typed file per map (`src/shared/maps/`) giving the ground (a coarse height grid shaped by hand, with the backdrop round it), the play area's bounds, the buildings (by the kit's data, below), walls, stairs, props and the spawn points; `World` is built from it for Deathmatch, the same on server and client, and from the seed as now for every other mode. `DEATHMATCH_CAPACITY` 16; respawns at the map's spawn points (the farthest clear ones from the living, as now from random spots); the menu's orbit over the map; Deathmatch's board started afresh under the map's name; the weather's seed kept from the game's. A first test map: one street with two plain buildings | Picking Deathmatch loads the test map, 16 bots fight on it and respawn at its spawn points, the server and client build the same world from it, and Extraction's island hashes exactly as before | **Done** (`src/shared/maps/`: `index.ts` holds the format and `mapFor(mode)`, `teststreet.ts` the test map; `new World(seed, map)` builds the map's world, the same whatever the game's seed, with the map's own seed giving the island round it as the backdrop, its trees and rocks kept off the map's ground and that ground bare. A map's buildings are the island's plans, sized by hand, until the kit. `World.bounds` keeps players in (the island's whole square elsewhere) and the nav grid blocks the cells beyond it; hunters roam anywhere on a map. The town tests and screenshots gave way to `test/maps.test.ts`, which also checks Extraction's islands hash as chunk 49 left them, and two screenshots of the test street. Its board is kept under `board:test-street:deathmatch`. On the test street the 16 bots fight at once and no spawn point is ever clear: `sim:deathmatch` over 300 s had 85 kills a minute and 409 of 416 deaths within 15 s of spawning, left for the blockout) |
 | 53 | **Building kit** | Buildings for the map from data, not the four plans: any footprint of one or more rectangles, one to three storeys, each wall's doors and windows placed where wanted (and archways right through), shared walls with the next building, stairs inside between floors, a way onto the roof (a stair to a roof hatch, or an outside stair along a wall), parapets round flat roofs, balconies; a door and its leaves, windows and glass as now. Its parts are props as now, so collision, shots, sound and the rain carry over. A test street built from it in the test map | Every room, floor and roof of the test street is reached by a bot's path and walked by a player; shots and grenades stop at its walls; the rain stays off its floors | **Done** (`src/shared/kit.ts` works a map's buildings out as boxes; the format is in `maps/index.ts`: a building is a ground floor and blocks, rectangles on their walls' middle lines of 1–3 storeys of 3 m, optionally open below a storey as a passage, each with doors, windows and arches by side, storey and distance along, and balconies; flights of stairs inside go to the next storey or through a hatch onto the roof, the floor above holed over them and railed along their open side up to their last two steps, so a flight can be stepped off at its end or its side; crates are placed by storey. Walls from every map building are merged along each line and storey, so blocks side by side, of one building or two, share one wall with either one's openings cut through it, a door's leaves swinging into the block that asked for it. Roofs are flat and walked by bots; each roof edge gets a 1 m parapet over a drop, a flush strip over the wall into a roof as high, and nothing against a wall going on up; an outside stair coming up beside a roof opens its parapet round its top steps. The island's plans stay for Extraction, whose islands hash as before. The nav grid takes up to 8 floors over a cell (3 before), as a three-storey house's stacked flights put 7 in one; Extraction's islands have cells with 4, but the bot playtest gave 18% extracted on seeds 1–6 and 19% on 7–12, as at chunk 49. The light inside: an island cell can now point to two buildings' grids, for buildings sharing a wall, and a building taller than its grid's 8 m takes taller cells. The test street has five buildings: a north row sharing walls (two storeys with a balcony and a hatch, three storeys with a room over a passage through to the yard, one storey reached from that room's door onto its roof) and a south row (two rooms with the outside stair, two storeys with a balcony over the street and an arched way through, a hatch from the room over it). `test/maps.test.ts` drives a player along a bot's path from a spawn point into every storey of every block and onto every roof, checks the rain map and something solid over every floor, rounds through every wall stretch and a grenade at each front. `sim:deathmatch` now says where bots spend their time: on the test street, 100% on the ground) |
 | 54 | **Blockout** | The whole town in the map file, plain-textured: the levels, the three lanes, the cross streets, the square and its landmark, the harbour front, the ways up to the roofs, the edges, and 24–32 spawn points spread round it. A dev view from straight above, with the lanes and spawn points drawn, to check it against a sketch | 16 bots play ten minutes on it with no one stuck and no spawn in sight of a living operator; a human walks every street, house and roof | **Done** (`src/shared/maps/calabianca.ts`: Calabianca, 136 × 111 m inside its edges, laid out round (0, 0) and moved by `moved()` 240 m south onto island 4's south coast, so the sea lies in front and the island's hills behind. Four levels 3 m apart: the harbour (3 m), the lower street (6), the square's street (9) and the high street (12). Each row of houses stands on one level with its back dug into the next, so its first storey opens onto the street above and a one-storey house's roof carries on from it; the ground falls a level under a walked terrace box 4 m deep (`MapBox.walk`), as the terrain's 4 m grid can't make a sharp step, and the kit runs a roof's edge flush into a terrace as high instead of railing it. 33 houses of one to three storeys from a `house()` template (stairs along the back and east walls, a hatch, an outside stair or the street above onto the roof), three lanes and an alley along each edge with stairs at every terrace, a room over the middle lane at the quay and one over the west lane, the church (one storey, its roof on the high street's level) with a solid bell tower and a fountain on the square, which carries on over the roofs of the two one-storey houses below it. Its edges are the walls along x ±68, the high street's houses' backs and a sea wall, with the bounds a body's width inside them. 32 spawn points. `dev/map.html` draws a map from above, heights shaded, with its lanes (`GameMap.lanes`), spawn points and bounds. On a map, `arenaPoint` wants nobody within 30 m (`MAP_CLEAR`) and nobody seeing the spot, then takes the farthest that nobody sees. The nav grid walks the ground cell to cell except under floors standing on the ground (stairs, terraces), not under every roof, and puts no floor node where an open door leaf stands: searches for such nodes, which no walk reaches, took up to 2.5 s each. `sim:deathmatch` now reports stuck bots (going somewhere and not 2 m on in 30 s) and when the worst tick came. Tests: every room, floor and roof of the town reached by a bot's path and walked by a player, every spawn point reached, rain cover, rounds at every wall, all in `test/maps.test.ts` for both maps; the test street's screenshots gave way to three of the town. `sim:deathmatch -- 600 1,2,3`: 286–308 respawns a game, none in anyone's sight, 30–37% of deaths within 15 s of spawning (90% on the test street), one bot stuck once in three games (in a doorway's corner behind an open leaf), 92–93% of bots' time on the ground. Bot playtest: 18% extracted on seeds 1–6 as before; 21% on 7–12, 19% with the old nav, so the nav change moved those islands 2 points. A human walk of the town is the user's) |
-| 55 | **Flow** | `sim:deathmatch` sums where kills and deaths happen (a heat map written to a picture) and which spots kill most from afar; bots use what the town has: upper floors and windows, the roofs and their stairs, the lanes' cover, flanking along cross streets; the map tuned until no spot dominates: windows that see too far given a wall, lanes broken by a cart or an arch, extra ways into houses that get held; respawn spots tuned the same way | The heat map shows fights over the whole town, not one lane; no window or roof gets more than a tenth of the kills; a tester finds it plays like a proven map | Planned |
-| 56 | **The town's look** | Whitewashed and ochre plaster, stone at the corners and plinths, painted shutters and doors, window and door frames, cornices and parapet caps, tiled or stone steps, paved lanes and a cobbled square in place of the terrain's grass and dirt, awnings, pots and climbing plants, the church and its tower, the harbour's quay, boats and nets, the backdrop's hills and sea; detail drawn as meshes over the same boxes, so play doesn't change. CC0 textures as now | Screenshots at street level and from the roofs read as a real Mediterranean town, by day, in rain and at night | Planned |
-| 57 | **Dressing and speed** | Cover and clutter in the streets (market stalls, carts, a car or two, crates, rubble, sandbags where the flow wants them), the light inside every building (past the 16 grids the indoor light keeps now), the benchmark and a cold first load on the map, cut back where they don't hold; the changelog, Game Modes, World capacity and Features updated | The benchmark holds its frame time in the town, a cold load is no slower than the island's, and the testers prefer it to the island for Deathmatch | Planned |
+| 55 | **Sketch** | The rebuilt town drawn from above before anything is built, in the map's own coordinates (`dev/sketch.ts`, drawn by `dev/sketch.html` and over the built map by `dev/map.html?sketch`): the ground's height across it, every building's footprint with its storeys, roof (flat and walked, or pitched) and district colour, the hubs, the ways between them by kind (open, tight, through a building, over roofs), stairs and ramps, the long views meant to be there with their lengths, and the spawn zones | The user approves the sketch | Planned |
+| 56 | **Kit additions** | What the sketch needs that the kit can't build: pitched roofs (solid, not walked, shedding rain), a block round a courtyard, arcades (a ground storey open between pillars), rooms over a lane at any height, ramps for the road (the ground shaped by hand finer than 4 m where it climbs, or walked sloping boxes), a colour per building, and taller rooms for the church; the bell tower entered, if the sketch climbs it | The test street (or a test map of its own) has each of them, walked by a bot's path and a player, rain kept off below them, and the tests pass | Planned |
+| 57 | **Blockout, take two** | Calabianca rebuilt from the sketch, plain-textured, each district's buildings drawn by hand or from templates of their own, not one house over and over; the spawn points in the sketch's zones; the old layout's Known Issues it moots moved to the history | It matches the sketch drawn over it; 16 bots play ten minutes with no one stuck and no spawn in sight of a living operator; the tests walk every room, floor and roof; a human walks it and finds the districts tell apart | Planned |
+| 58 | **Flow** | `sim:deathmatch` sums where kills and deaths happen (a heat map written to a picture) and which spots kill most from afar; bots use what the town has: upper floors and windows, the roofs and their stairs, the lanes' cover, flanking along cross streets; the map tuned until no spot dominates: windows that see too far given a wall, lanes broken by a cart or an arch, extra ways into houses that get held; respawn spots tuned the same way | The heat map shows fights over the whole town, not one lane; no window or roof gets more than a tenth of the kills; a tester finds it plays like a proven map | Planned |
+| 59 | **The town's look** | Whitewashed and ochre plaster, stone at the corners and plinths, painted shutters and doors, window and door frames, cornices and parapet caps, tiled or stone steps, paved lanes and a cobbled square in place of the terrain's grass and dirt, awnings, pots and climbing plants, the church and its tower, the harbour's quay, boats and nets, the backdrop's hills and sea; detail drawn as meshes over the same boxes, so play doesn't change. CC0 textures as now | Screenshots at street level and from the roofs read as a real Mediterranean town, by day, in rain and at night | Planned |
+| 60 | **Dressing and speed** | Cover and clutter in the streets (market stalls, carts, a car or two, crates, rubble, sandbags where the flow wants them), the light inside every building (past the 16 grids the indoor light keeps now), the benchmark and a cold first load on the map, cut back where they don't hold; the changelog, Game Modes, World capacity and Features updated | The benchmark holds its frame time in the town, a cold load is no slower than the island's, and the testers prefer it to the island for Deathmatch | Planned |
 
 ## Known Issues
 
@@ -438,25 +461,27 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   noise or a sighting paths to its height, so it can come up after someone. But nothing sends
   bots up of their own accord: they roam to spots on the ground. In the town `sim:deathmatch`
   had them on the ground 92–93% of the time, upstairs 5–7% and on the roofs 1%. Left for the
-  flow (chunk 55).
+  flow (chunk 58).
 - **Respawns are still often near a fight** (chunk 54): with 16 in the town, no spawn point is
   30 m from everyone and out of sight in 60–70% of respawns, so the farthest out of sight is
   taken, and 30–37% of deaths come within 15 s of spawning (90% on the test street). None
-  spawned in anyone's sight in three 10-minute games. Left for the flow (chunk 55).
+  spawned in anyone's sight in three 10-minute games. Left for the flow (chunk 58).
 - **The town is a grid** (chunk 54): its four cross streets run straight across it, 136 m, and
   the lanes straight up it, so views across are as long as views down, against the plan's
-  short ones across; the high street's three-storey roofs look down over the whole town. Left
-  for the flow (chunk 55), which breaks lines and tunes what sees too far.
+  short ones across; the high street's three-storey roofs look down over the whole town; and
+  its houses are all one template, so nowhere looks different. The town is being rebuilt round
+  hubs and districts (chunks 55–57).
 - **Only stairs join the levels, no ramps** (chunk 54): the terrain's 4 m grid can't make a
   ramp beside a house without its slope running into the house, so every level is climbed by a
-  flight of steps in a lane or alley, or through a house.
+  flight of steps in a lane or alley, or through a house. Ramps for the rebuilt town's road are
+  in the kit additions (chunk 56).
 - **The edge can be met on top of a wall** (chunk 54): the bounds stand a body's width inside the
   edge walls, the houses' backs and the sea wall, so walking into them meets the wall itself;
   but the sea wall is low enough to mantle, and a player trying to climb onto it is held back
   by the bound, not the wall.
 - **The church and its tower are stand-ins** (chunk 54): the church is a single 3 m storey, as the
-  kit has no taller rooms, and the bell tower a solid box nobody enters. Left for the town's
-  look (chunk 56).
+  kit has no taller rooms, and the bell tower a solid box nobody enters. Taller rooms are in
+  the kit additions (chunk 56), the rest left for the town's look (chunk 59).
 - **Bots can stall behind an open door leaf** (chunk 54): `sim:deathmatch` found one bot in three
   10-minute games standing 30 s in a doorway's corner, beside the jamb where the open leaf
   stands, going nowhere.
@@ -464,11 +489,11 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   end or into a corner, and flights of stairs with no room at their foot or top are built as
   given; only the test that walks a bot's path into every room finds them.
 - **Most of the town's houses are lit as outdoors inside** (chunk 54): the indoor light keeps 16
-  buildings' grids, and the town has 33. Left for the light in every building (chunk 57).
+  buildings' grids, and the town has 33. Left for the light in every building (chunk 60).
 - **Three buildings meeting light one of them as outdoors** (chunk 53): a 2 m cell of the
   island map points to two buildings' light grids at most, enough for two sharing a wall;
   where a third meets them, its rooms in that cell are lit as if outdoors. Left for the light
-  in every building (chunk 57), with the 16 grids it's limited to.
+  in every building (chunk 60), with the 16 grids it's limited to.
 
 ## Future
 - **Multiplayer**
