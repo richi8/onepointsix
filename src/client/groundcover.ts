@@ -6,6 +6,7 @@ import { inBuilding, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { clamp, smoothstep } from '../shared/geom.ts';
 import { GROUND_LAYERS, groundWeights } from '../shared/ground.ts';
+import { pavingAt } from '../shared/maps/index.ts';
 import { Layer, LAYERS } from '../shared/layers.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { REFLECTED } from './water.ts';
@@ -325,6 +326,9 @@ export class GroundCover {
       if (y < WATER_LEVEL - 1) continue;
       const i = this.vegetation.vertex(x, z);
       if (keep > kind.keep(this.weights, i)) continue;
+      // Not on a town's paving, swept clean.
+      const paved = w.map && pavingAt(w.map, x, z);
+      if (paved === 'flagstones' || paved === 'cobbles') continue;
       // Not inside or under anything: props, trees, rocks or roofs.
       if (!w.clearAsBuilt(x, y, z, 3.5, 0.05)) continue;
       if (w.buildings.some((b) => inBuilding(b, x, z, 0.3))) continue;

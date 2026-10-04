@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-04',
+    title: 'Calabianca’s look',
+    notes: [
+      'Calabianca looks like a town by the sea now. Its walls are plastered in each part of town’s colour, whitewash in the west’s alleys, ochre round the market, pale blue along the quay, with stone at their foot, round their windows and doors, under their roofs and, on the grander houses, at their corners.',
+      'Painted shutters stand open beside the windows, flowers hang in window boxes, creepers in bloom climb beside the doors, and striped awnings shade the doors round the market, the piazza and the quay.',
+      'The lanes and the quay are paved in flagstones, the squares, the courtyards and the road in cobbles; the olive garden and the cemetery are grass. Stairs and terraces are cut stone, floors and flat roofs are terracotta tiles, and the pitched roofs are clay tiles.',
+      'The market has its stalls of fruit under striped canopies and a proper lorry; the piazza a fountain, two plane trees, a war memorial and a kiosk, the church a rose window, and its bell tower a clock, an open belfry and a tiled roof. Olives grow in the garden, the cemetery has its tombs and crosses, the water tower its tank, and boats lie hauled out in the boat yard and moored off the quay, by its bollards and heaps of nets.',
+      'All of it is drawn over the town as it was: nothing plays any differently. Shutters, awnings, flowers, creepers and the trees’ crowns don’t stop bullets or hide you from bots.',
+      'You sound like you’re on stone on the paving, the stairs and the roofs, and on grass in the garden.',
+    ],
+  },
+  {
+    date: '2026-10-04',
     title: 'Bots use the town',
     notes: [
       'In Deathmatch, bots now climb to the upper windows and the flat roofs to watch a fight from above, and wait in the streets beside a wall or a corner rather than out in the open.',

@@ -10,7 +10,7 @@ import {
 } from './constants.ts';
 import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
 import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
-import { buildKit, flightSteps, type KitGable, rampSteps } from './kit.ts';
+import { buildKit, flightSteps, type KitGable, type KitWall, rampSteps } from './kit.ts';
 import type { GameMap, MapGround, MapRamp, MapStair } from './maps/index.ts';
 import { fbm, mulberry32 } from './rng.ts';
 
@@ -372,6 +372,8 @@ export class World {
   readonly towers: { outpost: number; props: number[] }[] = [];
   /** A map's pitched roofs: the layers each collides as (`props`), drawn as its slopes. */
   readonly gables: (KitGable & { props: number[] })[] = [];
+  /** A map's buildings' walls, a storey of a line at a time with their openings, for drawing their trim. */
+  readonly facades: KitWall[] = [];
   readonly maxHeight: number;
   private readonly grid = new Map<number, Collider[]>();
   private readonly nearby: Collider[] = [];
@@ -1475,6 +1477,7 @@ export class World {
       this.addFacade(frame, w.a0, w.a1, w.line - HOUSE_WALL / 2, w.line + HOUSE_WALL / 2, w.y, w.base, w.openings, 1, doors, w.height);
       plaster(from, w.colour);
     }
+    this.facades.push(...kit.walls);
     for (const g of kit.gables) this.gables.push({ ...g, props: [] });
     for (const b of kit.boxes) {
       this.addProp(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, b.part).walk = b.walk;

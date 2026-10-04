@@ -4,7 +4,7 @@ import { Layer } from '../shared/layers.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { watchtower, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
-import { surfaceMaterial } from './surfaces.ts';
+import { surfaceMaterial, UV } from './surfaces.ts';
 import { onTiles } from './terrain.ts';
 
 // The watchtowers and shipping containers, built from their parts rather than
@@ -29,9 +29,9 @@ const PAINT_SHADE = new THREE.Color(0.62, 0.62, 0.62);
 const PLASTER_FLAT = 0x8d8a82;
 const PLASTER_TINT = 0xe0dcd4;
 const PLASTER_SHADE = 0.63;
-/** Roof tiles' terracotta, flat and as a tint over concrete. */
+/** Roof tiles' terracotta, flat and as a tint over their texture. */
 const TILES_FLAT = 0x8a4330;
-const TILES_TINT = 0xc8735a;
+const TILES_TINT = 0xf4ece4;
 /** How far a pitched roof reaches past its walls, at its eaves and its gables. */
 const OVERHANG = 0.25;
 
@@ -46,19 +46,28 @@ export function plasterColor(colour: number | undefined, textured: boolean, out:
  * Every pitched roof of a map as one geometry: two slopes from the eaves up
  * to the ridge, out past the walls, and a gable at each end over its wall,
  * with `plaster` telling each vertex whether it's a gable's (and whose) or tiles' (-1).
+ * The slopes carry `surfUv`, metres along the ridge and down from it, so the
+ * tiles run down them; each roof's tiles are a shade of their own.
  */
-function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster: number[] } {
+function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster: number[]; shade: number[] } {
   const pos: number[] = [];
+  const uv: number[] = [];
   const plaster: number[] = [];
-  const tri = (a: number[], b: number[], c: number[], who: number) => {
+  const shade: number[] = [];
+  const rand = mulberry32(world.seed + 41);
+  let tone = 1;
+  const tri = (a: number[], b: number[], c: number[], who: number, uvs = [0, 0, 0, 0, 0, 0]) => {
     pos.push(...a, ...b, ...c);
+    uv.push(...uvs);
     plaster.push(who, who, who);
+    shade.push(tone, tone, tone);
   };
-  const quad = (a: number[], b: number[], c: number[], d: number[], who: number) => {
-    tri(a, b, c, who);
-    tri(a, c, d, who);
+  const quad = (a: number[], b: number[], c: number[], d: number[], who: number, uvs: number[][]) => {
+    tri(a, b, c, who, [...uvs[0], ...uvs[1], ...uvs[2]]);
+    tri(a, c, d, who, [...uvs[0], ...uvs[2], ...uvs[3]]);
   };
   world.gables.forEach((g, i) => {
+    tone = 0.82 + rand() * 0.22;
     const alongX = g.ridge === 'x';
     // Along the ridge (u) and across it (v), to world x, y, z.
     const at = (u: number, v: number, y: number) => (alongX ? [u, y, v] : [v, y, u]);
@@ -68,13 +77,18 @@ function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster:
     const top = g.y + g.rise;
     const drop = (OVERHANG * g.rise * 2) / (v1 - v0);
     const [a0, a1] = [u0 - OVERHANG, u1 + OVERHANG];
+    // How far down the slope the eaves are from the ridge.
+    const slope = Math.hypot(vm - v0 + OVERHANG, g.rise + drop);
     // The slopes, each wound to face up and out whichever way the axes run.
     const flip = alongX ? 1 : -1;
     for (const [ve, side] of [[v0 - OVERHANG, -1], [v1 + OVERHANG, 1]] as const) {
       const eave = [at(a0, ve, g.y - drop), at(a1, ve, g.y - drop)];
       const ridge = [at(a0, vm, top), at(a1, vm, top)];
-      if (side * flip > 0) quad(eave[0], eave[1], ridge[1], ridge[0], -1);
-      else quad(eave[0], ridge[0], ridge[1], eave[1], -1);
+      // Along the ridge one way on one slope and the other on the other, so neither is mirrored.
+      const [s0, s1] = side > 0 ? [a0, a1] : [-a0, -a1];
+      const uvs = { e0: [s0, slope], e1: [s1, slope], r0: [s0, 0], r1: [s1, 0] };
+      if (side * flip > 0) quad(eave[0], eave[1], ridge[1], ridge[0], -1, [uvs.e0, uvs.e1, uvs.r1, uvs.r0]);
+      else quad(eave[0], ridge[0], ridge[1], eave[1], -1, [uvs.e0, uvs.r0, uvs.r1, uvs.e1]);
     }
     // The gables, over the walls' outer faces.
     for (const [u, side] of [[u0, -1], [u1, 1]] as const) {
@@ -85,9 +99,11 @@ function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster:
   });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('surfUv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setAttribute('layer', new THREE.Float32BufferAttribute(plaster.map((who) => (who < 0 ? UV + Layer.rooftiles : Layer.plaster)), 1));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.length).fill(1), 3));
   geometry.computeVertexNormals();
-  return { geometry, plaster };
+  return { geometry, plaster, shade };
 }
 
 /** A container's size, as the world builds it: long half-length, half-width and height, from 0.2 below its ground. */
@@ -257,6 +273,7 @@ export class Structures {
   /** The pitched roofs, and which gable's plaster each vertex wears, or -1 for tiles. */
   private readonly gables: THREE.Mesh;
   private readonly plaster: number[];
+  private readonly shade: number[];
   private readonly world: World;
   /** Each container's paint, from the world: 0 to 1. */
   private readonly paint: number[] = [];
@@ -285,6 +302,7 @@ export class Structures {
     });
     const gables = gableGeometry(world);
     this.plaster = gables.plaster;
+    this.shade = gables.shade;
     this.gables = new THREE.Mesh(gables.geometry, onTiles(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }), world));
     this.colourGables(false);
     for (const mesh of [this.towers, this.containers, this.gables]) {
@@ -298,7 +316,7 @@ export class Structures {
     const colours = this.gables.geometry.getAttribute('color') as THREE.BufferAttribute;
     const c = new THREE.Color();
     this.plaster.forEach((who, i) => {
-      if (who < 0) c.setHex(textured ? TILES_TINT : TILES_FLAT);
+      if (who < 0) c.setHex(textured ? TILES_TINT : TILES_FLAT).multiplyScalar(this.shade[i]);
       else plasterColor(this.world.gables[who].colour, textured, c);
       colours.setXYZ(i, c.r, c.g, c.b);
     });
@@ -318,13 +336,14 @@ export class Structures {
   applyAssets(assets: Assets): void {
     const world = this.world;
     const old = [this.towers.material, this.containers.material, this.gables.material] as THREE.Material[];
-    this.gables.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.concrete }, { vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }, 1, { wet: true }), world);
+    this.gables.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }, 1, { wet: true, uv: true }), world);
     this.colourGables(true);
     this.towers.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.boards }, { color: WOOD_TINT, vertexColors: true, roughness: 0.85 }, 1, { indoor: true, wet: true }), world);
     this.containers.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.metal }, { color: PAINT_SHADE, vertexColors: true, roughness: 0.55, metalness: 0.25 }, 0.3, { indoor: true, wet: true }), world);
     const c = new THREE.Color();
     this.paint.forEach((tint, i) => this.containers.setColorAt(i, c.setHex(pick(PAINT_TINT, tint))));
-    this.containers.instanceColor!.needsUpdate = true;
+    // None to colour where there are no containers.
+    if (this.containers.instanceColor) this.containers.instanceColor.needsUpdate = true;
     for (const m of old) m.dispose();
   }
 }

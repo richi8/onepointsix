@@ -20,6 +20,9 @@ import { Trees } from './trees.ts';
 import { REFLECTED, Water } from './water.ts';
 import { PROP_SHADOW_SIDE, Props } from './props.ts';
 import { plasterColor, Structures } from './structures.ts';
+import { townLayer, townPaint, townTint } from './townlook.ts';
+import { Dressing } from './dressing.ts';
+import { replacedProps } from './features.ts';
 import { wind, windStrength } from './wind.ts';
 
 // The island starts out in flat colours and takes on its textures once the
@@ -92,6 +95,9 @@ export class WorldView {
   private readonly rocks: THREE.InstancedMesh;
   /** The watchtowers and containers, drawn from their parts. */
   private readonly structures: Structures;
+  /** A map town's trim over its walls and its features, drawn only. */
+  private readonly dressing: THREE.Group = new THREE.Group();
+  private readonly trim: Dressing | null;
   private readonly water: Water;
   /** Grass, bushes and pebbles near the camera, once their code has loaded. */
   private cover: GroundCover | null = null;
@@ -151,15 +157,17 @@ export class WorldView {
     this.extractGroup = extracts.group;
     // Towers and containers are drawn from their parts, not as their boxes.
     this.structures = new Structures(world);
-    this.props = new Props(world, (i) => flatColour(world, i), Structures.replaces(world));
+    this.props = new Props(world, (i) => flatColour(world, i), new Set([...Structures.replaces(world), ...replacedProps(world)]));
+    this.trim = Dressing.build(world);
+    if (this.trim) this.dressing.add(this.trim.group);
     this.drawn = Float32Array.from(world.doors, (d) => d.swing);
     this.drawn.forEach((_, i) => this.placeDoor(i));
     this.terrain = new Terrain(world);
     this.trees = new Trees(world);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
-    scene.add(this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group, this.rain.group);
-    for (const o of [this.sky, this.terrain.group, this.props.group, this.structures.group, this.trees.group, this.rocks, extracts.group]) reflected(o);
+    scene.add(this.terrain.group, this.water.group, this.props.group, this.structures.group, this.dressing, this.trees.group, this.rocks, extracts.group, this.rain.group);
+    for (const o of [this.sky, this.terrain.group, this.props.group, this.structures.group, this.dressing, this.trees.group, this.rocks, extracts.group]) reflected(o);
   }
 
   /**
@@ -189,7 +197,7 @@ export class WorldView {
   dispose(): void {
     this.disposed = true;
     const scene = this.scene;
-    const parts = [this.sky, this.hemi, this.terrain.group, this.water.group, this.props.group, this.structures.group, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
+    const parts = [this.sky, this.hemi, this.terrain.group, this.water.group, this.props.group, this.structures.group, this.dressing, this.trees.group, this.rocks, this.extractGroup, this.rain.group];
     if (this.cover) parts.push(this.cover.group);
     const materials = new Set<THREE.Material>();
     for (const part of parts) {
@@ -276,14 +284,16 @@ export class WorldView {
     this.textured = true;
     this.light();
 
-    this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true, wet: 'puddles' }));
+    this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true, wet: 'puddles', town: townPaint(this.world) }));
 
-    const props = this.world.props;
+    const world = this.world;
+    const props = world.props;
     this.props.texture(
-      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true }), this.world),
-      // Roofs are corrugated metal only on top: underneath, a plain ceiling.
-      (i) => (props[i].style === 'roof' ? -1 - PROP_LAYERS.roof : PROP_LAYERS[props[i].style]),
-      (i, c) => (props[i].colour !== undefined ? plasterColor(props[i].colour, true, c) : c.setHex(pick(PROP_TINTS[props[i].style], props[i].tint)).multiplyScalar(GAIN[props[i].style] ?? 1)),
+      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true }), world),
+      // Roofs are corrugated metal only on top: underneath, a plain ceiling. A map's town is its own (see townlook.ts).
+      (i) => townLayer(world, i) ?? (props[i].style === 'roof' ? -1 - PROP_LAYERS.roof : PROP_LAYERS[props[i].style]),
+      (i, c) => townTint(world, i, true, c)
+        ?? (props[i].colour !== undefined ? plasterColor(props[i].colour, true, c) : c.setHex(pick(PROP_TINTS[props[i].style], props[i].tint)).multiplyScalar(GAIN[props[i].style] ?? 1)),
       Layer.boards,
     );
 
@@ -291,6 +301,7 @@ export class WorldView {
 
     this.trees.applyAssets(assets);
     this.structures.applyAssets(assets);
+    this.trim?.applyAssets(assets, this.world);
     this.cover?.applyAssets(assets);
     this.rocks.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 }, 1, { wet: true }), this.world);
     const rand = mulberry32(this.world.seed + 29);
@@ -532,6 +543,8 @@ function makeSky(): THREE.Mesh {
 /** Prop `i`'s flat colour: its style's, or its building's plaster. */
 function flatColour(world: World, i: number): number {
   const p = world.props[i];
+  const town = townTint(world, i, false, FLAT);
+  if (town) return town.getHex();
   return p.colour !== undefined ? plasterColor(p.colour, false, FLAT).getHex() : pick(PROP_COLORS[p.style], p.tint);
 }
 const FLAT = new THREE.Color();

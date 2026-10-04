@@ -1,6 +1,6 @@
 import { yawToward } from '../geom.ts';
 import type { Rect } from '../world.ts';
-import { moved, type Facing, type GameMap, type MapBlock, type MapBox, type MapBuilding, type MapCrate, type MapFlight, type MapOpening, type MapProp, type MapRamp, type MapSpawn, type MapStair } from './index.ts';
+import { moved, type Facing, type GameMap, type MapBlock, type MapBox, type MapBuilding, type MapCrate, type MapFlight, type MapOpening, type MapProp, type MapRamp, type MapSpawn, type MapStair, type MapTrim } from './index.ts';
 import { levelGround, type Level } from './levels.ts';
 
 // Calabianca: a whitewashed town on a hillside above the sea, Deathmatch's
@@ -24,8 +24,10 @@ import { levelGround, type Level } from './levels.ts';
 // The ground is drawn as levels (see levels.ts), the terrain topped up to
 // them by walked terraces. Laid out round (0, 0) and moved onto the south
 // coast of the island its seed makes, so the sea lies in front and the hills
-// behind. Plain boxes, each district's buildings plastered their own colour:
-// the town's look comes later.
+// behind. Each district's buildings are plastered their own colour and
+// dressed their own way (MapTrim); the features say what they are
+// (MapBox.look), and the ground what it's paved with, for how they're drawn
+// (see client/townlook.ts, dressing.ts and features.ts).
 
 /** The town's edges: walls on the lines x = ±68 and z = -56, and the sea wall's inside on z = 55.6. */
 const WEST = -68;
@@ -36,14 +38,14 @@ const SEA = 55.6;
 const FLOOR = 0.1;
 const STOREY = 3;
 
-/** Each district's plaster, as the sketch's. */
+/** Each district's plaster: the sketch's, paler. */
 const PLASTER = {
-  west: 0xf2efe6,
-  quay: 0x8fa6b4,
-  market: 0xdba84a,
-  piazza: 0xe8d8b0,
-  east: 0xd9907a,
-  top: 0xb4b39c,
+  west: 0xf4f1ea,
+  quay: 0xc8dce4,
+  market: 0xe8bd6a,
+  piazza: 0xeee2c4,
+  east: 0xe8b09c,
+  top: 0xd8d2bc,
 } as const;
 type District = keyof typeof PLASTER;
 /** Each district's windows: how far apart along a wall, and how wide. */
@@ -54,6 +56,21 @@ const WINDOWS: Record<District, { every: number; width: number }> = {
   piazza: { every: 4.5, width: 1.2 },
   east: { every: 3.5, width: 1.2 },
   top: { every: 4, width: 1.2 },
+};
+
+/**
+ * Each district's dressing: the west's whitewashed houses plain at the
+ * corners, with green and blue shutters and flowers everywhere; stone
+ * corners and awnings over the quay's, the market's and the piazza's doors;
+ * the east's houses in creepers; the top's sober.
+ */
+const TRIM: Record<District, MapTrim> = {
+  west: { shutters: 0.6, paint: [0x4f7d55, 0x3f7f7c, 0x46709a], flowers: 0.3, plants: 0.35 },
+  quay: { quoins: true, shutters: 0.5, paint: [0x3d6a8f, 0x8a3b32, 0xd8d4c8], flowers: 0.1, awnings: 0.5 },
+  market: { quoins: true, shutters: 0.7, paint: [0x5b7b3d, 0x6b4a2f], flowers: 0.2, awnings: 0.6, plants: 0.2 },
+  piazza: { quoins: true, shutters: 0.6, paint: [0x4a6a50, 0x6f5a44], flowers: 0.15, awnings: 0.3 },
+  east: { quoins: true, shutters: 0.7, paint: [0x7d8f6a, 0x4c5e7a], flowers: 0.3, plants: 0.4 },
+  top: { shutters: 0.4, paint: [0x6a5a48, 0x5d6a72], flowers: 0.1, plants: 0.2 },
 };
 
 const lv = (minX: number, maxX: number, minZ: number, maxZ: number, y: number): Level => ({ minX, maxX, minZ, maxZ, y });
@@ -184,6 +201,8 @@ interface Spec {
   /** The ground's level its ground floor stands on. */
   level: number;
   storey?: number;
+  /** Its dressing, if not its district's. */
+  trim?: MapTrim;
   blocks: MapBlock[];
   /** Flights of stairs, as along() gives them, by block. */
   flights?: MapFlight[];
@@ -343,13 +362,13 @@ const QUAY: Spec[] = [
     crates: [{ x: 28.5, z: 35.5 }],
   },
   {
-    name: 'boat shed', district: 'quay', level: 3,
+    name: 'boat shed', district: 'quay', level: 3, trim: { quoins: true },
     blocks: [{ ...BOAT_SHED, storeys: 2, roof: 'pitched', ridge: 'x', openings: [op('-x', 5, 'arch', 0, 4), op('+x', 5, 'arch', 0, 4)] }],
     flights: [along(BOAT_SHED, '-z', 'lo', 0)],
     crates: [{ x: -45.5, z: 52.5 }],
   },
   {
-    name: 'warehouse', district: 'quay', level: 3,
+    name: 'warehouse', district: 'quay', level: 3, trim: { quoins: true },
     blocks: [{ ...WAREHOUSE, storeys: 2, roof: 'pitched', ridge: 'x', openings: [op('-x', 5, 'arch', 0, 4), op('+x', 5, 'arch', 0, 4), door('-z', 10)] }],
     flights: [along(WAREHOUSE, '-z', 'lo', 0)],
     crates: [{ x: 38.5, z: 47.5 }, { x: 30, z: 54.5, storey: 1 }],
@@ -409,7 +428,7 @@ const PORTICO = r(14, 30, -18, 4);
 const OLD_SCHOOL = r(14, 30, -42, -22);
 const PIAZZA: Spec[] = [
   {
-    name: 'church', district: 'piazza', level: 12, storey: 6,
+    name: 'church', district: 'piazza', level: 12, storey: 6, trim: { quoins: true },
     blocks: [{ ...CHURCH, storeys: 1, roof: 'pitched', openings: [door('+z', 12), door('-x', 9), door('+x', 3)] }],
     crates: [{ x: -20.5, z: -34.5 }],
   },
@@ -510,7 +529,7 @@ const TOP: Spec[] = [
     crates: [{ x: 56.5, z: -50.5, storey: 1 }],
   },
   {
-    name: 'ruined chapel', district: 'top', level: 15,
+    name: 'ruined chapel', district: 'top', level: 15, trim: { quoins: true, plants: 1 },
     blocks: [{ ...CHAPEL, storeys: 1, openings: [door('+z', 4), arch('+x', 4)] }],
     flights: [along(CHAPEL, '-z', 'lo', 0)],
   },
@@ -606,7 +625,7 @@ function withWindows(specs: readonly Spec[]): MapBuilding[] {
     });
     return {
       name: s.name ?? `${s.district} house`,
-      floor, colour: PLASTER[s.district], blocks,
+      floor, colour: PLASTER[s.district], trim: s.trim ?? TRIM[s.district], blocks,
       ...(s.storey ? { storey: s.storey } : {}),
       ...(s.flights ? { flights: s.flights } : {}),
       ...(s.crates ? { crates: s.crates.map((c) => flush(c, s.blocks)) } : {}),
@@ -666,40 +685,41 @@ function edgeWalls(): MapBox[] {
 }
 
 /** An olive's or a plane's trunk. */
-const trunk = (x: number, z: number, h: number, w = 0.5) => solid(x - w / 2, x + w / 2, z - w / 2, z + w / 2, h);
+const trunk = (x: number, z: number, h: number, w: number, look: 'plane' | 'olive') => ({ ...solid(x - w / 2, x + w / 2, z - w / 2, z + w / 2, h), look });
+const as = (box: MapBox, look: MapBox['look']): MapBox => ({ ...box, look });
 
 const FEATURES: MapBox[] = [
   // The sea wall along the quay, and the quay's face down into the harbour under it.
   { minX: WEST, maxX: EAST, minZ: SEA, maxZ: SEA + 0.5, y0: 2.5, y1: 4.1 },
-  { minX: WEST, maxX: EAST, minZ: SEA + 0.5, maxZ: 60, y0: -6, y1: 3 },
+  { minX: WEST, maxX: EAST, minZ: SEA + 0.5, maxZ: 60, y0: -6, y1: 3, look: 'quay' },
   // The bell tower, solid, beside the church.
-  solid(2.15, 8, -24, -18, 18, 0.5),
+  as(solid(2.15, 8, -24, -18, 18, 0.5), 'belltower'),
   // The market: the crashed truck and the stalls.
-  solid(-12, -3, 20, 23, 3),
-  solid(-20, -17, 26, 28, 1.1),
-  solid(-14, -11, 27, 29, 1.1),
-  solid(2, 5, 25, 27, 1.1),
-  solid(6, 9, 17, 19, 1.1),
+  as(solid(-12, -3, 20, 23, 3), 'truck'),
+  as(solid(-20, -17, 26, 28, 1.1), 'stall'),
+  as(solid(-14, -11, 27, 29, 1.1), 'stall'),
+  as(solid(2, 5, 25, 27, 1.1), 'stall'),
+  as(solid(6, 9, 17, 19, 1.1), 'stall'),
   // Carts: in the yard at the road's hairpin, and two along the high street, breaking up its long views.
-  solid(32.5, 34.5, 17, 20, 1.3),
-  solid(-32, -29, -42.5, -40.5, 1.3),
-  solid(-4.5, -1.5, -41, -39, 1.3),
+  as(solid(32.5, 34.5, 17, 20, 1.3), 'cart'),
+  as(solid(-32, -29, -42.5, -40.5, 1.3), 'cart'),
+  as(solid(-4.5, -1.5, -41, -39, 1.3), 'cart'),
   // The piazza: the fountain, the plane trees, the war memorial and the kiosk.
-  solid(-11, -5, -11, -5, 0.9),
-  trunk(-23.5, -11.5, 5, 0.8),
-  trunk(-23.5, -0.5, 5, 0.8),
-  solid(-17, -14, -2, 1, 2.5),
-  solid(4, 8, -12, -8, 2.6),
+  as(solid(-11, -5, -11, -5, 0.9), 'fountain'),
+  trunk(-23.5, -11.5, 5, 0.8, 'plane'),
+  trunk(-23.5, -0.5, 5, 0.8, 'plane'),
+  as(solid(-17, -14, -2, 1, 2.5), 'memorial'),
+  as(solid(4, 8, -12, -8, 2.6), 'kiosk'),
   // The boat yard's boats, hauled out.
-  solid(-66, -60, 44, 47, 2),
-  solid(-64, -58, 51, 54, 2),
+  as(solid(-66, -60, 44, 47, 2), 'boat'),
+  as(solid(-64, -58, 51, 54, 2), 'boat'),
   // The water tower by the villa: four legs and the tank on them.
-  ...[[60, -54], [65.5, -54], [60, -48.5], [65.5, -48.5]].map(([x, z]) => solid(x, x + 0.5, z, z + 0.5, 9)),
-  solid(60, 66, -54, -48, 14, -9),
+  ...[[60, -54], [65.5, -54], [60, -48.5], [65.5, -48.5]].map(([x, z]) => as(solid(x, x + 0.5, z, z + 0.5, 9), 'leg')),
+  as(solid(60, 66, -54, -48, 14, -9), 'tank'),
   // The cemetery's tombs.
-  ...[[-60, -40], [-54, -40], [-48, -40], [-60, -34], [-48, -34], [-42, -48], [-42, -38]].map(([x, z]) => solid(x - 1.5, x + 1.5, z - 1, z + 1, 1.2)),
+  ...[[-60, -40], [-54, -40], [-48, -40], [-60, -34], [-48, -34], [-42, -48], [-42, -38]].map(([x, z]) => as(solid(x - 1.5, x + 1.5, z - 1, z + 1, 1.2), 'tomb')),
   // The olive garden: its trees and the low wall across it.
-  ...[[42, 4], [50, 2], [56, 7], [44, 11], [53, 12], [60, 2]].map(([x, z]) => trunk(x, z, 3)),
+  ...[[42, 4], [50, 2], [56, 7], [44, 11], [53, 12], [60, 2]].map(([x, z]) => trunk(x, z, 3, 0.5, 'olive')),
   solid(38, 58, 7.5, 8.2, 1),
   // The back stairs' end over the quay, railed.
   { minX: 62, maxX: EAST, minZ: 31.7, maxZ: 32, y0: 2.5, y1: 10 },
@@ -770,6 +790,26 @@ const TOWN: GameMap = {
   ramps: RAMPS,
   props: PROPS,
   spawns: SPAWNS,
+  // Flagstones down the lanes and along the quay; cobbles on the squares, the
+  // courtyards and the road; grass in the olive garden and the cemetery; the
+  // boat yard bare.
+  paving: {
+    area: r(WEST, EAST, NORTH, SEA + 0.5),
+    patches: [
+      { ...r(-24, 14, 14, 32), kind: 'cobbles' },
+      { ...r(-30, 14, -18, 4), kind: 'cobbles' },
+      { ...r(46, 54, -25, -17), kind: 'cobbles' },
+      { ...r(18, 26, -36, -26), kind: 'cobbles' },
+      { ...r(36, EAST, 32, 38), kind: 'cobbles' },
+      { ...r(30, EAST, 16, 22), kind: 'cobbles' },
+      { ...r(30, 36, 16, 34), kind: 'cobbles' },
+      { ...r(62, EAST, -8, 38), kind: 'cobbles' },
+      { ...r(52, EAST, -8, -2), kind: 'cobbles' },
+      { ...r(36, 62, -2, 16), kind: 'grass' },
+      { ...r(WEST, -36, NORTH, -30), kind: 'grass' },
+      { ...r(WEST, -56, 40, SEA), kind: 'earth' },
+    ],
+  },
   lanes: [
     { name: 'quay', points: [[-62, 50], [18, 50], [20, 44], [40, 44], [60, 42], [65, 36]] },
     { name: 'road', points: [[65, 36], [62, 35], [36, 35], [33, 26], [36, 19], [62, 19], [65, 15], [65, -5], [62, -5], [36, -5]] },

@@ -2788,3 +2788,10 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   and doesn't sway with the wind. Bots also don't seek out trees to hide in, as they do bushes. Day
   extraction moved from 14% to 17% in the bot playtest (seeds 1–6, clear).
   **Accepted** (2026-10-03): the user accepted it as it is, and the 17% rate with it.
+
+### Deathmatch
+- **Ramps are drawn as steps** (56): a ramp is steps of up to 0.25 m drawn as a stair's, 1–2 m
+  deep each; a smooth slope drawn over them was left for the town's look (chunk 59).
+  **Dropped** (chunk 59): the road's legs are kept as a stepped street, a *cordonata*, as these
+  towns have, cobbled on top and stone at each step's face. A slope drawn over the steps would
+  leave feet floating or sunk by up to 12 cm along it.

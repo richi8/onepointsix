@@ -2,6 +2,7 @@ import { WATER_LEVEL } from '../shared/constants.ts';
 import type { PropStyle, World } from '../shared/world.ts';
 import { groundLayerAt } from '../shared/ground.ts';
 import { Layer } from '../shared/layers.ts';
+import { pavingAt, type Paving } from '../shared/maps/index.ts';
 
 // What a body is standing on, for how its footsteps sound: a prop's top, the
 // water, or whichever ground layer is painted strongest underfoot.
@@ -18,6 +19,10 @@ GROUND_SURFACE[Layer.dryGrass] = 'grass';
 GROUND_SURFACE[Layer.dirt] = 'dirt';
 GROUND_SURFACE[Layer.rock] = 'rock';
 GROUND_SURFACE[Layer.sand] = 'sand';
+/** A map town's: its stairs are stone and its flat roofs tiled. */
+const TOWN_PROP_SURFACE: Record<PropStyle, Surface> = { ...PROP_SURFACE, wood: 'concrete', roof: 'concrete' };
+/** The sound of each paving of a map's ground. */
+const PAVING_SURFACE: Record<Paving, Surface> = { flagstones: 'concrete', cobbles: 'rock', grass: 'grass', earth: 'dirt' };
 /** Metres across a cell of the prop lookup. */
 const CELL = 8;
 
@@ -48,10 +53,17 @@ export class Surfaces {
       for (const i of this.cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL))) ?? []) {
         const { box, style } = w.props[i];
         if (box.gone || Math.abs(box.maxY - y) > 0.25) continue;
-        if (x >= box.minX - 0.3 && x <= box.maxX + 0.3 && z >= box.minZ - 0.3 && z <= box.maxZ + 0.3) return PROP_SURFACE[style];
+        if (x >= box.minX - 0.3 && x <= box.maxX + 0.3 && z >= box.minZ - 0.3 && z <= box.maxZ + 0.3) {
+          if (!w.map || box.part === 'crate' || box.part === 'table') return PROP_SURFACE[style];
+          // A terrace is paved as the ground round it.
+          if (box.part === 'wall' && box.walk) return PAVING_SURFACE[pavingAt(w.map, x, z) ?? 'flagstones'];
+          return TOWN_PROP_SURFACE[style];
+        }
       }
     }
     if (terrain < WATER_LEVEL - 0.1) return 'water';
+    const paved = w.map && pavingAt(w.map, x, z);
+    if (paved) return PAVING_SURFACE[paved];
     return GROUND_SURFACE[groundLayerAt(w, x, z)] ?? 'grass';
   }
 }

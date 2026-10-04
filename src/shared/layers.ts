@@ -17,6 +17,13 @@ export const LAYERS = [
   { name: 'metal', polyHaven: 'corrugated_iron', scale: 2.2, tint: [1, 1, 1] },
   { name: 'boards', polyHaven: 'wood_plank_wall', scale: 2, tint: [1, 1, 1] },
   { name: 'bark', polyHaven: 'bark_brown_02', scale: 2.5, tint: [1, 1, 1] },
+  // A map town's: whitewashed walls, cut stone, the lanes' flagstones, the squares' cobbles, roof tiles and terracotta floors.
+  { name: 'plaster', polyHaven: 'plastered_wall', scale: 2, tint: [1, 1, 1] },
+  { name: 'ashlar', polyHaven: 'sandstone_blocks_08', scale: 3, tint: [1, 1, 1] },
+  { name: 'flagstones', polyHaven: 'stone_tiles_02', scale: 2, tint: [0.88, 0.86, 0.82] },
+  { name: 'cobbles', polyHaven: 'cobblestone_floor_08', scale: 2, tint: [0.78, 0.76, 0.72] },
+  { name: 'rooftiles', polyHaven: 'clay_roof_tiles_02', scale: 2.5, tint: [1, 1, 1] },
+  { name: 'cotto', polyHaven: 'terracotta_floor_tiles', scale: 2.08, tint: [1, 1, 1] },
 ] as const;
 
 type LayerName = (typeof LAYERS)[number]['name'];

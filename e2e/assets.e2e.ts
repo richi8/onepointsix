@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { LAYERS } from '../src/shared/layers.ts';
 import { open } from './game.ts';
 
 // The assets as the game loads them: through our own Basis transcoder in
@@ -11,7 +12,7 @@ test('the textures load through the transcoder', async ({ page }) => {
     const assets = (window as unknown as { assets?: { albedo: { image: { depth: number } }; normal: { image: { depth: number } } } }).assets;
     return assets && [assets.albedo.image.depth, assets.normal.image.depth];
   });
-  expect(layers).toEqual([10, 10]);
+  expect(layers).toEqual([LAYERS.length, LAYERS.length]);
 });
 
 interface Report {

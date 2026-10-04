@@ -116,21 +116,28 @@ for (const [name, query] of Object.entries(YARD)) {
   });
 }
 
-// Deathmatch's map (see maps/calabianca.ts), plain boxes until its look: the
-// town from over the sea, its districts stepping up the hillside; up a stair
-// in the west's alleys, under the room over the lane; the piazza, the church
-// and its bell tower from the top of the grand stair; and the market, the
-// grand stair and the truck, from beside the loggia.
+// Deathmatch's map (see maps/calabianca.ts) in its look: the town from over
+// the sea, its districts stepping up the hillside; up a stair in the west's
+// alleys, under the room over the lane; the piazza, the church, its fountain
+// and its bell tower from the top of the grand stair; the market, the grand
+// stair, the truck and the stalls from beside the loggia, by day and in rain;
+// across the west's roofs; the harbour, its quay and its boats; and the
+// cemetery and its chapel.
 const MAP: Record<string, string> = {
   'town-above': '-70,55,320,0,8,240',
   'town-alley': '-37.5,7.7,265,-37.5,10,245',
   'town-piazza': '-7,13.7,243,-10,14,222',
   'town-market': '-21,7.7,262,10,8,256',
+  'town-market-rain': '-21,7.7,262,10,8,256&sky=rain',
+  'town-roofs': '-44,15.6,241,0,9,250',
+  'town-harbour': '-20,9,315,0,3,285',
+  'town-cemetery': '-50,16.7,200,-60,17,192',
 };
 
-for (const [name, cam] of Object.entries(MAP)) {
+for (const [name, query] of Object.entries(MAP)) {
   test(`map: ${name}`, async ({ page }) => {
-    await spot(page, cam, '&mode=deathmatch');
+    const [cam, ...rest] = query.split('&');
+    await spot(page, cam, ['&mode=deathmatch', ...rest.map((r) => `&${r}`)].join(''));
     await expect(page).toHaveScreenshot(`${name}.png`);
   });
 }

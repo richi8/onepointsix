@@ -133,12 +133,30 @@ export interface MapCrate {
 export interface MapBuilding {
   /** What it's called, if it has a name: for the Deathmatch simulation's report of where fights happen. */
   name?: string;
+  /** How it's dressed, for its look alone. */
+  trim?: MapTrim;
   floor: number;
   storey?: number;
   colour?: number;
   blocks: MapBlock[];
   flights?: MapFlight[];
   crates?: MapCrate[];
+}
+
+/**
+ * How a building is dressed, drawn over its walls without changing how it
+ * plays: stone at its corners, shutters beside its windows in its `paint`,
+ * window boxes of flowers, climbing plants beside its doors, awnings over
+ * them. The shares are of its windows or doors, 0 if left out.
+ */
+export interface MapTrim {
+  quoins?: boolean;
+  shutters?: number;
+  /** The shutters' colours, one picked for each building. */
+  paint?: number[];
+  flowers?: number;
+  plants?: number;
+  awnings?: number;
 }
 
 /**
@@ -150,7 +168,17 @@ export interface MapBox extends Rect {
   y0: number;
   y1: number;
   walk?: boolean;
+  /** What it is, for how it's drawn alone: a plain stone box if left out. */
+  look?: MapLook;
 }
+
+/**
+ * What a map's box is drawn as, over it, where it isn't a plain stone wall:
+ * the shapes keep inside it but where they're too small to matter.
+ */
+export type MapLook =
+  | 'truck' | 'stall' | 'cart' | 'fountain' | 'plane' | 'olive' | 'memorial' | 'kiosk' | 'boat'
+  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay';
 
 /**
  * A flight of steps outside, `width` wide, its foot's middle at (x, z) on
@@ -194,6 +222,19 @@ export interface MapSpawn {
   yaw: number;
 }
 
+/** What a map's ground is paved with: flagstones, cobbles, grass, or bare earth (the terrain's own). */
+export type Paving = 'flagstones' | 'cobbles' | 'grass' | 'earth';
+
+/**
+ * How a map's ground is paved, for its look and its footsteps alone: all of
+ * `area` in flagstones, but where a patch says otherwise (later ones over
+ * earlier). Beyond it, the terrain's own ground.
+ */
+export interface MapPaving {
+  area: Rect;
+  patches: (Rect & { kind: Paving })[];
+}
+
 /** A street or lane as drawn on the dev view of a map from above (dev/map.html): it plays no part in the game. */
 export interface MapLane {
   name: string;
@@ -215,8 +256,18 @@ export interface GameMap {
   ramps?: MapRamp[];
   props: MapProp[];
   spawns: MapSpawn[];
+  paving?: MapPaving;
   /** Its lanes and streets, for the dev view. */
   lanes?: MapLane[];
+}
+
+/** What the ground of `map` is paved with at (x, z), or null beyond its paving's area. */
+export function pavingAt(map: GameMap, x: number, z: number): Paving | null {
+  const p = map.paving;
+  const within = (r: Rect) => x >= r.minX && x < r.maxX && z >= r.minZ && z < r.maxZ;
+  if (!p || !within(p.area)) return null;
+  for (let i = p.patches.length - 1; i >= 0; i--) if (within(p.patches[i])) return p.patches[i].kind;
+  return 'flagstones';
 }
 
 /** The fixed map a mode is played on, or null for the island made from the game's seed. */
@@ -246,6 +297,7 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
     ramps: map.ramps?.map(rect),
     props: map.props.map((p) => (p.kind === 'crate' ? at(p) : rect(p))),
     spawns: map.spawns.map(at),
+    ...(map.paving ? { paving: { area: rect(map.paving.area), patches: map.paving.patches.map(rect) } } : {}),
     lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),
   };
 }

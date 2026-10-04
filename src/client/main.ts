@@ -347,7 +347,7 @@ function warmEffects(): void {
   effects.explosion(at);
 }
 
-/** Show everything in `root` but its lights, unculled, and every instanced mesh at least once; returns the undoing. */
+/** Show everything in `root` but its lights, unculled, and every instanced mesh with room for one at least once; returns the undoing. */
 function showAll(root: THREE.Object3D): () => void {
   const undo: (() => void)[] = [];
   root.traverse((o) => {
@@ -361,7 +361,8 @@ function showAll(root: THREE.Object3D): () => void {
       undo.push(() => (o.frustumCulled = true));
     }
     const m = o as THREE.InstancedMesh;
-    if (m.isInstancedMesh && m.count === 0) {
+    // Not one built with room for none, as a map's watchtowers are: drawing one would read past its buffer.
+    if (m.isInstancedMesh && m.count === 0 && m.instanceMatrix.count > 0) {
       m.count = 1;
       undo.push(() => (m.count = 0));
     }
