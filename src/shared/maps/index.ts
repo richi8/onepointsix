@@ -1,6 +1,6 @@
 import type { Mode } from '../protocol.ts';
 import type { Rect } from '../world.ts';
-import { TEST_STREET } from './teststreet.ts';
+import { CALABIANCA } from './calabianca.ts';
 
 // A fixed map: the ground, buildings and everything else a mode is played on,
 // laid out by hand, one typed file per map in this folder. The World is built
@@ -109,10 +109,15 @@ export interface MapBuilding {
   crates?: MapCrate[];
 }
 
-/** A solid box from `y0` up to `y1`: a freestanding wall. */
+/**
+ * A solid box from `y0` up to `y1`: a freestanding wall, or with `walk` a
+ * terrace's edge, its top a floor walked on: the ground falling a level is
+ * hidden under it.
+ */
 export interface MapBox extends Rect {
   y0: number;
   y1: number;
+  walk?: boolean;
 }
 
 /**
@@ -145,6 +150,12 @@ export interface MapSpawn {
   yaw: number;
 }
 
+/** A street or lane as drawn on the dev view of a map from above (dev/map.html): it plays no part in the game. */
+export interface MapLane {
+  name: string;
+  points: readonly (readonly [number, number])[];
+}
+
 export interface GameMap {
   /** Its key: the menu's board of games on it is kept under it. */
   id: string;
@@ -159,9 +170,31 @@ export interface GameMap {
   stairs: MapStair[];
   props: MapProp[];
   spawns: MapSpawn[];
+  /** Its lanes and streets, for the dev view. */
+  lanes?: MapLane[];
 }
 
 /** The fixed map a mode is played on, or null for the island made from the game's seed. */
 export function mapFor(mode: Mode): GameMap | null {
-  return mode === 'deathmatch' ? TEST_STREET : null;
+  return mode === 'deathmatch' ? CALABIANCA : null;
+}
+
+/**
+ * A map laid out round (0, 0) moved `dx` east and `dz` south: to stand it on
+ * the backdrop island where its seed has the ground it wants round it.
+ */
+export function moved(map: GameMap, dx: number, dz: number): GameMap {
+  const rect = <T extends Rect>(r: T): T => ({ ...r, minX: r.minX + dx, maxX: r.maxX + dx, minZ: r.minZ + dz, maxZ: r.maxZ + dz });
+  const at = <T extends { x: number; z: number }>(p: T): T => ({ ...p, x: p.x + dx, z: p.z + dz });
+  return {
+    ...map,
+    ground: { ...map.ground, x0: map.ground.x0 + dx, z0: map.ground.z0 + dz },
+    bounds: rect(map.bounds),
+    buildings: map.buildings.map((b) => ({ ...b, blocks: b.blocks.map(rect), flights: b.flights?.map(at), crates: b.crates?.map(at) })),
+    walls: map.walls.map(rect),
+    stairs: map.stairs.map(at),
+    props: map.props.map((p) => (p.kind === 'crate' ? at(p) : rect(p))),
+    spawns: map.spawns.map(at),
+    lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),
+  };
 }

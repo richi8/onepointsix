@@ -156,9 +156,13 @@ export function flightSteps(x: number, z: number, width: number, climbs: Facing,
 
 /**
  * Work out a map's buildings. `ground` is the terrain's height; `stairs` are
- * the map's outside stairs, whose tops open the parapets they reach.
+ * the map's outside stairs, whose tops open the parapets they reach;
+ * `surface` is what's walked on outside, the terrain or a terrace over it,
+ * where a roof's edge meeting it as high runs on into it with no parapet.
  */
-export function buildKit(buildings: readonly MapBuilding[], stairs: readonly MapStair[], ground: (x: number, z: number) => number): Kit {
+export function buildKit(
+  buildings: readonly MapBuilding[], stairs: readonly MapStair[], ground: (x: number, z: number) => number, surface = ground,
+): Kit {
   const T = KIT_WALL;
   const boxes: KitBox[] = [];
   const crates: KitBox[] = [];
@@ -305,9 +309,13 @@ export function buildKit(buildings: readonly MapBuilding[], stairs: readonly Map
         const m = (at[i] + at[i + 1]) / 2;
         const [ox, oz] = axis === 'x' ? [m, line + out * T] : [line + out * T, m];
         const beyond = roofOver(ox, oz);
+        const outside = surface(ox, oz);
         let kind: 'parapet' | 'strip' | null;
         if (beyond > p.top + EPS) kind = null;
         else if (beyond > p.top - EPS) kind = out === 1 ? 'strip' : null;
+        // A terrace or the ground beyond as high: walked onto. Higher: its own face walls it.
+        else if (outside > roofTop + STEP_HEIGHT) kind = null;
+        else if (outside > roofTop - STEP_HEIGHT) kind = 'strip';
         else {
           const [px, pz] = axis === 'x' ? [m, line] : [line, m];
           kind = cuts.some((l) => inside(grown(l.r, 1e-3), px, pz)) ? 'strip' : 'parapet';

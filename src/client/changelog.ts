@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-10-04',
+    title: 'Calabianca',
+    notes: [
+      'Deathmatch moves from the test street into Calabianca, a town on a hillside above the sea. It’s still plain grey boxes: how it plays comes first, and how it looks next.',
+      'The town climbs from the quay to the high street in four levels, a storey apart: the harbour front, the lower street, the square’s street and the high street. Every house is built into the slope, so its ground floor opens onto one street and its first floor onto the street above, and the roofs of the one-storey houses carry straight on from the street behind them.',
+      'Three lanes and two alleys run up through the town, with flights of steps where they climb a level; two of them pass under a room built across them. In the middle, the square opens in front of the church and its bell tower, with a fountain, and runs out over the roofs of the houses below it.',
+      'Every house can be entered, and every roof reached: by stairs up through the house and a hatch, an outside stair, or straight from the street above.',
+      'You come back in at one of 32 spawn points, one nobody can see, and the farthest from everyone of those.',
+    ],
+  },
+  {
     date: '2026-10-03',
     title: 'A busier test street',
     notes: [

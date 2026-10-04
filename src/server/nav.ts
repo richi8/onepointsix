@@ -107,6 +107,8 @@ export class NavGrid {
   private readonly groundY: Float32Array;
   /** Cells that a floor reaches over, found once: only these are looked at for floors. */
   private readonly floored = new Set<number>();
+  /** Of those, cells where the floor stands on the ground, a step or a terrace: the ground's walked by walking it, not across the grid. */
+  private readonly grounded = new Set<number>();
   /** The door leaves that come near each cell when open. */
   private readonly leaves = new Map<number, number[]>();
   /** The floor nodes of each cell that has any, lowest first, by id. */
@@ -147,7 +149,11 @@ export class NavGrid {
       }
     };
     for (const c of world.colliders) {
-      if (c.kind === 'box' && c.walk) cells(c.minX, c.minZ, c.maxX, c.maxZ, CELL, (i) => this.floored.add(i));
+      if (c.kind !== 'box' || !c.walk) continue;
+      cells(c.minX, c.minZ, c.maxX, c.maxZ, CELL, (i) => this.floored.add(i));
+      // Standing on the ground, as a step or a terrace's edge does, it changes how the ground round it is walked.
+      const ground = world.floorHeight((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2);
+      if (c.minY < ground + PLAYER_HEIGHT) cells(c.minX, c.minZ, c.maxX, c.maxZ, CELL, (i) => this.grounded.add(i));
     }
     world.doors.forEach((d, id) => {
       const [x0, z0, x1, z1] = leafRect(d, true);
@@ -328,7 +334,7 @@ export class NavGrid {
         const step = k === SAME ? 0.5 : k >= 4 ? SQRT2 : 1;
         if (s !== BLOCKED && ni !== cur) {
           // Near a floor, the ground can be a stair's step: those are walked too.
-          if (onGround && k !== SAME && !this.floored.has(cur) && !this.floored.has(ni)) {
+          if (onGround && k !== SAME && !this.grounded.has(cur) && !this.grounded.has(ni)) {
             // No cutting corners past a blocked cell.
             if (k < 4 || (this.state(cx + ddx, cz) !== BLOCKED && this.state(cx, cz + ddz) !== BLOCKED)) {
               visit(cur, ni, g[cur] + step * cost(ni, s), nx, nz);
@@ -607,7 +613,8 @@ export class NavGrid {
         const sy = this.settle(sx, top, sz);
         if (Math.abs(sy - top) > 0.01) continue;
         if (sy - ground < LEVEL_GAP || spots.some((s) => Math.abs(s[1] - sy) < LEVEL_GAP)) continue;
-        if (!w.clear(sx, sy, sz, PLAYER_HEIGHT, FLOOR_PAD, false, STEP_UP)) continue;
+        // Nor where an open door leaf stands, as walks keep off it.
+        if (!w.clear(sx, sy, sz, PLAYER_HEIGHT, FLOOR_PAD, false, STEP_UP) || this.nearLeaf(i, sx, sy, sz, FLOOR_PAD)) continue;
         spots.push([sx, sy, sz]);
         break;
       }

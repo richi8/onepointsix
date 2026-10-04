@@ -116,13 +116,14 @@ for (const [name, query] of Object.entries(YARD)) {
   });
 }
 
-// Deathmatch's map (see maps/teststreet.ts), built from the kit: down its
-// street from the west end, the row of houses sharing walls on the left and
-// the balcony over the street on the right, and from above, the roofs and
-// their parapets, the yards and the walls round it.
+// Deathmatch's map (see maps/calabianca.ts), plain boxes until its look: the
+// town from over the sea, its levels stepping up the hillside; up the middle
+// lane from the quay, under the room over it to the stairs; and the square,
+// the church and its tower, from the square's street.
 const MAP: Record<string, string> = {
-  'test-street': '-26,17.7,1,10,16.5,0',
-  'test-street-above': '-30,40,30,0,16,0',
+  'town-above': '-70,55,320,0,8,240',
+  'town-lane': '0,4.7,292,0,10,240',
+  'town-square': '-10,10.7,244,4,12,220',
 };
 
 for (const [name, cam] of Object.entries(MAP)) {

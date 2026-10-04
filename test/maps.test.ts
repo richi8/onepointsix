@@ -10,7 +10,8 @@ import { flightSteps, KIT_WALL, SLAB, STOREY } from '../src/shared/kit.ts';
 import { groundWeights } from '../src/shared/ground.ts';
 import { Layer } from '../src/shared/layers.ts';
 import { lootCrates } from '../src/shared/loot.ts';
-import { mapFor, type MapBlock } from '../src/shared/maps/index.ts';
+import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
+import { mapFor, type GameMap, type MapBlock } from '../src/shared/maps/index.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
 import { reached } from '../src/server/nav.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
@@ -28,10 +29,11 @@ function fingerprint(w: World): string {
 }
 
 const street = new World(1, TEST_STREET);
+const town = new World(1, CALABIANCA);
 /** The test street's buildings' ground floors. */
 const FLOOR_AT = TEST_STREET.buildings[0].floor;
 
-/** Every room of the test street's buildings, a storey of a block at a time, and every roof: where its floor is, and the inside of its walls. */
+/** Every room of a map's buildings, a storey of a block at a time, and every roof: where its floor is, and the inside of its walls. */
 interface Room {
   name: string;
   block: MapBlock;
@@ -39,31 +41,35 @@ interface Room {
   inner: Rect;
   roof: boolean;
 }
-const ROOMS: Room[] = TEST_STREET.buildings.flatMap((b, i) => b.blocks.flatMap((block, j) => {
-  const inner = { minX: block.minX + KIT_WALL / 2, minZ: block.minZ + KIT_WALL / 2, maxX: block.maxX - KIT_WALL / 2, maxZ: block.maxZ - KIT_WALL / 2 };
-  const rooms = Array.from({ length: block.storeys - (block.from ?? 0) }, (_, k): Room => {
-    const s = k + (block.from ?? 0);
-    return { name: `building ${i} block ${j} storey ${s}`, block, y: b.floor + STOREY * s, inner, roof: false };
-  });
-  rooms.push({ name: `building ${i} block ${j} roof`, block, y: b.floor + STOREY * block.storeys + SLAB, inner, roof: true });
-  return rooms;
-}));
+function roomsOf(map: GameMap): Room[] {
+  return map.buildings.flatMap((b, i) => b.blocks.flatMap((block, j) => {
+    const inner = { minX: block.minX + KIT_WALL / 2, minZ: block.minZ + KIT_WALL / 2, maxX: block.maxX - KIT_WALL / 2, maxZ: block.maxZ - KIT_WALL / 2 };
+    const rooms = Array.from({ length: block.storeys - (block.from ?? 0) }, (_, k): Room => {
+      const s = k + (block.from ?? 0);
+      return { name: `building ${i} block ${j} storey ${s}`, block, y: b.floor + STOREY * s, inner, roof: false };
+    });
+    rooms.push({ name: `building ${i} block ${j} roof`, block, y: b.floor + STOREY * block.storeys + SLAB, inner, roof: true });
+    return rooms;
+  }));
+}
 
-/** The footprints of the street's flights of stairs, inside and out. */
-const FLIGHTS: Rect[] = [
-  ...TEST_STREET.buildings.flatMap((b) => (b.flights ?? []).flatMap((f) => flightSteps(f.x, f.z, f.width ?? 1.5, f.climbs, 0, 3.2).map((s) => s.r))),
-  ...TEST_STREET.stairs.flatMap((s) => flightSteps(s.x, s.z, s.width, s.climbs, s.y0, s.y1).map((st) => st.r)),
-];
-const onFlight = (x: number, z: number) => FLIGHTS.some((r) => x > r.minX - 0.2 && x < r.maxX + 0.2 && z > r.minZ - 0.2 && z < r.maxZ + 0.2);
+/** The footprints of a map's flights of stairs, inside and out. */
+function flightsOf(map: GameMap): Rect[] {
+  return [
+    ...map.buildings.flatMap((b) => (b.flights ?? []).flatMap((f) => flightSteps(f.x, f.z, f.width ?? 1.5, f.climbs, 0, 3.2).map((s) => s.r))),
+    ...map.stairs.flatMap((s) => flightSteps(s.x, s.z, s.width, s.climbs, s.y0, s.y1).map((st) => st.r)),
+  ];
+}
+const onFlight = (flights: Rect[], x: number, z: number) => flights.some((r) => x > r.minX - 0.2 && x < r.maxX + 0.2 && z > r.minZ - 0.2 && z < r.maxZ + 0.2);
 
-/** A clear spot in a room, as near its middle as there is one: off its stairs, crates and railings. */
-function spotIn(w: World, room: Room): { x: number; z: number } {
+/** A clear spot in a room, as near its middle as there is one: off its stairs, crates and railings, and its bell tower. */
+function spotIn(w: World, flights: Rect[], room: Room): { x: number; z: number } {
   const cx = (room.inner.minX + room.inner.maxX) / 2;
   const cz = (room.inner.minZ + room.inner.maxZ) / 2;
   let best: { x: number; z: number } | null = null;
   for (let x = room.inner.minX + 0.6; x < room.inner.maxX - 0.6; x += 0.25) {
     for (let z = room.inner.minZ + 0.6; z < room.inner.maxZ - 0.6; z += 0.25) {
-      if (onFlight(x, z) || !w.clear(x, room.y, z, 1.8, 0.6) || Math.abs(w.groundHeight(x, z, room.y + 0.3) - room.y) > 0.01) continue;
+      if (onFlight(flights, x, z) || !w.clear(x, room.y, z, 1.8, 0.6) || Math.abs(w.groundHeight(x, z, room.y + 0.3) - room.y) > 0.01) continue;
       if (!best || Math.hypot(x - cx, z - cz) < Math.hypot(best.x - cx, best.z - cz)) best = { x, z };
     }
   }
@@ -73,7 +79,7 @@ function spotIn(w: World, room: Room): { x: number; z: number } {
 
 describe('Worlds by mode', () => {
   it('plays Deathmatch on its map and every other mode on the island from the seed', () => {
-    expect(mapFor('deathmatch')).toBe(TEST_STREET);
+    expect(mapFor('deathmatch')).toBe(CALABIANCA);
     expect(mapFor('extraction')).toBeNull();
     expect(mapFor('range')).toBeNull();
   });
@@ -91,9 +97,9 @@ describe('Worlds by mode', () => {
 
   it('builds the same map on the server as on the client, whatever the game\'s seed', () => {
     const server = new GameServer(7, MODES.deathmatch.options);
-    expect(server.world.map).toBe(TEST_STREET);
-    expect(fingerprint(server.world)).toBe(fingerprint(street));
-    expect(fingerprint(new World(99, TEST_STREET))).toBe(fingerprint(street));
+    expect(server.world.map).toBe(CALABIANCA);
+    expect(fingerprint(server.world)).toBe(fingerprint(town));
+    expect(fingerprint(new World(99, CALABIANCA))).toBe(fingerprint(town));
     expect(new GameServer(7, MODES.extraction.options).world.map).toBeNull();
   });
 });
@@ -127,16 +133,6 @@ describe('The test street', () => {
     const at = (x: number, z: number) => weights[(Math.round((z + street.half) / street.cell) * n + Math.round((x + street.half) / street.cell)) * 5 + Layer.dirt];
     expect(at(0, 0)).toBeCloseTo(1, 3);
     expect(at(-20, 12)).toBeCloseTo(1, 3);
-  });
-
-  it('stands every spawn point on clear ground within the bounds, outside the buildings', () => {
-    expect(street.spawns.length).toBe(TEST_STREET.spawns.length);
-    for (const s of street.spawns) {
-      expect(street.inBounds(s.x, s.z, 1)).toBe(true);
-      expect(street.fits(s.x, s.y, s.z, 1.8)).toBe(true);
-      expect(s.y).toBeCloseTo(street.terrainHeight(s.x, s.z), 3);
-      expect(street.buildings.some((b) => inBuilding(b, s.x, s.z, 0.5))).toBe(false);
-    }
   });
 
   it('lets bots reach every building, upstairs and every crate from a spawn point, and nothing beyond the bounds', () => {
@@ -200,62 +196,8 @@ describe('The building kit, on the test street', () => {
     expect([at(FLOOR_AT + 1), at(FLOOR_AT + 4), at(FLOOR_AT + 7)]).toEqual([1, 1, 1]);
   });
 
-  it('lets bots reach every room, floor and roof, and a player walk there by the same way', () => {
-    const w = new World(1, TEST_STREET);
-    w.doors.forEach((_, i) => w.setDoor(i, true));
-    const nav = new NavGrid(w);
-    const from = w.spawns[0];
-    for (const room of ROOMS) {
-      const to = spotIn(w, room);
-      const path = nav.findPath(from.x, from.z, to.x, to.z, from.y, room.y);
-      expect(path, room.name).not.toBeNull();
-      const end = path!.at(-1)!;
-      expect(Math.hypot(end.x - to.x, end.z - to.z), room.name).toBeLessThan(1);
-      expect(end.y ?? w.groundHeight(end.x, end.z, room.y + 0.3), room.name).toBeCloseTo(room.y, 1);
-      // A player walks it, turning toward each waypoint in turn.
-      const p = spawnState(from.x, from.y, from.z);
-      let k = 0;
-      for (let i = 0; k < path!.length && i < 90 / CMD_DT; i++) {
-        const wp = path![k];
-        if (reached(wp, p.x, p.y, p.z)) {
-          k++;
-          continue;
-        }
-        applyCmd(w, p, { seq: i, buttons: Btn.Forward, yaw: yawToward(p.x, p.z, wp.x, wp.z), pitch: 0 }, CMD_DT);
-      }
-      expect(k, `${room.name}: walked to waypoint ${k} of ${path!.length}, stuck at ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`).toBe(path!.length);
-      expect(p.y, room.name).toBeCloseTo(room.y, 1);
-    }
-  });
-
-  it('keeps the rain off every floor indoors, and something solid over it', () => {
-    const cx = (street.bounds.minX + street.bounds.maxX) / 2;
-    const cz = (street.bounds.minZ + street.bounds.maxZ) / 2;
-    const x0 = cx - (ROOF_CELLS * ROOF_CELL) / 2;
-    const z0 = cz - (ROOF_CELLS * ROOF_CELL) / 2;
-    const map = roofHeights(street, x0, z0);
-    for (const room of ROOMS.filter((r) => !r.roof)) {
-      for (let x = room.inner.minX + 0.3; x < room.inner.maxX - 0.2; x += 0.5) {
-        for (let z = room.inner.minZ + 0.3; z < room.inner.maxZ - 0.2; z += 0.5) {
-          if (onFlight(x, z)) continue;
-          const cover = map[Math.floor((z - z0) / ROOF_CELL) * ROOF_CELLS + Math.floor((x - x0) / ROOF_CELL)];
-          expect(cover, `${room.name} at ${x}, ${z}`).toBeGreaterThan(room.y + 2);
-          expect(street.raycast(x, room.y + 1, z, 0, 1, 0, 10), `${room.name} at ${x}, ${z}`).toBeLessThan(STOREY);
-        }
-      }
-    }
-  });
-
-  it('stops rounds and grenades at its walls', () => {
+  it('stops grenades at its walls', () => {
     const walls = street.props.filter((p) => p.box.part === 'wall' && p.box.maxY - p.box.minY > 2.5 && street.buildings.some((b) => inBuilding(b, (p.box.minX + p.box.maxX) / 2, (p.box.minZ + p.box.maxZ) / 2, 0.01)));
-    expect(walls.length).toBeGreaterThan(50);
-    for (const { box } of walls) {
-      const alongX = box.maxX - box.minX > box.maxZ - box.minZ;
-      const [mx, my, mz] = [(box.minX + box.maxX) / 2, box.maxY - 1.4, (box.minZ + box.maxZ) / 2];
-      // From 3 m off one face, straight across.
-      const [ox, oz, dx, dz] = alongX ? [mx, box.minZ - 3, 0, 1] : [box.minX - 3, mz, 1, 0];
-      expect(street.raycast(ox, my, oz, dx, 0, dz, 6)).toBeLessThan(3.01);
-    }
     // A grenade thrown hard at each house's front wall from the street stays in the street.
     for (const b of street.buildings) {
       const north = b.maxZ < 0;
@@ -282,5 +224,89 @@ describe('The building kit, on the test street', () => {
     for (let i = 0; i < 2.5 / CMD_DT; i++) applyCmd(street, q, { seq: i, buttons: Btn.Forward, yaw: -Math.PI / 2, pitch: 0 }, CMD_DT);
     expect(q.x).toBeGreaterThan(-3);
     expect(q.y).toBeCloseTo(FLOOR_AT + 2 * STOREY + SLAB, 2);
+  });
+});
+
+describe.each([
+  ['the test street', TEST_STREET, street],
+  ['Calabianca', CALABIANCA, town],
+] as const)('The building kit, on %s', (_, map, world) => {
+  const rooms = roomsOf(map);
+  const flights = flightsOf(map);
+
+  it('stands every spawn point on clear ground within the bounds, outside the buildings', () => {
+    expect(world.spawns.length).toBe(map.spawns.length);
+    for (const s of world.spawns) {
+      const at = `spawn at ${s.x}, ${s.z}`;
+      expect(world.inBounds(s.x, s.z, 1), at).toBe(true);
+      expect(world.fits(s.x, s.y, s.z, 1.8), at).toBe(true);
+      expect(s.y, at).toBeCloseTo(world.terrainHeight(s.x, s.z), 3);
+      expect(world.buildings.some((b) => inBuilding(b, s.x, s.z, 0.5)), at).toBe(false);
+    }
+  });
+
+  it('lets bots reach every room, floor and roof, and a player walk there by the same way', { timeout: 300_000 }, () => {
+    const w = new World(1, map);
+    w.doors.forEach((_, i) => w.setDoor(i, true));
+    const nav = new NavGrid(w);
+    const from = w.spawns[0];
+    for (const room of rooms) {
+      const to = spotIn(w, flights, room);
+      const path = nav.findPath(from.x, from.z, to.x, to.z, from.y, room.y);
+      expect(path, room.name).not.toBeNull();
+      const end = path!.at(-1)!;
+      expect(Math.hypot(end.x - to.x, end.z - to.z), room.name).toBeLessThan(1);
+      expect(end.y ?? w.groundHeight(end.x, end.z, room.y + 0.3), room.name).toBeCloseTo(room.y, 1);
+      // A player walks it, turning toward each waypoint in turn.
+      const p = spawnState(from.x, from.y, from.z);
+      let k = 0;
+      for (let i = 0; k < path!.length && i < 180 / CMD_DT; i++) {
+        const wp = path![k];
+        if (reached(wp, p.x, p.y, p.z)) {
+          k++;
+          continue;
+        }
+        applyCmd(w, p, { seq: i, buttons: Btn.Forward, yaw: yawToward(p.x, p.z, wp.x, wp.z), pitch: 0 }, CMD_DT);
+      }
+      expect(k, `${room.name}: walked to waypoint ${k} of ${path!.length}, stuck at ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`).toBe(path!.length);
+      expect(p.y, room.name).toBeCloseTo(room.y, 1);
+    }
+  });
+
+  it('joins its streets: bots reach every spawn point from the first', () => {
+    const nav = new NavGrid(world);
+    const from = world.spawns[0];
+    for (const s of world.spawns.slice(1)) {
+      const path = nav.findPath(from.x, from.z, s.x, s.z, from.y, s.y);
+      expect(path, `to ${s.x}, ${s.z}`).not.toBeNull();
+      expect(Math.hypot(path!.at(-1)!.x - s.x, path!.at(-1)!.z - s.z), `to ${s.x}, ${s.z}`).toBeLessThan(1);
+    }
+  });
+
+  it('keeps the rain off every floor indoors, and something solid over it', () => {
+    for (const room of rooms.filter((r) => !r.roof)) {
+      const x0 = (room.inner.minX + room.inner.maxX) / 2 - (ROOF_CELLS * ROOF_CELL) / 2;
+      const z0 = (room.inner.minZ + room.inner.maxZ) / 2 - (ROOF_CELLS * ROOF_CELL) / 2;
+      const cover = roofHeights(world, x0, z0);
+      for (let x = room.inner.minX + 0.3; x < room.inner.maxX - 0.2; x += 0.5) {
+        for (let z = room.inner.minZ + 0.3; z < room.inner.maxZ - 0.2; z += 0.5) {
+          if (onFlight(flights, x, z)) continue;
+          expect(cover[Math.floor((z - z0) / ROOF_CELL) * ROOF_CELLS + Math.floor((x - x0) / ROOF_CELL)], `${room.name} at ${x}, ${z}`).toBeGreaterThan(room.y + 2);
+          expect(world.raycast(x, room.y + 1, z, 0, 1, 0, 10), `${room.name} at ${x}, ${z}`).toBeLessThan(STOREY);
+        }
+      }
+    }
+  });
+
+  it('stops rounds at its walls', () => {
+    const walls = world.props.filter((p) => p.box.part === 'wall' && p.box.maxY - p.box.minY > 2.5 && world.buildings.some((b) => inBuilding(b, (p.box.minX + p.box.maxX) / 2, (p.box.minZ + p.box.maxZ) / 2, 0.01)));
+    expect(walls.length).toBeGreaterThan(50);
+    for (const { box } of walls) {
+      const alongX = box.maxX - box.minX > box.maxZ - box.minZ;
+      const [mx, my, mz] = [(box.minX + box.maxX) / 2, box.maxY - 1.4, (box.minZ + box.maxZ) / 2];
+      // From 3 m off one face, straight across.
+      const [ox, oz, dx, dz] = alongX ? [mx, box.minZ - 3, 0, 1] : [box.minX - 3, mz, 1, 0];
+      expect(world.raycast(ox, my, oz, dx, 0, dz, 6)).toBeLessThan(3.01);
+    }
   });
 });

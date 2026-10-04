@@ -1183,9 +1183,9 @@ export class World {
   }
 
   /** A freestanding wall: one solid box. */
-  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): void {
+  private addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): Box {
     this.walls.push({ kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0, part: 'wall' });
-    this.addProp(minX, minY, minZ, maxX, maxY, maxZ, 'wall');
+    return this.addProp(minX, minY, minZ, maxX, maxY, maxZ, 'wall');
   }
 
   /** Each outpost's own random stream, for its building and the cover round it. */
@@ -1451,7 +1451,13 @@ export class World {
    * open or shut from a stream of their own.
    */
   private buildMap(map: GameMap, rng: () => number): void {
-    const kit = buildKit(map.buildings, map.stairs, (x, z) => this.terrainHeight(x, z));
+    const terraces = map.walls.filter((w) => w.walk);
+    const surface = (x: number, z: number) => {
+      let y = this.terrainHeight(x, z);
+      for (const t of terraces) if (x > t.minX && x < t.maxX && z > t.minZ && z < t.maxZ) y = Math.max(y, t.y1);
+      return y;
+    };
+    const kit = buildKit(map.buildings, map.stairs, (x, z) => this.terrainHeight(x, z), surface);
     const doors = mulberry32(this.seed ^ 0x1b873593);
     for (const w of kit.walls) {
       const frame: Frame = w.axis === 'x' ? (a, c) => [a, c] : (a, c) => [c, a];
@@ -1463,7 +1469,7 @@ export class World {
       const { uppers, ...rest } = b;
       this.buildings.push({ ...rest, plan: 'kit', upper: uppers[0] ?? null, uppers, outpost: -1 });
     }
-    for (const w of map.walls) this.addWall(w.minX, w.y0, w.minZ, w.maxX, w.y1, w.maxZ);
+    for (const w of map.walls) this.addWall(w.minX, w.y0, w.minZ, w.maxX, w.y1, w.maxZ).walk = !!w.walk;
     for (const s of map.stairs) this.addStair(s);
     // The panel of each prop, for crates stacked on it; -1 for a container.
     const panels: number[] = [];

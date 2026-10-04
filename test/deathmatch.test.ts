@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Directory, MODES } from '../src/server/directory.ts';
-import { ARENA_CLEAR } from '../src/server/population.ts';
+import { ARENA_SIGHT, MAP_CLEAR } from '../src/server/population.ts';
 import { GameServer } from '../src/server/server.ts';
 import {
-  DEATHCAM_AFTER, DEATHMATCH_BOT_RESPAWN, DEATHMATCH_CAPACITY, DEATHMATCH_RESPAWN_WAIT, SERVER_TICK_RATE,
+  DEATHCAM_AFTER, DEATHMATCH_BOT_RESPAWN, DEATHMATCH_CAPACITY, DEATHMATCH_RESPAWN_WAIT, EYE_HEIGHT, SERVER_TICK_RATE,
 } from '../src/shared/constants.ts';
 import { ITEMS, rollItems } from '../src/shared/loot.ts';
 import type { GameEvent, ServerMsg } from '../src/shared/protocol.ts';
@@ -90,7 +90,7 @@ describe('deathmatch', () => {
     expect(server.bots().length).toBe(DEATHMATCH_CAPACITY - 1);
   });
 
-  it('respawns at the map’s spawn points, the farthest from everyone if none is clear', () => {
+  it('respawns at the map’s spawn points, out of everyone\'s sight and the farthest from them if none is clear', () => {
     const server = game();
     const me = join(server, 'me');
     const spawns = server.world.spawns;
@@ -105,11 +105,15 @@ describe('deathmatch', () => {
       const at = spawns.find((s) => Math.hypot(s.x - you.x, s.z - you.z) < 1);
       expect(at).toBeDefined();
       const nearest = (s: { x: number; z: number }) => Math.min(...others.map((p) => Math.hypot(p.x - s.x, p.z - s.z)));
-      if (nearest(at!) < ARENA_CLEAR) expect(nearest(at!)).toBeGreaterThanOrEqual(Math.max(...spawns.map(nearest)) - 2);
+      const seen = (s: { x: number; y: number; z: number }) => others.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < ARENA_SIGHT &&
+        server.world.hasLineOfSight(p.x, p.y + EYE_HEIGHT, p.z, s.x, s.y + EYE_HEIGHT, s.z));
+      const hidden = spawns.filter((s) => !seen(s));
+      if (hidden.length) expect(seen(at!)).toBe(false);
+      if (nearest(at!) < MAP_CLEAR) expect(nearest(at!)).toBeGreaterThanOrEqual(Math.max(...(hidden.length ? hidden : spawns).map(nearest)) - 2);
     }
   });
 
-  it('keeps everyone on its map as they fight', () => {
+  it('keeps everyone on its map as they fight', { timeout: 60_000 }, () => {
     const server = game();
     const b = server.world.bounds;
     for (let t = 0; t < 30; t++) {

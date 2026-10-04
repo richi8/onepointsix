@@ -192,21 +192,28 @@ const ARENA_TRIES = 64;
 /** A Deathmatch spawn is clear with nobody this close to it, nor in sight of it from this far. */
 export const ARENA_CLEAR = 80;
 export const ARENA_SIGHT = 200;
-/** Deathmatch spawns picked, and of those, how many found no clear spot and took the farthest. */
-export const arenaPicks = { picked: 0, unclear: 0 };
+/** Deathmatch spawns picked; of those, how many found no clear spot, and how many found none out of sight either. */
+export const arenaPicks = { picked: 0, unclear: 0, seen: 0 };
+
+/** On a map, a spawn point is clear with nobody this close to it, nor anyone in sight of it. */
+export const MAP_CLEAR = 30;
 
 /**
  * Where an operator (re)spawns in Deathmatch, facing: a random spot on dry
  * land, or on a map one of its spawn points taken in a random order, with
- * none of `avoid`, the living operators, within ARENA_CLEAR or seeing it from
- * within ARENA_SIGHT. If none turns up, the farthest from them of those tried.
+ * none of `avoid`, the living operators, within ARENA_CLEAR (MAP_CLEAR on a
+ * map) or seeing it from within ARENA_SIGHT. If none turns up, the farthest
+ * from them of those tried that nobody sees, or failing that of them all.
  * Outposts are fair game, as nobody guards them.
  */
 export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[]): Post {
   arenaPicks.picked++;
   const spawns = world.map ? shuffled(world.spawns, rand) : null;
+  const clear = spawns ? MAP_CLEAR : ARENA_CLEAR;
   let best: Post | null = null;
   let bestD = -1;
+  let hidden: Post | null = null;
+  let hiddenD = -1;
   for (let i = 0; i < (spawns ? spawns.length : ARENA_TRIES); i++) {
     let p: Post;
     if (spawns) p = spawns[i];
@@ -223,10 +230,13 @@ export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid
       d = Math.min(d, ad);
       if (!seen && ad < ARENA_SIGHT && world.hasLineOfSight(a.x, a.y + EYE_HEIGHT, a.z, p.x, y + EYE_HEIGHT, p.z)) seen = true;
     }
-    if (d >= ARENA_CLEAR && !seen) return p;
+    if (d >= clear && !seen) return p;
     if (d > bestD) (best = p), (bestD = d);
+    if (!seen && d > hiddenD) (hidden = p), (hiddenD = d);
   }
   arenaPicks.unclear++;
+  if (hidden) return hidden;
+  arenaPicks.seen++;
   if (best) return best;
   const at = world.randomLandPoint(rand);
   return { ...at, yaw: yawToward(at.x, at.z, 0, 0) };

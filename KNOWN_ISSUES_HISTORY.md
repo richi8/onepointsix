@@ -2186,6 +2186,24 @@ notes the chunk it came from.
   a yard's grass only shows where a grid point falls in it, and spills a little under walls.
   **Moot** (2026-10-03): the generated towns were dropped for a fixed, hand-made map (Phase 8);
   chunk 52 removes their code.
+- **The test street is far too small for 16** (chunk 52): at 56 × 36 m no spawn point is ever
+  80 m from everyone or out of their sight, so a respawn takes the farthest and is shot at
+  once: in `sim:deathmatch` 409 of 416 deaths came within 15 s of spawning (324 of 360 with
+  chunk 53's five buildings).
+  **Resolved** (54): Deathmatch is played in the town, 136 × 111 m with 32 spawn points, and on a
+  map a respawn wants nobody within 30 m and nobody seeing it, then takes the farthest that
+  nobody sees. In three 10-minute games of 16 bots none spawned in anyone's sight, and 30–37% of
+  deaths came within 15 s of spawning (see Respawns are still often near a fight in the plan).
+- **A map's edge is an invisible wall** (chunk 52): players are held inside its bounds, and the
+  nav grid ends there.
+  **Resolved** (54): the town's bounds stand a body's width inside its edge walls, its high
+  street's houses' backs and its sea wall, so walking into the edge meets a wall. What's left,
+  the sea wall low enough to try to climb, is in the plan.
+- **Walls are shared only where storeys line up** (chunk 53): the kit merges walls along a line
+  storey by storey, so two blocks side by side whose floors differ each build their own wall on
+  the line they share.
+  **Moot** (54): every row of the town's houses stands on one level, so the floors of houses side
+  by side always line up. The kit still works that way, should a map ever need it.
 
 ## Dropped
 

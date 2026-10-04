@@ -17,7 +17,7 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
   expect(await page.evaluate(() => {
     const w = window.game.world as { map: { id: string } | null; outposts: unknown[] };
     return [w.map?.id, w.outposts.length];
-  })).toEqual(['test-street', 0]);
+  })).toEqual(['calabianca', 0]);
   expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(false);
   await expect(page.locator('#board .empty')).toHaveText('No games yet. Leave a Deathmatch game with a kill to post it.');
   await play(page, 'deathmatch');
