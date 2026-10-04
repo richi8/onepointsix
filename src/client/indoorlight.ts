@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HOUSE_ROOF, inBuilding, type Box, type Building, type Tree, type World } from '../shared/world.ts';
 import { ISLAND_GLSL, islandUniforms, SLOT_PAIR, type IslandMap } from './islandmap.ts';
+import { TOWN_GLSL, townUniforms } from './townlight.ts';
 
 // How much of the sky's light reaches each point inside the buildings, and
 // in what colour. Each building has a small grid of cells over it, and each
@@ -93,6 +94,7 @@ export const indoorUniforms = {
   indoorScale: { value: Array.from({ length: MAX_BUILDINGS }, () => new THREE.Vector4()) },
   indoorCount: { value: Array.from({ length: MAX_BUILDINGS }, () => new THREE.Vector3()) },
   ...islandUniforms,
+  ...townUniforms,
 };
 
 /**
@@ -101,7 +103,8 @@ export const indoorUniforms = {
  * each of red, green and blue, and whether that's indoors, 0 to 1; `sun` is
  * set to the sun's light bounced there off what's round it, 0 outdoors. It
  * looks a little off the surface, into the space it faces, so a wall's inside
- * face and its outside face each read their own side.
+ * face and its outside face each read their own side. In a map's town it's
+ * the town's baked light, indoors and out (see townlight.ts).
  */
 export const INDOOR_GLSL = /* glsl */ `
   uniform highp sampler3D indoorGrid;
@@ -111,7 +114,13 @@ export const INDOOR_GLSL = /* glsl */ `
   uniform vec4 indoorScale[${MAX_BUILDINGS}];
   uniform vec3 indoorCount[${MAX_BUILDINGS}];
   ${ISLAND_GLSL}
+  ${TOWN_GLSL}
   vec4 indoorSky(vec3 p, vec3 n, out vec3 sun) {
+    vec3 town;
+    if (townSky(p, n, town, sun)) {
+      sun *= indoorSun;
+      return vec4(town, 0.0);
+    }
     sun = vec3(0.0);
     vec3 q = p + n * 0.2;
     int pair = int(islandCell(q).b + 0.5);
@@ -277,8 +286,12 @@ export class IndoorLight {
   /** The colour of each box, sRGB. */
   private readonly albedo: (box: Box) => number;
 
-  /** Buildings' slots are marked on `island`, for materials to find; `albedo` is a box's colour, sRGB. */
-  constructor(world: World, island: IslandMap, albedo: (box: Box) => number = () => CONCRETE) {
+  /**
+   * Buildings' slots are marked on `island`, for materials to find; `albedo`
+   * is a box's colour, sRGB. Only the buildings `grids` picks get grids: a
+   * map's town has its own light.
+   */
+  constructor(world: World, island: IslandMap, albedo: (box: Box) => number = () => CONCRETE, grids = (_: Building) => true) {
     this.world = world;
     this.albedo = albedo;
     this.rays = skyRays(RAYS);
@@ -302,7 +315,7 @@ export class IndoorLight {
     indoorUniforms.indoorSunGrid.value = this.sunTexture;
 
     const { indoorCorner, indoorScale, indoorCount } = indoorUniforms;
-    world.buildings.slice(0, MAX_BUILDINGS).forEach((b, slot) => {
+    world.buildings.filter(grids).slice(0, MAX_BUILDINGS).forEach((b, slot) => {
       const g = gridFor(world, b);
       this.grids.push(g);
       this.flat(slot);

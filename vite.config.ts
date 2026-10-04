@@ -10,7 +10,7 @@ type OutputChunk = Rollup.OutputChunk;
 /** Files in public/ the loading screen waits for, and ones loaded in their place in other browsers. */
 const START_FILES = [
   'assets/basis/basis_transcoder.js', 'assets/basis/basis_transcoder.wasm',
-  'assets/textures/color.ktx2', 'assets/textures/normal.ktx2', 'assets/sky.hdr',
+  'assets/textures/color.ktx2', 'assets/textures/normal.ktx2', 'assets/sky.hdr', 'assets/sky.jpg',
   ...AVATAR_NAMES.map((name) => `assets/soldiers/${name}.glb`), 'assets/guns/rifle.glb', 'assets/guns/pistol.glb', 'assets/guns/bolt.glb',
   'assets/sounds.json', 'assets/sounds-early.ogg',
 ];
@@ -82,7 +82,7 @@ function filesUnder(dir: string): string[] {
 
 const MIME: Record<string, string> = {
   js: 'text/javascript', json: 'application/json', wasm: 'application/wasm', glb: 'model/gltf-binary',
-  ktx2: 'image/ktx2', hdr: 'image/vnd.radiance', ogg: 'audio/ogg', m4a: 'audio/mp4',
+  ktx2: 'image/ktx2', hdr: 'image/vnd.radiance', jpg: 'image/jpeg', ogg: 'audio/ogg', m4a: 'audio/mp4',
 };
 
 /**

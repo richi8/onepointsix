@@ -259,6 +259,8 @@ export interface GameMap {
   paving?: MapPaving;
   /** Its lanes and streets, for the dev view. */
   lanes?: MapLane[];
+  /** The sun's bearing, degrees from +x toward +z, for its look alone; the island's otherwise. */
+  sun?: number;
 }
 
 /** What the ground of `map` is paved with at (x, z), or null beyond its paving's area. */

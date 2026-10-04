@@ -790,6 +790,8 @@ const TOWN: GameMap = {
   ramps: RAMPS,
   props: PROPS,
   spawns: SPAWNS,
+  // From the south-west, over the sea, raking across the church and the market.
+  sun: 110,
   // Flagstones down the lanes and along the quay; cobbles on the squares, the
   // courtyards and the road; grass in the olive garden and the cemetery; the
   // boat yard bare.

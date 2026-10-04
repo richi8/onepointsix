@@ -44,6 +44,7 @@ import { Surfaces } from './surface.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { ViewModel } from './viewmodel.ts';
 import { WorldView } from './worldview.ts';
+import { gradeTown } from './grading.ts';
 import { FAR_SHADOWS } from './cascades.ts';
 import './style.css';
 
@@ -131,6 +132,8 @@ const prepared = view.prepare(renderer).catch((err: unknown) => console.warn('Pa
 const resolution = new Resolution(renderer);
 // Neutral keeps the colours ACES would bleach; the sun outweighs the sky light so shadows read.
 renderer.toneMapping = THREE.NeutralToneMapping;
+// A map's town is graded too (see grading.ts); every mode loads a page of its own.
+if (world.map) gradeTown(renderer);
 renderer.toneMappingExposure = view.lit.exposure;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -268,7 +271,7 @@ async function fadeIn(assets: Assets): Promise<void> {
 
 const earlySounds = sfx.loadEarly();
 import('./assets.ts')
-  .then(({ loadAssets }) => loadAssets(renderer))
+  .then(({ loadAssets }) => loadAssets(renderer, !!world.map))
   .then(async (assets) => {
     if (skipped) return fadeIn(assets);
     await Promise.all([earlySounds, prepared]);
@@ -929,6 +932,7 @@ const indoorBounce = new THREE.Color(0, 0, 0);
 const GUN_AHEAD = 0.4;
 const PROBE = 0.5;
 const probe = new THREE.Color();
+const probeSun = new THREE.Color();
 const gunAt = new THREE.Vector3();
 const towards = new THREE.Vector3();
 const unturn = new THREE.Quaternion();
@@ -938,11 +942,10 @@ const unturn = new THREE.Quaternion();
  * window or a doorway, easing as you go in or out.
  */
 function lightGun(dt: number): void {
-  const light = view.light3d;
   const p = camera.getWorldDirection(gunAt).multiplyScalar(GUN_AHEAD).add(camera.position);
   const bright = (x: number, y: number, z: number): number => {
-    const c = light.at(x, y, z, probe);
-    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    view.lightAt(x, y, z, probe, probeSun);
+    return 0.2126 * probe.r + 0.7152 * probe.g + 0.0722 * probe.b;
   };
   towards.set(
     bright(p.x + PROBE, p.y, p.z) - bright(p.x - PROBE, p.y, p.z),
@@ -950,9 +953,10 @@ function lightGun(dt: number): void {
     bright(p.x, p.y, p.z + PROBE) - bright(p.x, p.y, p.z - PROBE),
   ).divideScalar(2 * PROBE);
   const k = Math.min(dt * 4, 1);
-  indoors.lerp(light.at(p.x, p.y, p.z, probe), k);
+  view.lightAt(p.x, p.y, p.z, probe, probeSun);
+  indoors.lerp(probe, k);
   indoorTowards.lerp(towards, k);
-  indoorBounce.lerp(light.sunAt(p.x, p.y, p.z, probe), k);
+  indoorBounce.lerp(probeSun, k);
   viewModel.shade(indoors, towards.copy(indoorTowards).applyQuaternion(unturn.copy(camera.quaternion).invert()), indoorBounce);
 }
 
@@ -1328,7 +1332,7 @@ const devCam = ((): number[] | null => {
  */
 const still = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('still') ?? NaN) : NaN;
 // And the light inside every building is worked out at once, rather than a little each frame.
-if (!Number.isNaN(still)) view.light3d.finishAll();
+if (!Number.isNaN(still)) view.finishLight();
 
 /**
  * In development, `?stand=x,z,yaw;x,z,yaw…` stands soldiers on the floor at

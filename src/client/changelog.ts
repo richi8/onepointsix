@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-04',
+    title: 'Calabianca in the sun',
+    notes: [
+      'Calabianca is lit like a real town under a real sky. The afternoon sun comes from over the sea, so walls turned from it are in proper shade, and the shade is lit warm by the sunlit walls and paving facing it.',
+      'The light gathers where it should: darker at the foot of walls, in corners, under balconies and at the bottom of narrow lanes. Inside, every house is darker than the street, lit from its windows and doors, darkest in the far corners.',
+      'The sky by day is a photograph, with clouds, over the town and the island alike; rain and fog still grey it over. In rain the town is lit by the grey sky, not by a sun you can’t see.',
+      'The town’s colours are graded a little warmer in the light and cooler in the shade.',
+      'For a moment after the town loads, its light is still being worked out: it settles within a few seconds.',
+    ],
+  },
+  {
+    date: '2026-10-04',
     title: 'Calabianca’s look',
     notes: [
       'Calabianca looks like a town by the sea now. Its walls are plastered in each part of town’s colour, whitewash in the west’s alleys, ochre round the market, pale blue along the quay, with stone at their foot, round their windows and doors, under their roofs and, on the grander houses, at their corners.',

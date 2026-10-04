@@ -2795,3 +2795,13 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   **Dropped** (chunk 59): the road's legs are kept as a stepped street, a *cordonata*, as these
   towns have, cobbled on top and stone at each step's face. A slope drawn over the steps would
   leave feet floating or sunk by up to 12 cm along it.
+- **Most of the town's houses are lit as outdoors inside** (54): the indoor light keeps 16
+  buildings' grids, and the town has 41.
+  **Resolved** (60): a map's town has a light of its own, baked over all of it at load
+  (`townbake.ts`, `townlight.ts`), indoors and out, and the indoor light keeps no grids there.
+  Every room is darker than the street, lit from its windows and doors.
+- **Three buildings meeting light one of them as outdoors** (53): a 2 m cell of the island map
+  points to two buildings' light grids at most, enough for two sharing a wall; where a third
+  meets them, its rooms in that cell are lit as if outdoors.
+  **Moot** (60): only the town has buildings meeting so, and it no longer uses the buildings'
+  grids; the islands' outposts and huts stand apart.

@@ -36,6 +36,9 @@ const ORIGINALS = new URL('originals/', import.meta.url).pathname;
 const MODELS = join(ORIGINALS, 'models');
 const SIZE = 512;
 const HDRI = 'kloofendal_48d_partly_cloudy_puresky';
+/** The sky seen: the share of the picture's height from the top kept (to 8° below the horizon), and its width. */
+const SKY_CROP = (90 + 8) / 180;
+const SKY_WIDTH = 4096;
 /**
  * The soldiers: Microsoft's Rocketbox avatars (MIT), those AVATAR_NAMES lists,
  * from the commit of https://github.com/microsoft/Microsoft-Rocketbox they
@@ -219,11 +222,24 @@ rmSync(work, { recursive: true });
 
 // ----------------------------------------------------------------- sky
 
-// Only used for image-based lighting, so half the smallest size Poly Haven has is plenty.
+// The sky's light, only used for image-based lighting, so half the smallest
+// size Poly Haven has is plenty. And the sky seen: Poly Haven's tonemapped
+// picture of it, down to a little below the horizon, at half its width; the
+// original kept is that crop.
 if (doing('sky')) {
   const sky1k = await cached(async () => (await polyHavenFiles(HDRI)).hdri['1k'].hdr.url, join(ORIGINALS, 'sky.hdr'));
   writeFileSync(join(OUT, 'sky.hdr'), halveHdr(readFileSync(sky1k)));
   console.log('sky.hdr');
+  const photo = join(ORIGINALS, 'sky_photo.jpg');
+  if (!existsSync(photo)) {
+    const dir = mkdtempSync(join(tmpdir(), 'sky-'));
+    const full = join(dir, 'sky.jpg');
+    writeFileSync(full, await get((await polyHavenFiles(HDRI)).tonemapped.url));
+    ffmpeg(['-i', full, '-vf', `crop=iw:ih*${SKY_CROP}:0:0`, '-q:v', '2', photo]);
+    rmSync(dir, { recursive: true });
+  }
+  ffmpeg(['-i', photo, '-vf', `scale=${SKY_WIDTH}:-2:flags=lanczos`, '-q:v', '4', join(OUT, 'sky.jpg')]);
+  console.log('sky.jpg');
 }
 
 /** A Radiance .hdr at half the width and height, averaging each 2×2 block. */

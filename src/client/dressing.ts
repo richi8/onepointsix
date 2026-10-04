@@ -126,11 +126,11 @@ export class Dressing {
   /** Swap the flat colours for the textures, tinted. */
   applyAssets(assets: Assets, world: World): void {
     const old = [this.mesh.material, this.shapes?.material] as (THREE.Material | undefined)[];
-    this.mesh.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { wet: true }), world);
+    this.mesh.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { indoor: true, wet: true }), world);
     this.boxes.stuffs.forEach((s, i) => this.mesh.setColorAt(i, s.tint));
     this.mesh.instanceColor!.needsUpdate = true;
     if (this.shapes) {
-      this.shapes.material = surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85, vertexColors: true, side: THREE.DoubleSide }, 1, { wet: true });
+      this.shapes.material = surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85, vertexColors: true, side: THREE.DoubleSide }, 1, { indoor: true, wet: true });
       this.shapes.geometry.setAttribute('color', this.shapes.geometry.getAttribute('tint'));
     }
     for (const m of old) m?.dispose();

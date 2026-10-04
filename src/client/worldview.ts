@@ -3,7 +3,7 @@ import type { Weather } from '../shared/weather.ts';
 import type { ExtractView } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { ROCK_SQUASH } from '../shared/rock.ts';
-import { leafRect, type PropStyle, type World } from '../shared/world.ts';
+import { leafRect, type Box, type PropStyle, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import type { GroundCover } from './groundcover.ts';
@@ -13,6 +13,7 @@ import { lightingOf, type Lighting } from './lighting.ts';
 import { outlookMoved, settledOutlook, type Outlook } from './outlook.ts';
 import { Rain, type Shelter } from './rain.ts';
 import { IndoorLight } from './indoorlight.ts';
+import { TownLight } from './townlight.ts';
 import { IslandMap } from './islandmap.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
@@ -116,6 +117,8 @@ export class WorldView {
   private textured = false;
   /** How much of the sky reaches inside each building. */
   readonly light3d: IndoorLight;
+  /** A map town's baked light, indoors and out, in place of the buildings' grids. */
+  readonly townLight: TownLight | null;
   /** The island's roofs, puddles and buildings, for the rain and the light inside. */
   private readonly island: IslandMap;
   private previewing = true;
@@ -131,7 +134,7 @@ export class WorldView {
     patchFog();
     setMistGround(world);
     this.outlook = settledOutlook(weather);
-    this.lighting = lightingOf(this.outlook.clouds, this.outlook.air);
+    this.lighting = lightingOf(this.outlook.clouds, this.outlook.air, world.map);
     this.wet = this.puddles = this.outlook.rainfall;
     windStrength.value = this.outlook.wind;
     this.rain = new Rain(world);
@@ -150,7 +153,10 @@ export class WorldView {
     this.island = new IslandMap(world);
     // Light bounces off each prop in its own colour, as it's drawn untextured.
     const colours = new Map(world.props.map((_, i) => [world.props[i].box, flatColour(world, i)]));
-    this.light3d = new IndoorLight(world, this.island, (box) => colours.get(box) ?? PROP_COLORS.wall[0]);
+    const colourOf = (box: Box) => colours.get(box) ?? PROP_COLORS.wall[0];
+    this.townLight = TownLight.build(world, colourOf, this.lighting.sunDir);
+    this.light3d = new IndoorLight(world, this.island, colourOf, () => !this.townLight);
+    this.townLight?.start();
     this.light3d.setSun(this.lighting.sunDir, SUN_LIGHT.copy(this.lighting.sunColor).multiplyScalar(this.lighting.sunIntensity));
     const extracts = makeExtracts(world);
     this.flags = extracts.flags;
@@ -219,6 +225,7 @@ export class WorldView {
     }
     this.sun.removeFrom(scene);
     this.water.dispose();
+    this.townLight?.dispose();
   }
 
   /** How the island is lit now. */
@@ -237,7 +244,7 @@ export class WorldView {
     this.puddles = puddles;
     windStrength.value = o.wind;
     if (moved) {
-      this.lighting = lightingOf(o.clouds, o.air);
+      this.lighting = lightingOf(o.clouds, o.air, this.world.map);
       this.light();
     } else this.rain.set(o.rainfall, o.storm, this.rainColor, wet, puddles);
     return moved;
@@ -270,7 +277,13 @@ export class WorldView {
     u.zenith.value.copy(l.zenith);
     u.sunDir.value.copy(l.sunDir);
     u.sunColor.value.copy(l.sunColor).multiplyScalar(l.disc);
-    if (this.assets) this.scene.environment = this.assets.environment;
+    u.photoMix.value = this.assets ? l.photo : 0;
+    u.turn.value = l.skyTurn;
+    this.scene.environmentRotation.y = l.skyTurn;
+    if (this.assets) {
+      this.scene.environment = this.assets.environment;
+      u.photo.value = this.assets.skyPhoto;
+    }
     // The streaks catch the light of the sky around them.
     this.rainColor.copy(l.horizon).multiplyScalar(1.25);
     this.rain.set(this.outlook.rainfall, this.outlook.storm, this.rainColor, this.wet, this.puddles);
@@ -421,6 +434,24 @@ export class WorldView {
     this.swingDoors();
     this.light3d.focus(camera.position);
     this.light3d.update();
+    this.townLight?.update(time);
+  }
+
+  /** Work out all the light inside at once, as a still picture needs. */
+  finishLight(): void {
+    this.light3d.finishAll();
+    this.townLight?.finish();
+  }
+
+  /**
+   * The sky's light at a point in red, green and blue, as a share of the
+   * open's, into `sky`; and the sun's light bounced there, as a share of the
+   * sun's, into `sun`.
+   */
+  lightAt(x: number, y: number, z: number, sky: THREE.Color, sun: THREE.Color): void {
+    if (this.townLight?.at(x, y, z, sky, sun)) return;
+    this.light3d.at(x, y, z, sky);
+    this.light3d.sunAt(x, y, z, sun);
   }
 
   /** Whether the last frame drew the sea's reflection. */
@@ -499,6 +530,9 @@ function reflected(object: THREE.Object3D): void {
   });
 }
 
+/** Radians of the sky the photograph spans, from the zenith to 8° below the horizon (see scripts/fetch-assets.mjs). */
+const SKY_SPAN = THREE.MathUtils.degToRad(98);
+
 function makeSky(): THREE.Mesh {
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -506,6 +540,9 @@ function makeSky(): THREE.Mesh {
       zenith: { value: new THREE.Color() },
       sunDir: { value: new THREE.Vector3(0, 1, 0) },
       sunColor: { value: new THREE.Color() },
+      photo: { value: null as THREE.Texture | null },
+      photoMix: { value: 0 },
+      turn: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -518,10 +555,21 @@ function makeSky(): THREE.Mesh {
       uniform vec3 zenith;
       uniform vec3 sunDir;
       uniform vec3 sunColor;
+      uniform sampler2D photo;
+      uniform float photoMix;
+      uniform float turn;
       varying vec3 vDir;
       void main() {
         vec3 dir = normalize(vDir);
         vec3 col = mix(horizon, zenith, pow(max(dir.y, 0.0), 0.6));
+        // By day, the sky's photograph, turned so its sun lies the sun's way,
+        // melting into the horizon's colour, the fog's, as it nears it.
+        if (photoMix > 0.0) {
+          float height = asin(clamp(dir.y, -1.0, 1.0));
+          vec2 uv = vec2((atan(dir.z, dir.x) + turn) / 6.2831853 + 0.5, 1.0 - (1.5707963 - height) / (${SKY_SPAN.toFixed(4)}));
+          vec3 seen = mix(horizon, texture2D(photo, uv).rgb, smoothstep(0.0, 0.07, height));
+          col = mix(col, seen, photoMix);
+        }
         float s = max(dot(dir, sunDir), 0.0);
         col += sunColor * (pow(s, 1500.0) * 6.0 + pow(s, 12.0) * 0.18);
         gl_FragColor = vec4(col, 1.0);
