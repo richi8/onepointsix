@@ -25,7 +25,8 @@ function fingerprint(w: World): string {
   const h = createHash('sha256');
   h.update(Buffer.from(w.heights.buffer));
   h.update(Buffer.from(groundWeights(w).buffer));
-  const strip = (o: unknown): string => JSON.stringify(o, (k, v: unknown) => (k === 'stamp' ? undefined : v));
+  // Rounded to a micrometre: the last bit of a float can differ between machines (a rock's x on Mac arm64 and Linux x64).
+  const strip = (o: unknown): string => JSON.stringify(o, (k, v: unknown) => (k === 'stamp' ? undefined : typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v));
   for (const part of [w.trees, w.rocks, w.props, w.panels, w.outposts, w.extracts, w.walls, w.buildings, w.doors, w.towers, w.colliders]) h.update(strip(part));
   return h.digest('hex').slice(0, 16);
 }
@@ -95,8 +96,8 @@ describe('Worlds by mode', () => {
   });
 
   it('keeps an Extraction island exactly as it was before the maps', () => {
-    // Taken from the islands as chunk 49 left them.
-    const before: Record<number, string> = { 1: 'fa686eecfeb0dfd1', 2: 'ee37bf0eb8e7bff9', 3: '73657f5ac3f13169', 4242: '24c836172faa1656' };
+    // Taken from the islands as chunk 49 left them, on Mac arm64 and Linux x64 alike.
+    const before: Record<number, string> = { 1: 'acbc4d6c6ba283ae', 2: 'a9150ff63474737b', 3: '77f3a509c6d83093', 4242: '15bb9c8b9ff5203e' };
     for (const [seed, hash] of Object.entries(before)) {
       const w = new World(Number(seed));
       expect(w.map).toBeNull();
