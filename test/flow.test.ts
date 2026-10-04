@@ -19,7 +19,7 @@ const nav = new NavGrid(town);
 const posts = vantages(town);
 
 describe('The town\'s flow', () => {
-  it('finds windows and roof edges to watch from, each on a floor bots reach, over a drop, looking out', { timeout: 30_000 }, () => {
+  it('finds windows and roof edges to watch from, each on a floor bots reach, over a drop, looking out', () => {
     const windows = posts.filter((v) => v.kind === 'window');
     const roofs = posts.filter((v) => v.kind === 'roof');
     expect(windows.length).toBeGreaterThan(150);

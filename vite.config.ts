@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -209,6 +210,9 @@ export default defineConfig(({ mode }) => ({
   // Every page's dependencies found at start, so the dev server never stops
   // to add one and reloads a page mid-test.
   optimizeDeps: { entries: ['index.html', 'dev/*.html'] },
+  // CI's runners are about twice as slow as a dev machine: the simulation tests
+  // that take 2-3 s here overran vitest's 5 s default there.
+  test: { testTimeout: 30_000 },
   build: mode === 'single' ? { outDir: 'dist-single', rolldownOptions: { output: { codeSplitting: false } } } : {
     rolldownOptions: {
       // three.js in chunks of its own (its core, and the WebGL renderer), loaded

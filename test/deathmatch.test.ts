@@ -51,7 +51,7 @@ describe('deathmatch', () => {
     }
   });
 
-  it('respawns a player when they skip the death cam, with no run ending', { timeout: 30_000 }, () => {
+  it('respawns a player when they skip the death cam, with no run ending', () => {
     const server = game();
     const me = join(server, 'me');
     const life = me.snap().you.life;
@@ -66,7 +66,7 @@ describe('deathmatch', () => {
     expect(me.snap().you).toMatchObject({ dead: false, life: life + 1 });
   });
 
-  it('brings a player back anyway if they never say', { timeout: 30_000 }, () => {
+  it('brings a player back anyway if they never say', () => {
     const server = game();
     const me = join(server, 'me');
     server.receive(me.id, { t: 'dev', cmd: { act: 'end', outcome: 'killed', self: true } });
@@ -76,7 +76,7 @@ describe('deathmatch', () => {
     expect(me.snap().you.dead).toBe(false);
   });
 
-  it('brings a dead bot back after a death cam’s length, in the same slot', { timeout: 30_000 }, () => {
+  it('brings a dead bot back after a death cam’s length, in the same slot', () => {
     const server = game();
     const me = join(server, 'me');
     server.receive(me.id, { t: 'dev', cmd: { act: 'rival' } });
