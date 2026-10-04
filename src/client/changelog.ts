@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-04',
+    title: 'Calabianca, rebuilt',
+    notes: [
+      'Calabianca is built afresh. The rows of houses on four terraces are gone: the fights now turn round three places, the market low in the middle with its crashed truck, stalls and arcaded loggia; the piazza above it, in front of the church and its bell tower, reached by a grand stair; and the palazzo’s courtyard to the east, overlooked by its three floors.',
+      'Each pair is joined three ways: an open one, a tight one, and one through a building, such as the caffè, the hotel or the portico. No street runs straight through the town: each bends, ends at a building or meets another.',
+      'Around them, parts of town that play and look different, each its own colour: the west’s narrow alleys and stairs, with rooms built over two of them; the quay, split by the warehouse, with the boat yard at one end and the fish market at the other; a road climbing in hairpins past a row of cottages and the olive garden; and at the top the high street, the cemetery and its ruined chapel, and the villa.',
+      'Some roofs are flat and walked, reached by stairs and hatches or straight from the street behind them; others are pitched and tiled, out of reach. Every building can be entered.',
+      'You come back in at one of 32 spawn points, four in each of eight places round the edge of town, away from the three hubs.',
+      'Bots no longer get stuck behind an open door, and they find their way faster round a town where windows break and doors open and shut.',
+    ],
+  },
+  {
+    date: '2026-10-04',
     title: 'Calabianca',
     notes: [
       'Deathmatch moves from the test street into Calabianca, a town on a hillside above the sea. It’s still plain grey boxes: how it plays comes first, and how it looks next.',

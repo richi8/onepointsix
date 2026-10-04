@@ -117,13 +117,15 @@ for (const [name, query] of Object.entries(YARD)) {
 }
 
 // Deathmatch's map (see maps/calabianca.ts), plain boxes until its look: the
-// town from over the sea, its levels stepping up the hillside; up the middle
-// lane from the quay, under the room over it to the stairs; and the square,
-// the church and its tower, from the square's street.
+// town from over the sea, its districts stepping up the hillside; up a stair
+// in the west's alleys, under the room over the lane; the piazza, the church
+// and its bell tower from the top of the grand stair; and the market, the
+// grand stair and the truck, from beside the loggia.
 const MAP: Record<string, string> = {
   'town-above': '-70,55,320,0,8,240',
-  'town-lane': '0,4.7,292,0,10,240',
-  'town-square': '-10,10.7,244,4,12,220',
+  'town-alley': '-37.5,7.7,265,-37.5,10,245',
+  'town-piazza': '-7,13.7,243,-10,14,222',
+  'town-market': '-21,7.7,262,10,8,256',
 };
 
 for (const [name, cam] of Object.entries(MAP)) {

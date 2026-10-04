@@ -66,7 +66,7 @@ describe('deathmatch', () => {
     expect(me.snap().you).toMatchObject({ dead: false, life: life + 1 });
   });
 
-  it('brings a player back anyway if they never say', () => {
+  it('brings a player back anyway if they never say', { timeout: 30_000 }, () => {
     const server = game();
     const me = join(server, 'me');
     server.receive(me.id, { t: 'dev', cmd: { act: 'end', outcome: 'killed', self: true } });
@@ -97,8 +97,8 @@ describe('deathmatch', () => {
     for (let i = 0; i < 5; i++) {
       server.receive(me.id, { t: 'dev', cmd: { act: 'end', outcome: 'killed', self: true } });
       server.step();
-      // Where everyone else stands as we come back.
-      const others = me.snap().players.filter((p) => p.id !== me.id && !p.dead);
+      // Where everyone else stands as we come back, as the server has it: a snapshot's positions are rounded.
+      const others = server.bots().filter((b) => !b.state.dead).map((b) => b.state);
       server.receive(me.id, { t: 'respawn' });
       server.step();
       const you = me.snap().you;

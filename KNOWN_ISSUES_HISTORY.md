@@ -2204,6 +2204,29 @@ notes the chunk it came from.
   the line they share.
   **Moot** (54): every row of the town's houses stands on one level, so the floors of houses side
   by side always line up. The kit still works that way, should a map ever need it.
+- **The town is a grid** (chunk 54): its four cross streets run straight across it, 136 m, and
+  the lanes straight up it, so views across are as long as views down, against the plan's
+  short ones across; the high street's three-storey roofs look down over the whole town; and
+  its houses are all one template, so nowhere looks different.
+  **Resolved** (57): the town was rebuilt from its sketch round the market, the piazza and the
+  palazzo's courtyard, with districts that climb, play and look different (each its own
+  plaster, its buildings made by hand), and streets that bend, tee or meet a building.
+- **Only stairs join the levels, no ramps** (chunk 54).
+  **Resolved** (57): the road climbs from the quay to the palazzo in three legs, the kit's
+  ramps, besides the stairs.
+- **The church and its tower are stand-ins** (chunk 54): a single 3 m storey, and the bell tower
+  a solid box.
+  **Resolved** (57): the church is one storey 6 m tall under a pitched roof, entered by three
+  doors. The bell tower stays solid, as the sketch has it, nobody climbing it; its look is
+  chunk 59's.
+- **Bots can stall behind an open door leaf** (chunk 54): `sim:deathmatch` found one bot in three
+  10-minute games standing 30 s in a doorway's corner, beside the jamb where the open leaf
+  stands, going nowhere.
+  **Resolved** (57): its path started at the nearest open cell, often the doorway through the
+  leaf, which the path left out, so the bot walked straight at the leaf. A bot somewhere no
+  path goes now starts from the nearest spot it walks to in a straight line, and walks to it
+  first; and the town's doors are kept from opening into slots by a corner, a flight's foot or
+  a crate, checked by a test. Six 10-minute games found nobody stuck.
 
 ## Dropped
 

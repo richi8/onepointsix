@@ -146,7 +146,8 @@ export const SKETCH: Sketch = {
     { ...r(-30, 14, 4, 14), y: 6 },
     { ...r(14, 36, 4, 14), y: 6 },
     // The road's legs, the cottages between them and the olive garden.
-    { ...r(36, 62, 32, 38), y: 3, y2: 6, along: 'x' },
+    // The first leg climbs west from the quay's east end to Via del Porto.
+    { ...r(36, 62, 32, 38), y: 6, y2: 3, along: 'x' },
     { ...r(36, 62, 16, 32), y: 6, y2: 9, along: 'x' },
     { ...r(62, 68, -8, 32), y: 9 },
     { ...r(38, 62, -2, 16), y: 9 },
@@ -194,7 +195,8 @@ export const SKETCH: Sketch = {
     // The market: the loggia, the hotel, and the caffè and its neighbour under the piazza's edge.
     b('loggia', 'market', -30, -24, 14, 30, 6.1, 2, 'flat', { arcade: 'x1' }),
     b('hotel', 'market', 14, 30, 14, 30, 6.1, 3, 'flat', { arches: [r(14, 30, 20, 24)] }),
-    b('caffè', 'market', -26, -12, 4, 14, 6.1, 2, 'flat'),
+    // Out to the west's houses: a lane beside it would end at the piazza's face.
+    b('caffè', 'market', -30, -12, 4, 14, 6.1, 2, 'flat'),
     b(undefined, 'market', -2, 14, 4, 14, 6.1, 3, 'pitched'),
     b(undefined, 'market', 14, 36, 4, 14, 6.1, 2, 'flat'),
     // The piazza: the church and its tower, the arcade along its east side, the old school behind.

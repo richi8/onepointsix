@@ -16,8 +16,9 @@ import { KIT_YARD } from '../src/shared/maps/kityard.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
 import { reached } from '../src/server/nav.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
-import { inBuilding, type Rect, World } from '../src/shared/world.ts';
+import { inBuilding, leafRect, type Rect, World } from '../src/shared/world.ts';
 import { roofHeights, ROOF_CELL, ROOF_CELLS } from '../src/client/rain.ts';
+import { SKETCH } from '../dev/townsketch.ts';
 
 /** Everything a world is built from, hashed. */
 function fingerprint(w: World): string {
@@ -342,6 +343,67 @@ describe('The building kit\'s later pieces, in the kit yard', () => {
     // The yard's own walls round it are left as they were.
     expect(colours.has(undefined)).toBe(true);
     expect(new World(1).props.some((p) => p.colour !== undefined)).toBe(false);
+  });
+});
+
+describe('Calabianca', () => {
+  const at = SKETCH.at;
+  const near = (a: number, b: number) => Math.abs(a - b) <= 2.1;
+
+  it('follows its sketch: every building where it\'s drawn, as tall and roofed as drawn, the rooms over the lanes and the spawn zones', () => {
+    // The bell tower is drawn as a building but built solid: nobody climbs it.
+    const drawn = SKETCH.buildings.filter((b) => b.name !== 'bell tower');
+    expect(CALABIANCA.buildings.length).toBe(drawn.length);
+    for (const d of drawn) {
+      const name = d.name ?? `building at ${d.x0}, ${d.z0}`;
+      const built = CALABIANCA.buildings.find((b) => {
+        const ground = b.blocks.filter((k) => !k.from);
+        const x0 = Math.min(...ground.map((k) => k.minX)) - at.x;
+        const x1 = Math.max(...ground.map((k) => k.maxX)) - at.x;
+        const z0 = Math.min(...ground.map((k) => k.minZ)) - at.z;
+        const z1 = Math.max(...ground.map((k) => k.maxZ)) - at.z;
+        return near(x0, d.x0) && near(x1, d.x1) && near(z0, d.z0) && near(z1, d.z1);
+      });
+      expect(built, name).toBeDefined();
+      const k = built!.blocks.find((q) => !q.from)!;
+      expect(k.storeys, name).toBe(d.storeys);
+      expect(k.roof ?? 'flat', name).toBe(d.roof);
+      expect(built!.floor, name).toBeCloseTo(d.floor, 1);
+      expect(!!k.court, name).toBe(!!d.court);
+      expect(!!k.arcade, name).toBe(!!d.arcade);
+      expect(built!.storey ?? STOREY, name).toBe(d.tall ? 6 : STOREY);
+    }
+    const bridges = CALABIANCA.buildings.flatMap((b) => b.blocks.filter((k) => k.from));
+    expect(bridges.length).toBe(SKETCH.bridges.length);
+    for (const d of SKETCH.bridges) {
+      expect(bridges.some((k) => near(k.minX - at.x, d.x0) && near(k.maxX - at.x, d.x1) && near(k.minZ - at.z, d.z0) && near(k.maxZ - at.z, d.z1)), `bridge at ${d.x0}, ${d.z0}`).toBe(true);
+    }
+    // Four spawn points in each zone, each within a street or two of the zone drawn.
+    const zoneOf = (s: { x: number; z: number }) => SKETCH.spawns.reduce((a, q) => (Math.hypot(q.x - s.x + at.x, q.z - s.z + at.z) < Math.hypot(a.x - s.x + at.x, a.z - s.z + at.z) ? q : a));
+    for (const zone of SKETCH.spawns) {
+      const mine = CALABIANCA.spawns.filter((s) => zoneOf(s) === zone);
+      expect(mine.length, zone.name).toBe(4);
+      for (const s of mine) expect(Math.hypot(s.x - at.x - zone.x, s.z - at.z - zone.z), zone.name).toBeLessThan(12);
+    }
+  });
+
+  it('leaves nowhere to stand that bots can\'t walk to, which a search would look through the whole town for', { timeout: 60_000 }, () => {
+    const nav = new NavGrid(town);
+    const from = town.spawns[0];
+    expect(nav.unreached(from.x, from.z, from.y, town.bounds).map((p) => `${p.x.toFixed(1)}, ${p.y?.toFixed(1)}, ${p.z.toFixed(1)}`)).toEqual([]);
+  });
+
+  it('opens no door leaf into a slot beside it that a body could be caught in', () => {
+    for (const d of town.doors) {
+      const [x0, z0, x1, z1] = leafRect(d, true);
+      const alongX = x1 - x0 > z1 - z0;
+      for (const side of [-1, 1]) {
+        const [px, pz] = alongX ? [(x0 + x1) / 2, side < 0 ? z0 : z1] : [side < 0 ? x0 : x1, (z0 + z1) / 2];
+        const [dx, dz] = alongX ? [0, side] : [side, 0];
+        const gap = Math.min(...[0.5, 1.5].map((h) => town.raycast(px + dx * 0.02, d.y0 + h, pz + dz * 0.02, dx, 0, dz, 3)));
+        expect(gap < 0.3 || gap > 1.2, `leaf at ${px.toFixed(1)}, ${pz.toFixed(1)}: a slot ${gap.toFixed(2)} m wide`).toBe(true);
+      }
+    }
   });
 });
 

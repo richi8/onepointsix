@@ -411,8 +411,11 @@ export function buildKit(
     const from = b.from ?? 0;
     const room = grown(b, -T / 2);
     const colour = p.building.colour;
-    // Raised over the ground, as on a terrace, it's a floor bots walk.
-    if (from === 0) box(room, lowest(grown(b, T / 2)) - 0.3, p.floor, 'floor', p.floor > ground((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2) + STEP_HEIGHT, colour);
+    // Raised over the ground anywhere, as on a terrace or over a slope, it's a floor bots walk.
+    if (from === 0) {
+      const under = lowest(room);
+      box(room, lowest(grown(b, T / 2)) - 0.3, p.floor, 'floor', p.floor > under + STEP_HEIGHT, colour);
+    }
     for (let s = Math.max(from, 1); s < b.storeys; s++) {
       const y = p.floor + p.height * s;
       // Over a passage, the floor reaches across the walls' tops either side.

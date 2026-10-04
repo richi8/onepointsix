@@ -21,6 +21,8 @@ const SPAWN_KILL = 15;
 const STUCK_SPAN = 30;
 const STUCK_REACH = 2;
 const MOVING = new Set(['hunt', 'loot', 'investigate', 'stalk', 'flank']);
+/** The opening seconds, when every bot plans its first paths at once. */
+const OPENING = 10;
 
 const seconds = Number(process.argv[2] ?? 600);
 const seeds = (process.argv[3] ?? String(DEFAULT_WORLD.seed)).split(',').map(Number);
@@ -57,11 +59,14 @@ for (const seed of seeds) {
 
   let worst = 0;
   let worstAt = 0;
+  /** The worst tick once the opening's first searches are done, when every path is new. */
+  let settled = 0;
   const start = performance.now();
   for (let tick = 0; tick < seconds * SERVER_TICK_RATE; tick++) {
     const t = performance.now();
     server.step();
     if (performance.now() - t > worst) (worst = performance.now() - t), (worstAt = server.time);
+    if (server.time > OPENING) settled = Math.max(settled, performance.now() - t);
     const bots = server.bots();
     for (const b of bots) {
       const s = b.state;
@@ -111,7 +116,7 @@ for (const seed of seeds) {
   const picked = arenaPicks.picked - picks.picked;
   const seenPicks = arenaPicks.seen - picks.seen;
 
-  console.log(`seed ${seed}: ${seconds} s simulated in ${took.toFixed(1)} s, worst tick ${worst.toFixed(1)} ms at ${worstAt.toFixed(0)} s`);
+  console.log(`seed ${seed}: ${seconds} s simulated in ${took.toFixed(1)} s, worst tick ${worst.toFixed(1)} ms at ${worstAt.toFixed(0)} s, ${settled.toFixed(1)} ms after the first ${OPENING} s`);
   console.log(`  kills ${kills.length} (${((kills.length / seconds) * 60).toFixed(1)} a minute), ${kills.filter((k) => k.head).length} headshots, ${kills.filter((k) => k.killer === k.victim).length} by their own grenade`);
   console.log(`  kills per bot: best ${perBot.slice(0, 3).join(', ')}, median ${median(perBot)}, ${perBot.filter((k) => k === 0).length} of ${DEATHMATCH_CAPACITY} with none`);
   console.log(`  life before dying: median ${median(lives).toFixed(0)} s; ${lives.filter((l) => l < SPAWN_KILL).length} died within ${SPAWN_KILL} s of spawning`);

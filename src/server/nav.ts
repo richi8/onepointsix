@@ -1,6 +1,6 @@
 import { PLAYER_HEIGHT, PLAYER_RADIUS, STEP_HEIGHT, WATER_LEVEL } from '../shared/constants.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
-import { leafRect, type Box, type World } from '../shared/world.ts';
+import { leafRect, type Box, type Rect, type World } from '../shared/world.ts';
 
 // Where bots can walk: a 1 m grid over the island, each cell open, wet
 // (walkable but slow, so paths avoid it) or blocked by something taller than a
@@ -35,6 +35,9 @@ const HEURISTIC_WEIGHT = 1.4;
 const MAX_EXPANSIONS = 30000;
 /** How far a blocked start or goal is moved to the nearest walkable cell. */
 const SNAP_RADIUS = 6;
+/** How many cells round a blocked start a body is tried walking to, nearest first, and how close it may brush what it's pressed against on the way. */
+const SNAP_REACH = 2;
+const PRESSED = PLAYER_RADIUS - 0.1;
 const SQRT2 = Math.SQRT2;
 /** 8-connected neighbours: x step, z step. Then the cell itself, whose nodes on stairs are a step apart. */
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [0, 0]];
@@ -54,6 +57,8 @@ const MAX_FLOOR_NODES = 1 << 16;
 const FLOOR_PAD = PLAYER_RADIUS;
 /** Where in a cell a floor node's spot is looked for, from its middle: the middle first. */
 const SPOTS = [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3], [0.3, 0.3], [-0.3, 0.3], [0.3, -0.3], [-0.3, -0.3]];
+/** A cell whose middle is this far inside a floor standing on the ground has it for its ground: clear of its edges' cells, a body's width off. */
+const INSIDE = CELL + PLAYER_RADIUS + MARGIN;
 /** Two floor nodes in one cell are at least this far apart in height. */
 const LEVEL_GAP = 0.3;
 /** How far apart the checks along a walk between two nodes are, and the deepest drop a walk may take. */
@@ -109,6 +114,12 @@ export class NavGrid {
   private readonly floored = new Set<number>();
   /** Of those, cells where the floor stands on the ground, a step or a terrace: the ground's walked by walking it, not across the grid. */
   private readonly grounded = new Set<number>();
+  /**
+   * Cells well inside a floor standing on the ground, a terrace or a
+   * building's ground floor, and its top: their ground, walked across the
+   * grid as the ground is. Only near its edges is it walked a step at a time.
+   */
+  private readonly tops = new Map<number, number>();
   /** The door leaves that come near each cell when open. */
   private readonly leaves = new Map<number, number[]>();
   /** The floor nodes of each cell that has any, lowest first, by id. */
@@ -153,7 +164,13 @@ export class NavGrid {
       cells(c.minX, c.minZ, c.maxX, c.maxZ, CELL, (i) => this.floored.add(i));
       // Standing on the ground, as a step or a terrace's edge does, it changes how the ground round it is walked.
       const ground = world.floorHeight((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2);
-      if (c.minY < ground + PLAYER_HEIGHT) cells(c.minX, c.minZ, c.maxX, c.maxZ, CELL, (i) => this.grounded.add(i));
+      if (c.minY >= ground + PLAYER_HEIGHT) continue;
+      cells(c.minX, c.minZ, c.maxX, c.maxZ, CELL, (i) => {
+        const x = this.center(i % this.n);
+        const z = this.center(Math.floor(i / this.n));
+        if (x > c.minX + INSIDE && x < c.maxX - INSIDE && z > c.minZ + INSIDE && z < c.maxZ - INSIDE) this.tops.set(i, Math.max(c.maxY, this.tops.get(i) ?? -Infinity));
+        else this.grounded.add(i);
+      });
     }
     world.doors.forEach((d, id) => {
       const [x0, z0, x1, z1] = leafRect(d, true);
@@ -195,9 +212,19 @@ export class NavGrid {
         if (this.cells[i] !== UNKNOWN) this.cells[i] = this.survey(ix, iz);
       }
     }
-    // Links from a cell next to these may lead into them.
+    // Links from these cells, and from a cell next to them, which may lead into them: worked out again when next needed.
+    const per = DIRS.length * (MAX_LEVELS + 1);
     for (let tz = Math.floor(Math.max(z0 - 1, 0) / TILE); tz <= Math.floor(Math.min(z1 + 1, this.n - 1) / TILE); tz++) {
-      for (let tx = Math.floor(Math.max(x0 - 1, 0) / TILE); tx <= Math.floor(Math.min(x1 + 1, this.n - 1) / TILE); tx++) this.links.delete(tz * this.tilesPerSide + tx);
+      for (let tx = Math.floor(Math.max(x0 - 1, 0) / TILE); tx <= Math.floor(Math.min(x1 + 1, this.n - 1) / TILE); tx++) {
+        const links = this.links.get(tz * this.tilesPerSide + tx);
+        if (!links) continue;
+        for (const key of links.keys()) {
+          const cell = this.cellOf(Math.floor(key / per));
+          const ix = cell % this.n;
+          const iz = (cell - ix) / this.n;
+          if (ix >= x0 - 1 && ix <= x1 + 1 && iz >= z0 - 1 && iz <= z1 + 1) links.delete(key);
+        }
+      }
     }
   }
 
@@ -257,15 +284,19 @@ export class NavGrid {
     const n = this.n;
     const size = n * n;
     let s0 = this.nodeAt(sx, sz, sy);
-    if (s0 < 0 || (s0 < size && this.cells[s0] !== OPEN)) s0 = this.nearestNode(sx, sz, SNAP_RADIUS, sy);
+    // Somewhere no path goes, as in a corner behind an open door leaf, the way starts from the nearest place one does, walked to first.
+    const snapped = s0 < 0 || (s0 < size && this.cells[s0] === BLOCKED);
+    if (snapped) s0 = this.nearestReached(sx, sz, sy ?? this.world.groundHeight(sx, sz, this.world.floorHeight(sx, sz)));
+    else if (s0 < size && this.cells[s0] !== OPEN) s0 = this.nearestNode(sx, sz, SNAP_RADIUS, sy);
     let target = this.nodeAt(gx, gz, gy);
     if (target < 0) target = this.nearestNode(gx, gz, SNAP_RADIUS, gy);
     if (s0 < 0 || target < 0) return null;
-    const start = s0 === this.nodeAt(sx, sz, sy) ? { x: sx, z: sz, ...this.height(s0) } : this.waypoint(s0);
+    const start = !snapped && s0 === this.nodeAt(sx, sz, sy) ? { x: sx, z: sz, ...this.height(s0) } : this.waypoint(s0);
+    const from = (points: Waypoint[]) => (snapped && s0 !== target ? [start, ...points] : points);
     const goal = target === this.nodeAt(gx, gz, gy) ? { x: gx, z: gz, ...this.height(target) } : this.waypoint(target);
     const cost = (cell: number, s: number) => (s === WET ? WET_COST : 1) * (hidden && !this.covered(cell) ? BARE_COST : 1);
     if (s0 < size && target < size && this.lineWalkable(start.x, start.z, goal.x, goal.z) &&
-      !(hidden && this.lineBare(start.x, start.z, goal.x, goal.z) > 0)) return [goal];
+      !(hidden && this.lineBare(start.x, start.z, goal.x, goal.z) > 0)) return from([goal]);
 
     if (!this.g) {
       const all = size + MAX_FLOOR_NODES;
@@ -323,27 +354,7 @@ export class NavGrid {
       const cz = (ccell - cx) / n;
       const ch = h(cx, cz);
       if (ch < closestH) (closest = cur), (closestH = ch);
-      const onGround = cur < size;
-      for (let k = 0; k <= SAME; k++) {
-        const [ddx, ddz] = DIRS[k];
-        const nx = cx + ddx;
-        const nz = cz + ddz;
-        if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
-        const s = this.state(nx, nz);
-        const ni = nz * n + nx;
-        const step = k === SAME ? 0.5 : k >= 4 ? SQRT2 : 1;
-        if (s !== BLOCKED && ni !== cur) {
-          // Near a floor, the ground can be a stair's step: those are walked too.
-          if (onGround && k !== SAME && !this.grounded.has(cur) && !this.grounded.has(ni)) {
-            // No cutting corners past a blocked cell.
-            if (k < 4 || (this.state(cx + ddx, cz) !== BLOCKED && this.state(cx, cz + ddz) !== BLOCKED)) {
-              visit(cur, ni, g[cur] + step * cost(ni, s), nx, nz);
-            }
-          } else if (this.linked(cur, k, 0, ni)) visit(cur, ni, g[cur] + step * cost(ni, s), nx, nz);
-        }
-        const up = this.floors.get(ni);
-        if (up) up.forEach((f, j) => f !== cur && this.linked(cur, k, j + 1, f) && visit(cur, f, g[cur] + step, nx, nz));
-      }
+      this.steps(cur, (to, step, s, nx, nz) => visit(cur, to, g[cur] + (s < 0 ? step : step * cost(to, s)), nx, nz));
     }
 
     const end = found ? target : closest;
@@ -354,7 +365,67 @@ export class NavGrid {
     if (found) points[points.length - 1] = goal;
     else if (points.length <= 1) return null;
     points[0] = start;
-    return this.smooth(points, hidden);
+    return from(this.smooth(points, hidden));
+  }
+
+  /**
+   * Each node a body walks to from node `cur` in a step: `to`, how far the
+   * step goes, the state of its cell if it's on the ground (-1 up on a floor),
+   * and its cell's place on the grid.
+   */
+  private steps(cur: number, each: (to: number, step: number, s: number, nx: number, nz: number) => void): void {
+    const n = this.n;
+    const cell = this.cellOf(cur);
+    const cx = cell % n;
+    const cz = (cell - cx) / n;
+    const onGround = cur < n * n;
+    for (let k = 0; k <= SAME; k++) {
+      const [ddx, ddz] = DIRS[k];
+      const nx = cx + ddx;
+      const nz = cz + ddz;
+      if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
+      const s = this.state(nx, nz);
+      const ni = nz * n + nx;
+      const step = k === SAME ? 0.5 : k >= 4 ? SQRT2 : 1;
+      if (s !== BLOCKED && ni !== cur) {
+        // Near a floor, the ground can be a stair's step: those are walked too.
+        if (onGround && k !== SAME && !this.grounded.has(cur) && !this.grounded.has(ni)) {
+          // No cutting corners past a blocked cell.
+          if (k < 4 || (this.state(cx + ddx, cz) !== BLOCKED && this.state(cx, cz + ddz) !== BLOCKED)) each(ni, step, s, nx, nz);
+        } else if (this.linked(cur, k, 0, ni)) each(ni, step, s, nx, nz);
+      }
+      const up = this.floors.get(ni);
+      if (up) up.forEach((f, j) => f !== cur && this.linked(cur, k, j + 1, f) && each(f, step, -1, nx, nz));
+    }
+  }
+
+  /**
+   * Every place to stand within `area` that nobody walking from (x, y, z)
+   * gets to, on the ground or up on a floor: a search for one of them looks
+   * through all there is before it gives up. For checking a map: it works
+   * out every cell and link in the area, which takes seconds.
+   */
+  unreached(x: number, z: number, y: number, area: Rect): Waypoint[] {
+    const start = this.nodeAt(x, z, y);
+    if (start < 0) throw new Error(`Nowhere to stand at ${x}, ${y}, ${z}`);
+    const seen = new Set([start]);
+    const queue = [start];
+    const inside = (id: number) => {
+      const c = this.cellOf(id);
+      const ix = c % this.n;
+      const iz = (c - ix) / this.n;
+      return ix >= this.cellX(area.minX) && ix <= this.cellX(area.maxX) && iz >= this.cellX(area.minZ) && iz <= this.cellX(area.maxZ);
+    };
+    while (queue.length) this.steps(queue.pop()!, (to) => !seen.has(to) && inside(to) && (seen.add(to), queue.push(to)));
+    const out: Waypoint[] = [];
+    for (let iz = this.cellX(area.minZ); iz <= this.cellX(area.maxZ); iz++) {
+      for (let ix = this.cellX(area.minX); ix <= this.cellX(area.maxX); ix++) {
+        const cell = iz * this.n + ix;
+        if (this.state(ix, iz) !== BLOCKED && !seen.has(cell)) out.push({ ...this.waypoint(cell), y: this.groundY[cell] });
+        for (const f of this.floors.get(cell) ?? []) if (!seen.has(f)) out.push(this.waypoint(f));
+      }
+    }
+    return out;
   }
 
   /** Whether a cell's ground gives someone sneaking through it cover. */
@@ -463,6 +534,33 @@ export class NavGrid {
     return best < 0 && y !== undefined ? this.nearestNode(x, z, radius) : best;
   }
 
+  /**
+   * The nearest node a body standing at (x, y, z) walks to in a straight
+   * line, such as round the door leaf it's caught behind, not through it;
+   * or failing that, the nearest node.
+   */
+  private nearestReached(x: number, z: number, y: number): number {
+    const cx = this.cellX(x);
+    const cz = this.cellX(z);
+    const near: [number, number][] = [];
+    for (let iz = cz - SNAP_REACH; iz <= cz + SNAP_REACH; iz++) {
+      for (let ix = cx - SNAP_REACH; ix <= cx + SNAP_REACH; ix++) {
+        const cell = iz * this.n + ix;
+        if (this.state(ix, iz) !== BLOCKED && onLevel(this.groundY[cell], y)) near.push([cell, Math.hypot(this.center(ix) - x, this.center(iz) - z)]);
+        for (const f of this.floors.get(cell) ?? []) {
+          const k = f - this.n * this.n;
+          if (onLevel(this.fy[k], y)) near.push([f, Math.hypot(this.fx[k] - x, this.fz[k] - z)]);
+        }
+      }
+    }
+    near.sort((a, b) => a[1] - b[1]);
+    for (const [id] of near) {
+      const p = this.waypoint(id);
+      if (this.walks(x, y, z, p.x, p.y ?? this.groundY[id], p.z, PRESSED)) return id;
+    }
+    return this.nearestNode(x, z, SNAP_RADIUS, y);
+  }
+
   /** Whether a body gets from node `from` to `to`, in the cell next door in direction k, where `to` is that cell's j-th node. */
   private linked(from: number, k: number, j: number, to: number): boolean {
     const key = (from * DIRS.length + k) * (MAX_LEVELS + 1) + j;
@@ -488,7 +586,7 @@ export class NavGrid {
    * dropping far or meeting anything in the way. As in the game, it meets
    * what's ahead before its feet rise onto anything there.
    */
-  private walks(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
+  private walks(ax: number, ay: number, az: number, bx: number, by: number, bz: number, pad = FLOOR_PAD): boolean {
     const w = this.world;
     const len = Math.hypot(bx - ax, bz - az);
     const steps = Math.max(1, Math.ceil(len / WALK_STEP));
@@ -500,15 +598,15 @@ export class NavGrid {
       const f = i / steps;
       const x = ax + (bx - ax) * f;
       const z = az + (bz - az) * f;
-      if (!w.clear(x, feet, z, PLAYER_HEIGHT, FLOOR_PAD, false, STEP_UP)) return false;
-      if (this.nearLeaf(this.cellX(z) * this.n + this.cellX(x), x, feet, z, FLOOR_PAD)) return false;
+      if (!w.clear(x, feet, z, PLAYER_HEIGHT, pad, false, STEP_UP)) return false;
+      if (this.nearLeaf(this.cellX(z) * this.n + this.cellX(x), x, feet, z, pad)) return false;
       const next = w.groundHeight(x, z, feet);
       if (next < feet - MAX_DROP) return false;
       feet = next;
       // Not along an edge, where a body carried a little wide would drop off.
       if (w.groundHeight(x + sx, z + sz, feet) < feet - EDGE_DROP || w.groundHeight(x - sx, z - sz, feet) < feet - EDGE_DROP) return false;
     }
-    return Math.abs(feet - by) < LANDED && w.clear(bx, feet, bz, PLAYER_HEIGHT, FLOOR_PAD, false, STEP_UP);
+    return Math.abs(feet - by) < LANDED && w.clear(bx, feet, bz, PLAYER_HEIGHT, pad, false, STEP_UP);
   }
 
   /**
@@ -570,8 +668,8 @@ export class NavGrid {
     const z = this.center(iz);
     const i = iz * this.n + ix;
     const floored = this.floored.has(i);
-    // Near a floor, where the feet settle, as on the boundary between two steps.
-    const y = floored ? this.settle(x, w.floorHeight(x, z), z) : w.groundHeight(x, z, w.floorHeight(x, z));
+    // Near a floor, where the feet settle, as on the boundary between two steps; well inside a terrace, on it.
+    const y = floored ? this.settle(x, Math.max(w.floorHeight(x, z), this.tops.get(i) ?? -Infinity), z) : w.groundHeight(x, z, w.floorHeight(x, z));
     this.groundY[i] = y;
     // Door leaves are left out: bots open a shut door on their way through.
     // So is anything low enough to step up onto, such as a raised floor's edge.
