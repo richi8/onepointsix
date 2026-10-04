@@ -2,13 +2,16 @@ import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 import type { GameMap } from '../src/shared/maps/index.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
 import { World } from '../src/shared/world.ts';
+import { drawSketch } from './sketchdraw.ts';
+import { SKETCH } from './townsketch.ts';
 
 // A dev page drawing a map from straight above, to check its layout against
 // a sketch: the ground and everything built on it shaded by height (the
 // higher, the lighter), floors walked on edged in blue, the lanes and streets
 // as lines, the spawn points numbered with the way they face, and the bounds
-// dashed. Open /dev/map.html; `map=test-street` picks the test street, and
-// `px` sets the pixels to a metre.
+// dashed. Open /dev/map.html; `map=test-street` picks the test street, `px`
+// sets the pixels to a metre, and `sketch` draws the town's sketch (see
+// dev/townsketch.ts) over it: its buildings' outlines, ways and spawn zones.
 
 const q = new URLSearchParams(location.search);
 const MAPS: Record<string, GameMap> = { calabianca: CALABIANCA, 'test-street': TEST_STREET };
@@ -66,6 +69,12 @@ g.strokeStyle = '#ff5050';
 g.lineWidth = 1.5;
 g.strokeRect(px(b.minX), pz(b.minZ), (b.maxX - b.minX) * scale, (b.maxZ - b.minZ) * scale);
 g.setLineDash([]);
+
+// The sketch over the town, where its outlines should match.
+if (q.has('sketch') && map === CALABIANCA) {
+  const at = SKETCH.at;
+  drawSketch(SKETCH, { g, px: (x) => px(x + at.x), pz: (z) => pz(z + at.z), scale, layers: new Set(['buildings', 'routes', 'spawns']), outline: true });
+}
 
 // The lanes and streets.
 g.lineWidth = 3;
