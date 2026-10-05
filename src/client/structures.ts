@@ -336,7 +336,7 @@ export class Structures {
   applyAssets(assets: Assets): void {
     const world = this.world;
     const old = [this.towers.material, this.containers.material, this.gables.material] as THREE.Material[];
-    this.gables.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }, 1, { indoor: true, wet: true, uv: true }), world);
+    this.gables.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }, 1, { indoor: true, wet: true, uv: true, age: world.map ? world : undefined }), world);
     this.colourGables(true);
     this.towers.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.boards }, { color: WOOD_TINT, vertexColors: true, roughness: 0.85 }, 1, { indoor: true, wet: true }), world);
     this.containers.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.metal }, { color: PAINT_SHADE, vertexColors: true, roughness: 0.55, metalness: 0.25 }, 0.3, { indoor: true, wet: true }), world);

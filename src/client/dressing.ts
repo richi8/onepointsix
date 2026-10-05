@@ -126,7 +126,7 @@ export class Dressing {
   /** Swap the flat colours for the textures, tinted. */
   applyAssets(assets: Assets, world: World): void {
     const old = [this.mesh.material, this.shapes?.material] as (THREE.Material | undefined)[];
-    this.mesh.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { indoor: true, wet: true }), world);
+    this.mesh.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { indoor: true, wet: true, age: world }), world);
     this.boxes.stuffs.forEach((s, i) => this.mesh.setColorAt(i, s.tint));
     this.mesh.instanceColor!.needsUpdate = true;
     if (this.shapes) {

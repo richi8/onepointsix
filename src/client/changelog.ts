@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-10-05',
+    title: 'Calabianca has aged',
+    notes: [
+      'Calabianca looks lived in for centuries now. No two walls are quite the same shade, their paint has faded unevenly in the sun, damp has crept up from the street with a stain at its edge, dirt is splashed along their foot, and grime runs down from every sill, cornice and string course.',
+      'Here and there the plaster has fallen away to the stone beneath, most often low down where the walls are damp.',
+      'Stone, roof tiles and doors are weathered too: stained, bleached, and the roofs spotted with lichen.',
+      'The paving no longer repeats: each square and lane varies in tone across it, and it’s worn darker and smoother along the ways people walk, at the doorways and at the foot of the stairs.',
+      'In rain, water runs down the grimy streaks on the walls, and the stone soaks unevenly, water standing in the joints between the cobbles and flagstones.',
+    ],
+  },
+  {
     date: '2026-10-04',
     title: 'Calabianca in the sun',
     notes: [

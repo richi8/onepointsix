@@ -235,7 +235,10 @@ export interface MapPaving {
   patches: (Rect & { kind: Paving })[];
 }
 
-/** A street or lane as drawn on the dev view of a map from above (dev/map.html): it plays no part in the game. */
+/**
+ * A street or lane as drawn on the dev view of a map from above
+ * (dev/map.html): it plays no part in the game, but its paving is worn along it.
+ */
 export interface MapLane {
   name: string;
   points: readonly (readonly [number, number])[];

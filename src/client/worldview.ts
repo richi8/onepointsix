@@ -297,12 +297,13 @@ export class WorldView {
     this.textured = true;
     this.light();
 
-    this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true, wet: 'puddles', town: townPaint(this.world) }));
+    this.terrain.applyMaterial(surfaceMaterial(assets, { kind: 'terrain' }, { vertexColors: true, roughness: 0.95 }, 1, { indoor: true, wet: 'puddles', town: townPaint(this.world), age: this.world }));
 
     const world = this.world;
     const props = world.props;
     this.props.texture(
-      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true }), world),
+      // A map's town weathered; the island's props as they are.
+      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true, age: world.map ? world : undefined }), world),
       // Roofs are corrugated metal only on top: underneath, a plain ceiling. A map's town is its own (see townlook.ts).
       (i) => townLayer(world, i) ?? (props[i].style === 'roof' ? -1 - PROP_LAYERS.roof : PROP_LAYERS[props[i].style]),
       (i, c) => townTint(world, i, true, c)

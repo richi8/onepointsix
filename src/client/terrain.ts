@@ -263,12 +263,11 @@ function heightTexture(world: World): THREE.DataTexture {
   return tex;
 }
 
-/** GLSL for levelHeight and levelAt: `groundDrop(p)` is how far the drawn ground at p stands above the exact ground. */
-function groundGlsl(world: World): string {
+/** GLSL: `groundLevel(p, step)`, the ground at world (x, z) `p` as a tile drawn every `step` cells has it. */
+function levelGlsl(world: World): string {
   const f = (v: number) => v.toFixed(4);
   return /* glsl */ `
     uniform sampler2D groundHeights;
-    uniform vec3 groundEye;
     float groundLevel(vec2 p, int step) {
       float s = float(step);
       vec2 g = clamp((p + ${f(world.half)}) / ${f(world.cell)}, 0.0, ${f(world.res - 1e-4)});
@@ -281,6 +280,15 @@ function groundGlsl(world: World): string {
       float d = texelFetch(groundHeights, i + ivec2(step), 0).r;
       return k.x + k.y <= 1.0 ? a + (b - a) * k.x + (cc - a) * k.y : d + (cc - d) * (1.0 - k.x) + (b - d) * (1.0 - k.y);
     }
+  `;
+}
+
+/** GLSL for levelHeight and levelAt: `groundDrop(p)` is how far the drawn ground at p stands above the exact ground. */
+function groundGlsl(world: World): string {
+  const f = (v: number) => v.toFixed(4);
+  return /* glsl */ `
+    ${levelGlsl(world)}
+    uniform vec3 groundEye;
     float groundDrop(vec2 p) {
       float size = ${f(TILE * world.cell)};
       vec2 t = clamp(floor((p + ${f(world.half)}) / size), 0.0, ${f(world.res / TILE - 1)});
@@ -301,6 +309,16 @@ export function addGroundDrop(shader: THREE.WebGLProgramParametersWithUniforms, 
   shader.uniforms.groundEye = groundEye;
   if (!shader.vertexShader.includes('#include <common>')) throw new Error('Shader anchor #include <common> is missing');
   shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${groundGlsl(world)}`);
+}
+
+/**
+ * Add `groundLevel(p, 1)`, the exact ground's height at world (x, z) `p`, to
+ * a shader's fragment shader, for surfaces that weather by their height off it.
+ */
+export function addGroundLevel(shader: THREE.WebGLProgramParametersWithUniforms, world: World): void {
+  shader.uniforms.groundHeights = { value: heightTexture(world) };
+  if (!shader.fragmentShader.includes('#include <common>')) throw new Error('Shader anchor #include <common> is missing');
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${levelGlsl(world)}`);
 }
 
 /**

@@ -3,6 +3,9 @@ import type { Assets } from './assets.ts';
 import { Layer, LAYERS } from '../shared/layers.ts';
 import { addIndoor } from './indoorlight.ts';
 import { addWet } from './rain.ts';
+import { AGE_BUILT_GLSL, AGE_GLSL, AGE_PAVING_GLSL } from './age.ts';
+import { addGroundLevel } from './terrain.ts';
+import type { World } from '../shared/world.ts';
 
 // PBR surfaces textured in world space, so nothing needs UVs: the island's
 // terrain blends five ground layers painted per vertex, and props, rocks and
@@ -53,6 +56,12 @@ export interface SurfaceOptions {
   town?: TownPaint;
   /** Layers coded UV + layer are textured by the vertices' `surfUv`, metres along the surface. */
   uv?: boolean;
+  /**
+   * Weathered as a map's town is (see age.ts), standing on `world`'s ground:
+   * the terrain's paving, or the plaster, stone, tiles and boards of
+   * instanced boxes. Needs `wet`.
+   */
+  age?: World;
 }
 
 /**
@@ -68,6 +77,11 @@ export function surfaceMaterial(
 ): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial(params);
   const { indoor = false, local = false, wet = false, town, uv = false } = options;
+  const terrain = mapping.kind === 'terrain';
+  // The terrain ages only where it's paved; boxes by the layer each one's in.
+  const ageGround = !!options.age && terrain && !!town && !!wet;
+  const ageBuilt = !!options.age && mapping.kind === 'instanced' && !!wet;
+  const aged = ageGround || ageBuilt;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.surfAlbedo = { value: assets.albedo };
     shader.uniforms.surfNormal = { value: assets.normal };
@@ -79,7 +93,6 @@ export function surfaceMaterial(
       shader.uniforms.townPaint = { value: town.texture };
       shader.uniforms.townRect = { value: new THREE.Vector4(r.minX, r.minZ, 1 / (r.maxX - r.minX), 1 / (r.maxZ - r.minZ)) };
     }
-    const terrain = mapping.kind === 'terrain';
     const layer = mapping.kind === 'fixed' ? `${mapping.layer}.0` : 'surfLayer';
 
     shader.vertexShader = patch(shader.vertexShader, [
@@ -90,7 +103,8 @@ export function surfaceMaterial(
         ${local ? 'varying mat3 vSurfFrame;' : ''}
         ${terrain ? 'attribute vec4 splatA; attribute float splatB; varying vec4 vSplatA; varying float vSplatB;' : ''}
         ${mapping.kind === 'instanced' ? 'attribute float layer; varying float vSurfLayer;' : ''}
-        ${uv ? 'attribute vec2 surfUv; varying vec2 vSurfUv;' : ''}`],
+        ${uv ? 'attribute vec2 surfUv; varying vec2 vSurfUv;' : ''}
+        ${ageBuilt ? 'varying float vAgeBelow;' : ''}`],
       ['#include <worldpos_vertex>', /* glsl */ `
         {
           vec4 p = vec4(transformed, 1.0);
@@ -112,7 +126,14 @@ export function surfaceMaterial(
         }
         ${terrain ? 'vSplatA = splatA; vSplatB = splatB;' : ''}
         ${mapping.kind === 'instanced' ? 'vSurfLayer = layer;' : ''}
-        ${uv ? 'vSurfUv = surfUv;' : ''}`],
+        ${uv ? 'vSurfUv = surfUv;' : ''}
+        ${ageBuilt ? `
+        // How far below its box's top: streaks run down from there.
+        #ifdef USE_INSTANCING
+          vAgeBelow = (modelMatrix * instanceMatrix * vec4(0.0, 0.5, 0.0, 1.0)).y - vSurfPos.y;
+        #else
+          vAgeBelow = 100.0;
+        #endif` : ''}`],
     ]);
 
     shader.fragmentShader = patch(shader.fragmentShader, [
@@ -130,18 +151,27 @@ export function surfaceMaterial(
         ${uv ? 'varying vec2 vSurfUv;' : ''}
         ${town ? 'uniform sampler2D townPaint; uniform vec4 townRect;' : ''}
         ${SURFACE_GLSL}
-        ${uv ? UV_GLSL : ''}`],
+        ${uv ? UV_GLSL : ''}
+        ${aged ? AGE_GLSL : ''}
+        ${ageGround ? AGE_PAVING_GLSL : ''}
+        ${ageBuilt ? `varying float vAgeBelow;\n${AGE_BUILT_GLSL}` : ''}`],
       // Replaces the colour map, which these materials don't use.
       ['#include <map_fragment>', /* glsl */ `
         vec4 surfColor = vec4(0.0);
         vec3 surfN = vec3(0.0);
         vec3 wn = normalize(vSurfNormal);
+        ${aged ? `
+        // How much rougher the years have left it, how streaked for the rain
+        // to run down, and how much of it is joints between stones to hold water.
+        float ageRough = 1.0;
+        float ageStreaks = 0.0;
+        float ageJoint = 0.0;` : ''}
         ${mapping.kind === 'instanced' ? `
         // Decoded as the codes above say.
         float surfLayer = floor(vSurfLayer + 0.5);
         if (surfLayer < 0.0) surfLayer = wn.y < -0.5 ? ${Layer.concrete}.0 : -surfLayer - 1.0;
         else if (surfLayer >= 64.0 && surfLayer < ${UNTEXTURED}.0) surfLayer = wn.y > 0.5 ? floor(surfLayer / 64.0) - 1.0 : mod(surfLayer, 64.0);` : ''}
-        ${terrain ? TERRAIN_BLEND(town !== undefined)
+        ${terrain ? TERRAIN_BLEND(town !== undefined, ageGround)
           : mapping.kind === 'instanced' ? `
         if (surfLayer >= ${UNTEXTURED}.0 && surfLayer < ${UV}.0) {
           surfColor = vec4(1.0);
@@ -150,16 +180,37 @@ export function surfaceMaterial(
         else triplanar(${layer}, 1.0, vSurfPos, wn, surfColor, surfN);`
           : `triplanar(${layer}, 1.0, vSurfPos, wn, surfColor, surfN);`}
         diffuseColor *= vec4(surfColor.rgb, 1.0);`, true],
+      ...(ageBuilt ? [['#include <color_fragment>', /* glsl */ `
+        {
+          float layer = surfLayer >= ${UV}.0 ? surfLayer - ${UV}.0 : surfLayer;
+          ageBuilt(layer, vSurfPos, wn, vAgeBelow, 1.0 - underRoof(vSurfPos + wn * 0.3), diffuseColor.rgb, surfN, ageRough, ageStreaks);
+        }`] as [string, string]] : []),
       ['#include <normal_fragment_maps>', /* glsl */ `
         ${local ? 'surfN = vSurfFrame * surfN;' : ''}
         normal = normalize((viewMatrix * vec4(normalize(surfN), 0.0)).xyz);`],
     ]);
     if (wet) addWet(shader, 'vSurfPos', 'wn', wet === 'puddles' && terrain ? 'islandPuddle(vSurfPos)' : null);
+    if (aged) {
+      if (ageBuilt) addGroundLevel(shader, options.age!);
+      shader.fragmentShader = patch(shader.fragmentShader, [
+        // Before the rain (see addWet), which follows.
+        ['#include <roughnessmap_fragment>', 'roughnessFactor = min(roughnessFactor * ageRough, 1.0);'],
+        // After it: the rain runs down the streaks and stands in the joints,
+        // and soaks some stone more than the rest.
+        ['#include <metalnessmap_fragment>', /* glsl */ `
+          if (wetness > 0.0) {
+            float pool = soaked * ageJoint;
+            diffuseColor.rgb *= (1.0 - 0.2 * soaked * min(ageStreaks, 1.0)) * (1.0 - 0.08 * soaked * ageNoise(vSurfPos.xz * 1.7 + vSurfPos.y)) * (1.0 - 0.15 * pool);
+            roughnessFactor = mix(roughnessFactor, 0.12, pool);
+          }
+          #include <metalnessmap_fragment>`, true],
+      ]);
+    }
     if (indoor) addIndoor(shader);
   };
   // Every variant compiles its own program.
   material.customProgramCacheKey = () =>
-    `surface-${mapping.kind}-${mapping.kind === 'fixed' ? mapping.layer : ''}-${bump}-${indoor}-${local}-${wet}-${!!town}-${uv}`;
+    `surface-${mapping.kind}-${mapping.kind === 'fixed' ? mapping.layer : ''}-${bump}-${indoor}-${local}-${wet}-${!!town}-${uv}-${aged}`;
   return material;
 }
 
@@ -251,19 +302,35 @@ const UV_GLSL = /* glsl */ `
   }
 `;
 
-const TERRAIN_BLEND = (town: boolean) => /* glsl */ `
+const TERRAIN_BLEND = (town: boolean, age: boolean) => /* glsl */ `
   // The painted weights, normalized.
+  ${age ? '// Taken before any branch, as derivatives need.\n  vec2 ageDx = dFdx(vSurfPos.xz);\n  vec2 ageDy = dFdy(vSurfPos.xz);' : ''}
   vec4 wa = vSplatA;
   float wb = vSplatB;
   float total = wa.x + wa.y + wa.z + wa.w + wb;
   ${town ? `
   vec2 townAt = (vSurfPos.xz - townRect.xy) * townRect.zw;
-  vec3 paved = all(greaterThan(townAt, vec2(0.0))) && all(lessThan(townAt, vec2(1.0))) ? texture(townPaint, townAt).rgb : vec3(0.0);
+  // The paving's kinds in red, green and blue, and how worn it is in alpha.
+  vec4 paint = all(greaterThan(townAt, vec2(0.0))) && all(lessThan(townAt, vec2(1.0))) ? texture(townPaint, townAt) : vec4(0.0);
+  vec3 paved = paint.rgb;
   total /= max(1.0 - paved.r - paved.g - paved.b, 1e-4);
   // Stone takes none of the grass's tint the vertex colours give the ground: it's divided back out.
   vec4 stone = vec4(0.0);
+  ${age ? `
+  pavedLayer(${Layer.flagstones}.0, paved.r, vSurfPos, wn, ageDx, ageDy, stone, surfN);
+  pavedLayer(${Layer.cobbles}.0, paved.g, vSurfPos, wn, ageDx, ageDy, stone, surfN);
+  float stoneW = paved.r + paved.g;
+  if (stoneW > 0.004) {
+    // The joints are what's darker than the stone's average, its smallest mip.
+    vec3 mean = paved.r * textureLod(surfAlbedo, vec3(0.5, 0.5, ${Layer.flagstones}.0), 12.0).rgb * surfTint[${Layer.flagstones}]
+      + paved.g * textureLod(surfAlbedo, vec3(0.5, 0.5, ${Layer.cobbles}.0), 12.0).rgb * surfTint[${Layer.cobbles}];
+    ageJoint = stoneW * smoothstep(0.3, 0.6, 1.0 - ageLum(stone.rgb) / max(ageLum(mean), 1e-3));
+    float wear = clamp(paint.a * (0.5 + ageNoise(vSurfPos.xz * 0.9)), 0.0, 1.0);
+    stone.rgb = agePaving(stone.rgb, vSurfPos, wear);
+    ageRough = mix(1.0, 0.72, wear * stoneW);
+  }` : `
   planar(${Layer.flagstones}.0, paved.r, vSurfPos, wn, stone, surfN);
-  planar(${Layer.cobbles}.0, paved.g, vSurfPos, wn, stone, surfN);
+  planar(${Layer.cobbles}.0, paved.g, vSurfPos, wn, stone, surfN);`}
   #ifdef USE_COLOR
     stone.rgb /= max(vColor.rgb, vec3(0.05));
   #endif
