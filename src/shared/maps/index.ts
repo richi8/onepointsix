@@ -175,6 +175,10 @@ export interface MapTrim {
   flowers?: number;
   plants?: number;
   awnings?: number;
+  /** Pots of geraniums, lemon trees and agaves beside its doors; bougainvillea over them; vines trained along its walls. */
+  pots?: number;
+  bougainvillea?: number;
+  vines?: number;
 }
 
 /**
@@ -262,6 +266,19 @@ export interface MapLane {
   points: readonly (readonly [number, number])[];
 }
 
+/**
+ * A tree planted beyond the bounds, drawn only, its foot at (x, z) on the
+ * ground: the cypresses round a cemetery, the pines by a villa. The rest of
+ * the hillside is planted by itself (see client/greenery.ts).
+ */
+export interface MapPlant {
+  kind: 'cypress' | 'pine' | 'olive' | 'oak';
+  x: number;
+  z: number;
+  /** Its size, as a share of its kind's usual. */
+  s?: number;
+}
+
 export interface GameMap {
   /** Its key: the menu's board of games on it is kept under it. */
   id: string;
@@ -282,6 +299,7 @@ export interface GameMap {
   lanes?: MapLane[];
   /** The sun's bearing, degrees from +x toward +z, for its look alone; the island's otherwise. */
   sun?: number;
+  plants?: MapPlant[];
 }
 
 /** What the ground of `map` is paved with at (x, z), or null beyond its paving's area. */
@@ -322,5 +340,6 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
     spawns: map.spawns.map(at),
     ...(map.paving ? { paving: { area: rect(map.paving.area), patches: map.paving.patches.map(rect) } } : {}),
     lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),
+    plants: map.plants?.map(at),
   };
 }

@@ -124,7 +124,8 @@ for (const [name, query] of Object.entries(YARD)) {
 // across the west's roofs; the harbour, its quay and its boats; the
 // cemetery and its chapel; and close up, the Albergo del Porto's front over
 // the quay, its sign, balcony and eaves, and a window in the west with its
-// sill, shutters and window box.
+// sill, shutters and window box; the hillside behind the town, its terraced
+// olive groves, cypresses and pines; and the olive garden close up.
 const MAP: Record<string, string> = {
   'town-above': '-70,55,320,0,8,240',
   'town-alley': '-37.5,7.7,265,-37.5,10,245',
@@ -136,6 +137,8 @@ const MAP: Record<string, string> = {
   'town-cemetery': '-50,16.7,200,-60,17,192',
   'town-albergo': '-17,4.8,292,-15,8,285',
   'town-window': '-63.5,7.8,282.6,-65,7,280',
+  'town-hillside': '0,30,200,0,40,100',
+  'town-garden': '38,11,252,60,10,244',
 };
 
 for (const [name, query] of Object.entries(MAP)) {

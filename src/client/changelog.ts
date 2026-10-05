@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-05',
+    title: 'Calabianca’s trees and hills',
+    notes: [
+      'The piazza’s plane trees and the garden’s olives are real trees now, the planes with pale trunks under broad domes of big leaves, the olives gnarled and silver-grey.',
+      'The hills round Calabianca are southern Italy’s: olive groves in rows on terraces held up by dry-stone walls, dark maquis, holm oaks, umbrella pines, cypresses in rows and alone, and pale rock breaking through grass the sun has bleached to straw.',
+      'Cypresses stand round the cemetery’s walls, and umbrella pines over the villa and along the shore.',
+      'Pots of geraniums, agaves and lemon trees stand by the doors, bougainvillea climbs over some of them, and vines are trained along the walls in the east and at the top of the town.',
+      'None of it changes how the town plays: the trees stand on their old trunks, and the hills and the pots are only scenery.',
+    ],
+  },
+  {
+    date: '2026-10-05',
     title: 'Calabianca’s houses up close',
     notes: [
       'Calabianca’s windows and doors are set deep in their walls behind thicker stone surrounds, and every window has a stone sill standing out under it. The edges of walls, steps, sills and stonework are slightly rounded and catch the light.',

@@ -2,6 +2,7 @@ import { clamp, smoothstep } from './geom.ts';
 import { fbm } from './rng.ts';
 import type { World } from './world.ts';
 import { Layer } from './layers.ts';
+import { beyondTown, groveAt } from './hillside.ts';
 
 // What the ground is painted with, worked out once per terrain vertex: the
 // renderer blends its textures by these weights, and footsteps sound like the
@@ -23,10 +24,13 @@ export interface Paint {
 
 /** The paint at a terrain vertex at (x, y, z) whose normal points up by `flat`. */
 export function paint(world: World, x: number, y: number, z: number, flat: number): Paint {
-  const dry = fbm(x / 60, z / 60, world.seed + 5, 3);
+  // Beyond a map's town, its hillside: grass the sun has bleached, and earth under the groves' olives.
+  const hill = world.map ? smoothstep(1, 8, beyondTown(world, x, z)) : 0;
+  const dry = Math.max(fbm(x / 60, z / 60, world.seed + 5, 3), hill);
   const outpost = world.nearestOutpost(x, z);
-  // Bare in an outpost, and over a map's ground.
-  const dirt = Math.max(outpost ? smoothstep(26, 16, outpost.dist) : 0, smoothstep(6, 2, world.mapDistance(x, z)));
+  // Bare in an outpost, over a map's town's ground, and between the olives.
+  const grove = hill > 0 ? groveAt(world, x, z) * 0.75 : 0;
+  const dirt = Math.max(outpost ? smoothstep(26, 16, outpost.dist) : 0, smoothstep(6, 2, world.mapDistance(x, z)) * (1 - hill), grove);
   const rock = smoothstep(0.86, 0.72, flat) + smoothstep(38, 52, y);
   const sand = smoothstep(2.2, 0.8, y);
   const seabed = smoothstep(-0.5, -3, y);

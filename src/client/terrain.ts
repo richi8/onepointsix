@@ -29,6 +29,9 @@ const TINT_LUSH = new THREE.Color(0xa4c886);
 const TINT_GRASS = new THREE.Color(0xcfe0b8);
 const WHITE = new THREE.Color(0xffffff);
 const TINT_SEABED = new THREE.Color(0x7d7460);
+/** A map's grass, bleached by a southern sun to straw and ochre, in patches. */
+const TINT_STRAW = new THREE.Color(0xf2ead6);
+const TINT_OCHRE = new THREE.Color(0xecdcb8);
 
 /** What every full-detail vertex carries, row by row, before it's split into tiles. */
 interface Vertices {
@@ -82,6 +85,7 @@ export class Terrain {
  */
 export function groundTint(world: World, x: number, z: number, bare: number, out: THREE.Color): THREE.Color {
   const lush = fbm(x / 23, z / 23, world.seed + 11, 2);
+  if (world.map) return out.copy(TINT_STRAW).lerp(TINT_OCHRE, smoothstep(0.35, 0.75, lush)).lerp(WHITE, bare);
   return out.copy(TINT_GRASS).lerp(TINT_LUSH, smoothstep(0.35, 0.75, lush)).lerp(WHITE, bare);
 }
 

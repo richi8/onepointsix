@@ -89,6 +89,7 @@ const BLADES = 18;
 const LUSH = new THREE.Color(0x8ea35a);
 const DRY = new THREE.Color(0xb3a262);
 const LEAF = new THREE.Color(0x6a8a44);
+const MAQUIS = new THREE.Color(0x56603e);
 const tint = new THREE.Color();
 
 export class GroundCover {
@@ -249,7 +250,8 @@ export class GroundCover {
     bushes.forEach((b, k) => {
       q.setFromEuler(e.set(b.leanX, b.turn, b.leanZ));
       m.compose(pos.set(b.x, b.y, b.z), q, scale.set(b.size, b.height, b.size)).toArray(matrices, k * 16);
-      c.copy(LEAF).multiplyScalar(0.75 + b.shade * 0.4).toArray(colors, k * 3);
+      // A map's bushes the grey-green of the maquis.
+      c.copy(this.world.map ? MAQUIS : LEAF).multiplyScalar(0.75 + b.shade * 0.4).toArray(colors, k * 3);
     });
     return { matrices, colors, count: bushes.length };
   }
@@ -276,7 +278,8 @@ export class GroundCover {
       // greener, and a finer mottle of lighter and darker tufts on top.
       const patch = fbm(x / 13, z / 13, seed + 31, 2);
       const mottle = fbm(x / 4, z / 4, seed + 37, 2);
-      const dry = clamp(data[o + 9] + smoothstep(0.5, 0.72, patch) * 0.55 - smoothstep(0.42, 0.25, patch) * 0.25, 0, 1);
+      // A map's summer has dried even its watered grass more than half way.
+      const dry = clamp(data[o + 9] + smoothstep(0.5, 0.72, patch) * 0.55 - smoothstep(0.42, 0.25, patch) * 0.25 + (this.world.map ? 0.8 : 0), 0, 1);
       c.copy(LUSH).lerp(DRY, dry).multiplyScalar((0.85 + data[o + 8] * 0.3) * (0.82 + mottle * 0.36)).toArray(colors, k * 3);
       this.groundAt(x, z, ground, k * GROUND);
     }

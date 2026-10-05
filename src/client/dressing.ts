@@ -13,6 +13,7 @@ import { balconies, railProps } from './balconies.ts';
 import { Life } from './life.ts';
 import { signs } from './signs.ts';
 import { BLOOMS, Boxes, CANVAS, CREAM, IRON, LEAVES, painted, plain, Shapes, STEM, STONE, TERRACOTTA, type Stuff } from './townparts.ts';
+import { bougainvillea, pots, vine } from './plants.ts';
 
 // A map town's buildings dressed over their walls, drawn only: nothing here
 // collides, stops a round or casts a sound, so the town plays just as its
@@ -21,7 +22,8 @@ import { BLOOMS, Boxes, CANVAS, CREAM, IRON, LEAVES, painted, plain, Shapes, STE
 // storeys and stone at its corners where its building has them (MapTrim),
 // stone round its windows and doors, painted shutters folded back beside
 // its windows, window boxes of flowers, creepers climbing beside its doors
-// and striped awnings over them; and a stone cap along every parapet and
+// and striped awnings over them, pots by them, bougainvillea over them and
+// vines along its walls (see plants.ts); and a stone cap along every parapet and
 // freestanding wall. All of it is boxes, each a few centimetres proud of the
 // wall, drawn as one instanced mesh.
 
@@ -311,6 +313,27 @@ function dressRun(world: World, face: Face, shapes: Shapes, run: Run, outdoors: 
     b0 > run.a0 + 0.1 && b1 < run.a1 - 0.1
     && !own.some((o) => o !== beside && o.at + o.width / 2 + JAMB + 0.05 > b0 && o.at - o.width / 2 - JAMB - 0.05 < b1 && y0 < headOf(o) + 0.2 && y1 > (o.kind === 'window' ? SILL - 0.1 : 0));
 
+  // What people grow by it, from a stream of its own too.
+  const grow = mulberry32(Math.floor((w.line * 7919 + w.y * 104729 + run.a0 * 1299709) * 1000) ^ 0x3f84d5b5);
+  if (ground && grow() < (trim.vines ?? 0)) {
+    // Along the longest stretch of the ground storey clear of its doors and windows, and well off them, where the street runs along it.
+    const [p, q] = between(run.a0 + 0.3, run.a1 - 0.3, true, 0.9).reduce((m, r) => (r[1] - r[0] > m[1] - m[0] ? r : m), [0, 0]);
+    const level = (a: number) => world.groundHeight(...face.at(a, 0.6), w.y + 0.3);
+    if (q - p > 2 && Math.abs(level(p) - w.y) < 0.5 && Math.abs(level(q) - w.y) < 0.5) vine(face, shapes, p, q, level((p + q) / 2), Math.min(2.6 + grow() * 0.3, top - w.y - 0.2), grow);
+  }
+  // Pots along the foot of the ground storey, here and there, under its windows or against its blank walls.
+  if (ground && grow() < (trim.pots ?? 0) * 0.7) {
+    const stretches = between(run.a0 + 0.3, run.a1 - 0.3, false, 0.6).filter(([p, q]) => q - p > 0.8);
+    if (stretches.length) {
+      const [p, q] = stretches[Math.floor(grow() * stretches.length)];
+      const width = Math.min(q - p, 0.6 + grow() * 0.8);
+      const a = p + grow() * (q - p - width);
+      const level = world.groundHeight(...face.at(a + width / 2, 0.4), w.y + 0.3);
+      if (free(a, a + width, 0, 0.9) && Math.abs(level - w.y) < 0.5 && Math.abs(world.groundHeight(...face.at(a, 0.4), w.y + 0.3) - level) < 0.1 && Math.abs(world.groundHeight(...face.at(a + width, 0.4), w.y + 0.3) - level) < 0.1) {
+        pots(face, shapes, a, a + width, level, free(a, a + width, 0, 1.9), grow);
+      }
+    }
+  }
   if (life) {
     // What people have put up on it, from a stream of its own, so the rest is chosen as before.
     const mid = (run.a0 + run.a1) / 2;
@@ -351,14 +374,38 @@ function dressRun(world: World, face: Face, shapes: Shapes, run: Run, outdoors: 
     } else if (o.kind === 'door' && ground) {
       // Only where the street is at the door.
       const [sx, sz] = face.at(o.at, 0.6);
-      if (Math.abs(world.groundHeight(sx, sz, w.y + 0.3) - w.y) > 0.5) continue;
-      if (rand() < (trim.awnings ?? 0)) awning(face, o.at, o.width + 0.8, w.y, rand);
+      const street = world.groundHeight(sx, sz, w.y + 0.3);
+      if (Math.abs(street - w.y) > 0.5) continue;
+      const awned = rand() < (trim.awnings ?? 0);
+      /** The side a creeper climbs, if one does. */
+      let climbed = 0;
+      if (awned) awning(face, o.at, o.width + 0.8, w.y, rand);
       else if (rand() < (trim.plants ?? 0)) {
         const width = 1 + rand() * 0.8;
         const side = rand() < 0.5 ? -1 : 1;
         const [p, q] = side < 0 ? [o0 - JAMB - 0.05 - width, o0 - JAMB - 0.05] : [o1 + JAMB + 0.05, o1 + JAMB + 0.05 + width];
         const height = 2.2 + rand() * 0.6;
-        if (free(p, q, 0, height, o)) creeper(face, shapes, p, q, w.y, height, rand);
+        if (free(p, q, 0, height, o)) {
+          creeper(face, shapes, p, q, w.y, height, rand);
+          climbed = side;
+        }
+      }
+      // Bougainvillea up one side and over the head, where nothing else climbs.
+      const reach = 0.5;
+      const [l0, l1, r0, r1] = [o0 - JAMB - reach, o0 - JAMB - 0.03, o1 + JAMB + 0.03, o1 + JAMB + reach];
+      let flowered = 0;
+      if (!awned && !climbed && grow() < (trim.bougainvillea ?? 0) && free(l0, l1, 0, 2.8, o) && free(r0, r1, 0, 2.8, o) && top - w.y > DOOR_TOP + 0.6) {
+        flowered = grow() < 0.5 ? -1 : 1;
+        bougainvillea(face, shapes, l0, r1, flowered < 0 ? l0 + 0.15 : r1 - 0.15, w.y + DOOR_TOP + 0.2, w.y, Math.min(top + 0.2, w.y + 3.3), grow);
+      }
+      // Pots on the other side, or either.
+      if (grow() < (trim.pots ?? 0)) {
+        const side = climbed || flowered ? -(climbed || flowered) : grow() < 0.5 ? -1 : 1;
+        const width = 0.5 + grow() * 0.9;
+        const [p, q] = side < 0 ? [o0 - JAMB - 0.08 - width, o0 - JAMB - 0.08] : [o1 + JAMB + 0.08, o1 + JAMB + 0.08 + width];
+        const level = world.groundHeight(...face.at((p + q) / 2, 0.4), w.y + 0.3);
+        // Low pots under a window beside the door; a lemon tree only where nothing's over it.
+        if (free(p, q, 0, 0.9, o) && Math.abs(level - street) < 0.15) pots(face, shapes, p, q, level, free(p, q, 0, 1.9, o), grow);
       }
     }
   }

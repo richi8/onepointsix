@@ -1,40 +1,41 @@
 import * as THREE from 'three';
 import type { World } from '../shared/world.ts';
 import { addGroundDrop, groundEye } from './terrain.ts';
-import { needles, NEEDLES_WET, SWAY, thickened, TREE_HEIGHT, treeFade, treeFadeGlsl, type TreeParts } from './trees.ts';
+import { needles, NEEDLES_WET, swayOf, thickened, treeFade, treeFadeGlsl, type Planting, type Species } from './trees.ts';
 import { WIND_GLSL, wind, windStrength } from './wind.ts';
 import { wetMaterial } from './rain.ts';
 
 // Far trees as impostors: one card per tree facing the camera, showing a
-// picture of a full tree baked when they load. The tree is baked from eight
+// picture of a full tree of its kind, baked when they load. The tree is baked from eight
 // sides, its colours in one picture and its surface's facing in another, so
 // the card shows the side the camera sees, blended between the two nearest,
 // and the scene's lights shade it as they shade the full trees. The crown
 // sways as the full trees' do. In the shadow pass the card faces the sun, so
 // far trees still cast shadows. Loaded lazily by Trees.
 
-/** Half the width of the card, in unit-tree metres: the widest whorl's reach. */
+/** Half the width of a spruce's card, in unit-tree metres: the widest whorl's reach. */
 export const CARD_HALF = 3.2;
 /** Sides the tree is baked from, evenly round it. */
 const VIEWS = 8;
-/** Each baked picture, in pixels. */
-const BAKE_W = 128;
-const BAKE_H = 256;
 
 export class Impostors {
   readonly mesh: THREE.InstancedMesh;
   private readonly world: World;
+  private readonly species: Species;
 
-  /** A card per tree, standing on its base, tinted with `colors`, the tree's needles'. */
-  constructor(world: World, colors: readonly THREE.Color[]) {
+  /** A card per tree, standing on its base, turned its way and tinted its foliage's colour. */
+  constructor(world: World, species: Species, plants: readonly Planting[]) {
     this.world = world;
-    const card = new THREE.PlaneGeometry(CARD_HALF * 2, TREE_HEIGHT).translate(0, TREE_HEIGHT / 2, 0);
-    this.mesh = new THREE.InstancedMesh(card, new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 0.9, envMapIntensity: 0.55 }), world.trees.length);
+    this.species = species;
+    const card = new THREE.PlaneGeometry(species.half * 2, species.height).translate(0, species.height / 2, 0);
+    this.mesh = new THREE.InstancedMesh(card, new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 0.9, envMapIntensity: 0.55 }), Math.max(plants.length, 1));
+    this.mesh.count = plants.length;
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
-    world.trees.forEach((t, i) => {
-      this.mesh.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.y - 0.2, t.z), q, new THREE.Vector3(t.s, t.s, t.s)));
-      this.mesh.setColorAt(i, colors[i]);
+    const up = new THREE.Vector3(0, 1, 0);
+    plants.forEach((t, i) => {
+      this.mesh.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.y, t.z), q.setFromAxisAngle(up, t.turn), new THREE.Vector3(t.s, t.s, t.s)));
+      this.mesh.setColorAt(i, t.color);
     });
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;
@@ -42,10 +43,13 @@ export class Impostors {
   }
 
   /**
-   * Bake the pictures of the unit tree from each side: its colours, lit
-   * evenly so the scene's own lights can shade the card, and its normals.
+   * Bake the pictures of the plainer unit tree from each side: its colours,
+   * lit evenly so the scene's own lights can shade the card, and its normals.
    */
-  bake(renderer: THREE.WebGLRenderer, unit: TreeParts): void {
+  bake(renderer: THREE.WebGLRenderer): void {
+    const sp = this.species;
+    const [BAKE_W, BAKE_H] = sp.bake;
+    const unit = { ...sp.far, map: sp.map, woodColor: sp.woodColor };
     const size = { w: BAKE_W * VIEWS, h: BAKE_H };
     const mips = { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter } as const;
     const albedo = new THREE.WebGLRenderTarget(size.w, size.h, { type: THREE.HalfFloatType, ...mips });
@@ -63,7 +67,8 @@ export class Impostors {
     const facing = new THREE.Scene();
     facing.add(new THREE.Mesh(unit.wood, normalMaterial()), new THREE.Mesh(unit.foliage, normalMaterial(unit.map)));
 
-    const camera = new THREE.OrthographicCamera(-CARD_HALF, CARD_HALF, TREE_HEIGHT, 0, 0.1, 40);
+    const reach = Math.max(sp.half, sp.height) * 2 + 6;
+    const camera = new THREE.OrthographicCamera(-sp.half, sp.half, sp.height, 0, 0.1, reach * 2);
     const clear = renderer.getClearColor(new THREE.Color());
     const alpha = renderer.getClearAlpha();
     const was = renderer.getRenderTarget();
@@ -79,7 +84,7 @@ export class Impostors {
       for (let k = 0; k < VIEWS; k++) {
         // View k looks at the tree from angle k round it, as the card's shader picks it.
         const a = (k / VIEWS) * Math.PI * 2;
-        camera.position.set(Math.sin(a) * 20, 0, Math.cos(a) * 20);
+        camera.position.set(Math.sin(a) * reach, 0, Math.cos(a) * reach);
         camera.lookAt(0, 0, 0);
         target.viewport.set(k * BAKE_W, 0, BAKE_W, BAKE_H);
         target.scissor.copy(target.viewport);
@@ -102,6 +107,8 @@ export class Impostors {
       treeFade,
       windTime: wind,
       windStrength,
+      treeSway: { value: swayOf(sp) },
+      cardSize: { value: new THREE.Vector2(sp.half * 2, sp.height) },
     };
     const material = this.mesh.material as THREE.MeshStandardMaterial;
     material.onBeforeCompile = (shader) => card(shader, uniforms, this.world, true);
@@ -181,6 +188,8 @@ function card(shader: THREE.WebGLProgramParametersWithUniforms, uniforms: Record
   const common = /* glsl */ `
     uniform sampler2D impostorAlbedo;
     uniform sampler2D impostorNormal;
+    uniform vec3 treeSway;
+    uniform vec2 cardSize;
     varying vec2 vViewUv0;
     varying vec2 vViewUv1;
     varying float vViewMix;
@@ -207,15 +216,15 @@ function card(shader: THREE.WebGLProgramParametersWithUniforms, uniforms: Record
       vec3 cardRight = vec3(toEye.z, 0.0, -toEye.x);
       vec3 transformed = cardBase + (cardRight * position.x + vec3(0.0, position.y, 0.0)) * cardScale;
       // The crown leans as the full tree's does (see trees.ts).
-      float h = max(position.y - 1.2, 0.0) / ${(TREE_HEIGHT - 1.2).toFixed(1)};
-      transformed += windPush(cardBase, windTime) * h * h * ${SWAY.toFixed(2)} / cardScale;
+      float h = max(position.y - treeSway.x, 0.0) / treeSway.y;
+      transformed += windPush(cardBase, windTime) * h * h * treeSway.z / cardScale;
       // The side seen, in the tree's own frame: its turn undone.
       vTreeTurn = vec2(instanceMatrix[0].x, -instanceMatrix[0].z) / cardScale;
       vec2 local = vec2(vTreeTurn.x * toEye.x - vTreeTurn.y * toEye.z, vTreeTurn.y * toEye.x + vTreeTurn.x * toEye.z);
       float side = mod(atan(local.x, local.y) / ${(2 * Math.PI).toFixed(6)} * ${views} + ${views}, ${views});
       float view0 = floor(side);
       vViewMix = side - view0;
-      vec2 cardUv = vec2(position.x / ${(CARD_HALF * 2).toFixed(1)} + 0.5, position.y / ${TREE_HEIGHT.toFixed(1)});
+      vec2 cardUv = vec2(position.x / cardSize.x + 0.5, position.y / cardSize.y);
       vViewUv0 = vec2((view0 + cardUv.x) / ${views}, cardUv.y);
       vViewUv1 = vec2((mod(view0 + 1.0, ${views}) + cardUv.x) / ${views}, cardUv.y);`],
     ['#include <project_vertex>', /* glsl */ `

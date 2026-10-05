@@ -11,18 +11,20 @@ import { WIND_GLSL, wind, windStrength } from './wind.ts';
 import { filled } from './cardtexture.ts';
 import { wetMaterial, type WetOptions } from './rain.ts';
 
-// Spruces: a trunk, whorls of limbs and sprays of needles along them (see
-// fir()), generated here rather than loaded, as real tree models are far too
-// big to download. Trees near the camera are drawn in full detail, farther
-// ones as a plainer version of the same tree, both swaying in the wind, and
-// far ones as impostors (see impostors.ts), which load lazily; until they're
-// in, the plainer trees reach all the way out. From one to the next each tree
-// dissolves pixel by pixel, so none pops. The plainer trees are split into
-// tiles, and only tiles that reach into their range draw them; the detailed
-// ones are gathered round the camera as it moves. Every tree stands on the
-// ground as its terrain tile is drawn.
+// Trees, generated here rather than loaded, as real tree models are far too
+// big to download: the island's spruces (see fir()), and a map's olives,
+// planes, cypresses, pines and evergreen oaks (see species.ts). Each kind is
+// a Species, and the trees of one kind a Stand. Trees near the camera are
+// drawn in full detail, farther ones as a plainer version of the same tree,
+// both swaying in the wind, and far ones as impostors (see impostors.ts),
+// which load lazily; until they're in, the plainer trees reach all the way
+// out. From one to the next each tree dissolves pixel by pixel, so none
+// pops. The plainer trees are split into tiles, and only tiles that reach
+// into their range draw them; the detailed ones are gathered round the
+// camera as it moves. Every tree stands on the ground as its terrain tile is
+// drawn.
 
-/** Metres across a tile of trees. */
+/** Metres across a tile of the island's trees. */
 const TILE = 100;
 /** A unit tree is this tall, matching the collider height in World.placeTrees. */
 export { TREE_HEIGHT };
@@ -45,6 +47,64 @@ export const NEAR_START = 30;
 export const NEAR_END = 40;
 /** The near trees are gathered again once the camera has moved this far, from this much past NEAR_END. */
 const NEAR_SLACK = 5;
+
+/** A unit tree's shape: its trunk and boughs, and its foliage as cards, shaded by their vertex colours. */
+export interface TreeShape {
+  wood: THREE.BufferGeometry;
+  foliage: THREE.BufferGeometry;
+}
+
+/** A kind of tree: its shape near and far, the picture on its cards, and its size. */
+export interface Species {
+  /** Its name, which keys its shaders. */
+  name: string;
+  /** A unit tree's height, metres: its impostor's card is this tall. */
+  height: number;
+  /** Half the impostor card's width: past the crown's widest reach. */
+  half: number;
+  /** Up to here the trunk stands still in the wind; above, the crown leans more toward its top. */
+  stiff: number;
+  /** How far the wind leans its top, per unit of the wind's push. */
+  sway: number;
+  near: TreeShape;
+  far: TreeShape;
+  /** The picture its foliage cards show. */
+  map: THREE.Texture;
+  /** Its bark's colour before the textures, and its tint over the bark's texture after. */
+  woodColor: THREE.Color;
+  bark: THREE.Color;
+  /** Each of its impostor's baked views, in pixels: wide and tall. */
+  bake: [number, number];
+  /** Metres from the camera over which it hands over from full detail to plainer: NEAR_START to NEAR_END unless it says. */
+  nearRange?: [number, number];
+}
+
+/** A tree of a stand: where its foot stands, its scale and turn, and the tint over its foliage. */
+export interface Planting {
+  x: number;
+  y: number;
+  z: number;
+  s: number;
+  turn: number;
+  color: THREE.Color;
+}
+
+/** The island's spruces, from `seed`. */
+export function spruce(seed: number): Species {
+  return {
+    name: 'spruce',
+    height: HEIGHT,
+    half: 3.2,
+    stiff: 1.2,
+    sway: SWAY,
+    near: fir(seed + 21, true),
+    far: fir(seed + 21, false),
+    map: sprayTexture(),
+    woodColor: new THREE.Color(TRUNK),
+    bark: new THREE.Color(0xffffff),
+    bake: [128, 256],
+  };
+}
 
 interface Tile {
   x: number;
@@ -82,63 +142,94 @@ interface Materials {
   foliageDepth: THREE.MeshDepthMaterial;
 }
 
+/**
+ * Every tree of a world: on the island its spruces; on a map the kinds of
+ * tree it plants (see greenery.ts), each kind a stand of its own.
+ */
 export class Trees {
   readonly group = new THREE.Group();
+  readonly stands: Stand[];
+
+  constructor(world: World, stands?: readonly { species: Species; plants: readonly Planting[]; tile?: number }[]) {
+    this.stands = (stands ?? [{ species: spruce(world.seed), plants: spruces(world) }]).map((s) => new Stand(world, s.species, s.plants, s.tile ?? TILE));
+    for (const s of this.stands) this.group.add(s.group);
+  }
+
+  applyAssets(assets: Assets): void {
+    for (const s of this.stands) s.applyAssets(assets);
+  }
+
+  /** Load the impostors and bake their pictures of each kind of tree. */
+  async bake(renderer: THREE.WebGLRenderer): Promise<void> {
+    const { Impostors } = await import('./impostors.ts');
+    for (const s of this.stands) s.bake(renderer, Impostors);
+    treeFade.value.set(FADE_START, FADE_END);
+  }
+
+  update(eye: THREE.Vector3): void {
+    for (const s of this.stands) s.update(eye);
+  }
+}
+
+/** The island's spruces as planted, each turned and tinted its own way. */
+function spruces(world: World): Planting[] {
+  const rand = mulberry32(world.seed + 17);
+  const c = new THREE.Color();
+  // Every tree's look is drawn in world order, so tiling doesn't change them.
+  const looks = world.trees.map(() => ({ turn: rand() * Math.PI * 2, hue: rand(), light: rand() }));
+  // A tint over the needles' own colours: some trees bluer, some yellower, some darker.
+  const sprayColor = (look: { hue: number; light: number }) =>
+    c.setHSL(0.2 + look.hue * 0.12, 0.3 + look.light * 0.2, 0.74 + look.light * 0.2, THREE.SRGBColorSpace).clone();
+  return world.trees.map((t, i) => ({ x: t.x, y: t.y - 0.2, z: t.z, s: t.s, turn: looks[i].turn, color: sprayColor(looks[i]) }));
+}
+
+/** The trees of one kind. */
+export class Stand {
+  readonly group = new THREE.Group();
+  readonly species: Species;
+  readonly plants: readonly Planting[];
   private readonly tiles: Tile[] = [];
   private readonly world: World;
-  /** Each tree's needles' colour, for its impostor. */
-  private readonly colors: THREE.Color[];
-  /** Each tree's placing, 16 floats each, and its needles' colour, 3 each. */
+  private readonly tile: number;
+  /** Each tree's placing, 16 floats each, and its foliage's colour, 3 each. */
   private readonly matrices: Float32Array;
   private readonly tints: Float32Array;
   /** The trees near the camera, in full detail: its wood and its foliage. */
   private readonly near: THREE.InstancedMesh[];
   /** Where the near trees were last gathered round. */
   private readonly nearAt = new THREE.Vector2(Infinity, Infinity);
-  /** One tree at the origin, still and in plain materials, for baking the impostors' pictures. */
-  private readonly unit: TreeParts;
-  private readonly map: THREE.Texture;
   private impostors: Impostors | null = null;
 
-  constructor(world: World) {
+  constructor(world: World, species: Species, plants: readonly Planting[], tile: number) {
     this.world = world;
-    this.map = sprayTexture();
-    const near = fir(world.seed + 21, true);
-    const far = fir(world.seed + 21, false);
-
-    const rand = mulberry32(world.seed + 17);
+    this.species = species;
+    this.plants = plants;
+    this.tile = tile;
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
-    const c = new THREE.Color();
-    // Every tree's look is drawn in world order, so tiling doesn't change them.
-    const looks = world.trees.map(() => ({ turn: rand() * Math.PI * 2, hue: rand(), light: rand() }));
-    // A tint over the needles' own colours: some trees bluer, some yellower, some darker.
-    const sprayColor = (look: { hue: number; light: number }) =>
-      c.setHSL(0.2 + look.hue * 0.12, 0.3 + look.light * 0.2, 0.74 + look.light * 0.2, THREE.SRGBColorSpace);
-    this.matrices = new Float32Array(world.trees.length * 16);
-    this.tints = new Float32Array(world.trees.length * 3);
-    world.trees.forEach((t, i) => {
-      q.setFromAxisAngle(up, looks[i].turn);
-      m.compose(new THREE.Vector3(t.x, t.y - 0.2, t.z), q, new THREE.Vector3(t.s, t.s, t.s)).toArray(this.matrices, i * 16);
-      sprayColor(looks[i]).toArray(this.tints, i * 3);
+    this.matrices = new Float32Array(plants.length * 16);
+    this.tints = new Float32Array(plants.length * 3);
+    plants.forEach((t, i) => {
+      q.setFromAxisAngle(up, t.turn);
+      m.compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.s, t.s, t.s)).toArray(this.matrices, i * 16);
+      t.color.toArray(this.tints, i * 3);
     });
-    this.colors = looks.map((look) => sprayColor(look).clone());
 
     // Far trees are drawn by the tile, near ones gathered round the camera as it moves.
     const farMats = this.materials('far', null);
     const byTile = new Map<number, number[]>();
-    const n = Math.ceil(world.size / TILE);
-    world.trees.forEach((t, i) => {
-      const tx = Math.min(Math.floor((t.x + world.half) / TILE), n - 1);
-      const tz = Math.min(Math.floor((t.z + world.half) / TILE), n - 1);
+    const n = Math.ceil(world.size / tile);
+    plants.forEach((t, i) => {
+      const tx = Math.min(Math.max(Math.floor((t.x + world.half) / tile), 0), n - 1);
+      const tz = Math.min(Math.max(Math.floor((t.z + world.half) / tile), 0), n - 1);
       const key = tz * n + tx;
       const list = byTile.get(key) ?? [];
       list.push(i);
       byTile.set(key, list);
     });
     for (const [key, ids] of byTile) {
-      const meshes = this.meshes(far, farMats, ids.length);
+      const meshes = this.meshes(species.far, farMats, ids.length);
       ids.forEach((id, i) => {
         meshes[0].instanceMatrix.array.set(this.matrices.subarray(id * 16, id * 16 + 16), i * 16);
         meshes[1].instanceMatrix.array.set(this.matrices.subarray(id * 16, id * 16 + 16), i * 16);
@@ -147,19 +238,17 @@ export class Trees {
       for (const mesh of meshes) mesh.computeBoundingSphere();
       const tx = key % n;
       const tz = Math.floor(key / n);
-      this.tiles.push({ x: -world.half + (tx + 0.5) * TILE, z: -world.half + (tz + 0.5) * TILE, near: true, meshes });
+      this.tiles.push({ x: -world.half + (tx + 0.5) * tile, z: -world.half + (tz + 0.5) * tile, near: true, meshes });
     }
-    this.near = this.meshes(near, this.materials('near', null), world.trees.length);
+    this.near = this.meshes(species.near, this.materials('near', null), plants.length);
     for (const mesh of this.near) {
       mesh.count = 0;
       mesh.frustumCulled = false;
     }
-
-    this.unit = { wood: far.wood, foliage: far.foliage, map: this.map, woodColor: new THREE.Color(TRUNK) };
   }
 
   /** A tree's wood and foliage as instanced meshes, room for `count`, in the group. */
-  private meshes(parts: { wood: THREE.BufferGeometry; foliage: THREE.BufferGeometry }, mats: Materials, count: number): THREE.InstancedMesh[] {
+  private meshes(parts: TreeShape, mats: Materials, count: number): THREE.InstancedMesh[] {
     const wood = new THREE.InstancedMesh(parts.wood, mats.wood, count);
     const foliage = new THREE.InstancedMesh(parts.foliage, mats.foliage, count);
     foliage.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
@@ -175,18 +264,19 @@ export class Trees {
   /** What a level of detail draws with: plain bark until `assets` are in. */
   private materials(lod: Lod, assets: Assets | null): Materials {
     const world = this.world;
-    // Bark and needles darken and shine a little in the rain.
+    const sp = this.species;
+    // Bark and foliage darken and shine a little in the rain.
     const wood = assets
-      ? full(swaying(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.bark }, { roughness: 0.95 }, 1.5, { wet: true })), world, lod)
-      : wetMaterial(full(swaying(new THREE.MeshStandardMaterial({ color: TRUNK, roughness: 1 })), world, lod), { gloss: 0.6, sheltered: false });
+      ? full(swaying(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.bark }, { roughness: 0.95, color: sp.bark }, 1.5, { wet: true }), sp), world, lod, sp)
+      : wetMaterial(full(swaying(new THREE.MeshStandardMaterial({ color: sp.woodColor, roughness: 1 }), sp), world, lod, sp), { gloss: 0.6, sheltered: false });
     const foliage = wetMaterial(full(swaying(needles(thickened(new THREE.MeshStandardMaterial({
-      map: this.map, vertexColors: true, alphaTest: 0.4, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.9, envMapIntensity: 0.55,
-    })))), world, lod), NEEDLES_WET);
+      map: sp.map, vertexColors: true, alphaTest: 0.4, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.9, envMapIntensity: 0.55,
+    }))), sp), world, lod, sp), NEEDLES_WET);
     // Shadows sway with the crowns, and hand over whole halfway through each fade.
     const depth = (map?: THREE.Texture) => full(swaying(new THREE.MeshDepthMaterial({
       depthPacking: THREE.RGBADepthPacking, ...(map ? { map, alphaTest: 0.4 } : {}),
-    })), world, lod, true);
-    return { wood, foliage, woodDepth: depth(), foliageDepth: depth(this.map) };
+    }), sp), world, lod, sp, true);
+    return { wood, foliage, woodDepth: depth(), foliageDepth: depth(sp.map) };
   }
 
   applyAssets(assets: Assets): void {
@@ -195,14 +285,12 @@ export class Trees {
     this.near[0].material = this.materials('near', assets).wood;
   }
 
-  /** Load the impostors and bake their pictures of a tree. */
-  async bake(renderer: THREE.WebGLRenderer): Promise<void> {
-    const { Impostors } = await import('./impostors.ts');
-    const impostors = new Impostors(this.world, this.colors);
-    impostors.bake(renderer, this.unit);
+  /** Make the impostors and bake their pictures of a tree. */
+  bake(renderer: THREE.WebGLRenderer, make: typeof Impostors): void {
+    const impostors = new make(this.world, this.species, this.plants);
+    impostors.bake(renderer);
     this.group.add(impostors.mesh);
     this.impostors = impostors;
-    treeFade.value.set(FADE_START, FADE_END);
   }
 
   /**
@@ -214,8 +302,8 @@ export class Trees {
       this.nearAt.set(eye.x, eye.z);
       const [wood, foliage] = this.near;
       let count = 0;
-      this.world.trees.forEach((t, i) => {
-        if (Math.hypot(t.x - eye.x, t.z - eye.z) > NEAR_END + NEAR_SLACK) return;
+      this.plants.forEach((t, i) => {
+        if (Math.hypot(t.x - eye.x, t.z - eye.z) > (this.species.nearRange?.[1] ?? NEAR_END) + NEAR_SLACK) return;
         const at = this.matrices.subarray(i * 16, i * 16 + 16);
         wood.instanceMatrix.array.set(at, count * 16);
         foliage.instanceMatrix.array.set(at, count * 16);
@@ -230,8 +318,8 @@ export class Trees {
     }
     if (!this.impostors) return;
     for (const t of this.tiles) {
-      const dx = Math.max(Math.abs(t.x - eye.x) - TILE / 2, 0);
-      const dz = Math.max(Math.abs(t.z - eye.z) - TILE / 2, 0);
+      const dx = Math.max(Math.abs(t.x - eye.x) - this.tile / 2, 0);
+      const dz = Math.max(Math.abs(t.z - eye.z) - this.tile / 2, 0);
       const near = Math.hypot(dx, dz) < TILE_REACH;
       if (near === t.near) continue;
       t.near = near;
@@ -240,26 +328,15 @@ export class Trees {
   }
 }
 
-/** A unit tree's shapes and colours, for baking. */
-export interface TreeParts {
-  /** The trunk, limbs and twigs. */
-  wood: THREE.BufferGeometry;
-  /** The sprays of needles, shaded by their vertex colours. */
-  foliage: THREE.BufferGeometry;
-  /** The sprays' picture. */
-  map: THREE.Texture;
-  woodColor: THREE.Color;
-}
-
 /**
  * A full tree's material: stood on its terrain tile, and dissolving pixel by
  * pixel from one level of detail into the next, near into far between
- * NEAR_START and NEAR_END and far into the impostor over `treeFade`. The
+ * its kind's near range and far into the impostor over `treeFade`. The
  * three share one dither, so each pixel of a tree is drawn by exactly one of
  * them. In the shadow pass (`shadow`) a tree hands its shadow over whole,
  * halfway through each fade.
  */
-function full<M extends THREE.Material>(material: M, world: World, lod: Lod, shadow = false): M {
+function full<M extends THREE.Material>(material: M, world: World, lod: Lod, species: Species, shadow = false): M {
   onTiles(material, world);
   const before = material.onBeforeCompile;
   const key = material.customProgramCacheKey();
@@ -271,14 +348,15 @@ function full<M extends THREE.Material>(material: M, world: World, lod: Lod, sha
     before.call(material, shader, renderer);
     shader.uniforms.treeEye = groundEye;
     shader.uniforms.treeFade = treeFade;
+    shader.uniforms.treeNear = { value: new THREE.Vector2(...(species.nearRange ?? [NEAR_START, NEAR_END])) };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n${treeFadeGlsl(!shadow)}\n${varying}float vTreeNear;`)
+      .replace('#include <common>', `#include <common>\n${treeFadeGlsl(!shadow)}\nuniform vec2 treeNear;\n${varying}float vTreeNear;`)
       .replace('#include <begin_vertex>', /* glsl */ `
         #include <begin_vertex>
         #ifdef USE_INSTANCING
           float treeDistance = distance(instanceMatrix[3].xz, treeEye.xz);
           vTreeFade = smoothstep(treeFade.x, treeFade.y, treeDistance);
-          vTreeNear = smoothstep(${NEAR_START.toFixed(1)}, ${NEAR_END.toFixed(1)}, treeDistance);
+          vTreeNear = smoothstep(treeNear.x, treeNear.y, treeDistance);
         #else
           vTreeFade = 0.0;
           vTreeNear = 0.0;
@@ -303,16 +381,26 @@ function full<M extends THREE.Material>(material: M, world: World, lod: Lod, sha
   return material;
 }
 
+/**
+ * A kind's sway as its shaders take it, the same programs for every kind:
+ * where its crown starts to lean, how far above that its top is, and how far
+ * the top leans per unit of the wind's push.
+ */
+export function swayOf(species: Species): THREE.Vector3 {
+  return new THREE.Vector3(species.stiff, species.height - species.stiff, species.sway);
+}
+
 /** Crowns lean with the wind, more toward the top. */
-function swaying<M extends THREE.MeshStandardMaterial | THREE.MeshDepthMaterial>(material: M): M {
+function swaying<M extends THREE.MeshStandardMaterial | THREE.MeshDepthMaterial>(material: M, species: Species): M {
   const before = material.onBeforeCompile;
   const key = material.customProgramCacheKey();
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     shader.uniforms.windTime = wind;
+    shader.uniforms.treeSway = { value: swayOf(species) };
     shader.uniforms.windStrength = windStrength;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n${WIND_GLSL}`)
+      .replace('#include <common>', `#include <common>\n${WIND_GLSL}\nuniform vec3 treeSway;`)
       .replace('#include <begin_vertex>', /* glsl */ `
         #include <begin_vertex>
         #ifdef USE_INSTANCING
@@ -320,8 +408,8 @@ function swaying<M extends THREE.MeshStandardMaterial | THREE.MeshDepthMaterial>
             // Wind blows the same way everywhere: turn it into the tree's own frame.
             float s = length(instanceMatrix[0].xyz);
             vec3 base = instanceMatrix[3].xyz;
-            float h = max(position.y - 1.2, 0.0) / ${(HEIGHT - 1.2).toFixed(1)};
-            vec3 push = windPush(base, windTime) * h * h * ${SWAY.toFixed(2)};
+            float h = max(position.y - treeSway.x, 0.0) / treeSway.y;
+            vec3 push = windPush(base, windTime) * h * h * treeSway.z;
             transformed += transpose(mat3(instanceMatrix)) * push / (s * s);
           }
         #endif`);
@@ -560,7 +648,7 @@ export function fir(seed: number, near: boolean): { wood: THREE.BufferGeometry; 
 }
 
 /** A tube of `sides` round the path through `points`, `radii` thick at each, into `out`. */
-function tube(out: { pos: number[]; nrm: number[]; index: number[] }, points: THREE.Vector3[], radii: number[], sides: number): void {
+export function tube(out: { pos: number[]; nrm: number[]; index: number[] }, points: THREE.Vector3[], radii: number[], sides: number): void {
   const first = out.pos.length / 3;
   const along = new THREE.Vector3();
   const a = new THREE.Vector3();

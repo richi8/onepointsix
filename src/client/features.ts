@@ -8,7 +8,7 @@ import { Boxes, CANVAS, CREAM, IRON, painted, plain, Shapes, STONE, stuff, type 
 
 // A map's features drawn as what they are, over the boxes they collide as
 // (MapBox.look): the crashed truck, the market's stalls, the carts, the
-// fountain, the plane trees and olives, the war memorial, the kiosk, the
+// fountain, the war memorial, the kiosk, the
 // boats hauled out, the water tower, the tombs, the bell tower's belfry and
 // roof, and along the quay's face its bollards and the boats moored off it.
 // What stands inside its box replaces it (Features.replaces); what reaches
@@ -19,11 +19,6 @@ const HUB = plain(0x8a8a86);
 const GLASS = plain(0x2a3a44);
 const DARK = plain(0x14110e);
 const WATER = plain(0x2e4a52);
-const BARK = stuff(Layer.bark, 0xffffff, 0x5a4a3a);
-/** A plane tree's mottled bark, pale. */
-const PLANE_BARK = stuff(Layer.bark, 0xf2ead8, 0x8a8470);
-const PLANE_LEAVES = [plain(0x3a5a22), plain(0x46682a), plain(0x30501c)];
-const OLIVE_LEAVES = [plain(0x5e6a46), plain(0x6a7650), plain(0x56603e)];
 const WOOD = stuff(Layer.boards, 0xc8b8a4, 0x6b5a44);
 const PLANKS = stuff(Layer.planks, 0xe0d8c8, 0x7a6448);
 const TRUCK_BOX = stuff(Layer.metal, 0xe4ded2, 0xb8b2a6);
@@ -197,7 +192,7 @@ function wheelhouse(shapes: Shapes, m: THREE.Matrix4, x0: number, x1: number, wi
 }
 
 /** The ground a feature stands on: the terrain or a terrace over it, but not below its box. */
-function standsOn(world: World, b: MapBox): number {
+export function standsOn(world: World, b: MapBox): number {
   const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
   let y = world.terrainHeight(x, z);
   for (const t of world.map!.walls) if (t.walk && x > t.minX && x < t.maxX && z > t.minZ && z < t.maxZ) y = Math.max(y, t.y1);
@@ -328,36 +323,9 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
         break;
       }
       case 'plane':
-      case 'olive': {
-        const plane = b.look === 'plane';
-        const trunkTop = plane ? top + 1.2 : top + 0.4;
-        if (plane) rod(shapes, new THREE.Vector3(cx, y - 0.2, cz), new THREE.Vector3(cx, trunkTop, cz), 0.38, PLANE_BARK, 10, 0.3);
-        else {
-          // Gnarled: two leaning stems twisting up.
-          const lean = rand() * Math.PI * 2;
-          for (const k of [0, 1]) {
-            const a = lean + k * Math.PI * 0.9;
-            const mid = new THREE.Vector3(cx + Math.cos(a) * 0.25, y + 1.4, cz + Math.sin(a) * 0.25);
-            rod(shapes, new THREE.Vector3(cx + Math.cos(a) * 0.08, y - 0.2, cz + Math.sin(a) * 0.08), mid, 0.2, BARK, 7, 0.15);
-            rod(shapes, mid, new THREE.Vector3(cx + Math.cos(a + 1) * 0.5, trunkTop, cz + Math.sin(a + 1) * 0.5), 0.15, BARK, 7, 0.1);
-          }
-        }
-        // Boughs out to the crown.
-        const n = plane ? 4 : 3;
-        for (let k = 0; k < n; k++) {
-          const a = (k / n) * Math.PI * 2 + rand();
-          const r = plane ? 2 : 1.1;
-          rod(shapes, new THREE.Vector3(cx, trunkTop - 0.6, cz), new THREE.Vector3(cx + Math.cos(a) * r, trunkTop + (plane ? 1.6 : 0.8), cz + Math.sin(a) * r), plane ? 0.16 : 0.09, plane ? PLANE_BARK : BARK, 6, plane ? 0.08 : 0.05);
-        }
-        const leaves = plane ? PLANE_LEAVES : OLIVE_LEAVES;
-        const [count, spread, size, lift] = plane ? [26, 3.3, 1.3, 2.6] : [16, 1.8, 0.75, 1.3];
-        for (let k = 0; k < count; k++) {
-          const a = rand() * Math.PI * 2;
-          const r = Math.sqrt(rand()) * spread;
-          blob(shapes, cx + Math.cos(a) * r, trunkTop + lift * (0.5 + rand() * 0.7) - r * 0.25, cz + Math.sin(a) * r, size * (0.7 + rand() * 0.5), leaves[Math.floor(rand() * leaves.length)], rand);
-        }
+      case 'olive':
+        // Grown as the trees they are (see greenery.ts).
         break;
-      }
       case 'memorial': {
         // A stone block with a moulding, a bronze plaque each side, and an obelisk on it.
         local(-L, -W, y, L, W, top, STONE);

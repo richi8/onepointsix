@@ -1,6 +1,6 @@
 import { yawToward } from '../geom.ts';
 import type { Rect } from '../world.ts';
-import { moved, type Facing, type GameMap, type MapBlock, type MapBox, type MapBuilding, type MapCrate, type MapFlight, type MapOpening, type MapProp, type MapRamp, type MapSign, type MapSpawn, type MapStair, type MapTrim } from './index.ts';
+import { moved, type Facing, type GameMap, type MapBlock, type MapBox, type MapBuilding, type MapCrate, type MapFlight, type MapOpening, type MapPlant, type MapProp, type MapRamp, type MapSign, type MapSpawn, type MapStair, type MapTrim } from './index.ts';
 import { levelGround, type Level } from './levels.ts';
 
 // Calabianca: a whitewashed town on a hillside above the sea, Deathmatch's
@@ -60,17 +60,18 @@ const WINDOWS: Record<District, { every: number; width: number }> = {
 
 /**
  * Each district's dressing: the west's whitewashed houses plain at the
- * corners, with green and blue shutters and flowers everywhere; stone
- * corners and awnings over the quay's, the market's and the piazza's doors;
- * the east's houses in creepers; the top's sober.
+ * corners, with green and blue shutters and flowers everywhere, pots of
+ * geraniums by every other door; stone corners and awnings over the quay's,
+ * the market's and the piazza's doors; the east's houses in creepers,
+ * bougainvillea and vines; the top's sober, but for its vines.
  */
 const TRIM: Record<District, MapTrim> = {
-  west: { shutters: 0.6, paint: [0x4f7d55, 0x3f7f7c, 0x46709a], flowers: 0.3, plants: 0.35 },
-  quay: { quoins: true, shutters: 0.5, paint: [0x3d6a8f, 0x8a3b32, 0xd8d4c8], flowers: 0.1, awnings: 0.5 },
-  market: { quoins: true, shutters: 0.7, paint: [0x5b7b3d, 0x6b4a2f], flowers: 0.2, awnings: 0.6, plants: 0.2 },
-  piazza: { quoins: true, shutters: 0.6, paint: [0x4a6a50, 0x6f5a44], flowers: 0.15, awnings: 0.3 },
-  east: { quoins: true, shutters: 0.7, paint: [0x7d8f6a, 0x4c5e7a], flowers: 0.3, plants: 0.4 },
-  top: { shutters: 0.4, paint: [0x6a5a48, 0x5d6a72], flowers: 0.1, plants: 0.2 },
+  west: { shutters: 0.6, paint: [0x4f7d55, 0x3f7f7c, 0x46709a], flowers: 0.3, plants: 0.35, pots: 0.8, bougainvillea: 0.35, vines: 0.2 },
+  quay: { quoins: true, shutters: 0.5, paint: [0x3d6a8f, 0x8a3b32, 0xd8d4c8], flowers: 0.1, awnings: 0.5, pots: 0.35 },
+  market: { quoins: true, shutters: 0.7, paint: [0x5b7b3d, 0x6b4a2f], flowers: 0.2, awnings: 0.6, plants: 0.2, pots: 0.5, bougainvillea: 0.2 },
+  piazza: { quoins: true, shutters: 0.6, paint: [0x4a6a50, 0x6f5a44], flowers: 0.15, awnings: 0.3, pots: 0.5, bougainvillea: 0.25 },
+  east: { quoins: true, shutters: 0.7, paint: [0x7d8f6a, 0x4c5e7a], flowers: 0.3, plants: 0.4, pots: 0.7, bougainvillea: 0.45, vines: 0.4 },
+  top: { shutters: 0.4, paint: [0x6a5a48, 0x5d6a72], flowers: 0.1, plants: 0.2, pots: 0.5, bougainvillea: 0.25, vines: 0.35 },
 };
 
 const lv = (minX: number, maxX: number, minZ: number, maxZ: number, y: number): Level => ({ minX, maxX, minZ, maxZ, y });
@@ -766,6 +767,27 @@ const PROPS: MapProp[] = [
   { kind: 'crate', x: 58, z: 19, size: 1.2 },
 ];
 
+/**
+ * Trees beyond the walls: cypresses in rows outside the cemetery's north and
+ * west walls, as round every Italian cemetery, and a pair at its corner;
+ * umbrella pines over the villa at the top and on the point east of the
+ * quay; and a few cypresses up the slope behind the high street.
+ */
+const PLANTS: MapPlant[] = [
+  ...Array.from({ length: 7 }, (_, i): MapPlant => ({ kind: 'cypress', x: -65.5 + i * 4.6, z: NORTH - 2.6, s: 0.9 + ((i * 7) % 3) * 0.08 })),
+  ...Array.from({ length: 6 }, (_, i): MapPlant => ({ kind: 'cypress', x: WEST - 2.6, z: -53 + i * 4.4, s: 0.9 + ((i * 5) % 3) * 0.08 })),
+  { kind: 'cypress', x: WEST - 3.5, z: NORTH - 3.5, s: 1.15 },
+  { kind: 'pine', x: 48, z: NORTH - 7, s: 1 },
+  { kind: 'pine', x: 61, z: NORTH - 9, s: 0.9 },
+  { kind: 'pine', x: EAST + 9, z: -44, s: 0.95 },
+  { kind: 'pine', x: EAST + 10, z: 40, s: 0.85 },
+  { kind: 'pine', x: EAST + 16, z: 48, s: 1 },
+  { kind: 'pine', x: WEST - 12, z: 46, s: 0.9 },
+  { kind: 'cypress', x: -6, z: NORTH - 8, s: 1 },
+  { kind: 'cypress', x: -1.5, z: NORTH - 8.5, s: 1.1 },
+  { kind: 'cypress', x: 18, z: NORTH - 6, s: 0.95 },
+];
+
 /** A spawn at (x, z), looking toward (tx, tz). */
 function spawn(x: number, z: number, tx: number, tz: number): MapSpawn {
   return { x, z, yaw: yawToward(x, z, tx, tz) };
@@ -806,6 +828,7 @@ const TOWN: GameMap = {
   spawns: SPAWNS,
   // From the south-west, over the sea, raking across the church and the market.
   sun: 110,
+  plants: PLANTS,
   // Flagstones down the lanes and along the quay; cobbles on the squares, the
   // courtyards and the road; grass in the olive garden and the cemetery; the
   // boat yard bare.

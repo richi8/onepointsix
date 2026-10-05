@@ -875,6 +875,12 @@ notes the chunk it came from.
   is left alone). At 30 m, as the game frames it, the two are easy to tell apart from the front
   and the side.
 
+- **The backdrop round the town is still the island's** (59): pines and grass on the hills
+  behind a Mediterranean town, where olive groves, maquis and terraces would belong.
+  **Resolved** (63): a map grows its own trees and hillside (`greenery.ts`, `species.ts`,
+  `shared/hillside.ts`): olives in rows on terraces behind dry-stone walls along the
+  contours, the maquis, holm oaks and umbrella pines in place of the island's spruces,
+  cypresses, outcrops of pale rock, and grass bleached to straw beyond the walls.
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.

@@ -18,6 +18,7 @@ import { IslandMap } from './islandmap.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { groundEye, onTiles, Terrain } from './terrain.ts';
 import { Trees } from './trees.ts';
+import { greenery, Hillside } from './greenery.ts';
 import { REFLECTED, Water } from './water.ts';
 import { PROP_SHADOW_SIDE, Props } from './props.ts';
 import { plasterColor, Structures } from './structures.ts';
@@ -94,6 +95,8 @@ export class WorldView {
   private readonly drawn: Float32Array;
   private readonly terrain: Terrain;
   private readonly trees: Trees;
+  /** A map's hillside: its terraces' walls and its outcrops. */
+  private readonly hillside: Hillside | null;
   private readonly rocks: THREE.InstancedMesh;
   /** The watchtowers and containers, drawn from their parts. */
   private readonly structures: Structures;
@@ -170,7 +173,10 @@ export class WorldView {
     this.drawn = Float32Array.from(world.doors, (d) => d.swing);
     this.drawn.forEach((_, i) => this.placeDoor(i));
     this.terrain = new Terrain(world);
-    this.trees = new Trees(world);
+    // A map's trees are its own kinds (see greenery.ts); the island's, spruces.
+    this.trees = new Trees(world, world.map ? greenery(world) : undefined);
+    this.hillside = world.map ? new Hillside(world) : null;
+    if (this.hillside) this.dressing.add(this.hillside.group);
     this.rocks = makeRocks(world);
     this.water = new Water(world);
     scene.add(this.terrain.group, this.water.group, this.props.group, this.structures.group, this.dressing, this.trees.group, this.rocks, extracts.group, this.rain.group);
@@ -318,6 +324,7 @@ export class WorldView {
     this.trees.applyAssets(assets);
     this.structures.applyAssets(assets);
     this.trim?.applyAssets(assets, this.world);
+    this.hillside?.applyAssets(assets);
     this.cover?.applyAssets(assets);
     this.rocks.material = onTiles(surfaceMaterial(assets, { kind: 'fixed', layer: Layer.rock }, { roughness: 0.9 }, 1, { wet: true }), this.world);
     const rand = mulberry32(this.world.seed + 29);
