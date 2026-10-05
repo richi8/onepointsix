@@ -28,6 +28,28 @@ export const BLOOMS = [plain(0xd8327a), plain(0xe84a3c), plain(0xf2efe6), plain(
 export const CANVAS = [0xb83a30, 0x2f6a9a, 0x3f7a4a, 0xd09a2a];
 export const CREAM = plain(0xeee6d2);
 
+/**
+ * A leaf in its own frame: from its stalk at the origin up +y to its tip at
+ * 1, half a unit across at its widest, its face toward +z and folded a
+ * little along its midrib.
+ */
+const LEAF = (() => {
+  const g = new THREE.BufferGeometry();
+  const [stalk, l, tip, r] = [[0, 0, 0], [-0.32, 0.45, 0.1], [0, 1, 0], [0.32, 0.45, 0.1]];
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...stalk, ...tip, ...l, ...stalk, ...r, ...tip], 3));
+  return g;
+})();
+
+/** A tapered square trough, 1 across at its rim, 0.8 at its foot, from y = 0 to 1, open at the top. */
+const TROUGH = (() => {
+  const g = new THREE.CylinderGeometry(Math.SQRT1_2, Math.SQRT1_2 * 0.8, 1, 4, 1, false).rotateY(Math.PI / 4).translate(0, 0.5, 0);
+  g.deleteAttribute('normal');
+  return g;
+})();
+
+const basis = new THREE.Matrix4();
+const turn = new THREE.Quaternion();
+
 /** Boxes as instances: each one's matrix and what it's made of. */
 export class Boxes {
   readonly matrices: THREE.Matrix4[] = [];
@@ -54,7 +76,7 @@ export class Shapes {
   /** `g` placed by `m`, made of `s`. */
   add(g: THREE.BufferGeometry, m: THREE.Matrix4, s: Stuff): void {
     const q = g.index ? g.toNonIndexed() : g.clone();
-    g.dispose();
+    if (g !== LEAF && g !== TROUGH) g.dispose();
     for (const name of Object.keys(q.attributes)) if (name !== 'position' && name !== 'normal') q.deleteAttribute(name);
     if (!q.getAttribute('normal')) q.computeVertexNormals();
     q.applyMatrix4(m);
@@ -64,6 +86,23 @@ export class Shapes {
     q.setAttribute('tint', fill(s.tint));
     q.setAttribute('layer', new THREE.Float32BufferAttribute(new Array(n).fill(s.layer), 1));
     this.pieces.push(q);
+  }
+
+  /** A leaf `size` long from its stalk at `at`, its tip toward `along`, its face toward `facing` (made square to it). */
+  leaf(at: THREE.Vector3, along: THREE.Vector3, facing: THREE.Vector3, size: number, s: Stuff): void {
+    const y = along.clone().normalize();
+    const z = facing.clone().addScaledVector(y, -facing.dot(y));
+    // Any face at all, for a leaf along the way it was to face.
+    if (z.lengthSq() < 1e-8) z.set(1, 0, 0).addScaledVector(y, -y.x);
+    z.normalize();
+    const x = new THREE.Vector3().crossVectors(y, z);
+    turn.setFromRotationMatrix(basis.makeBasis(x, y, z));
+    this.add(LEAF, new THREE.Matrix4().compose(at, turn, new THREE.Vector3(size, size, size)), s);
+  }
+
+  /** A tapered trough `size` (width, height, depth) standing at `at`, turned by `q`. */
+  trough(at: THREE.Vector3, q: THREE.Quaternion, size: THREE.Vector3, s: Stuff): void {
+    this.add(TROUGH, new THREE.Matrix4().compose(at, q, size), s);
   }
 
   geometry(): THREE.BufferGeometry | null {

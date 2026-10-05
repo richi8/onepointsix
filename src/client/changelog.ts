@@ -12,6 +12,19 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-05',
+    title: 'Calabianca’s houses up close',
+    notes: [
+      'Calabianca’s windows and doors are set deep in their walls behind thicker stone surrounds, and every window has a stone sill standing out under it. The edges of walls, steps, sills and stonework are slightly rounded and catch the light.',
+      'The tiled roofs have half-round tiles along their ridges and up their edges, a row of tile ends along the eaves with rafters under them, and gutters with drainpipes running down the walls. Flat roofs shed their rain through spouts in the parapets.',
+      'Balconies have wrought-iron railings on stone brackets. Their railings still stop bullets and hide whoever crouches behind them, as before.',
+      'People live here now: lanterns hang by the doors, air conditioners sit beside the upper windows, cables run along the walls and across the lanes, washing hangs on lines between facing windows, and aerials and satellite dishes stand on the roofs.',
+      'Shops round the market and along the quay have painted signs over their doors, the hotel’s sign stands out over the street, the tobacconist and the chemist hang out theirs, and the warehouse, the boat yard, the fish market and the market hall have their names painted on their walls.',
+      'Window boxes are planted with geraniums, creepers climb on branching stems, and the fishing boats have proper wheelhouses, with tyres hung along their sides.',
+      'None of it changes how the town plays: it’s all drawn over the same walls as before.',
+    ],
+  },
+  {
+    date: '2026-10-05',
     title: 'Calabianca has aged',
     notes: [
       'Calabianca looks lived in for centuries now. No two walls are quite the same shade, their paint has faded unevenly in the sun, damp has crept up from the street with a stain at its edge, dirt is splashed along their foot, and grime runs down from every sill, cornice and string course.',

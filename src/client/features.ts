@@ -136,11 +136,64 @@ function boat(shapes: Shapes, x: number, y: number, z: number, length: number, b
   // A wheelhouse on the bigger ones, a thwart on the smaller.
   const local = (bx0: number, by0: number, bz0: number, bx1: number, by1: number, bz1: number, s: Stuff) =>
     shapes.add(new THREE.BoxGeometry(bx1 - bx0, by1 - by0, bz1 - bz0).translate((bx0 + bx1) / 2, (by0 + by1) / 2, (bz0 + bz1) / 2), m, s);
-  if (length > 6) {
-    local(-length * 0.25, -0.05, -beam * 0.28, length * 0.05, 1.5, beam * 0.28, plain(0xf2efe6));
-    local(length * 0.05 - 0.02, 0.8, -beam * 0.24, length * 0.05 + 0.01, 1.3, beam * 0.24, GLASS);
-    local(-length * 0.28, 1.5, -beam * 0.32, length * 0.08, 1.58, beam * 0.32, stripe);
-  } else local(-0.15, -0.3, -beam * 0.4, 0.15, -0.22, beam * 0.4, WOOD);
+  if (length > 6) wheelhouse(shapes, m, -length * 0.25, length * 0.05, beam * 0.56, stripe);
+  else local(-0.15, -0.3, -beam * 0.4, 0.15, -0.22, beam * 0.4, WOOD);
+  // Old tyres hung along the sides as fenders.
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < Math.floor(length / 2.5); k++) {
+      const u = -length * 0.3 + k * 2.2;
+      const at = new THREE.Vector3(u, -0.25, side * beam * 0.47).applyMatrix4(m);
+      // Its ring along the hull's side.
+      const q = new THREE.Quaternion().setFromRotationMatrix(m);
+      shapes.add(new THREE.TorusGeometry(0.17, 0.07, 5, 10), new THREE.Matrix4().compose(at, q, new THREE.Vector3(1, 1, 1)), WHEEL);
+    }
+  }
+}
+
+/**
+ * A wheelhouse in a boat's frame `m`, from x0 to x1 along it and `width`
+ * across: walls leaning in, a band of windows with their frames, a roof
+ * rounded at its ends standing out over them, a mast with its light, and a
+ * lifebuoy on its side.
+ */
+function wheelhouse(shapes: Shapes, m: THREE.Matrix4, x0: number, x1: number, width: number, stripe: Stuff): void {
+  const WHITE = plain(0xf2efe6);
+  const len = x1 - x0;
+  const mid = (x0 + x1) / 2;
+  /** A square prism leaning in, from y0 to y1, its foot `len` by `width` and its top `lean` of that. */
+  const prism = (y0: number, y1: number, scale0: number, scale1: number, s: Stuff) => {
+    const g = new THREE.CylinderGeometry(Math.SQRT1_2 * scale1, Math.SQRT1_2 * scale0, 1, 4, 1, true).rotateY(Math.PI / 4);
+    g.deleteAttribute('normal');
+    g.scale(len, y1 - y0, width).translate(mid, (y0 + y1) / 2, 0);
+    shapes.add(g, m, s);
+  };
+  // Lean in by 8% over its height: the walls, the windows, the band over them.
+  const at = (y: number) => 1 - (0.08 * (y + 0.05)) / 1.55;
+  prism(-0.05, 0.8, at(-0.05), at(0.8), WHITE);
+  prism(0.8, 1.28, at(0.8), at(1.28), GLASS);
+  prism(1.28, 1.5, at(1.28), at(1.5), WHITE);
+  // The windows' frames.
+  const put = (bx0: number, by0: number, bz0: number, bx1: number, by1: number, bz1: number, s: Stuff) =>
+    shapes.add(new THREE.BoxGeometry(bx1 - bx0, by1 - by0, bz1 - bz0).translate((bx0 + bx1) / 2, (by0 + by1) / 2, (bz0 + bz1) / 2), m, s);
+  const top = at(1.04);
+  for (let k = 1; k < 4; k++) {
+    const x = x0 + (len * (1 - top)) / 2 + (len * top * k) / 4;
+    for (const side of [-1, 1]) put(x - 0.03, 0.8, side * (width * top) / 2 - 0.02, x + 0.03, 1.28, side * (width * top) / 2 + 0.02, WHITE);
+  }
+  for (const side of [-1, 1]) {
+    const z = (width * top * side) / 4;
+    put(x1 - (len * (1 - top)) / 2 - 0.02, 0.8, z - 0.03, x1 - (len * (1 - top)) / 2 + 0.02, 1.28, z + 0.03, WHITE);
+  }
+  // The roof: an oval slab standing out all round, in the hull's stripe.
+  const roof = new THREE.CylinderGeometry(0.5, 0.5, 1, 20).scale(len + 0.5, 0.09, width + 0.3).translate(mid, 1.54, 0);
+  shapes.add(roof, m, stripe);
+  // The mast, with its light, and a lifebuoy on the side.
+  const mast = new THREE.CylinderGeometry(0.03, 0.04, 1.4, 6).translate(mid - len * 0.2, 2.28, 0);
+  shapes.add(mast, m, WHITE);
+  shapes.add(new THREE.SphereGeometry(0.07, 6, 4).translate(mid - len * 0.2, 3.02, 0), m, plain(0xf0e8c0));
+  const side = Math.floor(len * 10) % 2 ? 1 : -1;
+  const buoy = new THREE.Matrix4().compose(new THREE.Vector3(mid, 0.45, side * ((width * at(0.45)) / 2 + 0.06)), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
+  shapes.add(new THREE.TorusGeometry(0.22, 0.06, 6, 14), m.clone().multiply(buoy), plain(0xe0502a));
 }
 
 /** The ground a feature stands on: the terrain or a terrace over it, but not below its box. */

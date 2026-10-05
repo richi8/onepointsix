@@ -4,9 +4,14 @@ import type { MapTrim } from '../shared/maps/index.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
-import { surfaceMaterial } from './surfaces.ts';
+import { surfaceMaterial, UNTEXTURED } from './surfaces.ts';
+import { ALL_EDGES, roundable, roundCode } from './rounding.ts';
 import { onTiles } from './terrain.ts';
 import { features } from './features.ts';
+import { roofs } from './roofs.ts';
+import { balconies, railProps } from './balconies.ts';
+import { Life } from './life.ts';
+import { signs } from './signs.ts';
 import { BLOOMS, Boxes, CANVAS, CREAM, IRON, LEAVES, painted, plain, Shapes, STEM, STONE, TERRACOTTA, type Stuff } from './townparts.ts';
 
 // A map town's buildings dressed over their walls, drawn only: nothing here
@@ -25,9 +30,15 @@ const T = KIT_WALL;
 const STEP = 0.25;
 /** How far out from a face (or in from it) a point is taken as beyond it. */
 const OUT = 0.35;
-/** Window and door surrounds' width, and how far they stand out. */
+/** Window and door surrounds' width, and how far they stand out: with the glass and the leaves in the wall's middle, set 23 cm in. */
 const JAMB = 0.12;
+const REVEAL = 0.08;
+/** How far quoins stand out. */
 const PROUD = 0.03;
+/** A window's stone sill: how far it stands out, how thick it is, and how far past the surround it reaches. */
+const SILL_OUT = 0.14;
+const SILL_THICK = 0.08;
+const SILL_PAST = 0.05;
 /** A window's sill and head over its floor, and a door's head, as the world builds them. */
 const SILL = 1;
 const WINDOW_TOP = 2;
@@ -40,7 +51,7 @@ const COURSE = 0.36;
  * One face of a storey of wall: positions on it as `a` along the wall,
  * `o` out from its face and y.
  */
-class Face {
+export class Face {
   readonly w: KitWall;
   /** Which way out it faces across the wall's line, -1 or 1. */
   readonly s: 1 | -1;
@@ -50,6 +61,17 @@ class Face {
     this.w = w;
     this.s = s;
     this.boxes = boxes;
+  }
+
+  /** The world point at `a` along, `o` out and `y` up. */
+  point(a: number, o: number, y: number): THREE.Vector3 {
+    const [x, z] = this.at(a, o);
+    return new THREE.Vector3(x, y, z);
+  }
+
+  /** The way out of the face. */
+  out(): THREE.Vector3 {
+    return this.w.axis === 'x' ? new THREE.Vector3(0, 0, this.s) : new THREE.Vector3(this.s, 0, 0);
   }
 
   /** The world's (x, z) at `a` along and `o` out. */
@@ -95,10 +117,12 @@ export class Dressing {
   /** What isn't a box: wheels, trees' crowns, hulls, the bell tower's roof. */
   private readonly shapes: THREE.Mesh | null;
 
-  private constructor(world: World, boxes: Boxes, shapes: THREE.BufferGeometry | null) {
+  private constructor(world: World, boxes: Boxes, shapes: THREE.BufferGeometry | null, lettering: THREE.Mesh | null) {
     this.boxes = boxes;
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const geometry = roundable(new THREE.BoxGeometry(1, 1, 1));
     geometry.deleteAttribute('uv');
+    // Stone, wood and metal rounded at every edge; cloth, leaves and flowers left as they are.
+    geometry.setAttribute('round', new THREE.InstancedBufferAttribute(Float32Array.from(boxes.stuffs, (s) => (s.layer < UNTEXTURED ? roundCode(ALL_EDGES, 0.012) : 0)), 1));
     this.mesh = new THREE.InstancedMesh(geometry, onTiles(new THREE.MeshStandardMaterial({ roughness: 0.85 }), world), boxes.matrices.length);
     boxes.matrices.forEach((m, i) => {
       this.mesh.setMatrixAt(i, m);
@@ -111,6 +135,7 @@ export class Dressing {
       mesh.castShadow = mesh.receiveShadow = true;
       this.group.add(mesh);
     }
+    if (lettering) this.group.add(lettering);
   }
 
   /** A map town's dressing, or null for a world that isn't one. */
@@ -118,15 +143,21 @@ export class Dressing {
     if (!world.map || !world.facades.length) return null;
     const boxes = new Boxes();
     const shapes = new Shapes();
-    dressFacades(world, boxes);
+    const life = new Life(world, boxes, shapes);
+    dressFacades(world, boxes, shapes, life);
+    life.string();
+    life.roofs();
     features(world, boxes, shapes);
-    return new Dressing(world, boxes, shapes.geometry());
+    roofs(world, boxes, shapes);
+    balconies(world, boxes, shapes);
+    const lettering = signs(world, boxes);
+    return new Dressing(world, boxes, shapes.geometry(), lettering);
   }
 
   /** Swap the flat colours for the textures, tinted. */
   applyAssets(assets: Assets, world: World): void {
     const old = [this.mesh.material, this.shapes?.material] as (THREE.Material | undefined)[];
-    this.mesh.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { indoor: true, wet: true, age: world }), world);
+    this.mesh.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { indoor: true, wet: true, age: world, round: true }), world);
     this.boxes.stuffs.forEach((s, i) => this.mesh.setColorAt(i, s.tint));
     this.mesh.instanceColor!.needsUpdate = true;
     if (this.shapes) {
@@ -138,7 +169,7 @@ export class Dressing {
 }
 
 /** The trim over every wall of a map's buildings that looks outdoors, and the caps along their tops, into `boxes`. */
-export function dressFacades(world: World, boxes: Boxes): void {
+export function dressFacades(world: World, boxes: Boxes, shapes = new Shapes(), life?: Life): void {
   const placed = placeBlocks(world.map!.buildings);
   /** The block whose rooms (or roof space) hold (x, y, z), if any. */
   const indoor = (x: number, y: number, z: number): Placed | null => {
@@ -171,18 +202,18 @@ export function dressFacades(world: World, boxes: Boxes): void {
         if (last && last.owner.building === owner.building && last.top === roofed && Math.abs(last.a1 - (a - STEP / 2)) < 1e-6) last.a1 = a + STEP / 2;
         else runs.push({ a0: a - STEP / 2, a1: a + STEP / 2, owner, top: roofed });
       }
-      for (const run of runs) dressRun(world, face, run, outdoors);
+      for (const run of runs) dressRun(world, face, shapes, run, outdoors, life);
     }
   }
-  caps(world, boxes, placed);
+  caps(world, boxes, placed, railProps(world));
 }
 
-/** Stone along the tops of parapets, balconies' railings and freestanding walls, not of the railings indoors round the stairs. */
-function caps(world: World, boxes: Boxes, placed: readonly Placed[]): void {
+/** Stone along the tops of parapets and freestanding walls, not of the railings indoors round the stairs nor of balconies' (see balconies.ts). */
+function caps(world: World, boxes: Boxes, placed: readonly Placed[], rails: Set<number>): void {
   const inRoom = (x: number, z: number) => placed.some(({ block: b }) => x > b.minX + T / 2 && x < b.maxX - T / 2 && z > b.minZ + T / 2 && z < b.maxZ - T / 2);
-  for (const p of world.props) {
+  for (const [i, p] of world.props.entries()) {
     const b = p.box;
-    if (b.part !== 'wall' || b.walk) continue;
+    if (b.part !== 'wall' || b.walk || rails.has(i)) continue;
     const [dx, dz, dy] = [b.maxX - b.minX, b.maxZ - b.minZ, b.maxY - b.minY];
     const thin = Math.min(dx, dz);
     if (thin > 0.6 || Math.max(dx, dz) < 1.5) continue;
@@ -209,7 +240,7 @@ function headOf(o: KitOpening): number {
   return o.kind === 'window' ? WINDOW_TOP : o.kind === 'door' ? DOOR_TOP : (o.height ?? ARCH_TOP);
 }
 
-function dressRun(world: World, face: Face, run: Run, outdoors: (x: number, y: number, z: number) => boolean): void {
+function dressRun(world: World, face: Face, shapes: Shapes, run: Run, outdoors: (x: number, y: number, z: number) => boolean, life?: Life): void {
   const w = face.w;
   const trim = trimOf(run);
   const rand = mulberry32(Math.floor((w.line * 7919 + w.y * 104729 + run.a0 * 1299709) * 1000) ^ 0x5bd1e995);
@@ -280,17 +311,29 @@ function dressRun(world: World, face: Face, run: Run, outdoors: (x: number, y: n
     b0 > run.a0 + 0.1 && b1 < run.a1 - 0.1
     && !own.some((o) => o !== beside && o.at + o.width / 2 + JAMB + 0.05 > b0 && o.at - o.width / 2 - JAMB - 0.05 < b1 && y0 < headOf(o) + 0.2 && y1 > (o.kind === 'window' ? SILL - 0.1 : 0));
 
+  if (life) {
+    // What people have put up on it, from a stream of its own, so the rest is chosen as before.
+    const mid = (run.a0 + run.a1) / 2;
+    const street = ground && Math.abs(world.groundHeight(...face.at(mid, 0.8), w.y + 0.3) - w.y) < 0.6;
+    const windows = own.filter((o) => o.kind === 'window');
+    life.wall(face, run.a0, run.a1, street, (b0, b1, y0, y1) => free(b0, b1, y0, y1), windows, mulberry32(Math.floor((w.line * 7919 + w.y * 104729 + run.a0 * 1299709) * 1000) ^ 0x2c1b3c6d));
+  }
   for (const o of own) {
     const [o0, o1] = [o.at - o.width / 2, o.at + o.width / 2];
     const head = w.y + headOf(o);
     const bottom = w.y + (o.kind === 'window' ? SILL - 0.05 : 0);
     // Its surround: jambs either side and a head over it, an arch's with a keystone.
     if (head < top - 0.05) {
-      face.box(o0 - JAMB, o0, 0, PROUD, bottom, head, STONE);
-      face.box(o1, o1 + JAMB, 0, PROUD, bottom, head, STONE);
-      face.box(o0 - JAMB - 0.04, o1 + JAMB + 0.04, 0, PROUD + 0.02, head, Math.min(head + 0.18, top - 0.02), STONE);
-      if (o.kind === 'arch') face.box(o.at - 0.16, o.at + 0.16, 0, PROUD + 0.04, head - 0.12, Math.min(head + 0.26, top - 0.02), STONE);
+      const foot = o.kind === 'window' ? w.y + SILL : bottom;
+      face.box(o0 - JAMB, o0, 0, REVEAL, foot, head, STONE);
+      face.box(o1, o1 + JAMB, 0, REVEAL, foot, head, STONE);
+      face.box(o0 - JAMB - 0.04, o1 + JAMB + 0.04, 0, REVEAL + 0.02, head, Math.min(head + 0.18, top - 0.02), STONE);
+      // A drip moulding along the head's top.
+      if (head + 0.24 < top - 0.02) face.box(o0 - JAMB - 0.07, o1 + JAMB + 0.07, 0, REVEAL + 0.05, head + 0.18, head + 0.24, STONE);
+      if (o.kind === 'arch') face.box(o.at - 0.16, o.at + 0.16, 0, REVEAL + 0.04, head - 0.12, Math.min(head + 0.26, top - 0.02), STONE);
     }
+    // A stone sill standing out under a window, the frame's foot on it.
+    if (o.kind === 'window') face.box(o0 - JAMB - SILL_PAST, o1 + JAMB + SILL_PAST, -0.01, SILL_OUT, w.y + SILL - SILL_THICK, w.y + SILL, STONE);
     if (o.kind === 'window') {
       // Shutters folded back either side.
       const leaf = o.width / 2;
@@ -304,7 +347,7 @@ function dressRun(world: World, face: Face, run: Run, outdoors: (x: number, y: n
         }
       }
       // A box of flowers under an upper window.
-      if (w.y > world.terrainHeight(...face.at(o.at, 1)) + 2 && rand() < (trim.flowers ?? 0)) flowers(face, o.at, o.width, w.y + SILL, rand);
+      if (w.y > world.terrainHeight(...face.at(o.at, 1)) + 2 && rand() < (trim.flowers ?? 0)) flowers(face, shapes, o.at, o.width, w.y + SILL, rand);
     } else if (o.kind === 'door' && ground) {
       // Only where the street is at the door.
       const [sx, sz] = face.at(o.at, 0.6);
@@ -315,33 +358,73 @@ function dressRun(world: World, face: Face, run: Run, outdoors: (x: number, y: n
         const side = rand() < 0.5 ? -1 : 1;
         const [p, q] = side < 0 ? [o0 - JAMB - 0.05 - width, o0 - JAMB - 0.05] : [o1 + JAMB + 0.05, o1 + JAMB + 0.05 + width];
         const height = 2.2 + rand() * 0.6;
-        if (free(p, q, 0, height, o)) creeper(face, p, q, w.y, height, rand);
+        if (free(p, q, 0, height, o)) creeper(face, shapes, p, q, w.y, height, rand);
       }
     }
   }
 }
 
-/** A window box of flowers under the window from `at - width / 2` to `at + width / 2`, its sill at `y`. */
-function flowers(face: Face, at: number, width: number, y: number, rand: () => number): void {
-  face.box(at - width / 2 + 0.05, at + width / 2 - 0.05, 0.06, 0.28, y - 0.22, y - 0.02, TERRACOTTA);
-  // Two iron brackets under it.
-  for (const a of [at - width / 3, at + width / 3]) face.box(a - 0.02, a + 0.02, 0, 0.26, y - 0.32, y - 0.22, IRON);
+/** A window box of geraniums on brackets before the window from `at - width / 2` to `at + width / 2`, its sill at `y`. */
+function flowers(face: Face, shapes: Shapes, at: number, width: number, y: number, rand: () => number): void {
+  const [o0, o1] = [SILL_OUT + 0.02, SILL_OUT + 0.24];
+  const w = width + 0.1;
+  // Its own frame: x along the wall, z out of it.
+  const out = face.out();
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(out.x, out.z));
+  shapes.trough(face.point(at, (o0 + o1) / 2, y - 0.2), q, new THREE.Vector3(w, 0.2, o1 - o0), TERRACOTTA);
+  // Two iron brackets under it, braced back to the wall.
+  for (const a of [at - width / 3, at + width / 3]) {
+    face.box(a - 0.015, a + 0.015, 0, o1, y - 0.23, y - 0.2, IRON);
+    face.turned(a, o1 / 4, y - 0.33, [0.02, 0.02, Math.hypot(o1 / 2, 0.2)], 0, IRON, -Math.atan2(o1 / 2, 0.2));
+  }
   const bloom = BLOOMS[Math.floor(rand() * BLOOMS.length)];
-  const n = Math.round(width * 12);
+  const up = new THREE.Vector3(0, 1, 0);
+  // Leaves spilling out of it, and clusters of flowers on stalks over them.
+  const n = Math.round(width * 90);
   for (let k = 0; k < n; k++) {
-    const a = at - width / 2 + 0.1 + rand() * (width - 0.2);
-    const s = 0.1 + rand() * 0.1;
-    const leaf = rand() < 0.45 ? bloom : LEAVES[Math.floor(rand() * LEAVES.length)];
-    face.turned(a, 0.1 + rand() * 0.16, y + rand() * 0.18, [s, s, s], rand() * Math.PI, leaf, rand() * Math.PI);
+    const a = at - w / 2 + 0.06 + rand() * (w - 0.12);
+    const base = face.point(a, o0 + 0.03 + rand() * (o1 - o0 - 0.06), y - 0.02);
+    const lean = new THREE.Vector3((rand() - 0.5) * 1.6, 0.3 + rand() * 0.9, 0).applyQuaternion(q).add(out.clone().multiplyScalar(rand() * 0.8));
+    const facing = up.clone().addScaledVector(out, 0.5).add(new THREE.Vector3(rand() - 0.5, 0, rand() - 0.5));
+    shapes.leaf(base, lean, facing, 0.09 + rand() * 0.06, LEAVES[Math.floor(rand() * LEAVES.length)]);
+  }
+  for (let k = 0; k < Math.round(width * 7); k++) {
+    const a = at - w / 2 + 0.1 + rand() * (w - 0.2);
+    const top = face.point(a, (o0 + o1) / 2 + (rand() - 0.5) * 0.1, y + 0.08 + rand() * 0.14);
+    const foot = face.point(a, (o0 + o1) / 2, y - 0.02);
+    shapes.add(new THREE.CylinderGeometry(0.006, 0.006, 1, 3, 1, true), new THREE.Matrix4().compose(foot.clone().add(top).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(up, top.clone().sub(foot).normalize()), new THREE.Vector3(1, foot.distanceTo(top), 1)), LEAVES[0]);
+    for (let f = 0; f < 5; f++) {
+      const p = top.clone().add(new THREE.Vector3((rand() - 0.5) * 0.09, rand() * 0.06, (rand() - 0.5) * 0.09));
+      shapes.add(new THREE.OctahedronGeometry(1, 0), new THREE.Matrix4().compose(p, new THREE.Quaternion(), new THREE.Vector3(0.03, 0.022, 0.03)), bloom);
+    }
   }
 }
 
-/** A creeper climbing the face from b0 to b1 along it, from the ground at `y` to `height` over it, flowering. */
-function creeper(face: Face, b0: number, b1: number, y: number, height: number, rand: () => number): void {
+/** A creeper climbing the face from b0 to b1 along it, from the ground at `y` to `height` over it, its stems branching and its leaves and flowers thickest at the top. */
+function creeper(face: Face, shapes: Shapes, b0: number, b1: number, y: number, height: number, rand: () => number): void {
   const root = rand() < 0.5 ? b0 + 0.15 : b1 - 0.15;
-  face.box(root - 0.04, root + 0.04, 0.01, 0.07, y - 0.1, y + height * 0.7, STEM);
+  const out = face.out();
+  const stem = (p: THREE.Vector3, q: THREE.Vector3, r: number) => {
+    const len = p.distanceTo(q);
+    const g = new THREE.CylinderGeometry(r * 0.7, r, len, 5, 1, true);
+    shapes.add(g, new THREE.Matrix4().compose(p.clone().add(q).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), q.clone().sub(p).normalize()), new THREE.Vector3(1, 1, 1)), STEM);
+  };
+  // The trunk up the wall, twisting a little, and branches fanning out from it toward the top.
+  let p = face.point(root, 0.05, y - 0.1);
+  const trunk: THREE.Vector3[] = [p];
+  for (let k = 1; k <= 5; k++) {
+    const q = face.point(root + (rand() - 0.5) * 0.25, 0.05 + rand() * 0.04, y + (height * 0.7 * k) / 5);
+    stem(p, q, 0.035 - k * 0.004);
+    trunk.push(q);
+    p = q;
+  }
+  for (let k = 0; k < 5; k++) {
+    const from = trunk[2 + Math.floor(rand() * 4)];
+    const to = face.point(b0 + rand() * (b1 - b0), 0.06, Math.min(y + height, from.y + 0.3 + rand() * 0.8));
+    stem(from, to, 0.015);
+  }
   const bloom = BLOOMS[rand() < 0.6 ? 0 : Math.floor(rand() * BLOOMS.length)];
-  const n = Math.round((b1 - b0) * height * 70);
+  const n = Math.round((b1 - b0) * height * 170);
   for (let k = 0; k < n; k++) {
     // Thicker toward the top, where it spreads.
     const v = Math.sqrt(rand());
@@ -349,9 +432,10 @@ function creeper(face: Face, b0: number, b1: number, y: number, height: number, 
     const spread = 0.25 + 0.75 * v;
     const a = root + (rand() - 0.5) * (b1 - b0) * spread * 1.6;
     if (a < b0 || a > b1) continue;
-    const s = 0.08 + rand() * 0.06;
-    const leaf = rand() < 0.35 ? bloom : LEAVES[Math.floor(rand() * LEAVES.length)];
-    face.turned(a, 0.03 + rand() * 0.12, yy, [s, 0.03, s], rand() * Math.PI * 2, leaf, (rand() - 0.5) * 0.8);
+    const at = face.point(a, 0.04 + rand() * 0.14, yy);
+    const along = new THREE.Vector3(rand() - 0.5, rand() - 0.7, rand() - 0.5);
+    const flower = rand() < 0.35;
+    shapes.leaf(at, along, out.clone().add(new THREE.Vector3(0, 0.4, 0)), flower ? 0.08 + rand() * 0.04 : 0.1 + rand() * 0.07, flower ? bloom : LEAVES[Math.floor(rand() * LEAVES.length)]);
   }
 }
 

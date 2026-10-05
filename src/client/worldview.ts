@@ -24,6 +24,7 @@ import { plasterColor, Structures } from './structures.ts';
 import { townLayer, townPaint, townTint } from './townlook.ts';
 import { Dressing } from './dressing.ts';
 import { replacedProps } from './features.ts';
+import { railProps } from './balconies.ts';
 import { wind, windStrength } from './wind.ts';
 
 // The island starts out in flat colours and takes on its textures once the
@@ -163,7 +164,7 @@ export class WorldView {
     this.extractGroup = extracts.group;
     // Towers and containers are drawn from their parts, not as their boxes.
     this.structures = new Structures(world);
-    this.props = new Props(world, (i) => flatColour(world, i), new Set([...Structures.replaces(world), ...replacedProps(world)]));
+    this.props = new Props(world, (i) => flatColour(world, i), new Set([...Structures.replaces(world), ...replacedProps(world), ...railProps(world)]));
     this.trim = Dressing.build(world);
     if (this.trim) this.dressing.add(this.trim.group);
     this.drawn = Float32Array.from(world.doors, (d) => d.swing);
@@ -301,9 +302,10 @@ export class WorldView {
 
     const world = this.world;
     const props = world.props;
+    // A map's town weathered and its edges rounded; the island's props as they are.
+    if (world.map) this.props.round(world);
     this.props.texture(
-      // A map's town weathered; the island's props as they are.
-      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true, age: world.map ? world : undefined }), world),
+      onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.8, metalness: 0, shadowSide: PROP_SHADOW_SIDE, vertexColors: true }, 1, { indoor: true, wet: true, age: world.map ? world : undefined, round: !!world.map }), world),
       // Roofs are corrugated metal only on top: underneath, a plain ceiling. A map's town is its own (see townlook.ts).
       (i) => townLayer(world, i) ?? (props[i].style === 'roof' ? -1 - PROP_LAYERS.roof : PROP_LAYERS[props[i].style]),
       (i, c) => townTint(world, i, true, c)

@@ -5,6 +5,7 @@ import { addIndoor } from './indoorlight.ts';
 import { addWet } from './rain.ts';
 import { AGE_BUILT_GLSL, AGE_GLSL, AGE_PAVING_GLSL } from './age.ts';
 import { addGroundLevel } from './terrain.ts';
+import { ROUND_FRAGMENT_HEAD, ROUND_VERTEX, ROUND_VERTEX_HEAD } from './rounding.ts';
 import type { World } from '../shared/world.ts';
 
 // PBR surfaces textured in world space, so nothing needs UVs: the island's
@@ -62,6 +63,8 @@ export interface SurfaceOptions {
    * instanced boxes. Needs `wet`.
    */
   age?: World;
+  /** Round instances' edges as their `round` attribute says (see rounding.ts). */
+  round?: boolean;
 }
 
 /**
@@ -77,6 +80,7 @@ export function surfaceMaterial(
 ): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial(params);
   const { indoor = false, local = false, wet = false, town, uv = false } = options;
+  const round = !!options.round && mapping.kind === 'instanced';
   const terrain = mapping.kind === 'terrain';
   // The terrain ages only where it's paved; boxes by the layer each one's in.
   const ageGround = !!options.age && terrain && !!town && !!wet;
@@ -104,7 +108,8 @@ export function surfaceMaterial(
         ${terrain ? 'attribute vec4 splatA; attribute float splatB; varying vec4 vSplatA; varying float vSplatB;' : ''}
         ${mapping.kind === 'instanced' ? 'attribute float layer; varying float vSurfLayer;' : ''}
         ${uv ? 'attribute vec2 surfUv; varying vec2 vSurfUv;' : ''}
-        ${ageBuilt ? 'varying float vAgeBelow;' : ''}`],
+        ${ageBuilt ? 'varying float vAgeBelow;' : ''}
+        ${round ? ROUND_VERTEX_HEAD : ''}`],
       ['#include <worldpos_vertex>', /* glsl */ `
         {
           vec4 p = vec4(transformed, 1.0);
@@ -127,6 +132,7 @@ export function surfaceMaterial(
         ${terrain ? 'vSplatA = splatA; vSplatB = splatB;' : ''}
         ${mapping.kind === 'instanced' ? 'vSurfLayer = layer;' : ''}
         ${uv ? 'vSurfUv = surfUv;' : ''}
+        ${round ? ROUND_VERTEX : ''}
         ${ageBuilt ? `
         // How far below its box's top: streaks run down from there.
         #ifdef USE_INSTANCING
@@ -154,12 +160,14 @@ export function surfaceMaterial(
         ${uv ? UV_GLSL : ''}
         ${aged ? AGE_GLSL : ''}
         ${ageGround ? AGE_PAVING_GLSL : ''}
-        ${ageBuilt ? `varying float vAgeBelow;\n${AGE_BUILT_GLSL}` : ''}`],
+        ${ageBuilt ? `varying float vAgeBelow;\n${AGE_BUILT_GLSL}` : ''}
+        ${round ? ROUND_FRAGMENT_HEAD : ''}`],
       // Replaces the colour map, which these materials don't use.
       ['#include <map_fragment>', /* glsl */ `
         vec4 surfColor = vec4(0.0);
         vec3 surfN = vec3(0.0);
         vec3 wn = normalize(vSurfNormal);
+        ${round ? 'float roundPx = length(fwidth(vSurfPos));' : ''}
         ${aged ? `
         // How much rougher the years have left it, how streaked for the rain
         // to run down, and how much of it is joints between stones to hold water.
@@ -179,7 +187,10 @@ export function surfaceMaterial(
         }${uv ? ` else if (surfLayer >= ${UV}.0) uvMapped(surfLayer - ${UV}.0, vSurfUv, vSurfPos, wn, surfColor, surfN);` : ''}
         else triplanar(${layer}, 1.0, vSurfPos, wn, surfColor, surfN);`
           : `triplanar(${layer}, 1.0, vSurfPos, wn, surfColor, surfN);`}
-        diffuseColor *= vec4(surfColor.rgb, 1.0);`, true],
+        diffuseColor *= vec4(surfColor.rgb, 1.0);
+        ${round ? `
+        // Its edges rounded: the bend added to the textures' own.
+        surfN = normalize(surfN) + roundedNormal(wn, roundPx) - wn;` : ''}`, true],
       ...(ageBuilt ? [['#include <color_fragment>', /* glsl */ `
         {
           float layer = surfLayer >= ${UV}.0 ? surfLayer - ${UV}.0 : surfLayer;
@@ -210,7 +221,7 @@ export function surfaceMaterial(
   };
   // Every variant compiles its own program.
   material.customProgramCacheKey = () =>
-    `surface-${mapping.kind}-${mapping.kind === 'fixed' ? mapping.layer : ''}-${bump}-${indoor}-${local}-${wet}-${!!town}-${uv}-${aged}`;
+    `surface-${mapping.kind}-${mapping.kind === 'fixed' ? mapping.layer : ''}-${bump}-${indoor}-${local}-${wet}-${!!town}-${uv}-${aged}-${round}`;
   return material;
 }
 

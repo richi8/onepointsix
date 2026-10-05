@@ -4,6 +4,7 @@ import { mulberry32 } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
 import { dimIndoors } from './indoorlight.ts';
 import { onTiles } from './terrain.ts';
+import { ALL_EDGES, openEdges, roundCode } from './rounding.ts';
 
 // The props drawn in the shapes of what they are, not as the boxes they
 // collide as: a crate with battens along its edges and a brace across each
@@ -49,14 +50,28 @@ class Slices {
     g.deleteAttribute('uv');
     const pos = g.getAttribute('position');
     const inset = new Float32Array(pos.count * 3);
+    // For rounding it as a box of its own (see rounding.ts): which corner each vertex is, and its half-size along each axis, as a fraction of the prop's plus metres.
+    const sign = new Float32Array(pos.count * 3);
+    const halfF = new Float32Array(pos.count * 3);
+    const halfM = new Float32Array(pos.count * 3);
     for (let i = 0; i < pos.count; i++) {
-      const c = corner(Math.sign(pos.getX(i)), Math.sign(pos.getY(i)), Math.sign(pos.getZ(i)));
+      const s = [Math.sign(pos.getX(i)), Math.sign(pos.getY(i)), Math.sign(pos.getZ(i))] as const;
+      const c = corner(...s);
       for (let k = 0; k < 3; k++) {
         pos.setComponent(i, k, c[k][0]);
         inset[i * 3 + k] = c[k][1];
+        const flip = [...s] as [number, number, number];
+        flip[k] = -flip[k];
+        const o = corner(...flip)[k];
+        sign[i * 3 + k] = s[k];
+        halfF[i * 3 + k] = (s[k] * (c[k][0] - o[0])) / 2;
+        halfM[i * 3 + k] = (s[k] * (c[k][1] - o[1])) / 2;
       }
     }
     g.setAttribute('inset', new THREE.BufferAttribute(inset, 3));
+    g.setAttribute('roundSign', new THREE.BufferAttribute(sign, 3));
+    g.setAttribute('roundHalfF', new THREE.BufferAttribute(halfF, 3));
+    g.setAttribute('roundHalfM', new THREE.BufferAttribute(halfM, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.count * 3).fill(shade), 3));
     this.pieces.push(g);
   }
@@ -234,10 +249,13 @@ export class Props {
   /** Each prop's matrix where it stands, its length along its own x. */
   private readonly rest: THREE.Matrix4[];
   private readonly depth = sliced(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
+  /** How each prop is drawn, or null if it isn't drawn here. */
+  private readonly shapes: (Shape | null)[];
 
   /** Drawn for `world` in the flat colours `colour` gives, leaving out the props in `hidden`. */
   constructor(world: World, colour: (prop: number) => number, hidden: Set<number>) {
     const shapes = world.props.map((_, i) => (hidden.has(i) ? null : shapeOf(world, i)));
+    this.shapes = shapes;
     const count = new Map<Shape, number>();
     this.at = Int32Array.from(shapes, (s) => {
       if (!s) return -1;
@@ -305,6 +323,29 @@ export class Props {
   colorAt(i: number, out: THREE.Color): THREE.Color {
     this.mesh[i]?.getColorAt(this.at[i], out);
     return out;
+  }
+
+  /**
+   * Round the props' edges (see rounding.ts), for a material that does:
+   * walls, floors, steps and sills where they stand in the open, the
+   * smaller things made of parts all over.
+   */
+  round(world: World): void {
+    const codes = new Map<THREE.InstancedMesh, Float32Array>();
+    for (const mesh of this.meshes.values()) codes.set(mesh, new Float32Array(mesh.count));
+    const frames = this.meshes.get('frame');
+    this.mesh.forEach((mesh, i) => {
+      const shape = this.shapes[i];
+      if (!mesh || !shape || shape === 'glass') {
+        if (frames && this.frameOf[i] >= 0) codes.get(frames)![this.frameOf[i]] = roundCode(ALL_EDGES, 0.006);
+        return;
+      }
+      const code = shape === 'box' ? roundCode(openEdges(world, this.rest[i]), 0.03)
+        : shape === 'step' || shape === 'sill' ? roundCode(openEdges(world, this.rest[i]), 0.02)
+        : roundCode(ALL_EDGES, 0.01);
+      codes.get(mesh)![this.at[i]] = code;
+    });
+    for (const [mesh, a] of codes) mesh.geometry.setAttribute('round', new THREE.InstancedBufferAttribute(a, 1));
   }
 
   /** Send the matrices changed since to the GPU. */

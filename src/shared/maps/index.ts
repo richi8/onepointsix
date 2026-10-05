@@ -141,6 +141,24 @@ export interface MapBuilding {
   blocks: MapBlock[];
   flights?: MapFlight[];
   crates?: MapCrate[];
+  /** What's written on it, for its look alone. */
+  signs?: MapSign[];
+}
+
+/**
+ * Something written on a building's wall, on its first block's `side` on
+ * `storey` (0 if left out), its middle `at` along the wall as an opening's
+ * (the wall's middle if left out): a painted `board` over a doorway, letters
+ * `painted` on the plaster, a `blade` standing out from the wall with its
+ * letters one under the next, or a tobacconist's or a chemist's sign standing
+ * out (`tabacchi`, `farmacia`).
+ */
+export interface MapSign {
+  side: Facing;
+  storey?: number;
+  at?: number;
+  kind: 'board' | 'painted' | 'blade' | 'tabacchi' | 'farmacia';
+  text?: string;
 }
 
 /**

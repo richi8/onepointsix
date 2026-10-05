@@ -17,7 +17,7 @@ export const STOREY = 3;
 export const SLAB = 0.2;
 /** A parapet's height above its roof, a railing's above its floor, and a railing's thickness. */
 const PARAPET = 1;
-const RAIL = 1;
+export const RAIL = 1;
 const RAIL_THICK = 0.1;
 /** A flight's rise and run per step, as the island's buildings' stairs. */
 const STEP_RISE = 0.5;
@@ -132,7 +132,7 @@ const DIR: Record<Facing, [number, number]> = { '-x': [-1, 0], '+x': [1, 0], '-z
 const SIDES: Facing[] = ['-z', '+z', '-x', '+x'];
 
 /** Which way a side's wall runs, the line it stands on, and the way out of the block across it. */
-function sideOf(b: Rect, side: Facing): { axis: 'x' | 'z'; line: number; out: 1 | -1; lo: number; hi: number } {
+export function sideOf(b: Rect, side: Facing): { axis: 'x' | 'z'; line: number; out: 1 | -1; lo: number; hi: number } {
   switch (side) {
     case '-z': return { axis: 'x', line: b.minZ, out: -1, lo: b.minX, hi: b.maxX };
     case '+z': return { axis: 'x', line: b.maxZ, out: 1, lo: b.minX, hi: b.maxX };
@@ -147,6 +147,42 @@ function grown(r: Rect, by: number): Rect {
 }
 
 /** A box `a0` to `a1` along a line's axis, `c0` to `c1` across it. */
+/**
+ * A balcony as built: along `axis` from a0 to a1, out from the wall's face
+ * at c0 to its front at c1 (`out` the way out), its floor at `y`; its slab's
+ * rectangle, and its railings', 1 m high, along its front and its two ends.
+ */
+export interface KitBalcony {
+  axis: 'x' | 'z';
+  out: 1 | -1;
+  a0: number;
+  a1: number;
+  c0: number;
+  c1: number;
+  y: number;
+  slab: Rect;
+  rails: Rect[];
+  colour?: number;
+}
+
+/** Every balcony of the blocks placed. */
+export function kitBalconies(placed: readonly Placed[]): KitBalcony[] {
+  const out: KitBalcony[] = [];
+  for (const p of placed) {
+    for (const bal of p.block.balconies ?? []) {
+      const { axis, line, out: o, lo } = sideOf(p.block, bal.side);
+      const y = p.floor + p.height * bal.storey;
+      const [a0, a1] = [lo + bal.at - bal.width / 2, lo + bal.at + bal.width / 2];
+      const c0 = line + (o * KIT_WALL) / 2;
+      const c1 = c0 + o * bal.depth;
+      const rails = [onLine(axis, a0, a1, c1 - o * RAIL_THICK, c1)];
+      for (const [e0, e1] of [[a0, a0 + RAIL_THICK], [a1 - RAIL_THICK, a1]]) rails.push(onLine(axis, e0, e1, c0, c1 - o * RAIL_THICK));
+      out.push({ axis, out: o, a0, a1, c0, c1, y, slab: onLine(axis, a0, a1, c0, c1), rails, ...(p.building.colour === undefined ? {} : { colour: p.building.colour }) });
+    }
+  }
+  return out;
+}
+
 function onLine(axis: 'x' | 'z', a0: number, a1: number, c0: number, c1: number): Rect {
   return axis === 'x'
     ? { minX: a0, maxX: a1, minZ: Math.min(c0, c1), maxZ: Math.max(c0, c1) }
@@ -504,18 +540,9 @@ export function buildKit(
   }
 
   // Balconies: a slab out from the wall, railed round.
-  for (const p of placed) {
-    for (const bal of p.block.balconies ?? []) {
-      const { axis, line, out, lo } = sideOf(p.block, bal.side);
-      const y = p.floor + p.height * bal.storey;
-      const [a0, a1] = [lo + bal.at - bal.width / 2, lo + bal.at + bal.width / 2];
-      const c0 = line + (out * T) / 2;
-      const c1 = c0 + out * bal.depth;
-      const colour = p.building.colour;
-      box(onLine(axis, a0, a1, c0, c1), y - SLAB, y, 'floor', true, colour);
-      box(onLine(axis, a0, a1, c1 - out * RAIL_THICK, c1), y, y + RAIL, 'wall', false, colour);
-      for (const [e0, e1] of [[a0, a0 + RAIL_THICK], [a1 - RAIL_THICK, a1]]) box(onLine(axis, e0, e1, c0, c1 - out * RAIL_THICK), y, y + RAIL, 'wall', false, colour);
-    }
+  for (const b of kitBalconies(placed)) {
+    box(b.slab, b.y - SLAB, b.y, 'floor', true, b.colour);
+    for (const r of b.rails) box(r, b.y, b.y + RAIL, 'wall', false, b.colour);
   }
 
   // Crates in the rooms.

@@ -33,7 +33,7 @@ const PLASTER_SHADE = 0.63;
 const TILES_FLAT = 0x8a4330;
 const TILES_TINT = 0xf4ece4;
 /** How far a pitched roof reaches past its walls, at its eaves and its gables. */
-const OVERHANG = 0.25;
+export const OVERHANG = 0.25;
 
 /** A map building's plaster `colour` (or the plain grey), flat or as a tint over the concrete texture. */
 export function plasterColor(colour: number | undefined, textured: boolean, out: THREE.Color): THREE.Color {

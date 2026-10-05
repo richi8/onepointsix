@@ -1,6 +1,6 @@
 import { yawToward } from '../geom.ts';
 import type { Rect } from '../world.ts';
-import { moved, type Facing, type GameMap, type MapBlock, type MapBox, type MapBuilding, type MapCrate, type MapFlight, type MapOpening, type MapProp, type MapRamp, type MapSpawn, type MapStair, type MapTrim } from './index.ts';
+import { moved, type Facing, type GameMap, type MapBlock, type MapBox, type MapBuilding, type MapCrate, type MapFlight, type MapOpening, type MapProp, type MapRamp, type MapSign, type MapSpawn, type MapStair, type MapTrim } from './index.ts';
 import { levelGround, type Level } from './levels.ts';
 
 // Calabianca: a whitewashed town on a hillside above the sea, Deathmatch's
@@ -207,6 +207,7 @@ interface Spec {
   /** Flights of stairs, as along() gives them, by block. */
   flights?: MapFlight[];
   crates?: MapCrate[];
+  signs?: MapSign[];
 }
 
 /** A block from x0 to x1 and z0 to z1. */
@@ -341,41 +342,48 @@ const QUAY: Spec[] = [
   {
     district: 'quay', level: 3,
     blocks: [{ ...Q1, storeys: 2, openings: [door('+z', 6), door('-z', 9, 1)] }],
+    signs: [{ side: '+z', at: 6, kind: 'board', text: 'TRATTORIA DA PINO' }],
     flights: [along(Q1, '-z', 'lo', 0), along(Q1, '+x', 'hi', 1)],
     crates: [{ x: -25.5, z: 33.5 }],
   },
   {
     name: 'Albergo del Porto', district: 'quay', level: 3,
     blocks: [{ ...ALBERGO, storeys: 3, roof: 'pitched', openings: [door('+z', 9), door('+x', 10), door('-z', 6, 1), door('+z', 9, 2)], balconies: [{ side: '+z', storey: 2, at: 9, width: 4, depth: 1.4 }] }],
+    signs: [{ side: '+z', at: 9, kind: 'board', text: 'ALBERGO DEL PORTO' }],
     flights: [along(ALBERGO, '-x', 'hi', 0), along(ALBERGO, '+x', 'lo', 1)],
     crates: [{ x: -7.5, z: 33.5 }, { x: -22.5, z: 33.5, storey: 2 }],
   },
   {
     district: 'quay', level: 3,
     blocks: [{ ...Q3, storeys: 2, openings: [door('+z', 7), door('-x', 4), door('-z', 4, 1)] }],
+    signs: [{ side: '+z', at: 7, kind: 'board', text: 'BAR DEL MOLO' }],
     flights: [along(Q3, '+x', 'hi', 0), along(Q3, '-x', 'hi', 1)],
   },
   {
     district: 'quay', level: 3,
     blocks: [{ ...Q4, storeys: 2, openings: [door('+z', 6), door('-x', 5), door('-z', 4, 1)] }],
+    signs: [{ side: '+z', at: 6, kind: 'board', text: 'SALI E TABACCHI' }, { side: '+z', at: 8.4, kind: 'tabacchi' }],
     flights: [along(Q4, '+x', 'hi', 0), along(Q4, '-x', 'lo', 1)],
     crates: [{ x: 28.5, z: 35.5 }],
   },
   {
     name: 'boat shed', district: 'quay', level: 3, trim: { quoins: true },
     blocks: [{ ...BOAT_SHED, storeys: 2, roof: 'pitched', ridge: 'x', openings: [op('-x', 5, 'arch', 0, 4), op('+x', 5, 'arch', 0, 4)] }],
+    signs: [{ side: '+x', storey: 1, kind: 'painted', text: 'CANTIERE NAVALE' }],
     flights: [along(BOAT_SHED, '-z', 'lo', 0)],
     crates: [{ x: -45.5, z: 52.5 }],
   },
   {
     name: 'warehouse', district: 'quay', level: 3, trim: { quoins: true },
     blocks: [{ ...WAREHOUSE, storeys: 2, roof: 'pitched', ridge: 'x', openings: [op('-x', 5, 'arch', 0, 4), op('+x', 5, 'arch', 0, 4), door('-z', 10)] }],
+    signs: [{ side: '-z', storey: 1, kind: 'painted', text: 'MAGAZZINI GENERALI' }],
     flights: [along(WAREHOUSE, '-z', 'lo', 0)],
     crates: [{ x: 38.5, z: 47.5 }, { x: 30, z: 54.5, storey: 1 }],
   },
   {
     name: 'fish market', district: 'quay', level: 3,
     blocks: [{ ...FISH_MARKET, storeys: 1, arcade: { side: '+z', bays: 4 }, openings: [door('-x', 4)] }],
+    signs: [{ side: '-z', kind: 'painted', text: 'PESCHERIA' }],
     crates: [{ x: 56.5, z: 45.5 }],
   },
 ];
@@ -392,30 +400,35 @@ const MARKET: Spec[] = [
   {
     name: 'loggia', district: 'market', level: 6,
     blocks: [{ ...LOGGIA, storeys: 2, arcade: { side: '+x', bays: 4 }, openings: [arch('-x', 10.5)] }],
+    signs: [{ side: '+x', storey: 1, kind: 'painted', text: 'MERCATO' }],
     flights: [along(LOGGIA, '-x', 'lo', 0), along(LOGGIA, '-x', 'hi', 1)],
   },
   {
     name: 'hotel', district: 'market', level: 6,
     // Its arches don't line up, so the way through bends and doesn't see from the market up the road.
     blocks: [{ ...HOTEL, storeys: 3, openings: [arch('-x', 8, 4), arch('+x', 12.5, 4), door('+z', 8), door('-z', 8, 2), door('-x', 4, 2)], balconies: [{ side: '-x', storey: 2, at: 4, width: 3.2, depth: 1.4 }] }],
+    signs: [{ side: '-x', storey: 1, at: 12, kind: 'blade', text: 'HOTEL' }],
     flights: [along(HOTEL, '-z', 'lo', 0), along(HOTEL, '+z', 'hi', 1), along(HOTEL, '-z', 'lo', 2)],
     crates: [{ x: 28.5, z: 15.5 }, { x: 15.5, z: 28.5, storey: 2 }],
   },
   {
     name: 'caffè', district: 'market', level: 6,
     blocks: [{ ...CAFFE, storeys: 2, openings: [door('+z', 11), door('+x', 5, 1)] }],
+    signs: [{ side: '+z', at: 11, kind: 'board', text: 'CAFFÈ CENTRALE' }],
     flights: [along(CAFFE, '-z', 'lo', 0)],
     crates: [{ x: -28.5, z: 12.5 }],
   },
   {
     district: 'market', level: 6,
     blocks: [{ ...M4, storeys: 3, roof: 'pitched', ridge: 'x', openings: [door('+z', 8), door('-x', 5, 1), door('-z', 8, 2)] }],
+    signs: [{ side: '+z', at: 8, kind: 'board', text: 'ALIMENTARI' }],
     flights: [along(M4, '+x', 'hi', 0), along(M4, '+z', 'lo', 1)],
     crates: [{ x: 12.5, z: 5.5, storey: 1 }],
   },
   {
     district: 'market', level: 6,
     blocks: [{ ...M5, storeys: 2, openings: [door('+z', 19), door('+x', 5, 1)] }],
+    signs: [{ side: '+z', at: 19, kind: 'board', text: 'FARMACIA' }, { side: '+z', at: 16.6, kind: 'farmacia' }],
     flights: [along(M5, '-z', 'lo', 0), along(M5, '+z', 'lo', 1)],
     crates: [{ x: 34.5, z: 5.5 }],
   },
@@ -629,6 +642,7 @@ function withWindows(specs: readonly Spec[]): MapBuilding[] {
       ...(s.storey ? { storey: s.storey } : {}),
       ...(s.flights ? { flights: s.flights } : {}),
       ...(s.crates ? { crates: s.crates.map((c) => flush(c, s.blocks)) } : {}),
+      ...(s.signs ? { signs: s.signs } : {}),
     };
   });
 }
