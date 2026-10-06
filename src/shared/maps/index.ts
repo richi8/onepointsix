@@ -191,6 +191,8 @@ export interface MapBox extends Rect {
   walk?: boolean;
   /** What it is, for how it's drawn alone: a plain stone box if left out. */
   look?: MapLook;
+  /** Its plaster, for its look alone: a block of houses plastered over; cut stone if left out. */
+  colour?: number;
   /** The boxes it collides as, in place of itself, where what's drawn isn't a box (a heap of rubble). */
   collides?: (Rect & { y0: number; y1: number })[];
 }
@@ -201,7 +203,7 @@ export interface MapBox extends Rect {
  */
 export type MapLook =
   | 'truck' | 'stall' | 'cart' | 'fountain' | 'plane' | 'olive' | 'memorial' | 'kiosk' | 'boat'
-  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'sandbags' | 'rubble';
+  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'sandbags' | 'rubble' | 'doors';
 
 /**
  * A flight of steps outside, `width` wide, its foot's middle at (x, z) on

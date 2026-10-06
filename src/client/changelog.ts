@@ -12,6 +12,18 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-06',
+    title: 'Calabianca plastered and lit',
+    notes: [
+      'Calabianca’s new streets are houses now, plastered a colour for each part of the town so you can tell where you are at a glance: whitewash round B and the tunnels, cream through mid, ochre round A, rose down long A and by the pit, pale blue at the attackers’ end.',
+      'Stone at their corners and feet, cornices along their tops, shuttered windows high up, and stone lintels over the tunnels and doorways.',
+      'Lanterns hang in the tunnels, so you can see who’s in them.',
+      'The double doors are old wooden doors, still fixed open a crack.',
+      'Cobbles at the two ends and the sites, flagstones in the lanes, bare earth in the pit.',
+      'The wall along the sea is a low parapet now: from the attackers’ end you can see the sea over it.',
+    ],
+  },
+  {
+    date: '2026-10-06',
     title: 'Calabianca rebuilt',
     notes: [
       'Deathmatch has a new Calabianca, laid out after a classic three-lane map: long A down the east side through its double doors and past the pit, mid down the middle with the catwalk up out of it to short, and the tunnels up the west side to B, the lower tunnels joining them to mid.',

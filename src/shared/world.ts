@@ -1200,7 +1200,12 @@ export class World {
       const { uppers, ...rest } = b;
       this.buildings.push({ ...rest, plan: 'kit', upper: uppers[0] ?? null, uppers, outpost: -1 });
     }
-    for (const w of map.walls) for (const c of w.collides ?? [w]) this.addWall(c.minX, c.y0, c.minZ, c.maxX, c.y1, c.maxZ).walk = !!w.walk;
+    for (const w of map.walls) {
+      for (const c of w.collides ?? [w]) {
+        this.addWall(c.minX, c.y0, c.minZ, c.maxX, c.y1, c.maxZ).walk = !!w.walk;
+        plaster(this.props.length - 1, w.colour);
+      }
+    }
     for (const s of map.stairs) this.addStair(s);
     for (const r of map.ramps ?? []) this.addRamp(r);
     // The panel of each prop, for crates stacked on it; -1 for a container.

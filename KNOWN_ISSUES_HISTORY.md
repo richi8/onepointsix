@@ -2296,6 +2296,12 @@ notes the chunk it came from.
   only (`maps/dev.ts`), and a game started from it is a Deathmatch on that map, whatever mode
   was picked; production builds leave the test maps out. A browser test starts one on the kit
   yard and comes in at one of its spawn points.
+- **The new map is a maze of plain boxes** (chunk 67): its blocks are flat-topped stone 6 m over
+  the ground beside them, the same texture all over, until its look (chunk 68).
+  **Resolved** (68): the blocks are plastered a colour for each part of the map and dressed in
+  stone as houses (`client/blocks.ts`: plinths, cornices, quoins, lintels over the tunnels and
+  doorways, shuttered windows high up, caps on the low walls); the ground is cobbled, flagged or
+  earth by place and worn along the ways; the tunnels are lit by lanterns; the doors are wood.
 
 ## Dropped
 

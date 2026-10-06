@@ -1,6 +1,6 @@
 import { yawToward } from '../geom.ts';
 import type { Rect } from '../world.ts';
-import { moved, type Facing, type GameMap, type MapArea, type MapBox, type MapProp, type MapRamp, type MapSpawn, type MapStair } from './index.ts';
+import { moved, type Facing, type GameMap, type MapArea, type MapBox, type MapLane, type MapProp, type MapRamp, type MapSpawn, type MapStair } from './index.ts';
 import { levelGround, type Level } from './levels.ts';
 
 // Calabianca rebuilt (Phase 10): Deathmatch's map, laid out after the most
@@ -10,8 +10,9 @@ import { levelGround, type Level } from './levels.ts';
 // level up; the two far ends and the tunnels another; the attackers' end at
 // the top), with the ramps and stairs between them. Everything inside the
 // map's area that isn't a place, a ramp or a stair is solid: blocks of stone
-// standing 6 m over the ground beside them, but a parapet along the south,
-// where the attackers' end looks over the sea. The covered ways (the tunnels,
+// standing 6 m over the ground beside them, but a parapet a metre thick
+// along the south, where the attackers' end looks over it to the sea, a
+// ledge along the shore below it. The covered ways (the tunnels,
 // the doorways) are places with a ceiling, the block carried over them.
 //
 // The three lanes: long A on the east, from the attackers' end through the
@@ -25,8 +26,16 @@ import { levelGround, type Level } from './levels.ts';
 //
 // Laid out in the plan's own metres, x east and z south from its north-west
 // corner, and moved onto the south coast of the island its seed makes, so
-// the sea lies in front and the hills behind. Plain stone for now: the look
-// comes after (chunk 68).
+// the sea lies in front and the hills behind.
+//
+// Its look: the blocks are houses plastered a colour for each part of the
+// map, so a player knows where they are by it (whitewash round B and the
+// tunnels, cream through mid and the corridor, ochre round A, rose along
+// long A and the pit, pale blue on the attackers' side over the sea), and
+// dressed in stone (see client/blocks.ts); the parapet along the sea and
+// the cover are stone. The ground is flagstones in the lanes, cobbles in
+// the squares at the two ends and the sites, earth in the pit, worn along
+// the ways through (`lanes`).
 
 /** The map's area: the plan's 88 m square, its corners on the terrain's 4 m grid. */
 const SIZE = 88;
@@ -39,12 +48,31 @@ const TOP = 9;
 const BLOCK = 6;
 /** How far the parapet along the sea stands over the ground behind it. */
 const PARAPET = 1.1;
-/** Where the parapet starts: the strip along the south edge, behind the attackers' end. */
+/** Where the parapet stands, a metre thick: along the south edge, behind the attackers' end. */
 const SEA_SIDE = 83;
 /** A doorway's height. */
 const DOOR = 3;
 /** A tunnel's height. */
 const TUNNEL = 3.2;
+
+/** The houses' plaster, by part of the map. */
+const PLASTER = {
+  white: 0xf4f1ea,
+  cream: 0xeee2c4,
+  ochre: 0xe8bd6a,
+  rose: 0xe8b09c,
+  blue: 0xc8dce4,
+} as const;
+
+/** The plaster of a block standing at (x, z): its part of the map's; none along the sea, where the parapet is stone. */
+function plasterAt(x: number, z: number): number | undefined {
+  if (z >= SEA_SIDE) return undefined;
+  if (z >= 63) return PLASTER.blue;
+  if (x < 24) return PLASTER.white;
+  if (x >= 56 && z >= 38) return PLASTER.rose;
+  if (x >= 50 && z < 38) return PLASTER.ochre;
+  return PLASTER.cream;
+}
 
 /** A place of the plan: a rectangle of ground at height `y`, its corners on whole metres, roofed at `ceiling` if covered. */
 interface Place extends Rect {
@@ -249,22 +277,25 @@ function solidTop(x: number, z: number): number {
   return Number.isFinite(near) ? near + BLOCK : TOP + BLOCK;
 }
 
-/** Boxes over the cells `want` gives a span for, merged along rows and then down the rows they match. */
+/** Boxes over the cells `want` gives a span for, plastered as the cells are, merged along rows and then down the rows they match. */
 function merged(want: (x: number, z: number) => [number, number] | null): MapBox[] {
   const out: MapBox[] = [];
   let open: MapBox[] = [];
+  const box = (minX: number, z: number, span: [number, number], colour: number | undefined): MapBox =>
+    ({ minX, maxX: minX + 1, minZ: z, maxZ: z + 1, y0: span[0], y1: span[1], ...(colour !== undefined ? { colour } : {}) });
   for (let z = 0; z < SIZE; z++) {
     const rows: MapBox[] = [];
     for (let x = 0; x < SIZE; x++) {
       const span = want(x, z);
       if (!span) continue;
+      const colour = plasterAt(x + 0.5, z + 0.5);
       const last = rows[rows.length - 1];
-      if (last && last.maxX === x && last.y0 === span[0] && last.y1 === span[1]) last.maxX = x + 1;
-      else rows.push({ minX: x, maxX: x + 1, minZ: z, maxZ: z + 1, y0: span[0], y1: span[1] });
+      if (last && last.maxX === x && last.y0 === span[0] && last.y1 === span[1] && last.colour === colour) last.maxX = x + 1;
+      else rows.push(box(x, z, span, colour));
     }
     const next: MapBox[] = [];
     for (const row of rows) {
-      const k = open.findIndex((b) => b.minX === row.minX && b.maxX === row.maxX && b.y0 === row.y0 && b.y1 === row.y1);
+      const k = open.findIndex((b) => b.minX === row.minX && b.maxX === row.maxX && b.y0 === row.y0 && b.y1 === row.y1 && b.colour === row.colour);
       if (k >= 0) {
         open[k].maxZ = z + 1;
         next.push(open.splice(k, 1)[0]);
@@ -278,7 +309,8 @@ function merged(want: (x: number, z: number) => [number, number] | null): MapBox
   return out;
 }
 
-const BLOCKS = merged((x, z) => (cellAt(x, z).open ? null : [LOW - 0.5, solidTop(x, z)]));
+/** Behind the parapet, a ledge along the sea at the lowest height, out of bounds, so the sea shows over the parapet. */
+const BLOCKS = merged((x, z) => (cellAt(x, z).open || z > SEA_SIDE ? null : [LOW - 0.5, solidTop(x, z)]));
 const ROOFS = merged((x, z) => {
   const c = cellAt(x, z);
   return c.open && Number.isFinite(c.ceiling) ? [c.ceiling, highestNear(x, z, 4) + BLOCK] : null;
@@ -319,12 +351,15 @@ function cover(minX: number, maxX: number, minZ: number, maxZ: number, h: number
 /** A wall from the ground at `y` up to `y1`, its thickness along whichever side is the thinner. */
 const wall = (minX: number, maxX: number, minZ: number, maxZ: number, y: number, y1: number): MapBox => ({ minX, maxX, minZ, maxZ, y0: y - 0.2, y1 });
 
+/** A door's leaf, fixed: a wall drawn as an old wooden door. */
+const leaf = (minX: number, maxX: number, minZ: number, maxZ: number, y: number, y1: number): MapBox => ({ ...wall(minX, maxX, minZ, maxZ, y, y1), look: 'doors' });
+
 /** The double doors: each pair of leaves a fixed wall with a gap between them. */
 const DOORS: MapBox[] = [
-  wall(21.9, 22.1, 17, 19.3, MID, MID + DOOR), wall(21.9, 22.1, 20.7, 22, MID, MID + DOOR),
-  wall(37, 38.3, 30.9, 31.1, LOW, LOW + DOOR + 0.2), wall(39.7, 41, 30.9, 31.1, LOW, LOW + DOOR + 0.2),
-  wall(57, 59, 47.4, 47.6, MID, MID + DOOR), wall(60.4, 62, 47.4, 47.6, MID, MID + DOOR),
-  wall(57, 59, 55.9, 56.1, MID, MID + DOOR), wall(60.4, 62, 55.9, 56.1, MID, MID + DOOR),
+  leaf(21.9, 22.1, 17, 19.3, MID, MID + DOOR), leaf(21.9, 22.1, 20.7, 22, MID, MID + DOOR),
+  leaf(37, 38.3, 30.9, 31.1, LOW, LOW + DOOR + 0.2), leaf(39.7, 41, 30.9, 31.1, LOW, LOW + DOOR + 0.2),
+  leaf(57, 59, 47.4, 47.6, MID, MID + DOOR), leaf(60.4, 62, 47.4, 47.6, MID, MID + DOOR),
+  leaf(57, 59, 55.9, 56.1, MID, MID + DOOR), leaf(60.4, 62, 55.9, 56.1, MID, MID + DOOR),
 ];
 
 const COVER: MapBox[] = [
@@ -390,6 +425,18 @@ const SPAWNS: MapSpawn[] = [
   spawn(73, 56.5, 73, 47), spawn(80, 53, 70, 45), spawn(53, 66, 53, 55), spawn(52, 78, 50, 70), spawn(35, 55, 40, 50),
 ];
 
+// ---------------------------------------------------------------- the ways through
+
+/** The ways players take through it, worn into the paving and drawn on the dev view. */
+const LANES: MapLane[] = [
+  { name: 'long A', points: [[52, 78], [52, 62], [59, 52], [74, 45], [75, 25], [75, 12], [66, 10]] },
+  { name: 'mid', points: [[38, 72], [38, 55], [40, 42], [39, 28], [36, 18], [26, 17], [15, 21]] },
+  { name: 'B tunnels', points: [[26, 78], [11, 70], [15, 57], [15, 46], [10, 39], [9.5, 30], [11, 22], [16, 11]] },
+  { name: 'lower tunnels', points: [[22, 40], [30, 34.5], [39, 34.5]] },
+  { name: 'short', points: [[44, 42], [44, 34], [54, 33], [54.5, 24], [56, 12]] },
+  { name: 'CT', points: [[36, 18], [50, 18], [54, 15], [60, 12]] },
+];
+
 // ---------------------------------------------------------------- the map
 
 const PLAN: GameMap = {
@@ -405,7 +452,17 @@ const PLAN: GameMap = {
   props: PROPS,
   spawns: SPAWNS,
   sun: 110,
-  paving: { area: { minX: 0, maxX: SIZE, minZ: 0, maxZ: SIZE }, patches: [] },
+  paving: {
+    area: { minX: 0, maxX: SIZE, minZ: 0, maxZ: SIZE },
+    patches: [
+      { minX: 5, maxX: 41, minZ: 65, maxZ: 84, kind: 'cobbles' },
+      { minX: 30, maxX: 52, minZ: 13, maxZ: 24, kind: 'cobbles' },
+      { minX: 52, maxX: 79, minZ: 3, maxZ: 16, kind: 'cobbles' },
+      { minX: 6, maxX: 22, minZ: 1, maxZ: 15, kind: 'cobbles' },
+      { minX: 65, maxX: 76, minZ: 47, maxZ: 58, kind: 'earth' },
+    ],
+  },
+  lanes: LANES,
   areas: PLACES.map(({ name, minX, maxX, minZ, maxZ }): MapArea => ({ name, minX, maxX, minZ, maxZ })),
 };
 

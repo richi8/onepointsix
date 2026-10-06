@@ -152,6 +152,28 @@ for (const [name, query] of Object.entries(MAP)) {
   });
 }
 
+// The new Calabianca (see maps/calabianca2.ts), Deathmatch's map, in its
+// look: the town over the sea from offshore; the attackers' end from a
+// spawn, its houses pale blue, and the sea over its parapet; long A in ochre
+// and rose; mid up to its double doors; B in whitewash; the upper tunnels
+// lit by their lamps.
+const CALABIANCA: Record<string, string> = {
+  'calabianca-above': '0,70,348,0,0,248',
+  'calabianca-t-spawn': '-22,10.7,288,-20,9,263',
+  'calabianca-sea': '-22,10.7,287,-14,8,308',
+  'calabianca-long': '31,7.5,248,31,7,218',
+  'calabianca-mid': '-5,6,248,-5,5.5,238',
+  'calabianca-b': '-34,7.5,232,-26,8,218',
+  'calabianca-tunnels': '-24,9.5,253,-29,9.5,247',
+};
+
+for (const [name, cam] of Object.entries(CALABIANCA)) {
+  test(`deathmatch: ${name}`, async ({ page }) => {
+    await spot(page, cam, '&mode=deathmatch');
+    await expect(page).toHaveScreenshot(`${name}.png`);
+  });
+}
+
 // The building kit's later pieces on their test map (see maps/kityard.ts,
 // shown by ?map): the yard from above, with its pitched roofs, the courtyard
 // and the ramp up to the terrace; and the arcade from the street.

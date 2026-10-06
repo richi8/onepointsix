@@ -10,7 +10,8 @@ import { Boxes, CANVAS, CREAM, IRON, painted, plain, Shapes, STONE, stuff, type 
 // (MapBox.look): the crashed truck, the market's stalls, the carts, the
 // fountain, the war memorial, the kiosk, the
 // boats hauled out, the parked cars, the sandbags, the rubble, the water tower, the tombs, the bell tower's belfry and
-// roof, and along the quay's face its bollards and the boats moored off it.
+// roof, along the quay's face its bollards and the boats moored off it, and
+// the leaves of double doors fixed in place.
 // What stands inside its box replaces it (Features.replaces); what reaches
 // past it, a canopy or a cross, is only drawn.
 
@@ -31,6 +32,8 @@ const DEBRIS = stuff(Layer.concrete, 0xf0ebe0, 0xc8c0b0);
 const RUBBLE = stuff(Layer.plaster, 0xeee8dc, 0xd8d0c0);
 const HULLS = [0xeeeae0, 0x2f5f86, 0xd8c8a0, 0x3d7a5a];
 const STRIPES = [0x2f5f86, 0xb83a30, 0xd0a030, 0x2f3a46];
+/** Old double doors' faded paint over weathered planks: a pair's leaves alike. */
+const DOOR_PAINT = [stuff(Layer.planks, 0xa8c8a0, 0x56784e), stuff(Layer.planks, 0xe8d0b0, 0x7a5638), stuff(Layer.planks, 0xa8c4dc, 0x4a6c8a)];
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -203,7 +206,7 @@ export function standsOn(world: World, b: MapBox): number {
 }
 
 /** The looks drawn in place of their boxes; the rest are drawn over them. */
-const REPLACED: ReadonlySet<MapLook> = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble']);
+const REPLACED: ReadonlySet<MapLook> = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble', 'doors']);
 
 /** The props drawn here in place of their boxes. */
 export function replacedProps(world: World): Set<number> {
@@ -344,6 +347,16 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
           }
         }
         bag.dispose();
+        break;
+      }
+      case 'doors': {
+        // Painted planks, battens across both faces and iron straps over them, a gap at the foot.
+        const paint = DOOR_PAINT[Math.floor(Math.abs(alongX ? cz : cx) * 3.7) % DOOR_PAINT.length];
+        local(-L, -W + 0.02, y + 0.03, L, W - 0.02, top, paint);
+        for (const v of [-W, W - 0.03]) {
+          for (const h of [0.35, 1.5, 2.6]) local(-L + 0.06, v, y + h, L - 0.06, v + 0.03, y + h + 0.16, paint);
+          for (const h of [0.45, 2.7]) local(-L + 0.03, v - 0.01, y + h - 0.03, L - 0.03, v + 0.04, y + h + 0.03, IRON);
+        }
         break;
       }
       case 'rubble': {

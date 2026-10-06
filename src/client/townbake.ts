@@ -49,6 +49,8 @@ export interface BakeInput {
   sun: [number, number, number];
   /** The sine of the hills' height over the horizon, from the town, at each of `horizon.length` bearings round from +x toward +z. */
   horizon: Float32Array;
+  /** Lamps under the covered ways: x, y, z each (see coveredLamps). */
+  lamps?: Float32Array;
 }
 
 /**
@@ -74,7 +76,82 @@ const MARGIN = 4;
 const HEADROOM = 1.5;
 /** The paving's colour, sRGB. */
 const PAVING = 0x9a8f7c;
+/** Metres apart the lamps hang under a covered way, at least; how far under its ceiling; the least covered ground to hang one over, in square metres. */
+const LAMP_EVERY = 5;
+const LAMP_DROP = 0.6;
+const LAMP_ROOF = 10;
 
+/**
+ * Where a map with no buildings hangs its lamps: over its covered ground
+ * (a tunnel's, a doorway's), each stretch of it under one ceiling no
+ * smaller than LAMP_ROOF, LAMP_EVERY apart, those furthest from its sides
+ * first, so they hang down the middle of the ways.
+ */
+export function coveredLamps(world: World): [number, number, number][] {
+  const map = world.map;
+  if (!map || world.buildings.length) return [];
+  const roofs = map.walls.filter((w) => !w.look && !w.walk && w.y0 - world.terrainHeight((w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2) > 2);
+  const b = map.bounds;
+  const [x0, z0] = [Math.floor(b.minX), Math.floor(b.minZ)];
+  const [nx, nz] = [Math.ceil(b.maxX) - x0, Math.ceil(b.maxZ) - z0];
+  // Each metre's ceiling, where it's covered with headroom under it.
+  const ceiling = new Float64Array(nx * nz).fill(NaN);
+  for (let k = 0; k < nz; k++) {
+    for (let i = 0; i < nx; i++) {
+      const [x, z] = [x0 + i + 0.5, z0 + k + 0.5];
+      let top = Infinity;
+      for (const r of roofs) if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) top = Math.min(top, r.y0);
+      if (!Number.isFinite(top)) continue;
+      const floor = world.groundHeight(x, z, top - 1.5, 0.02);
+      if (top - floor > 2.2 && world.clearAsBuilt(x, floor + 0.05, z, top - floor - 0.1, 0.3)) ceiling[k * nx + i] = top;
+    }
+  }
+  const out: [number, number, number][] = [];
+  const seen = new Uint8Array(nx * nz);
+  for (let start = 0; start < nx * nz; start++) {
+    if (seen[start] || Number.isNaN(ceiling[start])) continue;
+    // The stretch under this ceiling.
+    const y = ceiling[start];
+    const cells: number[] = [];
+    const queue = [start];
+    seen[start] = 1;
+    while (queue.length) {
+      const c = queue.pop()!;
+      cells.push(c);
+      const [i, k] = [c % nx, Math.floor(c / nx)];
+      for (const [di, dk] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const [p, q] = [i + di, k + dk];
+        const n = q * nx + p;
+        if (p < 0 || q < 0 || p >= nx || q >= nz || seen[n] || !(Math.abs(ceiling[n] - y) < 0.01)) continue;
+        seen[n] = 1;
+        queue.push(n);
+      }
+    }
+    if (cells.length < LAMP_ROOF) continue;
+    const mine = new Set(cells);
+    // How far each metre is from the stretch's sides: how many of the 5 × 5 round it are in it.
+    const room = (c: number) => {
+      let r = 0;
+      const i = c % nx;
+      for (let dk = -2; dk <= 2; dk++) for (let di = -2; di <= 2; di++) if (i + di >= 0 && i + di < nx && mine.has(c + dk * nx + di)) r++;
+      return r;
+    };
+    const ranked = cells.map((c) => [c, room(c)]).sort((p, q) => q[1] - p[1] || p[0] - q[0]);
+    const hung: [number, number][] = [];
+    for (const [c] of ranked) {
+      const [x, z] = [x0 + (c % nx) + 0.5, z0 + Math.floor(c / nx) + 0.5];
+      if (hung.some(([hx, hz]) => Math.hypot(hx - x, hz - z) < LAMP_EVERY)) continue;
+      hung.push([x, z]);
+      out.push([x, y - LAMP_DROP, z]);
+    }
+  }
+  return out;
+}
+
+/** A lamp's light on a face square to it a metre off, as a share of the sun's; how far it reaches; its colour, linear. */
+const LAMP = 0.35;
+const LAMP_REACH = 12;
+const LAMP_RGB: [number, number, number] = [1, 0.62, 0.3];
 /**
  * What to bake over a map's town, or null for an island: its boxes that
  * neither break nor move (not the panels: glass, door leaves, crates,
@@ -123,7 +200,8 @@ export function bakeInput(world: World, colourOf: (box: Box) => number, sun: [nu
     horizon[i] = top;
   });
   const l = Math.hypot(...sun);
-  return { x0, y0, z0, nx, ny, nz, boxes, albedo, ground, groundAlbedo: linear(PAVING), sun: [sun[0] / l, sun[1] / l, sun[2] / l], horizon };
+  const lamps = Float32Array.from(coveredLamps(world).flat());
+  return { x0, y0, z0, nx, ny, nz, boxes, albedo, ground, groundAlbedo: linear(PAVING), sun: [sun[0] / l, sun[1] / l, sun[2] / l], horizon, lamps };
 }
 
 /** An sRGB colour's linear red, green and blue. */
@@ -192,7 +270,59 @@ export function bake(input: BakeInput): Baked {
     const outside = below ? [G, g[0] * groundSun, g[1] * groundSun, g[2] * groundSun] : [0, 0, 0, 0];
     bounce(input, context, d, outside);
   }
+  if (input.lamps?.length) lamps(input, solid, sun, sunRgb);
   return pack(input, solid, exposed, sky, sun, sunRgb);
+}
+
+/**
+ * The lamps' light, straight from them, added to the sun's bounced (which
+ * carries a colour of its own): on each face of each open cell in sight of
+ * a lamp, falling off as the square of how far it is.
+ */
+function lamps(input: BakeInput, solid: Uint8Array, sun: Float32Array[], sunRgb: Float32Array): void {
+  const { x0, y0, z0, nx, ny, nz } = input;
+  const C = BAKE_CELL;
+  const L = input.lamps!;
+  const r = Math.ceil(LAMP_REACH / C);
+  const cellOf = (x: number, y: number, z: number) => {
+    const [i, j, k] = [Math.floor((x - x0) / C), Math.floor((y - y0) / C), Math.floor((z - z0) / C)];
+    return i < 0 || j < 0 || k < 0 || i >= nx || j >= ny || k >= nz ? -1 : (k * ny + j) * nx + i;
+  };
+  for (let l = 0; l < L.length; l += 3) {
+    const [lx, ly, lz] = [L[l], L[l + 1], L[l + 2]];
+    const [li, lj, lk] = [Math.floor((lx - x0) / C), Math.floor((ly - y0) / C), Math.floor((lz - z0) / C)];
+    for (let k = Math.max(0, lk - r); k <= Math.min(nz - 1, lk + r); k++) {
+      for (let j = Math.max(0, lj - r); j <= Math.min(ny - 1, lj + r); j++) {
+        for (let i = Math.max(0, li - r); i <= Math.min(nx - 1, li + r); i++) {
+          const c = (k * ny + j) * nx + i;
+          if (solid[c]) continue;
+          const [px, py, pz] = [x0 + (i + 0.5) * C, y0 + (j + 0.5) * C, z0 + (k + 0.5) * C];
+          const [dx, dy, dz] = [lx - px, ly - py, lz - pz];
+          const d = Math.hypot(dx, dy, dz);
+          if (d > LAMP_REACH) continue;
+          // In sight of it: no solid cell between, a half cell at a time.
+          let seen = true;
+          const steps = Math.floor(d / (C / 2));
+          for (let s = 1; s < steps && seen; s++) {
+            const t = s / steps;
+            const q = cellOf(px + dx * t, py + dy * t, pz + dz * t);
+            if (q >= 0 && solid[q]) seen = false;
+          }
+          if (!seen) continue;
+          // Fading out toward the edge of its reach, so it ends without a seam.
+          const e = (LAMP / Math.max(d * d, 0.5)) * (1 - (d / LAMP_REACH) ** 2);
+          const [ux, uy, uz] = [dx / Math.max(d, 1e-6), dy / Math.max(d, 1e-6), dz / Math.max(d, 1e-6)];
+          for (let a = 0; a < 6; a++) {
+            const f = AXES[a][0] * ux + AXES[a][1] * uy + AXES[a][2] * uz;
+            if (f > 0) sun[a][c] += e * f;
+          }
+          sunRgb[c * 3] += e * LAMP_RGB[0];
+          sunRgb[c * 3 + 1] += e * LAMP_RGB[1];
+          sunRgb[c * 3 + 2] += e * LAMP_RGB[2];
+        }
+      }
+    }
+  }
 }
 
 /** The three faces of the ambient cube a direction falls on, and how squarely: the x face, the y face and the z face. */

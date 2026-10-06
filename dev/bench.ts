@@ -9,7 +9,7 @@ import { Forecast, type Weather } from '../src/shared/weather.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
-import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
+import { CALABIANCA_2 } from '../src/shared/maps/calabianca2.ts';
 
 // A frame-cost benchmark on the default island, run by `npm run bench`
 // (e2e/bench.e2e.ts) or by hand at /dev/bench.html on the dev server:
@@ -30,7 +30,7 @@ import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 //
 // With `?town` it runs on Deathmatch's town instead, its light baked: at each
 // of a few spots (the screenshots' own), a frame with nobody about and one
-// with `n` soldiers in front (16 by default, the town's capacity). It sets
+// with `n` soldiers in front (12 by default, the map's capacity). It sets
 // window.town.
 //
 // With `?adaptive=<seconds>` it instead checks the adaptive resolution on a
@@ -40,11 +40,11 @@ import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 
 const q = new URLSearchParams(location.search);
 const TOWN = q.has('town');
-const N = Number(q.get('n') ?? (TOWN ? 16 : 24));
+const N = Number(q.get('n') ?? (TOWN ? 12 : 24));
 const WARMUP = 60;
 const FRAMES = Number(q.get('frames') ?? 240);
 
-const world = TOWN ? new World(CALABIANCA.seed, CALABIANCA) : new World(DEFAULT_WORLD.seed);
+const world = TOWN ? new World(CALABIANCA_2.seed, CALABIANCA_2) : new World(DEFAULT_WORLD.seed);
 const view = new WorldView(world, 'clear');
 view.preview = false;
 const scene = view.scene;
@@ -89,13 +89,13 @@ if (!TOWN) {
  * then what it looks at.
  */
 const SPOTS: Record<string, [number, number, number, number, number, number]> = {
-  market: [-21, 7.7, 262, 10, 8, 256],
-  alley: [-37.5, 7.7, 265, -37.5, 10, 245],
-  piazza: [-7, 13.7, 243, -10, 14, 222],
-  quay: [-50, 4.8, 290, 40, 4.8, 290],
-  roofs: [-44, 15.6, 241, 0, 9, 250],
-  above: [-70, 55, 320, 0, 8, 240],
-  hillside: [0, 30, 200, 0, 40, 100],
+  above: [0, 70, 348, 0, 0, 248],
+  't-spawn': [-22, 10.7, 288, -20, 9, 263],
+  sea: [-22, 10.7, 287, -14, 8, 308],
+  long: [31, 7.5, 248, 31, 7, 218],
+  mid: [-5, 6, 248, -5, 5.5, 238],
+  b: [-34, 7.5, 232, -26, 8, 218],
+  tunnels: [-24, 9.5, 253, -29, 9.5, 247],
 };
 
 const bodies = new Bodies(scene, world);

@@ -8,6 +8,7 @@ import { surfaceMaterial, UNTEXTURED } from './surfaces.ts';
 import { ALL_EDGES, roundable, roundCode } from './rounding.ts';
 import { onTiles } from './terrain.ts';
 import { features } from './features.ts';
+import { doorProps, dressBlocks } from './blocks.ts';
 import { roofs } from './roofs.ts';
 import { balconies, railProps } from './balconies.ts';
 import { Life } from './life.ts';
@@ -24,8 +25,9 @@ import { bougainvillea, pots, vine } from './plants.ts';
 // its windows, window boxes of flowers, creepers climbing beside its doors
 // and striped awnings over them, pots by them, bougainvillea over them and
 // vines along its walls (see plants.ts); and a stone cap along every parapet and
-// freestanding wall. All of it is boxes, each a few centimetres proud of the
-// wall, drawn as instanced meshes, one a tile.
+// freestanding wall. A map's solid blocks are dressed too (see blocks.ts).
+// All of it is boxes, each a few centimetres proud of the wall, drawn as
+// instanced meshes, one a tile.
 
 const T = KIT_WALL;
 /** How far apart along a face it's sampled for where it looks outdoors. */
@@ -173,13 +175,14 @@ export class Dressing {
 
   /** A map town's dressing, or null for a world that isn't one. */
   static build(world: World): Dressing | null {
-    if (!world.map || !world.facades.length) return null;
+    if (!world.map) return null;
     const boxes = new Boxes();
     const shapes = new Shapes();
     const life = new Life(world, boxes, shapes);
     dressFacades(world, boxes, shapes, life);
     life.string();
     life.roofs();
+    dressBlocks(world, boxes);
     features(world, boxes, shapes);
     roofs(world, boxes, shapes);
     balconies(world, boxes, shapes);
@@ -247,10 +250,10 @@ export function dressFacades(world: World, boxes: Boxes, shapes = new Shapes(), 
       for (const run of runs) dressRun(world, face, shapes, run, outdoors, life);
     }
   }
-  caps(world, boxes, placed, railProps(world));
+  caps(world, boxes, placed, new Set([...railProps(world), ...doorProps(world)]));
 }
 
-/** Stone along the tops of parapets and freestanding walls, not of the railings indoors round the stairs nor of balconies' (see balconies.ts). */
+/** Stone along the tops of parapets and freestanding walls, not of the railings indoors round the stairs nor of balconies' (see balconies.ts), nor of door leaves. */
 function caps(world: World, boxes: Boxes, placed: readonly Placed[], rails: Set<number>): void {
   const inRoom = (x: number, z: number) => placed.some(({ block: b }) => x > b.minX + T / 2 && x < b.maxX - T / 2 && z > b.minZ + T / 2 && z < b.maxZ - T / 2);
   for (const [i, p] of world.props.entries()) {
