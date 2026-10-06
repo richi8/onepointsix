@@ -93,6 +93,8 @@ export function bakeInput(world: World, colourOf: (box: Box) => number, sun: [nu
   for (let x = b.minX; x <= b.maxX; x += 1) for (let z = b.minZ; z <= b.maxZ; z += 1) low = Math.min(low, world.terrainHeight(x, z));
   let high = -Infinity;
   for (const h of world.buildings) high = Math.max(high, h.roof + HOUSE_ROOF);
+  // A map with no buildings, its blocks walls of the map's own.
+  if (!world.buildings.length) for (const w of map.walls) high = Math.max(high, w.y1);
   const y0 = Math.floor((low - 1) / C) * C;
   const ny = Math.ceil((high + HEADROOM - y0) / C);
   const inside = (c: Box) => c.maxX > x0 && c.minX < x0 + nx * C && c.maxZ > z0 && c.minZ < z0 + nz * C && c.maxY > y0 && c.minY < y0 + ny * C;

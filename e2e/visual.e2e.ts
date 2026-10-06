@@ -116,7 +116,8 @@ for (const [name, query] of Object.entries(YARD)) {
   });
 }
 
-// Deathmatch's map (see maps/calabianca.ts) in its look: the town from over
+// The old Calabianca (see maps/calabianca.ts), Deathmatch's map until chunk
+// 67, shown by ?map until it's removed (chunk 69), in its look: the town from over
 // the sea, its districts stepping up the hillside; up a stair in the west's
 // alleys, under the room over the lane; the piazza, the church, its fountain
 // and its bell tower from the top of the grand stair; the market, the grand
@@ -146,7 +147,7 @@ const MAP: Record<string, string> = {
 for (const [name, query] of Object.entries(MAP)) {
   test(`map: ${name}`, async ({ page }) => {
     const [cam, ...rest] = query.split('&');
-    await spot(page, cam, ['&mode=deathmatch', ...rest.map((r) => `&${r}`)].join(''));
+    await spot(page, cam, ['&map=old-calabianca', ...rest.map((r) => `&${r}`)].join(''));
     await expect(page).toHaveScreenshot(`${name}.png`);
   });
 }

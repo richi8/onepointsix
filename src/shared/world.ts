@@ -319,7 +319,8 @@ export class World {
     if (map) this.buildMap(map, mulberry32(this.seed ^ 0x68e31da5));
     for (const c of this.colliders) this.insert(c);
     if (map) {
-      for (const { x, z, yaw } of map.spawns) this.spawns.push({ x, y: this.groundHeight(x, z, this.floorHeight(x, z)), z, yaw });
+      // On the highest floor walked under it: a terrace's, where the ground is built up.
+      for (const { x, z, yaw } of map.spawns) this.spawns.push({ x, y: this.groundHeight(x, z, Math.max(this.floorHeight(x, z), ...this.floorTops(x, z, 0.01))), z, yaw });
       return;
     }
     // Its own random stream, so adding extraction points moved nothing else.

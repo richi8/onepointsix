@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-06',
+    title: 'Calabianca rebuilt',
+    notes: [
+      'Deathmatch has a new Calabianca, laid out after a classic three-lane map: long A down the east side through its double doors and past the pit, mid down the middle with the catwalk up out of it to short, and the tunnels up the west side to B, the lower tunnels joining them to mid.',
+      'Two sites at the north corners, the attackers’ end along the sea, the defenders’ end between the sites, and stairs and ramps between the levels as you’d expect them.',
+      'The double doors are fixed, with a gap between the leaves to see, shoot and walk through.',
+      'It’s for 12 operators, down from 16, and it’s all plain stone for now: the town’s plaster and look come next.',
+      'Its scoreboard starts afresh, as the old scores were set on the old town.',
+    ],
+  },
+  {
+    date: '2026-10-06',
     title: 'Calabianca tidied, and bots search every crate',
     notes: [
       'The two old cars are gone from Calabianca’s high street and the road up from the quay.',

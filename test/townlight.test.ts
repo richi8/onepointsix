@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mapFor } from '../src/shared/maps/index.ts';
+import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
+import { CALABIANCA_2, PLACES } from '../src/shared/maps/calabianca2.ts';
 import { World } from '../src/shared/world.ts';
 import { BAKE_CELL, bake, bakeInput, SKY_RANGE, SUN_RANGE, type BakeInput, type Baked } from '../src/client/townbake.ts';
 
@@ -113,7 +114,7 @@ describe('the town\'s baked light', () => {
 
 describe('Calabianca\'s baked light', () => {
   it('bakes the town, its rooms darker than its streets', () => {
-    const world = new World(1, mapFor('deathmatch'));
+    const world = new World(1, CALABIANCA);
     const input = bakeInput(world, () => 0xd8cfc0, [-0.23, 0.75, 0.62])!;
     const baked = bake(input);
     // Each building's middle, a metre and a half over each storey's floor, against the street outside it.
@@ -141,5 +142,18 @@ describe('Calabianca\'s baked light', () => {
     }
     expect(rooms).toBeGreaterThan(30);
     expect(inside / rooms).toBeLessThan((outside / streets) * 0.25);
+  });
+
+  it('bakes a map with no buildings up to its blocks\' tops, its tunnels darker than its lanes', () => {
+    const world = new World(1, CALABIANCA_2);
+    const input = bakeInput(world, () => 0xd8cfc0, [-0.23, 0.75, 0.62])!;
+    expect(input.y0 + input.ny * BAKE_CELL).toBeGreaterThan(Math.max(...CALABIANCA_2.walls.map((w) => w.y1)));
+    const baked = bake(input);
+    const sky = (name: string) => {
+      const i = CALABIANCA_2.areas!.findIndex((p) => p.name === name);
+      const a = CALABIANCA_2.areas![i];
+      return read(input, baked, (a.minX + a.maxX) / 2, PLACES[i].y + 1.5, (a.minZ + a.maxZ) / 2, PY).sky;
+    };
+    expect(sky('lower tunnels')).toBeLessThan(sky('long A') * 0.25);
   });
 });

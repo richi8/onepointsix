@@ -110,7 +110,7 @@ export const MAX_REWIND = 0.5;
 // Population. Operators are players plus the bots that fill the empty slots.
 export const OPERATOR_CAPACITY = 8;
 /** Operators in a Deathmatch game, players and bots, and nobody else. */
-export const DEATHMATCH_CAPACITY = 16;
+export const DEATHMATCH_CAPACITY = 12;
 /** Ground guards per outpost, besides the sentry in its watchtower. */
 export const GUARDS_PER_OUTPOST = 2;
 /** Pairs of guards walking routes between outposts. */

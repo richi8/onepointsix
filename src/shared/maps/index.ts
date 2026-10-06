@@ -1,6 +1,6 @@
 import type { Mode } from '../protocol.ts';
 import type { Rect } from '../world.ts';
-import { CALABIANCA } from './calabianca.ts';
+import { CALABIANCA_2 } from './calabianca2.ts';
 
 // A fixed map: the ground, buildings and everything else a mode is played on,
 // laid out by hand, one typed file per map in this folder. The World is built
@@ -280,6 +280,11 @@ export interface MapPlant {
   s?: number;
 }
 
+/** A named place on a map, for the Deathmatch simulation's report of where fights happen and the dev view. */
+export interface MapArea extends Rect {
+  name: string;
+}
+
 export interface GameMap {
   /** Its key: the menu's board of games on it is kept under it. */
   id: string;
@@ -301,6 +306,8 @@ export interface GameMap {
   /** The sun's bearing, degrees from +x toward +z, for its look alone; the island's otherwise. */
   sun?: number;
   plants?: MapPlant[];
+  /** Its places by name, where it has no buildings to name them by. */
+  areas?: MapArea[];
 }
 
 /** What the ground of `map` is paved with at (x, z), or null beyond its paving's area. */
@@ -314,7 +321,7 @@ export function pavingAt(map: GameMap, x: number, z: number): Paving | null {
 
 /** The fixed map a mode is played on, or null for the island made from the game's seed. */
 export function mapFor(mode: Mode): GameMap | null {
-  return mode === 'deathmatch' ? CALABIANCA : null;
+  return mode === 'deathmatch' ? CALABIANCA_2 : null;
 }
 
 /**
@@ -342,5 +349,6 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
     ...(map.paving ? { paving: { area: rect(map.paving.area), patches: map.paving.patches.map(rect) } } : {}),
     lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),
     plants: map.plants?.map(at),
+    areas: map.areas?.map(rect),
   };
 }

@@ -1,4 +1,4 @@
-// Plays Deathmatch games of 16 bots in Node, with no browser, and sums up how
+// Plays Deathmatch games of 12 bots in Node, with no browser, and sums up how
 // they went: how often people die and how long they live, how kills spread,
 // how safe respawns are, whether anyone runs out of ammo and what the bots
 // spend their time on, and where: on the ground, upstairs or on the roofs;
@@ -66,6 +66,10 @@ function placeOf(world: World, x: number, y: number, z: number): string {
   }
   const cx = (Math.floor(x / GROUND_SPOT) + 0.5) * GROUND_SPOT;
   const cz = (Math.floor(z / GROUND_SPOT) + 0.5) * GROUND_SPOT;
+  // A map planned as named places: the square's middle's.
+  const last = (px: number, pz: number) => [...(map?.areas ?? [])].reverse().find((a) => px >= a.minX && px < a.maxX && pz >= a.minZ && pz < a.maxZ);
+  const area = last(cx, cz) ?? last(x, z);
+  if (area) return `${where} at ${cx}, ${cz} (${area.name})`;
   let lane = '';
   let laneD = 8;
   for (const l of map?.lanes ?? []) {

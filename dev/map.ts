@@ -1,4 +1,5 @@
 import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
+import { CALABIANCA_2 } from '../src/shared/maps/calabianca2.ts';
 import type { GameMap } from '../src/shared/maps/index.ts';
 import { KIT_YARD } from '../src/shared/maps/kityard.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
@@ -10,13 +11,15 @@ import { SKETCH } from './townsketch.ts';
 // a sketch: the ground and everything built on it shaded by height (the
 // higher, the lighter), floors walked on edged in blue, the lanes and streets
 // as lines, the spawn points numbered with the way they face, and the bounds
-// dashed. Open /dev/map.html; `map=test-street` picks the test street, `px`
-// sets the pixels to a metre, and `sketch` draws the town's sketch (see
-// dev/townsketch.ts) over it: its buildings' outlines, ways and spawn zones.
+// dashed. Open /dev/map.html for Deathmatch's map; `map=old` picks the old
+// town, `map=test-street` the test street, `px` sets the pixels to a metre,
+// and `sketch` draws the map's plan over it: the old town's sketch (see
+// dev/townsketch.ts), its buildings' outlines, ways and spawn zones, or the
+// named places a map without buildings is planned as.
 
 const q = new URLSearchParams(location.search);
-const MAPS: Record<string, GameMap> = { calabianca: CALABIANCA, 'test-street': TEST_STREET, 'kit-yard': KIT_YARD };
-const map = MAPS[q.get('map') ?? 'calabianca'] ?? CALABIANCA;
+const MAPS: Record<string, GameMap> = { calabianca: CALABIANCA_2, old: CALABIANCA, 'test-street': TEST_STREET, 'kit-yard': KIT_YARD };
+const map = MAPS[q.get('map') ?? 'calabianca'] ?? CALABIANCA_2;
 const world = new World(1, map);
 const b = world.bounds;
 const MARGIN = 8;
@@ -75,6 +78,16 @@ g.setLineDash([]);
 if (q.has('sketch') && map === CALABIANCA) {
   const at = SKETCH.at;
   drawSketch(SKETCH, { g, px: (x) => px(x + at.x), pz: (z) => pz(z + at.z), scale, layers: new Set(['buildings', 'routes', 'spawns']), outline: true });
+}
+if (q.has('sketch') && map.areas) {
+  g.lineWidth = 1;
+  g.font = '11px system-ui, sans-serif';
+  for (const a of map.areas) {
+    g.strokeStyle = 'rgba(255,120,200,0.8)';
+    g.strokeRect(px(a.minX), pz(a.minZ), (a.maxX - a.minX) * scale, (a.maxZ - a.minZ) * scale);
+    g.fillStyle = '#ffd0ee';
+    g.fillText(a.name, px(a.minX) + 3, pz(a.minZ) + 12);
+  }
 }
 
 // The lanes and streets.

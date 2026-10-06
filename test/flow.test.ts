@@ -69,7 +69,7 @@ describe('The town\'s flow', () => {
   });
 
   it('sends bots up to watch from windows and roofs', { timeout: 60_000 }, () => {
-    const server = new GameServer(1, MODES.deathmatch.options);
+    const server = new GameServer(1, { ...MODES.deathmatch.options, map: CALABIANCA });
     let up = 0;
     let all = 0;
     for (let t = 0; t < 90 * SERVER_TICK_RATE; t++) {

@@ -364,7 +364,8 @@ export class Props {
     for (const [shape, mesh] of this.meshes) {
       mesh.geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(layers.get(mesh)!, 1));
       if (shape === 'glass') continue;
-      mesh.instanceColor!.needsUpdate = true;
+      // A shape no prop on the map is drawn with has no colours.
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       old.add(mesh.material as THREE.Material);
       mesh.material = solid;
     }
