@@ -884,6 +884,15 @@ notes the chunk it came from.
 - **Doors are painted by where they stand** (chunk 59), one of four colours, not in their
   building's own paint as its shutters are.
   **Moot** (65): the doors were removed; doorways are plain openings.
+- **A pitched roof's overhang reaches into a taller neighbour** (chunk 56, found in chunk 62):
+  its slopes run 0.25 m past a gable standing against a taller building's 0.3 m wall, so
+  about 10 cm of them shows inside that building's room (as where two of the west's houses
+  meet, one a storey higher). The ridge and verge tiles stop short of such a gable.
+  **Resolved** (66): each slope stops at the middle of the wall its gable shares with a
+  building it stands against, judged under the ridge and under that slope's eave, so a gable
+  only partly against a neighbour (one in the west has a free middle and a corner in the next
+  house) keeps its overhang on the slope that looks out. The ridge and verge tiles stop as
+  before. A test checks no slope of Calabianca's reaches into another building's room.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
@@ -1929,6 +1938,15 @@ notes the chunk it came from.
   more parallel runs it passed. In chunk 63 it failed so in one of three full runs.
   **Moot** (65): the doors and the test went. The other stalls seen under load (the textures'
   and the death cam's tests) stay in Known Issues as "Browser tests can stall under load".
+- **Bots can't search about one crate in ten inside buildings** (chunk 51): the search spot,
+  1.4 m out from the crate, falls on no open cell of the nav grid when the crate stands in a
+  corner close to a wall or partition: 10 of 102 crates in the outposts' and huts' buildings on
+  islands 1–6. Players can search them.
+  **Resolved** (66): where none of the ring 0.9 m out from the crate is open, its search spot is
+  the place nearest it, tried every 10 cm, where a body fits on its floor in a cell bots walk,
+  within the reach the server allows less a quarter metre, with nothing between the eyes and the
+  crate. The other 92 crates' spots are as before. A test walks a body along the path from
+  outside each building to every crate on islands 1–6 and finds it ends within reach.
 
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
@@ -2271,6 +2289,13 @@ notes the chunk it came from.
   trees' and the reflection's cuts the town's frame with 16 soldiers holds the island's with
   24 (see the open item on its empty frame). A cold first load of the town takes as long as the
   island's, about 12 s on an M3 Pro, and a warm one 0.9 s.
+- **The dev view of a test map can't be played** (chunk 56): `?map=kit-yard` builds the client's
+  world from the test map behind the menu, but a game started from it is played on the mode's
+  own world by the server, so nothing matches.
+  **Resolved** (66): the test map's name goes to the local host in the hello, in development
+  only (`maps/dev.ts`), and a game started from it is a Deathmatch on that map, whatever mode
+  was picked; production builds leave the test maps out. A browser test starts one on the kit
+  yard and comes in at one of its spawn points.
 
 ## Dropped
 

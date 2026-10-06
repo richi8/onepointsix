@@ -1,4 +1,4 @@
-import { EYE_HEIGHT, GUARD_PATROLS, GUARDS_PER_OUTPOST, PLAYER_HEIGHT } from '../shared/constants.ts';
+import { EYE_HEIGHT, GUARD_PATROLS, GUARDS_PER_OUTPOST, INTERACT_REACH, PLAYER_HEIGHT } from '../shared/constants.ts';
 import { yawToward } from '../shared/geom.ts';
 import { lootCrates } from '../shared/loot.ts';
 import { BOLT, RIFLE } from '../shared/weapons.ts';
@@ -373,7 +373,7 @@ function outpostRoute(world: World, nav: NavGrid, o: Point, rand: () => number):
 }
 
 /** A dry spot next to a crate to search it from, looking at its top: on the floor it stands on, if that's upstairs. */
-function searchSpot(world: World, nav: NavGrid, box: { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }): LootSpot | null {
+export function searchSpot(world: World, nav: NavGrid, box: { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }): LootSpot | null {
   const cx = (box.minX + box.maxX) / 2;
   const cz = (box.minZ + box.maxZ) / 2;
   const reach = Math.max(box.maxX - box.minX, box.maxZ - box.minZ) / 2 + 0.9;
@@ -391,8 +391,44 @@ function searchSpot(world: World, nav: NavGrid, box: { minX: number; minY: numbe
     if (!nav.dry(x, z)) continue;
     return { ...ground(world, x, z), look };
   }
-  return null;
+  return nearSpot(world, nav, box, upstairs ? box.minY : undefined);
 }
+
+/**
+ * For a crate in a corner, or close by a wall or partition, where none of
+ * searchSpot's ring is open: the place nearest it all round, every 10 cm,
+ * where a body fits in a cell bots walk, still within reach, on its floor
+ * and with nothing between; or null.
+ */
+function nearSpot(world: World, nav: NavGrid, box: { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }, floor?: number): LootSpot | null {
+  const cx = (box.minX + box.maxX) / 2;
+  const cz = (box.minZ + box.maxZ) / 2;
+  const look = { x: cx, y: box.maxY, z: cz };
+  const base = floor ?? world.floorHeight(cx, cz);
+  const far = INTERACT_REACH - SEARCH_SLACK;
+  let best: LootSpot | null = null;
+  let bestD = far;
+  for (let x = box.minX - far; x <= box.maxX + far; x += 0.1) {
+    for (let z = box.minZ - far; z <= box.maxZ + far; z += 0.1) {
+      // How far from the crate's side: the server's reach.
+      const d = Math.hypot(x - Math.min(Math.max(x, box.minX), box.maxX), z - Math.min(Math.max(z, box.minZ), box.maxZ));
+      if (d >= bestD || d < 0.3) continue;
+      const y = world.groundHeight(x, z, base);
+      if (Math.abs(y - base) > 0.4 || !world.fits(x, y, z, PLAYER_HEIGHT)) continue;
+      if (!nav.stands(x, y, z)) continue;
+      const ey = y + EYE_HEIGHT;
+      const to = Math.hypot(cx - x, look.y - ey, cz - z);
+      // Nothing in the way before the crate itself.
+      if (world.raycast(x, ey, z, (cx - x) / to, (look.y - ey) / to, (cz - z) / to, to) < d) continue;
+      best = { x, y, z, look };
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** How far inside the server's reach of a crate a search spot keeps, for a bot that stops a little short. */
+const SEARCH_SLACK = 0.25;
 
 function ground(world: World, x: number, z: number): Point {
   return { x, y: world.groundHeight(x, z, world.floorHeight(x, z)), z };

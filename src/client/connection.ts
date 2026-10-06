@@ -105,13 +105,13 @@ export class Connection {
 
   /**
    * Quick-joins a game of `mode` on the island as `name`, `player` being this browser's id for
-   * the scoreboard; the transport is shared by every run.
+   * the scoreboard, or on the test map `map` in development; the transport is shared by every run.
    */
-  constructor(config: WorldConfig, world: World, mode: Mode, name: string, transport: LagTransport<ClientMsg, ServerMsg>, player?: string) {
+  constructor(config: WorldConfig, world: World, mode: Mode, name: string, transport: LagTransport<ClientMsg, ServerMsg>, player?: string, map?: string) {
     this.predictor = new Predictor(world);
     this.transport = transport;
     this.transport.onMessage = (msg) => this.handle(msg);
-    this.transport.send({ t: 'hello', name, world: config, mode, ...(player ? { player } : {}) });
+    this.transport.send({ t: 'hello', name, world: config, mode, ...(player ? { player } : {}), ...(map ? { map } : {}) });
   }
 
   /** A copy of the last TAPE_TIME seconds as this client saw them. */

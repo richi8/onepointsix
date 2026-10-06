@@ -7,6 +7,7 @@ import { pavingAt } from '../src/shared/maps/index.ts';
 import { World } from '../src/shared/world.ts';
 import { Dressing, dressFacades } from '../src/client/dressing.ts';
 import { features, replacedProps } from '../src/client/features.ts';
+import { gableGeometry } from '../src/client/structures.ts';
 import { Surfaces } from '../src/client/surface.ts';
 import { faces } from '../src/client/surfaces.ts';
 import { townLayer } from '../src/client/townlook.ts';
@@ -93,9 +94,10 @@ describe('Calabianca\'s dressing', () => {
   });
 
   it('draws each feature in place of its box and keeps every other prop, and its shapes whole', () => {
-    const looks = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'car', 'sandbags', 'rubble']);
+    const looks = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble']);
     const replaced = replacedProps(town);
-    expect(replaced.size).toBe(CALABIANCA.walls.filter((w) => w.look && looks.has(w.look)).length);
+    // Each feature's box, or the boxes it collides as in its place.
+    expect(replaced.size).toBe(CALABIANCA.walls.filter((w) => w.look && looks.has(w.look)).reduce((n, w) => n + (w.collides?.length ?? 1), 0));
     for (const i of replaced) expect(town.props[i].box.part).toBe('wall');
     expect(replacedProps(island).size).toBe(0);
     const boxes = new Boxes();
@@ -179,5 +181,36 @@ describe('Calabianca\'s dressing, for speed', () => {
       if (sphere.radius > TILE * 1.5) big++;
     }
     expect(big).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('Calabianca\'s pitched roofs', () => {
+  it('reach no slope into a room of a building they stand against', () => {
+    const { geometry, plaster } = gableGeometry(town);
+    const pos = geometry.getAttribute('position');
+    const inside: string[] = [];
+    for (let i = 0; i < pos.count; i++) {
+      if (plaster[i] >= 0) continue;
+      const [x, y, z] = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+      // Well inside a room: past the inner face of its walls, under its roof.
+      const b = town.buildings.find((b) => y > b.floor && y < b.roof && b.parts.some((r) => x > r.minX + 0.2 && x < r.maxX - 0.2 && z > r.minZ + 0.2 && z < r.maxZ - 0.2));
+      if (b) inside.push(`${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}`);
+    }
+    expect(inside).toEqual([]);
+  });
+});
+
+describe('Calabianca\'s rubble', () => {
+  it('collides as a heap, low at its edges and highest in its middle, as drawn', () => {
+    const heaps = CALABIANCA.walls.filter((w) => w.look === 'rubble');
+    expect(heaps.length).toBe(2);
+    for (const h of heaps) {
+      const [cx, cz] = [(h.minX + h.maxX) / 2, (h.minZ + h.maxZ) / 2];
+      const top = (x: number, z: number) => 40 - town.raycast(x, 40, z, 0, -1, 0, 60);
+      expect(top(cx, cz)).toBeCloseTo(h.y1, 3);
+      const edge = top(cx + (h.maxX - h.minX) * 0.45, cz);
+      expect(edge).toBeLessThan(h.y1 - (h.y1 - h.y0 - 0.4) * 0.5);
+      expect(edge).toBeGreaterThan(h.y0 + 0.4);
+    }
   });
 });

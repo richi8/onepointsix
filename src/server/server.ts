@@ -58,7 +58,7 @@ import { applyCmd, copyState, eyePosition, motionOf, spawnState, type PlayerStat
 import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { bagShows, vegetationOf } from '../shared/vegetation.ts';
-import { mapFor } from '../shared/maps/index.ts';
+import { mapFor, type GameMap } from '../shared/maps/index.ts';
 import { World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
@@ -199,6 +199,8 @@ export interface ServerOptions {
   thorough?: boolean;
   /** The range: actors round outpost 0, players unhurt and their run's clock stopped (see range.ts). */
   range?: boolean;
+  /** Played on this map in place of the mode's world, as a test map is in development (default the mode's). */
+  map?: GameMap;
 }
 
 /**
@@ -262,7 +264,7 @@ export class GameServer {
     this.options = options;
     this.mode = options.mode ?? 'extraction';
     this.forecast = new Forecast(this.seed, options.weather);
-    this.world = new World(this.seed, mapFor(this.mode));
+    this.world = new World(this.seed, options.map ?? mapFor(this.mode));
     this.spawnRng = mulberry32(this.seed ^ 0x5bd1e995);
     this.botRng = mulberry32(this.seed ^ 0x68e31da4);
     this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);

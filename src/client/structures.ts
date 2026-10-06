@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { KIT_WALL } from '../shared/kit.ts';
 import { Layer } from '../shared/layers.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { watchtower, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { surfaceMaterial, UV } from './surfaces.ts';
 import { onTiles } from './terrain.ts';
+import { freeGables, OVERHANG } from './roofs.ts';
 
 // The watchtowers and shipping containers, built from their parts rather than
 // drawn as the boxes they collide as: a tower of posts and cross braces under
@@ -32,8 +34,6 @@ const PLASTER_SHADE = 0.63;
 /** Roof tiles' terracotta, flat and as a tint over their texture. */
 const TILES_FLAT = 0x8a4330;
 const TILES_TINT = 0xf4ece4;
-/** How far a pitched roof reaches past its walls, at its eaves and its gables. */
-export const OVERHANG = 0.25;
 
 /** A map building's plaster `colour` (or the plain grey), flat or as a tint over the concrete texture. */
 export function plasterColor(colour: number | undefined, textured: boolean, out: THREE.Color): THREE.Color {
@@ -49,7 +49,7 @@ export function plasterColor(colour: number | undefined, textured: boolean, out:
  * The slopes carry `surfUv`, metres along the ridge and down from it, so the
  * tiles run down them; each roof's tiles are a shade of their own.
  */
-function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster: number[]; shade: number[] } {
+export function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster: number[]; shade: number[] } {
   const pos: number[] = [];
   const uv: number[] = [];
   const plaster: number[] = [];
@@ -76,12 +76,14 @@ function gableGeometry(world: World): { geometry: THREE.BufferGeometry; plaster:
     const vm = (v0 + v1) / 2;
     const top = g.y + g.rise;
     const drop = (OVERHANG * g.rise * 2) / (v1 - v0);
-    const [a0, a1] = [u0 - OVERHANG, u1 + OVERHANG];
     // How far down the slope the eaves are from the ridge.
     const slope = Math.hypot(vm - v0 + OVERHANG, g.rise + drop);
     // The slopes, each wound to face up and out whichever way the axes run.
     const flip = alongX ? 1 : -1;
     for (const [ve, side] of [[v0 - OVERHANG, -1], [v1 + OVERHANG, 1]] as const) {
+      // Out past each gable, but against another building only to the middle of the wall they share.
+      const [free0, free1] = freeGables(world, g, side);
+      const [a0, a1] = [free0 ? u0 - OVERHANG : u0 + KIT_WALL / 2, free1 ? u1 + OVERHANG : u1 - KIT_WALL / 2];
       const eave = [at(a0, ve, g.y - drop), at(a1, ve, g.y - drop)];
       const ridge = [at(a0, vm, top), at(a1, vm, top)];
       // Along the ridge one way on one slope and the other on the other, so neither is mirrored.

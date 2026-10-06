@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Layer } from '../shared/layers.ts';
+import type { KitGable } from '../shared/kit.ts';
 import type { World } from '../shared/world.ts';
-import { OVERHANG } from './structures.ts';
 import { Boxes, Shapes, stuff, type Stuff } from './townparts.ts';
 
 // What a map's pitched roofs carry besides their slopes (see structures.ts):
@@ -49,11 +49,42 @@ function pipe(shapes: Shapes, a: THREE.Vector3, b: THREE.Vector3, r: number, s: 
   shapes.add(g, frame(a, b.clone().sub(a), Math.abs(b.y - a.y) > 0.9 * len ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0)), s);
 }
 
+/** How far a pitched roof reaches past its walls, at its eaves and its gables. */
+export const OVERHANG = 0.25;
+
+/** Inside a building's walls, rooms and roof space being open air to collide with. */
+function withinAny(world: World, p: THREE.Vector3): boolean {
+  return world.buildings.some((b) => b.parts.some((r) => p.x > r.minX && p.x < r.maxX && p.z > r.minZ && p.z < r.maxZ) && p.y > b.floor - 0.5 && p.y < b.roof + 6);
+}
+
+/** Out in the open air: over the ground, clear of everything and in no building. */
+function openAir(world: World, p: THREE.Vector3): boolean {
+  return p.y > world.terrainHeight(p.x, p.z) + 0.05 && world.clearAsBuilt(p.x, p.y - 0.05, p.z, 0.1, 0.02) && !withinAny(world, p);
+}
+
+/**
+ * Whether each of a pitched roof's gables, at its low and high end along the
+ * ridge, looks out over open air under the ridge, or stands against another
+ * building, which its ridge and verge tiles then stop at. With `side`, the
+ * slope on that side of the ridge (-1 the lower v, 1 the higher): open
+ * under the ridge and under that slope's eave too, or its slope stops there.
+ */
+export function freeGables(world: World, g: KitGable, side?: -1 | 1): [boolean, boolean] {
+  const alongX = g.ridge === 'x';
+  const [u0, u1] = alongX ? [g.rect.minX, g.rect.maxX] : [g.rect.minZ, g.rect.maxZ];
+  const [v0, v1] = alongX ? [g.rect.minZ, g.rect.maxZ] : [g.rect.minX, g.rect.maxX];
+  const vm = (v0 + v1) / 2;
+  const at = (u: number, v: number, y: number) => (alongX ? new THREE.Vector3(u, y, v) : new THREE.Vector3(v, y, u));
+  const spots = [[vm, g.y + 0.3], [vm, g.y + g.rise * 0.7]];
+  if (side) spots.push([side < 0 ? v0 + 0.3 : v1 - 0.3, g.y + 0.3]);
+  const free = (u: number, out: number) => spots.every(([v, y]) => openAir(world, at(u + out * 0.45, v, y)));
+  return [free(u0, -1), free(u1, 1)];
+}
+
 /** Every pitched roof's tiles, rafters, gutters and downpipes, into `boxes` and `shapes`. */
 export function roofs(world: World, boxes: Boxes, shapes: Shapes): void {
-  /** Inside a building's walls, rooms and roof space being open air to collide with. */
-  const within = (p: THREE.Vector3) => world.buildings.some((b) => b.parts.some((r) => p.x > r.minX && p.x < r.maxX && p.z > r.minZ && p.z < r.maxZ) && p.y > b.floor - 0.5 && p.y < b.roof + 6);
-  const open = (p: THREE.Vector3) => p.y > world.terrainHeight(p.x, p.z) + 0.05 && world.clearAsBuilt(p.x, p.y - 0.05, p.z, 0.1, 0.02) && !within(p);
+  const within = (p: THREE.Vector3) => withinAny(world, p);
+  const open = (p: THREE.Vector3) => openAir(world, p);
   for (const g of world.gables) {
     const alongX = g.ridge === 'x';
     /** World point at u along the ridge, v across it and y up. */
@@ -67,8 +98,7 @@ export function roofs(world: World, boxes: Boxes, shapes: Shapes): void {
     const top = g.y + g.rise;
     const drop = (OVERHANG * g.rise) / half;
     // Out past each gable, unless it stands against another building.
-    const free = (u: number, out: number) => open(at(u + out * 0.45, vm, g.y + 0.3)) && open(at(u + out * 0.45, vm, g.y + g.rise * 0.7));
-    const [free0, free1] = [free(u0, -1), free(u1, 1)];
+    const [free0, free1] = freeGables(world, g);
     const [a0, a1] = [free0 ? u0 - OVERHANG : u0 + 0.02, free1 ? u1 + OVERHANG : u1 - 0.02];
     const angle = Math.atan2(g.rise, half);
     const up = dir(0, 0, 1);

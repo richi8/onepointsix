@@ -100,17 +100,14 @@ try {
 }
 /**
  * In development, `?map=kit-yard` or `?map=test-street` shows that test map
- * behind the menu, to look at the building kit: only to look at, as a game
- * started from it is played on the mode's own.
+ * (see maps/dev.ts) behind the menu, to look at the building kit, and a game
+ * started from it is a Deathmatch on it, whatever the mode picked.
  */
-const devMap = import.meta.env.DEV ? new URLSearchParams(location.search).get('map') : null;
+const devMapName = import.meta.env.DEV ? new URLSearchParams(location.search).get('map') : null;
+const devMap = devMapName ? (await import('../shared/maps/dev.ts')).TEST_MAPS[devMapName] : undefined;
+if (devMap) mode = 'deathmatch';
 /** The island from the seed, or the mode's fixed map: Deathmatch's. */
-const world = new World(
-  config.seed,
-  devMap === 'kit-yard' ? (await import('../shared/maps/kityard.ts')).KIT_YARD
-    : devMap === 'test-street' ? (await import('../shared/maps/teststreet.ts')).TEST_STREET
-    : mapFor(mode),
-);
+const world = new World(config.seed, devMap ?? mapFor(mode));
 /** Its weather over a game, as the server works it out. */
 const forecast = new Forecast(config.seed);
 /**
@@ -560,6 +557,8 @@ const briefMode = briefingLine(MODE_NOTES);
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#modes button')];
 
 function selectMode(m: Mode): void {
+  // On a test map, only Deathmatch.
+  if (devMap) m = 'deathmatch';
   if (mapFor(m) !== world.map && !devMap) {
     // Deathmatch is played on a map of its own: the page loads again to build it.
     try {
@@ -694,7 +693,7 @@ function join(): void {
   killedBy = null;
   bodies.forget();
   mySoak = new Soak();
-  conn = new Connection(config, world, mode, playerName(), transport, playerId);
+  conn = new Connection(config, world, mode, playerName(), transport, playerId, devMap ? devMapName! : undefined);
   conn.onFx = (fx) => weaponFx(fx, () => conn?.interpolated() ?? []);
   conn.onEvents = (events, time) => events.forEach((e) => onEvent(e, time));
   conn.onWelcome = (cover) => showCover(cover);

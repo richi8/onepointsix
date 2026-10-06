@@ -219,8 +219,9 @@ export type ClientMsg =
   // Quick join: the client wants to play `mode` on this island. Sent again for another run.
   // `player` is a random id the browser keeps, so their record on the scoreboard follows them
   // from run to run, whatever their name; it's never sent to anyone else. Without one, each run
-  // starts a fresh record.
-  | { t: 'hello'; name: string; world: WorldConfig; mode: Mode; player?: string }
+  // starts a fresh record. In development, `map` names a test map (see maps/dev.ts) to play
+  // as Deathmatch in place of the mode's world; a real server must ignore it.
+  | { t: 'hello'; name: string; world: WorldConfig; mode: Mode; player?: string; map?: string }
   // Back to the menu.
   | { t: 'leave' }
   // In Deathmatch, dead: back in now, the death cam watched or skipped.

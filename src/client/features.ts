@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { WATER_LEVEL } from '../shared/constants.ts';
 import { Layer } from '../shared/layers.ts';
 import type { MapBox, MapLook } from '../shared/maps/index.ts';
@@ -27,9 +26,6 @@ const TRUCK_CAB = plain(0x2f5a80);
 const STEEL = stuff(Layer.metal, 0xa8b0aa, 0x6e7670);
 const ROOF = plain(0xa45a3c);
 const FRUIT = [plain(0xe08a20), plain(0xf0d040), plain(0xc0302a), plain(0x5a8a2a), plain(0x7a3a6a)];
-/** Old cars' paint: pale blue, cream, faded red, bottle green. */
-const CARS = [0x8fb4c8, 0xe8dcc0, 0xa8443a, 0x3f5e48];
-const CHROME = plain(0xc8ccc8);
 const BURLAP = [plain(0xb8a47a), plain(0xa89468), plain(0xc4b088)];
 const DEBRIS = stuff(Layer.concrete, 0xf0ebe0, 0xc8c0b0);
 const RUBBLE = stuff(Layer.plaster, 0xeee8dc, 0xd8d0c0);
@@ -198,69 +194,6 @@ function wheelhouse(shapes: Shapes, m: THREE.Matrix4, x0: number, x1: number, wi
   shapes.add(new THREE.TorusGeometry(0.22, 0.06, 6, 14), m.clone().multiply(buoy), plain(0xe0502a));
 }
 
-/** The ground at (x, z) on a ramp of the map's, or null off them all. */
-function onRamp(world: World, x: number, z: number): number | null {
-  for (const r of world.map!.ramps ?? []) {
-    if (x < r.minX || x > r.maxX || z < r.minZ || z > r.maxZ) continue;
-    const f = r.climbs === '-x' ? (r.maxX - x) / (r.maxX - r.minX) : r.climbs === '+x' ? (x - r.minX) / (r.maxX - r.minX)
-      : r.climbs === '-z' ? (r.maxZ - z) / (r.maxZ - r.minZ) : (z - r.minZ) / (r.maxZ - r.minZ);
-    return r.y0 + (r.y1 - r.y0) * f;
-  }
-  return null;
-}
-
-/**
- * A small old saloon, rounded, over the box `b`, its front toward +u as the
- * hash falls: its body on four wheels, the glasshouse over it under a roof
- * on pillars, bumpers and lamps at either end. On a ramp, it leans with it.
- */
-function car(shapes: Shapes, world: World, b: MapBox, alongX: boolean, rand: () => number): void {
-  const [cx, cz] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
-  const [len, wid] = alongX ? [b.maxX - b.minX, b.maxZ - b.minZ] : [b.maxZ - b.minZ, b.maxX - b.minX];
-  const [L, W] = [len / 2, wid / 2];
-  const paint = plain(CARS[Math.floor(rand() * CARS.length)]);
-  const dir = rand() < 0.5 ? 1 : -1;
-  // Its own frame: x along it toward its front, y up from the ground under it, z across.
-  const ux = alongX ? dir : 0;
-  const uz = alongX ? 0 : dir;
-  const ground = (u: number) => onRamp(world, cx + ux * u, cz + uz * u) ?? standsOn(world, b);
-  const [front, back] = [ground(L), ground(-L)];
-  const frame = new THREE.Matrix4()
-    .makeTranslation(cx, (front + back) / 2, cz)
-    .multiply(new THREE.Matrix4().makeRotationY(Math.atan2(-uz, ux)))
-    .multiply(new THREE.Matrix4().makeRotationZ(Math.atan2(front - back, len)));
-  const H = b.y1 - Math.max(front, back);
-  const part = (g: THREE.BufferGeometry, x: number, y: number, z: number, st: Stuff) => shapes.add(g, frame.clone().multiply(new THREE.Matrix4().makeTranslation(x, y, z)), st);
-  const block = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, st: Stuff) => part(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, st);
-  const body = 0.62;
-  const sill = 0.24 + body;
-  part(new RoundedBoxGeometry(len, body, wid, 3, 0.22), 0, 0.24 + body / 2, 0, paint);
-  // The glasshouse a frustum, its sides leaning in: a four-sided cylinder turned square.
-  const cabin = H - sill - 0.06;
-  const glass = new THREE.CylinderGeometry(Math.SQRT1_2 * 0.78, Math.SQRT1_2, cabin, 4, 1).rotateY(Math.PI / 4).scale(len * 0.5, 1, wid - 0.16);
-  part(glass, -len * 0.06, sill + cabin / 2, 0, GLASS);
-  part(new RoundedBoxGeometry(len * 0.4, 0.07, (wid - 0.16) * 0.8, 2, 0.03), -len * 0.06, H - 0.04, 0, paint);
-  for (const u of [-len * 0.27, len * 0.15]) {
-    for (const v of [-1, 1]) {
-      const a = new THREE.Vector3(-len * 0.06 + (u + len * 0.06) * 1.19, sill, v * ((wid - 0.16) / 2 - 0.02)).applyMatrix4(frame);
-      const c = new THREE.Vector3(u, H - 0.06, v * (wid - 0.16) * 0.39).applyMatrix4(frame);
-      rod(shapes, a, c, 0.035, paint, 5);
-    }
-  }
-  for (const x of [-L - 0.04, L - 0.06]) block(x, 0.32, -W + 0.06, x + 0.1, 0.42, W - 0.06, CHROME);
-  for (const z of [-W + 0.3, W - 0.3]) {
-    block(L - 0.06, 0.6, z - 0.1, L + 0.01, 0.72, z + 0.1, plain(0xf4f0dc));
-    block(-L - 0.01, 0.58, z - 0.08, -L + 0.06, 0.68, z + 0.08, plain(0xb02820));
-  }
-  for (const x of [-L + 0.7, L - 0.7]) {
-    for (const z of [-W + 0.14, W - 0.14]) {
-      const turn = new THREE.Matrix4().makeRotationX(Math.PI / 2);
-      shapes.add(new THREE.CylinderGeometry(0.3, 0.3, 0.18, 14), frame.clone().multiply(new THREE.Matrix4().makeTranslation(x, 0.3, z)).multiply(turn), WHEEL);
-      shapes.add(new THREE.CylinderGeometry(0.14, 0.14, 0.22, 10), frame.clone().multiply(new THREE.Matrix4().makeTranslation(x, 0.3, z)).multiply(turn), HUB);
-    }
-  }
-}
-
 /** The ground a feature stands on: the terrain or a terrace over it, but not below its box. */
 export function standsOn(world: World, b: MapBox): number {
   const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
@@ -270,13 +203,13 @@ export function standsOn(world: World, b: MapBox): number {
 }
 
 /** The looks drawn in place of their boxes; the rest are drawn over them. */
-const REPLACED: ReadonlySet<MapLook> = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'car', 'sandbags', 'rubble']);
+const REPLACED: ReadonlySet<MapLook> = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble']);
 
 /** The props drawn here in place of their boxes. */
 export function replacedProps(world: World): Set<number> {
   const out = new Set<number>();
   if (!world.map) return out;
-  const looks = world.map.walls.filter((w) => w.look && REPLACED.has(w.look));
+  const looks = world.map.walls.filter((w) => w.look && REPLACED.has(w.look)).flatMap((w) => w.collides ?? [w]);
   if (!looks.length) return out;
   world.props.forEach((p, i) => {
     const b = p.box;
@@ -390,10 +323,6 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
         rod(shapes, new THREE.Vector3(cx, top + 1.3, cz), new THREE.Vector3(cx, top + 1.6, cz), 0.35, STONE, 14, 1);
         rod(shapes, new THREE.Vector3(cx, top + 1.55, cz), new THREE.Vector3(cx, top + 1.58, cz), 0.92, WATER, 14);
         rod(shapes, new THREE.Vector3(cx, top + 1.6, cz), new THREE.Vector3(cx, top + 2.3, cz), 0.12, STONE, 8, 0.06);
-        break;
-      }
-      case 'car': {
-        car(shapes, world, b, alongX, rand);
         break;
       }
       case 'sandbags': {

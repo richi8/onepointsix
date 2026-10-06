@@ -191,6 +191,8 @@ export interface MapBox extends Rect {
   walk?: boolean;
   /** What it is, for how it's drawn alone: a plain stone box if left out. */
   look?: MapLook;
+  /** The boxes it collides as, in place of itself, where what's drawn isn't a box (a heap of rubble). */
+  collides?: (Rect & { y0: number; y1: number })[];
 }
 
 /**
@@ -199,7 +201,7 @@ export interface MapBox extends Rect {
  */
 export type MapLook =
   | 'truck' | 'stall' | 'cart' | 'fountain' | 'plane' | 'olive' | 'memorial' | 'kiosk' | 'boat'
-  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'car' | 'sandbags' | 'rubble';
+  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'sandbags' | 'rubble';
 
 /**
  * A flight of steps outside, `width` wide, its foot's middle at (x, z) on
@@ -332,7 +334,7 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
       flights: b.flights?.map(at),
       crates: b.crates?.map(at),
     })),
-    walls: map.walls.map(rect),
+    walls: map.walls.map((w) => ({ ...rect(w), ...(w.collides ? { collides: w.collides.map(rect) } : {}) })),
     stairs: map.stairs.map(at),
     ramps: map.ramps?.map(rect),
     props: map.props.map((p) => (p.kind === 'crate' ? at(p) : rect(p))),

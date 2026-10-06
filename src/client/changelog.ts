@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-06',
+    title: 'Calabianca tidied, and bots search every crate',
+    notes: [
+      'The two old cars are gone from Calabianca’s high street and the road up from the quay.',
+      'The rubble by the ruined chapel is solid only where it’s heaped: low at its edges and highest in the middle, as it looks.',
+      'Roofs no longer poke through into the room of a taller house next door.',
+      'Bots now search crates standing in a corner or close by a wall, which they used to pass by.',
+    ],
+  },
+  {
+    date: '2026-10-06',
     title: 'No more doors',
     notes: [
       'Doors are gone, from the outposts and huts on the islands and from Calabianca: every doorway is an open way in. F no longer opens or shuts anything; it still searches, takes and calls a pickup.',

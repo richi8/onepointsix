@@ -80,3 +80,18 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
   expect(await page.evaluate(() => (window.game.world as { outposts: unknown[] }).outposts.length)).toBe(6);
   expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(true);
 });
+
+test('a test map behind the menu is played as Deathmatch on it', async ({ page }) => {
+  await open(page, '?map=kit-yard');
+  await expect(page.locator('#modes button.on')).toHaveAttribute('data-mode', 'deathmatch');
+  await page.click('#play');
+  await page.waitForFunction(() => !!window.game.conn?.run);
+  // In at one of the yard's spawn points, as the server has us.
+  const near = await page.evaluate(() => {
+    const me = window.game.conn!.predictor.state as unknown as { x: number; z: number };
+    const w = window.game.world as { map: { id: string } | null; spawns: { x: number; z: number }[] };
+    return [w.map?.id, Math.min(...w.spawns.map((s) => Math.hypot(s.x - me.x, s.z - me.z)))] as const;
+  });
+  expect(near[0]).toBe('kit-yard');
+  expect(near[1]).toBeLessThan(1);
+});

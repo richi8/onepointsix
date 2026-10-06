@@ -5,6 +5,7 @@
 import { SERVER_DT } from '../shared/constants.ts';
 import { FixedLoop, runLoop } from '../shared/loop.ts';
 import type { ClientMsg, ServerMsg } from '../shared/protocol.ts';
+import { TEST_MAPS } from '../shared/maps/dev.ts';
 import { Directory } from './directory.ts';
 import type { GameServer } from './server.ts';
 
@@ -21,7 +22,9 @@ self.onmessage = (e: MessageEvent<ClientMsg>) => {
   if (msg.t === 'hello') {
     // Each hello is a quick join for a new run; leave the last game first.
     if (current) current.game.disconnect(current.id);
-    const game = directory.quickJoin(msg.world, msg.mode);
+    // A test map only in development; a build players get leaves them out.
+    const map = import.meta.env.DEV && msg.map ? TEST_MAPS[msg.map] : undefined;
+    const game = directory.quickJoin(msg.world, msg.mode, map);
     current = { game, id: game.connect((m: ServerMsg) => self.postMessage(m)) };
   }
   if (!current) return;

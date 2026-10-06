@@ -437,11 +437,12 @@ but windows, crates, fences and door leaves (chunk 49), so its light can be bake
 ### Phase 9: simpler (still local only, Chrome only)
 
 Features that cost more than they give are taken out, to make the game simpler and clear the
-Known Issues they cause.
+Known Issues they cause, and the small Known Issues are cleared along the way.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
 | 65 | **No doors** | Door leaves removed in every mode, the doorways left as plain openings: the leaves, their swing, slanted colliders and the door paint; F opening and shutting them, the prediction, the prompt, the stuck toast and the sounds; bots opening, shutting and slamming them and the nav grid keeping off their swing; doors in the cover state, the welcome and the death cam; the Range's door routine; their tests. Extraction's islands otherwise exactly as they were | No door code is left, every island matches the old one prop for prop less its leaves, the bot playtest stays in the extraction baseline, and Deathmatch's sim has nobody stuck | **Done** (`World` has no `doors`, `Door`, `Turn` or slanted boxes; a doorway is a gap under its lintel. Islands keep drawing one number for each doorway from their buildings' stream, as the leaves' open or shut once did, so seeds 1–7 match chunk 64's islands in every prop, tree, rock, building and height, the leaves aside (the fingerprints in `test/maps.test.ts` re-recorded). The paving's wear round doorways is found from the façades' openings. The two door sounds came out of the late sound bank, re-encoded alone (the other two banks are as they were). `test/doors.test.ts`, `e2e/doors.e2e.ts` and the bots' door tests went; a new test walks every building on islands 1–6 from outside and finds every spot on its floors reached (chunk 64's code left spots unreached in 7 of 66 buildings, two of them one-room houses cut off by the table and an open leaf). The sound tests hear through doorways that can't be shut, and the reverb test smashes a crate in place of a slam. The bush-waits test counts over two islands, as on one the leaves' going left none in its first four minutes. Bot playtest, 30 min an island: 16% extracted on seeds 1–6 (chunk 64's code in the same session: 16%), 22% on 7–12 (21% at chunk 57). `sim:deathmatch -- 600 1,2,3`: nobody stuck, nobody spawned in sight, 63/79/78 deaths within 15 s of spawning (76/65/61 before). One screenshot re-recorded: `town-sandbags`, where the hotel's shut door is now a doorway. Whether rooms without doors play better is the testers') |
+| 66 | **Small fixes** | The Known Issues small enough to do at once: bots' search spots for crates in corners, the dev view of a test map played on that map, the rubble's and the cars' colliders, a pitched roof's overhang into a taller neighbour. The cars were removed instead, at the user's word that they didn't look good | Every crate in the islands' buildings is searched by bots, a game from `?map=kit-yard` is played on the kit yard, the rubble collides as drawn, no slope reaches into another building's room | **Done** (Search spots: where none of the ring 0.9 m out is open, the nearest place every 10 cm where a body fits on the crate's floor in a cell bots walk, within reach and in sight of it (`nearSpot` in `population.ts`); the other 92 of islands 1–6's 102 crates keep their spots, and a test walks to every one of them from outside. Test maps: named in `maps/dev.ts`, sent in the hello in development only and played as Deathmatch; production builds leave them out; a browser test plays one. A map's box can list the boxes it collides as (`MapBox.collides`); the rubble heaps collide as three tiers. The cars, their drawing and the `town-car` screenshot went; nothing took their place. Roofs: each slope stops at the middle of the wall its gable shares with a building it stands against (`freeGables`, judged per slope), and a test checks no slope reaches into another building's room. Bot playtest, 30 min an island: 19% extracted on seeds 1–6 (16% in chunk 65), 25% on 7–12 (22%), bots reaching the crates they used to skip; 19% is a point over the baseline's band, as accepted on 2026-10-03. `sim:deathmatch -- 600 1,2,3` without the cars: nobody stuck, kills from 40 m or more 3/4/4% (5/2/7% with them in chunk 65's run), 74/98/72 deaths within 15 s of spawning (63/79/78). No screenshot moved beyond tolerance) |
 
 ## Known Issues
 
@@ -471,10 +472,8 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Some features collide where nothing is drawn** (chunk 59): they're drawn over their boxes,
   which are solid all through: the 0.3 m over the lorry's cab, the corners of the hauled-out
   boats' boxes beside their hulls, the space under a cart's bed, a stall's under its counter's
-  edge. Since chunk 64 too: the cars' boxes fill out past their rounded bodies and over their
-  bonnets and boots up to the roof's height; the one on the road's ramp, a box level across its
-  slope, reaches 0.4 m over its roof at its lower end; a rubble heap is a box as high as its
-  peak, stood on flat.
+  edge. (Chunk 64's cars, whose boxes filled out past their bodies, were removed in chunk 66,
+  and its rubble heaps collide as three tiers, as drawn: their tiers' corners stand square.)
 - **The town's details are boxes** (chunk 59), **Resolved in part** (chunks 62, 63): leaves,
   flowers, window boxes and wheelhouses have real shapes, and the trees are real trees (chunk
   63), but the stalls, carts and the lorry's body are still boxes, and the ruined chapel is
@@ -506,10 +505,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Signs are drawn with the machine's own fonts** (chunk 62), Georgia and Arial where it has
   them, so their letters differ from machine to machine; they don't weather or get wet as the
   walls do. The lanterns are never lit, as the game is day only.
-- **A pitched roof's overhang reaches into a taller neighbour** (chunk 56, found in chunk 62):
-  its slopes run 0.25 m past a gable standing against a taller building's 0.3 m wall, so
-  about 10 cm of them shows inside that building's room (as where two of the west's houses
-  meet, one a storey higher). The ridge and verge tiles stop short of such a gable.
 - **The greenery costs 2–5 ms a frame** (chunk 63) on an M3 Pro at 1280 × 720: least in the
   market and from above, most looking at the hillside. Most of it is the trees' far tiles,
   which draw the plainer trees out to 145 m past a tile's edge (about 1,000 olives and 1,700
@@ -571,10 +566,6 @@ Nothing open: the last was resolved on 2026-10-03 (see the history).
 - **Island buildings still draw a number for each doorway** (chunk 65): the leaves were found
   open or shut from the buildings' stream, and dropping the draw would move everything placed
   after it on every island; so `addFacade` still draws it and throws it away.
-- **Bots can't search about one crate in ten inside buildings** (chunk 51): the search spot,
-  1.4 m out from the crate, falls on no open cell of the nav grid when the crate stands in a
-  corner close to a wall or partition: 10 of 102 crates in the outposts' and huts' buildings on
-  islands 1–6. Players can search them.
 
 - **A bot's first path through part of the town costs a hitch** (chunk 54), **resolved in part**
   (chunk 57): the nav grid works out whether a body gets between floor nodes the first time a
@@ -664,9 +655,6 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   no cell open in it, though a player walks through. A 2.2 m door has a cell open in it only
   where it's centred on a whole metre, as the maps have them so far; the kit's corner
   archways are 2.4 m for it.
-- **The dev view of a test map can't be played** (chunk 56): `?map=kit-yard` builds the client's
-  world from the test map behind the menu, but a game started from it is played on the mode's
-  own world by the server, so nothing matches.
 - **Every mode loads the town's textures** (chunk 59): the six new layers are stacked into the
   same arrays as the island's, 2.12 MB against 1.35 MB, transcoded on every first visit though
   only Deathmatch uses them. Warm loads didn't change (2.0 s locally, island and town); a slow
@@ -680,10 +668,11 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   fills half the view, its reflection still draws most of the town. The benchmark's GPU times
   come from timer queries, which on ANGLE's Metal disagree from run to run; only alternating
   runs of old and new code told a change apart.
-- **The new cover is placed by the simulation, not playtested** (chunk 64): the cars and
-  sandbags stand across the longest views `sim:deathmatch` drew (Via del Porto into the road,
-  the high street), and kills from 40 m or more came out about the same (4–6% against 3–6%);
-  whether they read as cover where a player wants it is the testers'. No more stalls or carts
+- **The new cover is placed by the simulation, not playtested** (chunk 64): the sandbags
+  stand across the longest views `sim:deathmatch` drew (Via del Porto into the road, along the
+  market's south side); whether they read as cover where a player wants it is the testers'.
+  The two cars that stood across the high street and the road's first leg were removed in
+  chunk 66, as they didn't look good, and nothing took their place. No more stalls or carts
   were added: the market's four and the three carts already break its views.
 
 ## Future

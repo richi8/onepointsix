@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NavGrid, reached, type Waypoint } from '../src/server/nav.ts';
-import { Btn, CMD_DT } from '../src/shared/constants.ts';
+import { Btn, CMD_DT, INTERACT_REACH } from '../src/shared/constants.ts';
+import { searchSpot } from '../src/server/population.ts';
 import { lootCrates } from '../src/shared/loot.ts';
 import { applyCmd, spawnState, type PlayerState } from '../src/shared/sim.ts';
 import { inBuilding, watchtower, World, type Box, type Building, type Point } from '../src/shared/world.ts';
@@ -118,6 +119,32 @@ describe('buildings', () => {
         expect(loot.some((l) => l.box === c.box && !l.rich)).toBe(true);
       }
     }
+  });
+
+  it('give every crate in them a spot bots search it from, walked to from outside', { timeout: 60_000 }, () => {
+    let n = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const w = new World(seed);
+      const nav = new NavGrid(w);
+      for (const b of w.buildings) {
+        for (const c of crates(w, b)) {
+          n++;
+          const at = `seed ${seed} crate at ${c.box.minX.toFixed(1)}, ${c.box.minZ.toFixed(1)}`;
+          const spot = searchSpot(w, nav, c.box);
+          expect(spot, at).not.toBeNull();
+          const from = nav.nearestWalkable((b.minX + b.maxX) / 2, b.minZ - 6)!;
+          const path = nav.findPath(from.x, from.z, spot!.x, spot!.z, undefined, spot!.y);
+          expect(path, at).not.toBeNull();
+          const p = spawnState(from.x, w.groundHeight(from.x, from.z, w.floorHeight(from.x, from.z)), from.z);
+          follow(w, p, path!, 40);
+          // Within reach of the crate's side, where the server lets it be searched.
+          const d = Math.hypot(p.x - Math.min(Math.max(p.x, c.box.minX), c.box.maxX), p.z - Math.min(Math.max(p.z, c.box.minZ), c.box.maxZ));
+          expect(d, at).toBeLessThan(INTERACT_REACH);
+          expect(Math.abs(p.y - spot!.y), at).toBeLessThan(0.3);
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(90);
   });
 
   it('can be walked into, room by room, by bots from outside', () => {

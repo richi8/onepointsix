@@ -1,4 +1,5 @@
 import { DEATHMATCH_CAPACITY, OPERATOR_CAPACITY, SERVER_DT } from '../shared/constants.ts';
+import type { GameMap } from '../shared/maps/index.ts';
 import type { Mode } from '../shared/protocol.ts';
 import { sameWorld, type WorldConfig } from '../shared/worldconfig.ts';
 import { GameServer, type ServerOptions } from './server.ts';
@@ -22,6 +23,8 @@ const IDLE_TIME: Record<Mode, number> = { extraction: 120, deathmatch: 0, range:
 interface Entry {
   world: WorldConfig;
   mode: Mode;
+  /** A test map it's played on, in development. */
+  map?: GameMap;
   server: GameServer;
   /** Seconds it has had no humans. */
   idle: number;
@@ -35,12 +38,14 @@ interface Entry {
 export class Directory {
   private readonly games: Entry[] = [];
 
-  quickJoin(world: WorldConfig, mode: Mode): GameServer {
+  /** A game of `mode` on `world`'s island, or with `map` a Deathmatch on that test map. */
+  quickJoin(world: WorldConfig, mode: Mode, map?: GameMap): GameServer {
+    if (map) mode = 'deathmatch';
     const { options, capacity } = MODES[mode];
-    const found = this.games.find((g) => sameWorld(g.world, world) && g.mode === mode && g.server.humans() < capacity);
+    const found = this.games.find((g) => sameWorld(g.world, world) && g.mode === mode && g.map === map && g.server.humans() < capacity);
     if (found) return found.server;
-    const server = new GameServer(world.seed, options);
-    this.games.push({ world: { seed: server.seed }, mode, server, idle: 0 });
+    const server = new GameServer(world.seed, { ...options, map });
+    this.games.push({ world: { seed: server.seed }, mode, map, server, idle: 0 });
     return server;
   }
 
