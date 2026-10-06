@@ -92,7 +92,7 @@ console.log(
   `camps given up for want of a spot that sees the extraction point ${share(tally.campless, tally.camps)}; ` +
   `hid from a fight nearby ${tally.hides}, ${share(tally.bushHides, tally.hides)} in a bush; paths through bushes and tall grass ${tally.hiddenPaths}; ` +
   `operators ducking out of sight of a shooter ${tally.pinned}, outgunned ${tally.outgunned}; ` +
-  `doors shut behind them ${tally.shuts}, ${tally.slams} of them on someone chasing; thinks spent upstairs or up a tower ${tally.upThinks}`,
+  `thinks spent upstairs or up a tower ${tally.upThinks}`,
 );
 console.log(
   `weather: rats lying low for fog seen coming ${tally.fogWaits}, crates taken on for fog ${tally.fogCrates} (given up as it lifted ${tally.fogLifts}), ` +

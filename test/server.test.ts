@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { World } from '../src/shared/world.ts';
 import { GameServer } from '../src/server/server.ts';
 import { Btn, CMD_DT, CMDS_PER_TICK } from '../src/shared/constants.ts';
 import type { InputCmd, ServerMsg } from '../src/shared/protocol.ts';
@@ -20,7 +19,7 @@ const fwd = (seq: number): InputCmd => ({ seq, buttons: Btn.Forward, yaw: 0, pit
 describe('GameServer', () => {
   it('welcomes a client with its id and the world seed', () => {
     const { inbox, id } = setup();
-    expect(inbox[0]).toEqual({ t: 'welcome', id, seed: 1, tick: 0, tickRate: 30, mode: 'extraction', broken: [], open: new World(1).openDoors() });
+    expect(inbox[0]).toEqual({ t: 'welcome', id, seed: 1, tick: 0, tickRate: 30, mode: 'extraction', broken: [] });
   });
 
   it('spawns players standing on dry land', () => {

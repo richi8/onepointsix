@@ -3,7 +3,7 @@ import { NavGrid, reached, type Waypoint } from '../src/server/nav.ts';
 import { Btn, CMD_DT } from '../src/shared/constants.ts';
 import { lootCrates } from '../src/shared/loot.ts';
 import { applyCmd, spawnState, type PlayerState } from '../src/shared/sim.ts';
-import { inBuilding, leafRect, watchtower, World, type Box, type Building, type Door, type Point } from '../src/shared/world.ts';
+import { inBuilding, watchtower, World, type Box, type Building, type Point } from '../src/shared/world.ts';
 
 const SEEDS = [1, 2, 3, 42, 1234];
 
@@ -21,9 +21,19 @@ function crates(w: World, b: Building) {
   return w.props.filter((p) => p.style === 'crate' && inside(b, p.box, 0));
 }
 
-/** The door leaves hung in a building's doorways. */
-function doors(w: World, b: Building): Door[] {
-  return w.doors.filter((d) => inBuilding(b, d.x, d.z, 0.01));
+/**
+ * A building's doorways, found by their lintels, 2.2 m over the floor: each
+ * one's middle, and the way in from outside, or (0, 0) for one between rooms.
+ */
+function doorways(w: World, b: Building): { x: number; z: number; inX: number; inZ: number }[] {
+  return w.props.filter((p) => p.box.part === 'wall' && inside(b, p.box, 0) && Math.abs(p.box.minY - b.floor - 2.2) < 1e-6).map(({ box }) => {
+    const x = (box.minX + box.maxX) / 2;
+    const z = (box.minZ + box.maxZ) / 2;
+    const [ax, az] = box.maxX - box.minX < box.maxZ - box.minZ ? [1, 0] : [0, 1];
+    const a = inBuilding(b, x + ax * 2, z + az * 2);
+    const c = inBuilding(b, x - ax * 2, z - az * 2);
+    return a === c ? { x, z, inX: 0, inZ: 0 } : a ? { x, z, inX: ax, inZ: az } : { x, z, inX: -ax, inZ: -az };
+  });
 }
 
 /** Walk forward facing along (dx, dz) for `seconds`. */
@@ -148,8 +158,6 @@ describe('buildings', () => {
       const nav = new NavGrid(w);
       for (const b of w.buildings.filter((h) => h.plan === 'tall')) {
         tall++;
-        // Doors open, as a bot would open them on the way.
-        w.doors.forEach((_, i) => w.setDoor(i, true));
         const [c] = crates(w, b).filter((k) => k.box.minY >= b.upper! - 1e-6);
         expect(c, `seed ${seed}`).toBeDefined();
         const spot = searchSpotOf(w, nav, c.box);
@@ -180,30 +188,37 @@ describe('buildings', () => {
     expect(tall).toBeGreaterThan(0);
   });
 
-  it('let a player through an open door but not a shut one, nor a wall', () => {
+  it('leave nowhere on their floors that bots can\'t walk to from outside', { timeout: 60_000 }, () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const w = new World(seed);
+      const nav = new NavGrid(w);
+      for (const b of w.buildings) {
+        const from = nav.nearestWalkable((b.minX + b.maxX) / 2, b.minZ - 6)!;
+        const area = { minX: b.minX - 8, minZ: b.minZ - 8, maxX: b.maxX + 8, maxZ: b.maxZ + 8 };
+        const left = nav.unreached(from.x, from.z, w.groundHeight(from.x, from.z, w.floorHeight(from.x, from.z)), area)
+          .filter((q) => inBuilding(b, q.x, q.z));
+        expect(left, `seed ${seed} ${b.plan} at ${b.minX.toFixed(0)}, ${b.minZ.toFixed(0)}`).toEqual([]);
+      }
+    }
+  });
+
+  it('let a player in through a doorway but not a wall', () => {
+    let n = 0;
     for (const seed of [1, 2]) {
       const w = new World(seed);
       for (const b of w.buildings.filter((h) => h.outpost >= 0)) {
-        // Each outside doorway: its first leaf, walked through from 2 m out.
-        for (const d of doors(w, b).filter((l, i, all) => all.indexOf(w.doors[l.pair]) > i)) {
-          const [x0, z0, x1, z1] = leafRect(d, false);
-          const mx = (d.x + w.doors[d.pair].x) / 2;
-          const mz = (d.z + w.doors[d.pair].z) / 2;
-          const sx = mx - d.openX * 2;
-          const sz = mz - d.openZ * 2;
-          if (inBuilding(b, sx, sz)) continue;
-          const through = (open: boolean) => {
-            w.setDoor(w.doors.indexOf(d), open);
-            w.setDoor(d.pair, open);
-            const p = spawnState(sx, w.groundHeight(sx, sz, b.floor), sz);
-            walk(w, p, d.openX, d.openZ, 3);
-            return inBuilding(b, p.x, p.z);
-          };
-          expect(through(true), `seed ${seed} ${b.plan} door at ${x0},${z0} ${x1},${z1}`).toBe(true);
-          expect(through(false)).toBe(false);
+        // Each outside doorway, walked through from 2 m out.
+        for (const d of doorways(w, b).filter((d) => d.inX || d.inZ)) {
+          const sx = d.x - d.inX * 2;
+          const sz = d.z - d.inZ * 2;
+          const p = spawnState(sx, w.groundHeight(sx, sz, b.floor), sz);
+          walk(w, p, d.inX, d.inZ, 3);
+          expect(inBuilding(b, p.x, p.z), `seed ${seed} ${b.plan} doorway at ${d.x}, ${d.z}`).toBe(true);
+          n++;
         }
       }
     }
+    expect(n).toBeGreaterThan(10);
 
     // Beside a doorway, the wall holds.
     const w = new World(1);
@@ -214,38 +229,6 @@ describe('buildings', () => {
     const p = spawnState(x, w.groundHeight(x, wall.minZ - 2, b.floor), wall.minZ - 2);
     walk(w, p, 0, 1, 3);
     expect(p.z).toBeLessThan(wall.minZ);
-  });
-
-  it('hang doors in pairs that swing into the room, some open to begin with', () => {
-    const w = new World(1);
-    for (const d of w.doors) {
-      const pair = w.doors[d.pair];
-      expect(pair.pair).toBe(w.doors.indexOf(d));
-      expect(pair.open).toBe(d.open);
-      // Shut, the two leaves meet in the middle.
-      expect(Math.hypot(d.x + d.shutX * d.length - pair.x - pair.shutX * pair.length, d.z + d.shutZ * d.length - pair.z - pair.shutZ * pair.length)).toBeLessThan(0.02);
-      expect(d.openX * d.shutX + d.openZ * d.shutZ).toBeCloseTo(0, 9);
-      expect(w.panels[d.panel].kind).toBe('door');
-    }
-    const open = w.doors.filter((d) => d.open).length;
-    expect(open).toBeGreaterThan(0);
-    expect(open).toBeLessThan(w.doors.length);
-
-    const i = w.doors.findIndex((d) => !d.open);
-    const d = w.doors[i];
-    const box = w.panels[d.panel].box;
-    const [x0, z0] = leafRect(d, true);
-    w.setDoor(i, true);
-    expect([box.minX, box.minZ]).toEqual([x0, z0]);
-    expect(w.openDoors()).toContain(i);
-    w.syncDoors([]);
-    expect(w.openDoors()).toEqual([]);
-    // Faced from a step out, the doorway's leaf is found; from behind, it isn't.
-    const mx = (d.x + w.doors[d.pair].x) / 2;
-    const mz = (d.z + w.doors[d.pair].z) / 2;
-    const yaw = Math.atan2(-d.openX, -d.openZ);
-    expect([i, d.pair]).toContain(w.doorFacing(mx - d.openX * 1.2, d.y0, mz - d.openZ * 1.2, yaw, 1.9));
-    expect(w.doorFacing(mx - d.openX * 1.2, d.y0, mz - d.openZ * 1.2, yaw + Math.PI, 1.9)).toBe(-1);
   });
 
   it('glaze their windows with glass that stops bodies and rounds but not sight, and breaks at a touch', () => {
@@ -276,7 +259,7 @@ describe('buildings', () => {
     for (const seed of SEEDS) {
       const w = new World(seed);
       for (const p of w.props) {
-        const solid = !['fence', 'crate', 'door', 'glass', 'table'].includes(p.box.part);
+        const solid = !['fence', 'crate', 'glass', 'table'].includes(p.box.part);
         expect(p.panel < 0, `seed ${seed} ${p.box.part}`).toBe(solid);
       }
       for (const b of w.buildings) {
@@ -326,10 +309,10 @@ describe('buildings', () => {
     }
   });
 
-  it('only break fences, crates, doors, glass and tables, with nothing resting on the building', () => {
+  it('only break fences, crates, glass and tables, with nothing resting on the building', () => {
     for (const seed of SEEDS) {
       const w = new World(seed);
-      for (const p of w.panels) expect(['fence', 'crate', 'door', 'glass', 'table']).toContain(p.kind);
+      for (const p of w.panels) expect(['fence', 'crate', 'glass', 'table']).toContain(p.kind);
       // Crates rest only on crates.
       for (const p of w.panels) for (const i of p.restsOn) expect(w.panels[i].kind).toBe('crate');
       // A hut's floor is concrete.

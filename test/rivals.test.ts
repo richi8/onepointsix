@@ -209,8 +209,11 @@ describe('bot senses and stealth', () => {
 
   it('bots settle into bushes to wait and hide over a game', () => {
     const before = { ...tally };
-    const server = new GameServer(DEFAULT_WORLD.seed, { operators: 7 });
-    for (let t = 0; t < 4 * 60 * SERVER_TICK_RATE; t++) server.step();
+    // Over two islands, as on one it's down to chance whether a bush is near when a bot waits.
+    for (const seed of [DEFAULT_WORLD.seed, 2]) {
+      const server = new GameServer(seed, { operators: 7 });
+      for (let t = 0; t < 4 * 60 * SERVER_TICK_RATE; t++) server.step();
+    }
     expect(tally.waits - before.waits).toBeGreaterThan(0);
     expect(tally.bushWaits - before.bushWaits).toBeGreaterThan(0);
     expect(tally.covers - before.covers).toBeGreaterThan(0);

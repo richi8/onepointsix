@@ -25,7 +25,7 @@ export interface MapGround {
   blend: number;
 }
 
-/** What fills a gap in a wall: a doorway hung with a pair of leaves, a glazed window, or an archway with nothing in it. */
+/** What fills a gap in a wall: nothing in a doorway or an archway, glass in a window. */
 export type OpeningKind = 'door' | 'window' | 'arch';
 
 /**
@@ -34,8 +34,7 @@ export type OpeningKind = 'door' | 'window' | 'arch';
  * corner with the lesser x or z. A door is 2.2 m wide, a window 1.2 and an
  * arch 2.4, unless `width` says otherwise; an arch reaches `height` above its
  * floor, 2.6 m if left out, and the full storey at 3. On a wall shared with
- * the next block, either block's openings go through it, and a door's leaves
- * swing into the block that has it.
+ * the next block, either block's openings go through it.
  */
 export interface MapOpening {
   side: Facing;

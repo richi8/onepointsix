@@ -12,6 +12,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-06',
+    title: 'No more doors',
+    notes: [
+      'Doors are gone, from the outposts and huts on the islands and from Calabianca: every doorway is an open way in. F no longer opens or shuts anything; it still searches, takes and calls a pickup.',
+      'Rooms can be seen and shot into through their doorways from outside, and nobody can shut a door behind them to break a chase.',
+      'Sound comes in and out through every doorway, as through an open door before.',
+      'The Range no longer has a soldier walking in and out through a door.',
+      'The islands are otherwise just as they were: the same outposts, buildings, crates and cover in the same places.',
+    ],
+  },
+  {
+    date: '2026-10-06',
     title: 'Cover in Calabianca, and a smoother town',
     notes: [
       'Two old cars are parked in Calabianca: one on the high street and one on the road up from the quay, where Via del Porto looks along it. Both stop bullets and can be crouched behind.',

@@ -44,12 +44,11 @@ const STAIR_LANDING = 0.6;
 /** Heights this near are taken as the same. */
 const EPS = 0.05;
 
-/** An opening in a wall line: its middle `at` along the line, which way its door leaves swing across it, and an arch's height. */
+/** An opening in a wall line: its middle `at` along the line, and an arch's height. */
 export interface KitOpening {
   at: number;
   width: number;
   kind: MapOpening['kind'];
-  inward: 1 | -1;
   height?: number;
 }
 
@@ -402,11 +401,11 @@ export function buildKit(
     for (let s = b.from ?? 0; s < b.storeys; s++) {
       const y = p.floor + p.height * s;
       for (const side of SIDES) {
-        const { axis, line, out, lo, hi } = sideOf(b, side);
+        const { axis, line, lo, hi } = sideOf(b, side);
         const [a0, a1] = axis === 'x' ? [lo - T / 2, hi + T / 2] : [lo + T / 2, hi - T / 2];
         const openings = (b.openings ?? [])
           .filter((o) => o.side === side && (o.storey ?? 0) === s)
-          .map((o): KitOpening => ({ at: lo + o.at, width: o.width ?? WIDTH[o.kind], kind: o.kind, inward: out === 1 ? -1 : 1, height: o.kind === 'arch' ? (o.height ?? ARCH_HEIGHT) : undefined }));
+          .map((o): KitOpening => ({ at: lo + o.at, width: o.width ?? WIDTH[o.kind], kind: o.kind, height: o.kind === 'arch' ? (o.height ?? ARCH_HEIGHT) : undefined }));
         const key = `${axis} ${line.toFixed(3)} ${y.toFixed(3)} ${p.height}`;
         const list = spans.get(key) ?? [];
         list.push({ axis, line, a0, a1, y, height: p.height, base: s === 0 ? base : y, openings, colour: p.building.colour });

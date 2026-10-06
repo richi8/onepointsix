@@ -164,11 +164,11 @@ export const EXTRACT_CLOSED: [number, number] = [40, 110];
 export const KILL_SCORE_OPERATOR = 500;
 export const KILL_SCORE_GUARD = 150;
 
-// Destructible cover. Fence sections, crates, door leaves, window glass and
-// tables are panels that break once their health runs out, taking whatever
+// Destructible cover. Fence sections, crates, window glass and tables are
+// panels that break once their health runs out, taking whatever
 // rests on them down too; glass goes with any hit. Walls, roofs, floors and
 // stairs never break.
-export const PANEL_HP = { fence: 60, crate: 150, door: 120, glass: 1, table: 200 } as const;
+export const PANEL_HP = { fence: 60, crate: 150, glass: 1, table: 200 } as const;
 /** Seconds before a broken panel is rebuilt, once nothing is in the way. */
 export const PANEL_REPAIR = 180;
 
@@ -198,11 +198,7 @@ export const GRENADE_NOISE = 320;
 /** Share of a gun's noise radius left with a suppressor fitted. */
 export const SUPPRESSED_NOISE = 0.3;
 /** How far away breaking a panel can be heard, metres. */
-export const BREAK_NOISE = { fence: 50, crate: 70, door: 70, glass: 60, table: 70 } as const;
-/** How far away a door opening or shutting can be heard, metres. */
-export const DOOR_NOISE = 22;
-/** How far from a doorway, in metres, a door can be opened or shut. */
-export const DOOR_REACH = 1.9;
+export const BREAK_NOISE = { fence: 50, crate: 70, glass: 60, table: 70 } as const;
 
 // Contracts: objectives handed out with each run, paid only if you get out.
 /** Contracts per run, fewest and most. */

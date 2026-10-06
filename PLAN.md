@@ -37,7 +37,7 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 |---|---|
 | **Extraction** | The core loop below. 8 operator slots, every one starting as a bot, and the guards. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
 | **Deathmatch** | Everyone against everyone: 16 operator slots, filled the same way, and no guards or commanders. Played on a fixed map of its own, the same whatever the world link's seed: Calabianca, a whitewashed town on a hillside above the sea (see Phase 8 and the town under Features). No contracts, extraction points, run clock, bag value or score; crates hold only ammo and medkits. Leaving a game with a kill posts its kills and deaths to the menu's board for the map, best by kills, then fewest deaths. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at one of the map's 32 spawn points: one taken at random that nobody living is within 30 m of or sees from within 200 m, and no shot was fired within 25 m of in the last 6 s, or else the one farthest from them. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
-| **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate, a door), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
+| **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
 
 Online was renamed Extraction on 2026-10-03 (chunk 48): old `mode=online`, `mixed` and `offline`
 links, the saved menu choice and Online's scores count as Extraction. Mixed was renamed Online,
@@ -104,7 +104,7 @@ Extraction's; Deathmatch keeps only the fighting (see Game Modes).
 - Grenades
 
 ### Destructible cover
-- Fence sections, crates, door leaves, window glass and tables are **breakable panels**, each
+- Fence sections, crates, window glass and tables are **breakable panels**, each
   with its own HP, rebuilt a few minutes after they break. No voxels.
 - Walls, roofs, floors and stairs are solid and never break (since chunk 49): cover that stays,
   and roofs that can be stood on.
@@ -137,7 +137,7 @@ Extraction's; Deathmatch keeps only the fighting (see Game Modes).
 - Calabianca: a whitewashed town falling from a high street to a harbour, its fights round three
   hubs (the market, the piazza and the palazzo's courtyard), each pair joined by an open way, a
   tight one and one through a building, and districts that play their own way (chunks 55–57)
-- Houses entered by their doors, stairs to their upper floors and onto their flat roofs, windows
+- Houses entered by their doorways (open: there are no doors since chunk 65), stairs to their upper floors and onto their flat roofs, windows
   to shoot from; bots use the windows and roofs as posts (chunk 58)
 - Cover in the streets: the crashed lorry and the stalls in the market, carts, crates, containers
   on the quay, two parked cars and sandbags across the longest views, rubble by the ruined chapel
@@ -434,6 +434,15 @@ but windows, crates, fences and door leaves (chunk 49), so its light can be bake
 | 63 | **Greenery and backdrop** | Mediterranean plants in the town: cypresses, umbrella pines, plane trees and olives that aren't lumpy balls, bougainvillea and vines on walls, agaves, potted geraniums and lemon trees; the hills round the town as southern Italy, not the island: terraced olive groves behind dry-stone walls, maquis, rock outcrops, sun-bleached ochre grass; chunk 39's trees and impostors used where they fit | From the roofs the town sits in its own landscape, and no plant in it looks stylized | **Done** (chunk 39's trees made general (`trees.ts`): a `Species` is a kind of tree (its near and far shapes, the picture on its cards, its size, sway and near range) and a `Stand` the trees of one kind, each with its own tiles, near trees and impostors; the island's spruces are one species, built as before, and its screenshots match. The kinds' sizes and sway reach their shaders as uniforms, so every kind shares one set of programs. The impostors now turn with their trees, as their shader meant them to. Six kinds generated in `species.ts`: olives (two or three stems twisting apart, an open grey-green crown), plane trees (a pale trunk forking at 4.4 m under a dome of five-lobed leaves), cypresses (a column of dark sprays tapering to a flame), umbrella pines (a bare, leaning trunk under a crown pressed flat), holm oaks and the maquis's shrubs; each grows a skeleton of boughs level by level from a seed and carries cards at its last branches' tips, their pictures drawn on a canvas at load (`dev/plants.html` shows them). What a map plants (`greenery.ts`): the town's two planes and six olives over the trunks they collide as (the blobs in `features.ts` gone); `GameMap.plants`, Calabianca's cypresses round the cemetery's walls and pines over the villa and the shore; the island's trees as holm oaks and pines (35%); olives in rows along terraces, each moved halfway up its own, behind dry-stone walls traced along the ground's contours every 2.2 m (one merged shape with ragged tops, rock-textured); cypresses in short rows along the slope and alone; the maquis in patches; outcrops of pale rock. Which ground is grove or maquis (`shared/hillside.ts`) is read by the ground's paint too, which beyond the town's bounds turns the grass dry and the groves' ground to earth; inside them it's as before, so the grass the bots see through hasn't changed. A map's ground and grass tinted straw and ochre, its bushes the maquis's grey-green (client only). By the town's doors and along its ground floors (`plants.ts`, `MapTrim.pots`, `bougainvillea`, `vines`): terracotta pots of geraniums, agaves and lemon trees, bougainvillea up a door's side and over its head, vines on a wire along a wall, each from a stream of its own so the rest of the dressing is chosen as before. About 1,000 olives, 1,700 shrubs, 370 oaks, 220 pines and 29 cypresses, and 6,700 stretches of terrace wall. Tests: `test/greenery.test.ts` (each kind the same near and far, the far five times cheaper; the town's trees on their trunks and nothing else inside the bounds; the map's plants placed; olives halfway up their terraces and the walls on their contours; outcrops beyond the walls; the island and the ground inside the walls untouched). Screenshots: the town's and the kit yard's re-recorded, the hillside and the olive garden added; the island's all match. GPU time a frame against chunk 62 on an M3 Pro at 1280 × 720, best of three alternating rounds while the machine warmed (the old code's own times drifted from 4.3 to 9.8 ms over the session): 1.3–1.8 ms more in the market and from above, 2.4–4 ms in the alley and the piazza, 4.7–5 ms looking at the hillside, most of it the trees (hiding them saves 2.4–3.7 ms), and of them most the far tiles; cuts to the near detail and ranges made little difference, so it's left for chunk 64 (see Known Issues). Warm loads of the town 2.7–2.8 s against 2.4. No gameplay changed, so no bot playtest was run. Whether the town sits in its own landscape and no plant looks stylized is the user's) |
 | 64 | **Dressing and speed** | Cover and clutter in the streets (market stalls, carts, a car or two, crates, rubble, sandbags where the flow wants them), the benchmark and a cold first load on the map with chunks 59–63's look, cut back where they don't hold; the changelog, Game Modes, World capacity and Features updated | The benchmark holds its frame time in the town, a cold load is no slower than the island's, and the testers prefer it to the island for Deathmatch | **Done** (cover where `sim:deathmatch` drew its longest kill lines: two old saloons, rounded, on four wheels, one on the high street and one on the road's first leg where Via del Porto looks along it, leaning with the ramp it stands on; sandbags in staggered rows along the market's south side and in Via del Porto past the hotel's door; rubble fallen from the ruined chapel by its door and its arch, chunks of stone and plaster on a bed of grit with a beam across it (`MapLook` `car`, `sandbags`, `rubble`, drawn in place of their boxes). The market's stalls and the carts were already there and were left as they were. Sim, seeds 1–3: nobody stuck, deaths within 15 s of spawning 76/65/61 (81/81/68 before), kills from 40 m or more 4–6% (3–6%). `npm run bench` measures the town too (`dev/bench.html?town`): seven of the screenshots' spots, empty and with 16 soldiers, with the GPU's and the CPU's time; the baseline re-recorded with it. The speed: the dressing split into 32 m tiles, each tile's coarse boxes and shapes first and its fine ones after (`isFine`: under a quarter of a metre across but along its length), the fine left out of the far and still shadow maps and the sea's reflection by cutting the draw count in `onBeforeShadow` and `onBeforeRender` (`fineAfter`); olives, oaks and shrubs fade into their impostors from 60, 70 and 40 m (`Species.fadeRange`); the sea's reflection drawn only for the part of the mirror's view the sea shows in, from a grid of rays, its camera narrowed to it and drawing into as much of its target's corner (`Water.seaRect`). Against chunk 63, alternating runs: 25–55% fewer triangles a frame, the GPU's time 0.2–2.2 ms less where the sea or the hillside is in view and about the same in the streets, the CPU's 0.3–0.5 ms more for about 100 more draw calls. The town with 16 soldiers takes 12.2–14.6 ms a frame against 13.2 for the island's 24 (empty, 10–11.6 against 6.1: see Known Issues). The island's own phases matched chunk 63's in alternating runs. Cold first loads from a production build with the Metal shader cache cleared: island and town both about 12 s, before and after, warm 0.9 s. The bots' paths: each tick on a map spends about 4 ms working links out ahead (`NavGrid.warm`), all done after about 26 s of play; the worst tick after a game's first 10 s fell from 0.27–0.6 s to 0.11–0.17 s, the games playing out exactly as before. Tests: the dressing's tiles, fine split and draw cuts (`test/townlook.test.ts`), and a warmed grid finding the same paths as a cold one (`test/nav.test.ts`). Screenshots: `town-car` and `town-sandbags` added; the cemetery, the hillside and the kit yard re-recorded (the rubble, the olives' impostors). Game Modes, World capacity and Features updated for the town. Only Deathmatch's map changed how it plays, so no bot playtest was run. Whether the testers prefer it to the island is theirs) |
 
+### Phase 9: simpler (still local only, Chrome only)
+
+Features that cost more than they give are taken out, to make the game simpler and clear the
+Known Issues they cause.
+
+| # | Chunk | Scope | Done when | Status |
+|---|---|---|---|---|
+| 65 | **No doors** | Door leaves removed in every mode, the doorways left as plain openings: the leaves, their swing, slanted colliders and the door paint; F opening and shutting them, the prediction, the prompt, the stuck toast and the sounds; bots opening, shutting and slamming them and the nav grid keeping off their swing; doors in the cover state, the welcome and the death cam; the Range's door routine; their tests. Extraction's islands otherwise exactly as they were | No door code is left, every island matches the old one prop for prop less its leaves, the bot playtest stays in the extraction baseline, and Deathmatch's sim has nobody stuck | **Done** (`World` has no `doors`, `Door`, `Turn` or slanted boxes; a doorway is a gap under its lintel. Islands keep drawing one number for each doorway from their buildings' stream, as the leaves' open or shut once did, so seeds 1–7 match chunk 64's islands in every prop, tree, rock, building and height, the leaves aside (the fingerprints in `test/maps.test.ts` re-recorded). The paving's wear round doorways is found from the façades' openings. The two door sounds came out of the late sound bank, re-encoded alone (the other two banks are as they were). `test/doors.test.ts`, `e2e/doors.e2e.ts` and the bots' door tests went; a new test walks every building on islands 1–6 from outside and finds every spot on its floors reached (chunk 64's code left spots unreached in 7 of 66 buildings, two of them one-room houses cut off by the table and an open leaf). The sound tests hear through doorways that can't be shut, and the reverb test smashes a crate in place of a slam. The bush-waits test counts over two islands, as on one the leaves' going left none in its first four minutes. Bot playtest, 30 min an island: 16% extracted on seeds 1–6 (chunk 64's code in the same session: 16%), 22% on 7–12 (21% at chunk 57). `sim:deathmatch -- 600 1,2,3`: nobody stuck, nobody spawned in sight, 63/79/78 deaths within 15 s of spawning (76/65/61 before). One screenshot re-recorded: `town-sandbags`, where the hotel's shut door is now a doorway. Whether rooms without doors play better is the testers') |
+
 ## Known Issues
 
 Shortcomings of what has been built so far, to improve later. Every chunk adds the gaps it
@@ -528,15 +537,12 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   cards show flat and some edge on; the olives' nearest crowns read a little brushy, and a
   plane's pale bark looks grey in its own crown's shade. The leaf pictures are drawn on a
   canvas, not taken from photographs. Every map gets the same hillside, the kit yard too.
-- **Doors are painted by where they stand** (chunk 59), one of four colours, not in their
-  building's own paint as its shutters are.
 - **The town's light is baked at every load** (chunk 60): about 3 s in a worker on an M3 Pro,
   longer on slower machines, with about 250 MB in use while it runs; until it's done the town
   is lit as if all of it were out in the open, then the light fades in over a second. It
   isn't kept between visits.
-- **The town's baked light doesn't change** (chunk 60): it's baked with every door open and
-  without crates, glass or fences, so a shut door, a broken window or a stack of crates
-  leaves the light as it was. The trim and the features don't shade anything either, as
+- **The town's baked light doesn't change** (chunk 60): it's baked without crates, glass or
+  fences, so a broken window or a stack of crates leaves the light as it was. The trim and the features don't shade anything either, as
   they're drawn only, and a cornice or a window's reveal, narrower than the light's half-metre
   cells, isn't darkened beneath or within.
 - **Rooms in the town take the sky's blue** (chunk 60): the sky's light bounced off walls and
@@ -558,16 +564,13 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Code and testing
-- **A one-room building's table can leave bots no way in** (chunk 51): in an outpost or a hut,
-  the table under the end window stands close enough to the open door leaf that the 1 m nav
-  grid can find no cell between them, depending on how the building falls on the grid (found
-  in the generated towns, where it hit 11 of about 400 rooms until their houses had the table
-  moved). Fixing it moves props on Extraction's islands, so it was left as it is.
-- **The doors browser test can fail under load** (found in chunk 59): it wants a door swinging
-  within 400 ms of pressing F, and once in a full parallel run it wasn't; alone and in three
-  more parallel runs it passed. In chunk 63 it failed so in one of three full runs and the
-  textures' test timed out in another, both passing alone; a dev server left running through
-  a long session of edits made it and the death cam's test fail every time, until restarted.
+- **Browser tests can stall under load** (found in chunk 63): in one of three full runs the
+  textures' test timed out, passing alone; a dev server left running through a long session of
+  edits made the death cam's test fail every time, until restarted. (The doors test that failed
+  the same way went with the doors in chunk 65.)
+- **Island buildings still draw a number for each doorway** (chunk 65): the leaves were found
+  open or shut from the buildings' stream, and dropping the draw would move everything placed
+  after it on every island; so `addFacade` still draws it and throws it away.
 - **Bots can't search about one crate in ten inside buildings** (chunk 51): the search spot,
   1.4 m out from the crate, falls on no open cell of the nav grid when the crate stands in a
   corner close to a wall or partition: 10 of 102 crates in the outposts' and huts' buildings on
@@ -638,10 +641,9 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   by the bound, not the wall.
 - **The kit trusts its map** (chunk 53): blocks that overlap, openings running past a wall's
   end or into a corner, and flights of stairs with no room at their foot or top are built as
-  given; only the test that walks a bot's path into every room finds them. A door's leaves
-  opening near a room's corner, a flight's foot or a crate leave a slot a bot is caught in
-  (chunk 57): the town's tests find the doors' (and anywhere bots can't reach), but crates
-  standing in a leaf's swing or a narrow gap were found and moved by hand.
+  given; only the test that walks a bot's path into every room finds them, and anywhere bots
+  can't reach; crates standing in a narrow gap were found and moved by hand (chunk 57). The
+  door leaves' slots (chunk 57) went with the doors (chunk 65).
 - **Pitched roofs collide as steps** (chunk 56): each is layers 0.6–1.2 m high stepping in
   toward the ridge under the slopes drawn over it, so a round can stop up to half a layer off
   the drawn slope, either way. Nobody walks up them or mantles onto them, but a jump (1.4 m at
@@ -757,6 +759,10 @@ extraction stays as hard as it is.
   play or look like a designed map. Dust 2 and Carentan were weighed first; Dust 2 is built for
   5v5 attack and defence, and Carentan's pitched roofs and ruins need more art than flat roofs,
   which also put the rooftops into play. Its own layout, not a copy of either.
+- **No doors** (2026-10-06): door leaves were removed in every mode (chunk 65) at the user's
+  request: they added little to play (one more F press before a room) and caused Known Issues
+  (bots caught by leaves, tables cutting rooms off, the door paint, a flaky browser test, light
+  and sound that change as doors swing). Doorways are plain openings.
 - **No squads:** operators play free-for-all. Squads were dropped because the game's pitch
   ("beat my score") is a solo challenge, and revive would soften "die = score 0".
 - **Platform:** desktop only (keyboard and mouse). Target is 60 fps on a mid-range laptop. No

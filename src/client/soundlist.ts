@@ -62,9 +62,6 @@ export const SOUNDS: SoundSource[] = [
   // Cover breaking.
   { name: 'splinter', freesound: 536777, author: 'egomassive', title: 'Smash.ogg', from: 0, to: 1.05, kind: 'shot' },
   { name: 'glass', freesound: 221528, author: 'unfa', title: 'Glass Break', from: 0.25, to: 1.4, kind: 'shot', fade: 0.4 },
-  // Doors.
-  { name: 'doorOpen', freesound: 398750, author: 'Anthousai', title: 'door - open 01.wav', from: 0, to: 1.2, kind: 'shot', fade: 0.4 },
-  { name: 'doorShut', freesound: 444409, author: 'MootMcnoodles', title: 'Wood Door Slam.wav', from: 0, to: 0.93, kind: 'shot', fade: 0.4 },
   // Bodies.
   { name: 'hurt', freesound: 423301, author: 'u1769092', title: 'VisceralBulletImpacts.wav', from: 0.1, to: 0.45, kind: 'shot' },
   { name: 'land', freesound: 364690, author: 'alegemaate', title: 'Human Impact on Ground', from: 0.06, to: 0.6, kind: 'shot' },

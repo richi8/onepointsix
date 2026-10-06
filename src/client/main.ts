@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  Btn, CMD_DT, DEATHCAM_AFTER, DEATHMATCH_CAPACITY, DOOR_REACH, OPERATOR_CAPACITY, PLAYER_RADIUS, SERVER_DT, THROW_TIME, WALK_SPEED,
+  CMD_DT, DEATHCAM_AFTER, DEATHMATCH_CAPACITY, OPERATOR_CAPACITY, SERVER_DT, THROW_TIME, WALK_SPEED,
 } from '../shared/constants.ts';
 import { angleDiff, clamp, lerp, smoothstep } from '../shared/geom.ts';
 import { rayBody } from '../shared/hitbox.ts';
@@ -14,7 +14,7 @@ import { BOLT, spreadOf, WEAPONS, type Shot, type WeaponFx } from '../shared/wea
 import { LagTransport } from '../shared/transport.ts';
 import { Forecast, mainWeather, parseWeather } from '../shared/weather.ts';
 import { mapFor } from '../shared/maps/index.ts';
-import { leafRect, World } from '../shared/world.ts';
+import { World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sfx } from './audio.ts';
 import { Bags } from './bags.ts';
@@ -174,8 +174,8 @@ view.onThunder = (distance) => sfx.thunder(distance);
 const surfaces = new Surfaces(world);
 bodies.onStep = (x, y, z, speed, crouched) => sfx.step(surfaces.at(x, y, z), speed, crouched, { x, y, z });
 const extractNames = world.extracts.map((_, i) => extractName(world, i));
-/** Nothing broken, and every door as the island starts with it. */
-const noCover: CoverState = { broken: [], open: world.openDoors() };
+/** Nothing broken. */
+const noCover: CoverState = { broken: [] };
 
 // ---------------------------------------------------------------- loading
 
@@ -527,49 +527,8 @@ const input = new Input(window, renderer.domElement);
 // Sample input at the fixed command rate, independent of frame rate.
 const inputLoop = new FixedLoop(CMD_DT, () => {
   const buttons = input.sample();
-  predictDoor(buttons);
   conn?.sendCmd(buttons, input.yaw, input.pitch, input.weapon);
 }, 8);
-
-/** Interact was held last command, to tell a fresh press. */
-let interactHeld = false;
-/** Door leaves swung on our own screen ahead of the server, and when; the server's word puts them right. */
-let predictedDoor: { leaves: number[]; open: boolean; at: number } | null = null;
-/** Seconds to wait for the server to swing a door we swung before swinging it back. */
-const DOOR_WAIT = 1.5;
-
-/**
- * Swing the door we face open or shut the moment F is pressed, as the server
- * will a round trip later: only when F means the door, with nothing to search
- * or take and no pickup to call, and nobody we can see standing in its way.
- */
-function predictDoor(buttons: number): void {
-  const interact = (buttons & Btn.Interact) !== 0;
-  const pressed = interact && !interactHeld;
-  interactHeld = interact;
-  const run = conn?.run;
-  const me = conn?.predictor.state;
-  if (!pressed || !conn || conn.over || !run || !me || me.dead || deathcam) return;
-  if (run.loot || run.contracts[run.intel] || run.zone >= 0) return;
-  const id = world.doorFacing(me.x, me.y, me.z, input.yaw, DOOR_REACH);
-  if (id < 0) return;
-  const d = world.doors[id];
-  const open = !d.open;
-  const leaves = [id, d.pair].filter((i) => i >= 0 && !world.panels[world.doors[i].panel].box.gone && world.doors[i].open !== open);
-  const others = conn.interpolated();
-  if (leaves.some((i) => others.some((p) => !p.dead && world.sweeps(i, open, p.x, p.y, p.z, PLAYER_RADIUS)))) return;
-  for (const i of leaves) world.swingDoor(i, open);
-  predictedDoor = { leaves, open, at: performance.now() / 1000 };
-  view.updateDoor(id);
-  const [x0, z0, x1, z1] = leafRect(d, false);
-  sfx.door(open, { x: (x0 + x1) / 2, y: d.y0, z: (z0 + z1) / 2 });
-}
-
-/** Swing door leaves back to where the server last had them. */
-function unpredictDoor(leaves: readonly number[]): void {
-  for (const i of leaves) world.swingDoor(i, conn?.open.has(i) ?? world.doors[i].open);
-  predictedDoor = null;
-}
 
 // ------------------------------------------------------------------ modes
 
@@ -915,10 +874,9 @@ window.addEventListener('keydown', (e) => {
 });
 document.getElementById('watch-deathcam')!.onclick = playDeathcam;
 
-/** Put the panels and doors in the world as `cover` says, for a death cam's moment or back to now. */
+/** Put the panels in the world as `cover` says, for a death cam's moment or back to now. */
 function showCover(cover: CoverState): void {
   world.syncPanels(cover.broken);
-  world.syncDoors(cover.open);
   view.syncPanels();
   sfx.changed();
 }
@@ -1202,22 +1160,6 @@ function onEvent(e: GameEvent, time: number, replayed = false): void {
         sfx.changed(world.panels[id].box);
       }
       break;
-    case 'door': {
-      // Our own, already swung and heard.
-      const ours = !replayed && predictedDoor?.open === e.open && e.doors.every((i) => predictedDoor!.leaves.includes(i));
-      if (ours) predictedDoor = null;
-      for (const id of e.doors) {
-        world.swingDoor(id, e.open);
-        view.updateDoor(id);
-      }
-      sfx.doorsChanged(e.doors);
-      if (!ours) eventSound(e);
-      break;
-    }
-    case 'doorStuck':
-      unpredictDoor(e.doors);
-      toast('Someone is in the way of the door.');
-      break;
     case 'boom': {
       const d = me ? Math.hypot(e.x - me.x, e.y - me.y, e.z - me.z) : Infinity;
       effects.explosion(to.set(e.x, e.y, e.z));
@@ -1272,7 +1214,7 @@ function feedEvent(e: GameEvent): void {
   }
 }
 
-/** What an event out in the world sounds like: a shot, a blast, cover breaking or a door. */
+/** What an event out in the world sounds like: a shot, a blast or cover breaking. */
 function eventSound(e: GameEvent): void {
   switch (e.k) {
     case 'shot':
@@ -1280,9 +1222,6 @@ function eventSound(e: GameEvent): void {
       break;
     case 'boom':
       sfx.boom(e);
-      break;
-    case 'door':
-      sfx.door(e.open, e);
       break;
     case 'break': {
       const first = world.panels[e.panels[0]];
@@ -1500,10 +1439,7 @@ renderer.setAnimationLoop(() => {
   if (conn) {
     conn.update(dt);
     inputLoop.advance(now);
-    // A door we swung that the server never did.
-    if (predictedDoor && now - predictedDoor.at > DOOR_WAIT) unpredictDoor(predictedDoor.leaves);
   }
-  world.stepDoors(dt);
   const cam = deathcam;
   // Bodies move on the time shown: slowed round the kill in a death cam.
   const before = cam?.time ?? 0;
@@ -1555,7 +1491,7 @@ renderer.setAnimationLoop(() => {
   }
   if (cam) runHud.update(null, [], 0, 0, 0, camera);
   else if (conn) {
-    if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera, world.doorFacing(me.x, me.y, me.z, input.yaw, DOOR_REACH));
+    if (me && !conn.over) runHud.update(conn.run, conn.extracts, me.x, me.z, input.yaw, camera);
     else runHud.update(null, [], 0, 0, 0, camera);
     if (!paused.hidden) runHud.updatePause(conn.mode === 'deathmatch' ? null : conn.run, conn.mode === 'deathmatch' ? '' : pauseStanding());
   }

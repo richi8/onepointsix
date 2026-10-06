@@ -44,7 +44,7 @@ export interface Snapshot {
 export type RecordedEvent = Extract<GameEvent, { k: 'shot' } | { k: 'boom' } | { k: 'break' } | { k: 'repair' }>;
 
 function isRecordedEvent(e: GameEvent): e is RecordedEvent {
-  return e.k === 'shot' || e.k === 'boom' || e.k === 'break' || e.k === 'repair' || e.k === 'door';
+  return e.k === 'shot' || e.k === 'boom' || e.k === 'break' || e.k === 'repair';
 }
 
 /** The last few seconds as this client saw them, everyone included, for the death cam. */
@@ -77,12 +77,10 @@ export class Connection {
   over = false;
   /** Panels down right now, as the server says; what the world shows can differ while a death cam plays. */
   readonly broken = new Set<number>();
-  /** Door leaves open right now. */
-  readonly open = new Set<number>();
 
   /** The cover as it stands now. */
   get cover(): CoverState {
-    return { broken: [...this.broken], open: [...this.open] };
+    return { broken: [...this.broken] };
   }
   /** Round-trip time in ms, smoothed. */
   rtt = 0;
@@ -206,7 +204,6 @@ export class Connection {
         this.mode = msg.mode;
         this.clock = msg.tick * SERVER_DT;
         for (const i of msg.broken) this.broken.add(i);
-        for (const i of msg.open) this.open.add(i);
         this.onWelcome?.(this.cover);
         break;
       case 'pong': {
@@ -227,7 +224,6 @@ export class Connection {
           if (isRecordedEvent(e)) this.recording.events.push({ time: msg.tick * SERVER_DT, e });
           if (e.k === 'break') for (const i of e.panels) this.broken.add(i);
           if (e.k === 'repair') for (const i of e.panels) this.broken.delete(i);
-          if (e.k === 'door') for (const i of e.doors) (e.open ? this.open.add(i) : this.open.delete(i));
           if (e.k === 'board') this.board = e.rows;
         }
         this.trimRecording(msg.tick * SERVER_DT);

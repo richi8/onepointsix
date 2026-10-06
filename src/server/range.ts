@@ -5,7 +5,7 @@ import { hitboxes } from '../shared/hitbox.ts';
 import type { InputCmd, Team } from '../shared/protocol.ts';
 import { eyePosition, type PlayerState } from '../shared/sim.ts';
 import { BOLT, PISTOL, RIFLE, shotDirection } from '../shared/weapons.ts';
-import { inBuilding, watchtower, type World } from '../shared/world.ts';
+import { watchtower, type World } from '../shared/world.ts';
 import type { Post } from './bot.ts';
 import type { NavGrid } from './nav.ts';
 
@@ -14,8 +14,7 @@ import type { NavGrid } from './nav.ts';
 // bots, stand actors: bots that don't think, each playing one routine over
 // and over from its spot. Some walk, run, sprint and sneak in circles; some
 // crouch, lean, jump, aim, shoot, reload, switch guns or throw grenades;
-// one climbs a watchtower's stairs, one climbs onto a crate,
-// one goes in and out of a door; and some are shot, now and then, by others
+// one climbs a watchtower's stairs, one climbs onto a crate; and some are shot, now and then, by others
 // beside them, or blown up by a grenade, so their bodies fall. The player
 // can't be hurt there, and the run's clock stands still.
 
@@ -25,7 +24,7 @@ export type Act =
   | 'walk' | 'sprint' | 'crouchWalk' | 'crouchSprint' | 'leanWalk' | 'heavyWalk' | 'runJump'
   | 'strafe' | 'backpedal' | 'duck' | 'lean' | 'leanCrouched' | 'leanAim' | 'jump'
   | 'aim' | 'aimCrouched' | 'rifle' | 'pistol' | 'bolt' | 'reload' | 'switch' | 'grenade'
-  | 'stairs' | 'mantle' | 'door' | 'shooter' | 'victim' | 'crouchVictim';
+  | 'stairs' | 'mantle' | 'shooter' | 'victim' | 'crouchVictim';
 
 export interface ActorSpec {
   act: Act;
@@ -43,8 +42,6 @@ export interface ActorSpec {
   target?: number;
   /** Aims this far up or down, for a throw. */
   pitch?: number;
-  /** A door's leaves, shut again at the start of each loop. */
-  door?: number[];
   /** Carries this much, kg. */
   carry?: number;
   commander?: boolean;
@@ -164,20 +161,6 @@ export function planRange(world: World, nav: NavGrid): { actors: ActorSpec[]; sp
   // Onto a crate in the outpost.
   const crate = mantleSpot(world, stands, o);
   if (crate) add({ act: 'mantle', team: 'operator', weapon: RIFLE, post: at(crate, crate.yaw), loop: 4 });
-
-  // In through the outpost building's door and out again.
-  const b = world.buildings.find((h) => h.outpost === 0);
-  for (let i = 0; b && i < world.doors.length; i++) {
-    const d = world.doors[i];
-    if (d.pair < i || !inBuilding(b, d.x, d.z, 0.01)) continue;
-    const mx = (d.x + world.doors[d.pair].x) / 2;
-    const mz = (d.z + world.doors[d.pair].z) / 2;
-    if (inBuilding(b, mx - d.openX * 2, mz - d.openZ * 2)) continue;
-    const x = mx - d.openX * 2.5;
-    const z = mz - d.openZ * 2.5;
-    add({ act: 'door', team: 'guard', weapon: RIFLE, post: { x, y: ground(x, z), z, yaw: Math.atan2(-d.openX, -d.openZ) }, loop: 8, door: [i, d.pair] });
-    break;
-  }
 
   // The player, between the inner rings, facing the outpost.
   let spawn: Post = at({ x: o.x, z: o.z - 23 }, 0);
@@ -385,13 +368,6 @@ export class Actor {
         break;
       case 'mantle':
         if (t > 0.2 && t < 1.2) b |= Btn.Forward | Btn.Jump;
-        break;
-      case 'door':
-        if (t < 2) b |= Btn.Forward;
-        else if (t >= 3 && t < 5.2) {
-          yaw += Math.PI;
-          b |= Btn.Forward;
-        } else if (t >= 2) yaw += Math.PI;
         break;
       case 'crouchVictim':
         b |= Btn.Crouch;

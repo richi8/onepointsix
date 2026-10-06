@@ -16,7 +16,7 @@ export interface Sfx {
   shot(weapon: number, at?: { x: number; y: number; z: number }, quiet?: boolean): void;
   boom(at: { x: number; y: number; z: number }): void;
   step(surface: string, speed: number, crouched: boolean, at?: { x: number; y: number; z: number }): void;
-  door(open: boolean, at: { x: number; y: number; z: number }): void;
+  smash(kind: string, at: { x: number; y: number; z: number }): void;
   ago: number;
   format: { ext: string } | null;
   clips: Record<string, { buffer: AudioBuffer; start: number; duration: number }[]>;

@@ -1,6 +1,6 @@
 import { PLAYER_HEIGHT, PLAYER_RADIUS, STEP_HEIGHT, WATER_LEVEL } from '../shared/constants.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
-import { leafRect, type Box, type Rect, type World } from '../shared/world.ts';
+import { type Box, type Rect, type World } from '../shared/world.ts';
 
 // Where bots can walk: a 1 m grid over the island, each cell open, wet
 // (walkable but slow, so paths avoid it) or blocked by something taller than a
@@ -120,8 +120,6 @@ export class NavGrid {
    * grid as the ground is. Only near its edges is it walked a step at a time.
    */
   private readonly tops = new Map<number, number>();
-  /** The door leaves that come near each cell when open. */
-  private readonly leaves = new Map<number, number[]>();
   /** The floor nodes of each cell that has any, lowest first, by id. */
   private readonly floors = new Map<number, number[]>();
   /** Each floor node's spot and cell, by its id less n². */
@@ -174,30 +172,6 @@ export class NavGrid {
         else this.grounded.add(i);
       });
     }
-    world.doors.forEach((d, id) => {
-      const [x0, z0, x1, z1] = leafRect(d, true);
-      cells(x0, z0, x1, z1, PLAYER_RADIUS + MARGIN + CELL, (i) => {
-        const list = this.leaves.get(i);
-        if (list) list.push(id);
-        else this.leaves.set(i, [id]);
-      });
-    });
-  }
-
-  /**
-   * Whether a door leaf, standing open, comes within `pad` of (x, z) at a
-   * body's height with its feet at `feet`. Paths go through doorways as if
-   * every door stood open, and bots open the shut ones on the way: so the
-   * leaves count where they'd be open, lining the doorway, and not shut.
-   */
-  private nearLeaf(i: number, x: number, feet: number, z: number, pad: number): boolean {
-    for (const id of this.leaves.get(i) ?? []) {
-      const d = this.world.doors[id];
-      if (this.world.panels[d.panel].box.gone || feet > d.y1 || feet + PLAYER_HEIGHT < d.y0) continue;
-      const [x0, z0, x1, z1] = leafRect(d, true);
-      if (x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad) return true;
-    }
-    return false;
   }
 
   /** Something in the box changed, such as cover breaking: survey the cells around it again. */
@@ -286,7 +260,7 @@ export class NavGrid {
     const n = this.n;
     const size = n * n;
     let s0 = this.nodeAt(sx, sz, sy);
-    // Somewhere no path goes, as in a corner behind an open door leaf, the way starts from the nearest place one does, walked to first.
+    // Somewhere no path goes, as in a corner behind a crate, the way starts from the nearest place one does, walked to first.
     const snapped = s0 < 0 || (s0 < size && this.cells[s0] === BLOCKED);
     if (snapped) s0 = this.nearestReached(sx, sz, sy ?? this.world.groundHeight(sx, sz, this.world.floorHeight(sx, sz)));
     else if (s0 < size && this.cells[s0] !== OPEN) s0 = this.nearestNode(sx, sz, SNAP_RADIUS, sy);
@@ -565,7 +539,7 @@ export class NavGrid {
 
   /**
    * The nearest node a body standing at (x, y, z) walks to in a straight
-   * line, such as round the door leaf it's caught behind, not through it;
+   * line, such as round the crate it's caught behind, not through it;
    * or failing that, the nearest node.
    */
   private nearestReached(x: number, z: number, y: number): number {
@@ -627,15 +601,14 @@ export class NavGrid {
       const f = i / steps;
       const x = ax + (bx - ax) * f;
       const z = az + (bz - az) * f;
-      if (!w.clear(x, feet, z, PLAYER_HEIGHT, pad, false, STEP_UP)) return false;
-      if (this.nearLeaf(this.cellX(z) * this.n + this.cellX(x), x, feet, z, pad)) return false;
+      if (!w.clear(x, feet, z, PLAYER_HEIGHT, pad, STEP_UP)) return false;
       const next = w.groundHeight(x, z, feet);
       if (next < feet - MAX_DROP) return false;
       feet = next;
       // Not along an edge, where a body carried a little wide would drop off.
       if (w.groundHeight(x + sx, z + sz, feet) < feet - EDGE_DROP || w.groundHeight(x - sx, z - sz, feet) < feet - EDGE_DROP) return false;
     }
-    return Math.abs(feet - by) < LANDED && w.clear(bx, feet, bz, PLAYER_HEIGHT, pad, false, STEP_UP);
+    return Math.abs(feet - by) < LANDED && w.clear(bx, feet, bz, PLAYER_HEIGHT, pad, STEP_UP);
   }
 
   /**
@@ -700,12 +673,11 @@ export class NavGrid {
     // Near a floor, where the feet settle, as on the boundary between two steps; well inside a terrace, on it.
     const y = floored ? this.settle(x, Math.max(w.floorHeight(x, z), this.tops.get(i) ?? -Infinity), z) : w.groundHeight(x, z, w.floorHeight(x, z));
     this.groundY[i] = y;
-    // Door leaves are left out: bots open a shut door on their way through.
-    // So is anything low enough to step up onto, such as a raised floor's edge.
+    // Anything low enough to step up onto, such as a raised floor's edge, is left out.
     const pad = PLAYER_RADIUS + MARGIN;
     // On a map, nothing beyond its bounds.
     const out = !!w.map && !w.inBounds(x, z, pad);
-    const state = out || !w.clear(x, y, z, PLAYER_HEIGHT, pad, false, STEP_UP) || this.nearLeaf(i, x, y, z, pad) ? BLOCKED
+    const state = out || !w.clear(x, y, z, PLAYER_HEIGHT, pad, STEP_UP) ? BLOCKED
       : w.terrainHeight(x, z) < WET_BELOW ? WET : OPEN;
     if (floored) this.surveyFloors(i, x, state === BLOCKED ? -Infinity : y, z);
     return state;
@@ -740,8 +712,7 @@ export class NavGrid {
         const sy = this.settle(sx, top, sz);
         if (Math.abs(sy - top) > 0.01) continue;
         if (sy - ground < LEVEL_GAP || spots.some((s) => Math.abs(s[1] - sy) < LEVEL_GAP)) continue;
-        // Nor where an open door leaf stands, as walks keep off it.
-        if (!w.clear(sx, sy, sz, PLAYER_HEIGHT, FLOOR_PAD, false, STEP_UP) || this.nearLeaf(i, sx, sy, sz, FLOOR_PAD)) continue;
+        if (!w.clear(sx, sy, sz, PLAYER_HEIGHT, FLOOR_PAD, STEP_UP)) continue;
         spots.push([sx, sy, sz]);
         break;
       }

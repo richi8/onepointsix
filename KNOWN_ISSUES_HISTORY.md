@@ -881,6 +881,10 @@ notes the chunk it came from.
   `shared/hillside.ts`): olives in rows on terraces behind dry-stone walls along the
   contours, the maquis, holm oaks and umbrella pines in place of the island's spruces,
   cypresses, outcrops of pale rock, and grass bleached to straw beyond the walls.
+- **Doors are painted by where they stand** (chunk 59), one of four colours, not in their
+  building's own paint as its shutters are.
+  **Moot** (65): the doors were removed; doorways are plain openings.
+
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
   audio, so recorded samples need a new source.
@@ -1912,6 +1916,20 @@ notes the chunk it came from.
   triangles, placed as drawn, once a ray reaches the sphere its corners lie within. Impacts
   take the normal of the face hit. Bot extraction on 12 clear islands stayed at 19% (20%
   before), and the playtest ran no slower.
+- **A one-room building's table can leave bots no way in** (chunk 51): in an outpost or a hut,
+  the table under the end window stands close enough to the open door leaf that the 1 m nav
+  grid can find no cell between them, depending on how the building falls on the grid (found
+  in the generated towns, where it hit 11 of about 400 rooms until their houses had the table
+  moved). Fixing it moves props on Extraction's islands, so it was left as it is.
+  **Resolved** (65): the door leaves were removed, and the table stays where it was. A test
+  walks every building on islands 1–6 from outside and finds every spot on its floors reached;
+  chunk 64's code left spots unreached in 7 of 66 buildings, two of them one-room houses.
+- **The doors browser test can fail under load** (found in chunk 59): it wants a door swinging
+  within 400 ms of pressing F, and once in a full parallel run it wasn't; alone and in three
+  more parallel runs it passed. In chunk 63 it failed so in one of three full runs.
+  **Moot** (65): the doors and the test went. The other stalls seen under load (the textures'
+  and the death cam's tests) stay in Known Issues as "Browser tests can stall under load".
+
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
   outposts and 100 m from other operators. When 60 random tries find nothing, the operator drops

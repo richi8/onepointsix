@@ -47,14 +47,14 @@ export class RunHud {
 
   /**
    * Call once per frame while a run is on; null hides it all (e.g. on the
-   * range). `door` is the door leaf faced, or -1.
+   * range).
    */
-  update(run: RunView | null, views: readonly ExtractView[], x: number, z: number, yaw: number, camera: THREE.Camera, door = -1): void {
+  update(run: RunView | null, views: readonly ExtractView[], x: number, z: number, yaw: number, camera: THREE.Camera): void {
     for (const el of [this.clock, this.extracts, this.prompt, this.pack, this.markers]) el.hidden = !run || (this.deathmatch && el !== this.prompt);
     this.contracts.hidden = !run?.contracts.length;
     if (!run) return;
     if (this.deathmatch) {
-      this.updatePrompt(run, views, door);
+      this.updatePrompt(run, views);
       return;
     }
 
@@ -76,7 +76,7 @@ export class RunHud {
     this.set('extracts', this.extracts, rows);
     this.updateContracts(run.contracts, x, z, yaw, camera);
 
-    this.updatePrompt(run, views, door);
+    this.updatePrompt(run, views);
 
     const mass = lootMass(run.items);
     const value = lootValue(run.items);
@@ -130,7 +130,7 @@ export class RunHud {
   }
 
   /** What you're facing or standing in, and what pressing F would do. */
-  private updatePrompt(run: RunView, views: readonly ExtractView[], door: number): void {
+  private updatePrompt(run: RunView, views: readonly ExtractView[]): void {
     let title = '';
     let items: string[] = [];
     let bar = -1;
@@ -165,7 +165,7 @@ export class RunHud {
         title = 'Extracting — stay in the zone';
         bar = run.hold / EXTRACT_TIME;
       }
-    } else if (door >= 0) title = `<kbd>F</kbd> ${this.world.doors[door].open ? 'shut' : 'open'} the door`;
+    }
     const key = `${title}|${items.join('')}`;
     this.prompt.hidden = !title;
     this.set('prompt', this.prompt, key, () => {

@@ -16,7 +16,7 @@ import { KIT_YARD } from '../src/shared/maps/kityard.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
 import { reached } from '../src/server/nav.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
-import { inBuilding, leafRect, type Rect, World } from '../src/shared/world.ts';
+import { inBuilding, type Rect, World } from '../src/shared/world.ts';
 import { roofHeights, ROOF_CELL, ROOF_CELLS } from '../src/client/rain.ts';
 import { SKETCH } from '../dev/townsketch.ts';
 
@@ -27,7 +27,7 @@ function fingerprint(w: World): string {
   h.update(Buffer.from(groundWeights(w).buffer));
   // Rounded to a micrometre: the last bit of a float can differ between machines (a rock's x on Mac arm64 and Linux x64).
   const strip = (o: unknown): string => JSON.stringify(o, (k, v: unknown) => (k === 'stamp' ? undefined : typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v));
-  for (const part of [w.trees, w.rocks, w.props, w.panels, w.outposts, w.extracts, w.walls, w.buildings, w.doors, w.towers, w.colliders]) h.update(strip(part));
+  for (const part of [w.trees, w.rocks, w.props, w.panels, w.outposts, w.extracts, w.walls, w.buildings, w.towers, w.colliders]) h.update(strip(part));
   return h.digest('hex').slice(0, 16);
 }
 
@@ -96,8 +96,8 @@ describe('Worlds by mode', () => {
   });
 
   it('keeps an Extraction island exactly as it was before the maps', () => {
-    // Taken from the islands as chunk 49 left them, on Mac arm64 and Linux x64 alike.
-    const before: Record<number, string> = { 1: 'acbc4d6c6ba283ae', 2: 'a9150ff63474737b', 3: '77f3a509c6d83093', 4242: '15bb9c8b9ff5203e' };
+    // Taken from the islands as chunk 49 left them, on Mac arm64 and Linux x64 alike, less their door leaves (chunk 65).
+    const before: Record<number, string> = { 1: 'bd3e513dad3f02e9', 2: '5f747692e565274a', 3: '55514464fdffb23a', 4242: '0c3b4f1f998e9769' };
     for (const [seed, hash] of Object.entries(before)) {
       const w = new World(Number(seed));
       expect(w.map).toBeNull();
@@ -394,18 +394,6 @@ describe('Calabianca', () => {
     expect(nav.unreached(from.x, from.z, from.y, town.bounds).map((p) => `${p.x.toFixed(1)}, ${p.y?.toFixed(1)}, ${p.z.toFixed(1)}`)).toEqual([]);
   });
 
-  it('opens no door leaf into a slot beside it that a body could be caught in', () => {
-    for (const d of town.doors) {
-      const [x0, z0, x1, z1] = leafRect(d, true);
-      const alongX = x1 - x0 > z1 - z0;
-      for (const side of [-1, 1]) {
-        const [px, pz] = alongX ? [(x0 + x1) / 2, side < 0 ? z0 : z1] : [side < 0 ? x0 : x1, (z0 + z1) / 2];
-        const [dx, dz] = alongX ? [0, side] : [side, 0];
-        const gap = Math.min(...[0.5, 1.5].map((h) => town.raycast(px + dx * 0.02, d.y0 + h, pz + dz * 0.02, dx, 0, dz, 3)));
-        expect(gap < 0.3 || gap > 1.2, `leaf at ${px.toFixed(1)}, ${pz.toFixed(1)}: a slot ${gap.toFixed(2)} m wide`).toBe(true);
-      }
-    }
-  });
 });
 
 describe.each([
@@ -429,7 +417,6 @@ describe.each([
 
   it('lets bots reach every room, floor and roof, and a player walk there by the same way', { timeout: 300_000 }, () => {
     const w = new World(1, map);
-    w.doors.forEach((_, i) => w.setDoor(i, true));
     const nav = new NavGrid(w);
     const from = w.spawns[0];
     for (const room of rooms) {

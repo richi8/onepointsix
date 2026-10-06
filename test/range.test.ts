@@ -23,7 +23,7 @@ describe('the range', () => {
       const actors = [...players.values()].filter((p) => p.actor);
       const acts = new Set(actors.map((a) => a.actor!.spec.act));
       for (const act of ['walk', 'sprint', 'crouchWalk', 'crouchSprint', 'strafe', 'lean', 'jump', 'aim', 'rifle', 'pistol', 'bolt', 'reload', 'switch',
-        'grenade', 'stairs', 'mantle', 'door', 'shooter', 'victim'] as Act[]) {
+        'grenade', 'stairs', 'mantle', 'shooter', 'victim'] as Act[]) {
         expect(acts, `seed ${seed}: ${act}`).toContain(act);
       }
       const inbox: ServerMsg[] = [];

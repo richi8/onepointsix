@@ -56,8 +56,6 @@ const SUPPRESSED_REACH = 0.3;
 const SPEED_OF_SOUND = 343;
 /** Footsteps further off than this aren't worth playing. */
 const STEP_RANGE = 45;
-/** Doors opening and shutting are heard this far off, metres. */
-const DOOR_RANGE = 40;
 /** Shots and blasts this close send the birds quiet. */
 const SCARE_RANGE = 150;
 /** Seconds the birds stay quiet after a scare, then take to come back. */
@@ -539,16 +537,6 @@ export class Sfx {
     this.play(clip, { at: h, gain, rate: jitter(0.08), delay: d / SPEED_OF_SOUND, cutoff: this.cutoff(d, h.occ, d), send: 0.3, space: sourceSpace(this.world, at) });
   }
 
-  /** A door swinging open or banging shut. */
-  door(open: boolean, at: At): void {
-    if (this.distance(at) > DOOR_RANGE) return;
-    const h = this.hear(at);
-    const d = Math.min(h.d, DOOR_RANGE);
-    const falloff = 1 - d / DOOR_RANGE;
-    const gain = (open ? 0.6 : 0.8) * falloff * falloff * (1 - h.occ * 0.6) * this.drowned(d);
-    this.play(open ? 'doorOpen' : 'doorShut', { at: h, gain, rate: jitter(0.05), cutoff: this.cutoff(d * 2, h.occ, d), send: 0.2, space: sourceSpace(this.world, at) });
-  }
-
   /**
    * A footfall on `surface`, from `at` or your own. Faster is louder; crouched
    * steps are soft. Bodies too far off make no sound at all.
@@ -630,11 +618,6 @@ export class Sfx {
   changed(box?: { minX: number; minZ: number; maxX: number; maxZ: number }): void {
     if (box) this.field.changed(box.minX, box.minZ, box.maxX, box.maxZ);
     else this.field.reset();
-  }
-
-  /** Doors swung open or shut. */
-  doorsChanged(ids: readonly number[]): void {
-    for (const id of ids) this.field.door(id);
   }
 
   /** Cut off everything playing and waiting to play, as when the island changes. The ambience goes on. */

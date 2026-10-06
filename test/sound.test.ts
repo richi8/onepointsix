@@ -124,8 +124,8 @@ describe('hearing', () => {
 });
 
 describe('hearing II', () => {
-  // A one-room building on island 1 with a double door in its east wall at x = -180.8, z -93.3 to -91.1.
-  const door = world.doors[0];
+  // A one-room building on island 1 with a doorway in its east wall at x = -180.8, z -93.3 to -91.1.
+  const door = { x: -180.8, z: -92.2 };
   const house = world.buildings.find((b) => b.plan === 'one' && door.x > b.minX && door.x < b.maxX + 0.5)!;
   const floor = house.floor;
   // Below the window sills, so the wall is in the way.
@@ -134,7 +134,9 @@ describe('hearing II', () => {
 
   it('finds the house the tests expect', () => {
     expect(house).toBeDefined();
-    expect(door.pair).toBe(1);
+    // The lintel over the doorway, and nothing under it.
+    expect(world.raycast(door.x - 1, house.floor + 2.4, door.z, 1, 0, 0, 2)).toBeLessThan(1);
+    expect(world.raycast(door.x - 1, house.floor + 1.2, door.z, 1, 0, 0, 2)).toBe(Infinity);
   });
 
   it('lets less through a wall than a tree trunk', () => {
@@ -152,25 +154,15 @@ describe('hearing II', () => {
     expect(through(world, a[0], wy, a[1], b[0], wy, b[1])).toBeGreaterThan(0.8);
   });
 
-  it('comes round through an open doorway, and not through a shut one', () => {
+  it('comes round through a doorway', () => {
     const field = new SoundField(world);
-    for (const id of [0, 1]) world.setDoor(id, true);
-    field.reset();
     const open = hear(world, field, outside, inside);
     const straight = through(world, outside.x, outside.y, outside.z, inside.x, inside.y, inside.z);
     expect(straight).toBeGreaterThan(0.8);
     expect(open.occ).toBeLessThan(straight);
     // It seems to come from the doorway, and travels further than the straight line.
-    expect(Math.hypot(open.x - door.x, open.z - (door.z - door.length))).toBeLessThan(2.5);
+    expect(Math.hypot(open.x - door.x, open.z - door.z)).toBeLessThan(2.5);
     expect(open.d).toBeGreaterThan(Math.hypot(outside.x - inside.x, outside.z - inside.z));
-
-    for (const id of [0, 1]) world.setDoor(id, false);
-    field.door(0);
-    field.door(1);
-    const shut = hear(world, field, outside, inside);
-    expect(shut.occ).toBeGreaterThan(open.occ);
-    expect(shut.x).toBe(inside.x);
-    for (const id of [0, 1]) world.setDoor(id, true);
   });
 
   it('floods again only once the ear moves a couple of cells, or the world changes', () => {
@@ -180,7 +172,7 @@ describe('hearing II', () => {
     expect(field.floods).toBe(1);
     field.route({ ...outside, x: outside.x + 2 }, inside);
     expect(field.floods).toBe(2);
-    field.door(0);
+    field.changed(door.x - 0.2, door.z - 1.1, door.x + 0.2, door.z + 1.1);
     field.route({ ...outside, x: outside.x + 2 }, inside);
     expect(field.floods).toBe(3);
   });
@@ -225,8 +217,8 @@ describe('hearing III', () => {
   const stairs = { minX: -61.7, maxX: -60.1, minZ: 39, maxZ: 43 };
   const down = { x: -64.8, y: tall.floor + 1.6, z: 37.2 };
   const up = { x: -64.8, y: tall.upper! + 1.4, z: 41.8 };
-  // The one-room house of 'hearing II', its door on the east wall and a window south of it.
-  const door = world.doors[0];
+  // The one-room house of 'hearing II', its doorway on the east wall and a window south of it.
+  const door = { x: -180.8, z: -92.2 };
   const house = world.buildings.find((b) => b.plan === 'one' && door.x > b.minX && door.x < b.maxX + 0.5)!;
   const window = world.panels.findIndex((p) => p.kind === 'glass' && p.box.minX > house.maxX - 0.5 && p.box.minZ > house.minZ && p.box.maxZ < house.maxZ);
 
@@ -252,26 +244,27 @@ describe('hearing III', () => {
     }
   });
 
-  it('comes round through a broken window, and not once it is mended', () => {
-    for (const id of [0, 1]) world.setDoor(id, false);
+  it('comes round through a broken window, and through the doorway once it is mended', () => {
     const field = new SoundField(world);
     const f = house.floor;
     const ear = { x: -177, y: f + 1.6, z: -97.5 };
-    const at = { x: -182.5, y: f + 1.2, z: -91.5 };
+    const at = { x: -182.5, y: f + 1.2, z: -95.5 };
     const b = world.panels[window].box;
+    const pane = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: (b.minZ + b.maxZ) / 2 };
     try {
-      expect(hear(world, field, ear, at).occ).toBeGreaterThan(0.9);
+      const shut = hear(world, field, ear, at);
+      expect(Math.hypot(shut.x - door.x, shut.z - door.z)).toBeLessThan(2.5);
       world.breakPanel(window);
       field.changed(b.minX, b.minZ, b.maxX, b.maxZ);
       const h = hear(world, field, ear, at);
-      expect(h.occ).toBeLessThan(0.4);
-      expect(Math.hypot(h.x - (b.minX + b.maxX) / 2, h.y - (b.minY + b.maxY) / 2, h.z - (b.minZ + b.maxZ) / 2)).toBeLessThan(0.5);
+      expect(h.occ).toBeLessThan(shut.occ);
+      expect(h.d).toBeLessThan(shut.d);
+      expect(Math.hypot(h.x - pane.x, h.y - pane.y, h.z - pane.z)).toBeLessThan(0.5);
       world.setPanel(window, true);
       field.changed(b.minX, b.minZ, b.maxX, b.maxZ);
-      expect(hear(world, field, ear, at).occ).toBeGreaterThan(0.9);
+      expect(hear(world, field, ear, at)).toEqual(shut);
     } finally {
       world.setPanel(window, true);
-      for (const id of [0, 1]) world.setDoor(id, true);
     }
   });
 

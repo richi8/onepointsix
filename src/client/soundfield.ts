@@ -1,11 +1,10 @@
-import { leafRect, type World } from '../shared/world.ts';
+import { type World } from '../shared/world.ts';
 
 // The ways sound can travel round walls near the listener: a 1 m grid over the
 // island, each cell open or blocked at head height, flooded outward from the
 // listener. Any sound within reach then knows the shortest way to the ear
 // round corners and through doorways, and the corner it seems to come from.
-// Unlike the bots' nav grid, a shut door blocks it, low walls and fences
-// don't (sound gets over them, see hearing.ts), and only half a cell of
+// Unlike the bots' nav grid, low walls and fences don't (sound gets over them, see hearing.ts), and only half a cell of
 // clearance is kept, so a doorway is always at least one cell wide.
 //
 // Over the ground there can be floors: stairs, an upper storey, a
@@ -147,7 +146,7 @@ export class SoundField {
     });
   }
 
-  /** Something changed between (x0, z0) and (x1, z1), such as a door or broken cover: look again. */
+  /** Something changed between (x0, z0) and (x1, z1), such as broken cover: look again. */
   changed(x0: number, z0: number, x1: number, z1: number): void {
     const a = Math.max(this.cell(x0) - 1, 0);
     const b = Math.min(this.cell(x1) + 1, this.n - 1);
@@ -166,16 +165,6 @@ export class SoundField {
       }
     }
     this.stale = true;
-  }
-
-  /** A door swung: both where its leaf was and where it is now. */
-  door(id: number): void {
-    const d = this.world.doors[id];
-    if (!d) return;
-    for (const open of [false, true]) {
-      const [x0, z0, x1, z1] = leafRect(d, open);
-      this.changed(x0, z0, x1, z1);
-    }
   }
 
   /** Everything may have changed, as after a death cam: survey afresh. */
@@ -557,7 +546,7 @@ export class SoundField {
     const y = w.groundHeight(x, z, w.floorHeight(x, z));
     this.groundY[i] = y;
     if (this.floored.has(i)) this.surveyFloors(i, x, y, z);
-    return w.clear(x, y, z, HIGH, PAD, true, LOW) ? OPEN : BLOCKED;
+    return w.clear(x, y, z, HIGH, PAD, LOW) ? OPEN : BLOCKED;
   }
 
   /**
@@ -580,7 +569,7 @@ export class SoundField {
         const sx = x + ox;
         const sz = z + oz;
         if (Math.abs(w.groundHeight(sx, sz, top) - top) > LEVEL_GAP * 0.5) continue;
-        if (!w.clear(sx, top, sz, HIGH, FLOOR_PAD, true, LOW)) continue;
+        if (!w.clear(sx, top, sz, HIGH, FLOOR_PAD, LOW)) continue;
         nodes.push([sx, top, sz]);
         break;
       }

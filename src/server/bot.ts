@@ -12,7 +12,6 @@ import {
   EYE_HEIGHT,
   GUARD_HP,
   MAX_HP,
-  PLAYER_RADIUS,
   RUN_TIME,
   WALK_SPEED,
 } from '../shared/constants.ts';
@@ -24,7 +23,7 @@ import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import { type Bush, CONCEALED, VEG_CELL, bagShows, vegetationOf } from '../shared/vegetation.ts';
-import { inBuilding, type Point, type Rect, type World } from '../shared/world.ts';
+import { type Point, type Rect, type World } from '../shared/world.ts';
 import type { ExtractPoint } from './extracts.ts';
 import { reached, type NavGrid, type Waypoint } from './nav.ts';
 import { TEMPERS, type Personality, type Temper } from './personality.ts';
@@ -254,20 +253,6 @@ const ARRIVE = 1.2;
 const INBOUND_ARRIVE = 25;
 /** A place more than this far above or below is farther by that much: upstairs, or on the way. */
 const OTHER_FLOOR = 0.6;
-/**
- * Doors: a bot this close to a doorway's middle is going through it, and
- * shuts it behind it, if it will, before it's this far past. It won't with a
- * friend this close to the doorway.
- */
-const DOORWAY = 1.2;
-const SHUT_FROM = 3.5;
-const FRIEND_BEHIND = 5;
-/** A bot getting away from someone seen this lately, this close to the doorway on the side it came from, slams the door on them. */
-const CHASE_MEMORY = 6;
-const CHASE_RANGE = 30;
-/** Otherwise, going about its routine, how often it shuts a door behind it. */
-const GUARD_SHUTS = 0.6;
-const OPERATOR_SHUTS = 0.35;
 const REPATH_DELAY = 0.5;
 /** Seconds of no progress before jumping, before searching a new path, and before giving up on a goal. */
 const STUCK_JUMP = 0.7;
@@ -357,9 +342,6 @@ export const tally = {
   /** Times an operator took cover from someone shooting at it without fighting back, and found itself outgunned. */
   pinned: 0,
   outgunned: 0,
-  /** Doors shut behind them, and of those slammed on someone chasing. */
-  shuts: 0,
-  slams: 0,
   /** Thinks spent up on a floor off the ground: upstairs or on a watchtower, sentries left out. */
   upThinks: 0,
   /** Rats lying low for fog seen coming, and crates searched past the plan in fog by rats and looters. */
@@ -417,8 +399,6 @@ export class Bot {
   target = 0;
   /** Set once an operator has nowhere left to go; the server removes it. */
   done = false;
-  /** A door leaf it shuts behind it now, which the server swings shut; -1 for none. */
-  shut = -1;
   private readonly rand: () => number;
   /** Server time as of the last think. */
   private now = 0;
@@ -467,8 +447,6 @@ export class Bot {
   private jump = false;
   /** Interact this command: held down, or pressed again and again. */
   private use: 'hold' | 'tap' | null = null;
-  /** The doorway it's in or just came through: a leaf of it, and which side of it it came from. */
-  private doorway: { id: number; side: number } | null = null;
 
   // Plans.
   private step = 0;
@@ -677,7 +655,6 @@ export class Bot {
     this.decide(ctx, self);
     this.behave(ctx, self);
     this.checkStuck(self, dt);
-    this.doors(ctx, self);
     if (this.role.kind !== 'sentry' && self.y > ctx.world.floorHeight(self.x, self.z) + 2) tally.upThinks++;
   }
 
@@ -777,61 +754,6 @@ export class Bot {
     this.spot = this.waitSpot(ctx, self);
     this.spotUntil = this.now + FOG_WAIT;
     return true;
-  }
-
-  /**
-   * Once through a doorway and clear of its leaves, maybe shut the door
-   * behind: to slam it on whoever is after it, or out of habit, going about
-   * its routine; not with a friend coming through behind.
-   */
-  private doors(ctx: BotContext, self: Agent): void {
-    const w = ctx.world;
-    if (!this.doorway) {
-      if (!w.buildings.some((b) => inBuilding(b, self.x, self.z, DOORWAY))) return;
-      for (let i = 0; i < w.doors.length; i++) {
-        const d = w.doors[i];
-        if (d.pair >= 0 && d.pair < i) continue;
-        const [mx, mz] = doorwayMiddle(w, i);
-        if (Math.hypot(mx - self.x, mz - self.z) > DOORWAY || self.y > d.y1 || self.y + EYE_HEIGHT < d.y0) continue;
-        this.doorway = { id: i, side: Math.sign((self.x - mx) * d.openX + (self.z - mz) * d.openZ) || 1 };
-        return;
-      }
-      return;
-    }
-    const { id, side } = this.doorway;
-    const d = w.doors[id];
-    const [mx, mz] = doorwayMiddle(w, id);
-    const dist = Math.hypot(mx - self.x, mz - self.z);
-    const now = Math.sign((self.x - mx) * d.openX + (self.z - mz) * d.openZ);
-    // Back out the way it came, or gone on without a chance to shut it.
-    if (dist > SHUT_FROM || (dist > DOORWAY && now === side)) {
-      this.doorway = null;
-      return;
-    }
-    if (now === side || dist < DOORWAY) return;
-    const leaves = [id, d.pair].filter((i) => i >= 0 && !w.panels[w.doors[i].panel].box.gone);
-    if (!leaves.some((i) => w.doors[i].open)) {
-      this.doorway = null;
-      return;
-    }
-    // Wait until clear of where the leaves swing.
-    if (leaves.some((i) => w.sweeps(i, false, self.x, self.y, self.z, PLAYER_RADIUS + 0.1))) return;
-    this.doorway = null;
-    for (const a of ctx.agents) {
-      if (a === self || a.dead || hostile(self, a) || Math.hypot(a.x - mx, a.z - mz) > FRIEND_BEHIND) continue;
-      return;
-    }
-    // Someone it's running from, on the far side, close enough to be chasing.
-    const chased = [...this.contacts.entries()].some(([cid, c]) =>
-      c.level >= 1 && this.now - c.seenAt < CHASE_MEMORY && Math.hypot(c.x - mx, c.z - mz) < CHASE_RANGE &&
-      Math.sign((c.x - mx) * d.openX + (c.z - mz) * d.openZ) === side && (this.state === 'cover' || this.slipsAway(ctx, cid)));
-    const calm = this.isRoutine(this.state) || this.state === 'investigate';
-    const tidy = calm ? (this.role.kind === 'operator' ? OPERATOR_SHUTS : GUARD_SHUTS) : 0;
-    if (chased || this.rand() < tidy) {
-      this.shut = id;
-      tally.shuts++;
-      if (chased) tally.slams++;
-    }
   }
 
   private perceive(ctx: BotContext, self: Agent, dt: number): void {
@@ -2261,13 +2183,6 @@ export class Bot {
   private between([lo, hi]: [number, number]): number {
     return lo + this.rand() * (hi - lo);
   }
-}
-
-/** The middle of the doorway door leaf `id` hangs in, halfway between its hinge and its pair's. */
-function doorwayMiddle(w: World, id: number): [number, number] {
-  const d = w.doors[id];
-  if (d.pair >= 0) return [(d.x + w.doors[d.pair].x) / 2, (d.z + w.doors[d.pair].z) / 2];
-  return [d.x + (d.shutX * d.length) / 2, d.z + (d.shutZ * d.length) / 2];
 }
 
 /** How far a spot is to get to: up or down too, for a post. */

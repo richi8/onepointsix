@@ -105,16 +105,14 @@ export class Deathcam {
 
 /**
  * The cover at `from`, rebuilt from how it stands now by undoing the breaks,
- * rebuilds and doors used since, latest first.
+ * and rebuilds since, latest first.
  */
 function coverBefore(now: CoverState, events: readonly { time: number; e: GameEvent }[], from: number): CoverState {
   const down = new Set(now.broken);
-  const open = new Set(now.open);
   for (let i = events.length - 1; i >= 0 && events[i].time > from; i--) {
     const e = events[i].e;
     if (e.k === 'break') for (const p of e.panels) down.delete(p);
     if (e.k === 'repair') for (const p of e.panels) down.add(p);
-    if (e.k === 'door') for (const d of e.doors) (e.open ? open.delete(d) : open.add(d));
   }
-  return { broken: [...down], open: [...open] };
+  return { broken: [...down] };
 }

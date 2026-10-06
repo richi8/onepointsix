@@ -26,8 +26,7 @@ describe('Calabianca\'s worn paving', () => {
   });
 
   it('is worn most at a doorway on the ground and at a stair\'s foot', () => {
-    // Every doorway in the town has two leaves: its middle is between their hinges.
-    const middles = town.doors.flatMap((d, i) => (d.pair > i ? [[(d.x + town.doors[d.pair].x) / 2, (d.z + town.doors[d.pair].z) / 2, d.y0] as const] : []));
+    const middles = town.facades.flatMap((f) => f.openings.filter((o) => o.kind === 'door').map((o) => [...(f.axis === 'x' ? [o.at, f.line] : [f.line, o.at]), f.y] as const));
     const [x, z] = middles.find(([x, z, y]) => Math.abs(y - town.terrainHeight(x, z)) < 0.3)!;
     expect(worn(x, z)).toBeGreaterThan(0.7);
     const s = CALABIANCA.stairs[0];

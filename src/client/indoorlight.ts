@@ -16,7 +16,7 @@ import { TOWN_GLSL, townUniforms } from './townlight.ts';
 // concrete one. A room facing a hill is darker than one facing the sea. The grids are stacked in
 // one 3D texture that materials sample, finding a building's grid from the
 // island's map (see islandmap.ts); a building's grid is worked out again, a
-// little each frame, when its doors or panels change, and so is any other's
+// little each frame, when its panels change, and so is any other's
 // within reach whose sky that changed.
 
 /** Most buildings with a grid in the texture. */
@@ -419,7 +419,7 @@ export class IndoorLight {
   }
 
   /**
-   * Panels or doors may have changed: work out again each building whose
+   * Panels may have changed: work out again each building whose
    * cover isn't as it was, and the sky outside every other within reach of it.
    */
   changed(): void {
@@ -451,8 +451,7 @@ export class IndoorLight {
 
   /** How a building's cover stands, to tell when it changes. */
   private sign(g: Grid): string {
-    const doors = this.world.doors;
-    return g.boxes.map((b) => (b.gone ? '-' : b.door !== undefined && doors[b.door].open ? 'o' : '+')).join('');
+    return g.boxes.map((b) => (b.gone ? '-' : '+')).join('');
   }
 
   /** Once a frame: carry on working out grids for a couple of milliseconds. */

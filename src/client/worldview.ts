@@ -3,7 +3,7 @@ import type { Weather } from '../shared/weather.ts';
 import type { ExtractView } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import { ROCK_SQUASH } from '../shared/rock.ts';
-import { leafRect, type Box, type PropStyle, type World } from '../shared/world.ts';
+import { type Box, type PropStyle, type World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { Sun } from './cascades.ts';
 import type { GroundCover } from './groundcover.ts';
@@ -45,7 +45,6 @@ const PROP_COLORS: Record<PropStyle, number[]> = {
   metal: [0x7a3b2e, 0x2f5a73, 0x4e6b3a, 0x8a7a3a, 0x5d6166],
   fence: [0x7d6a4f, 0x6e5c42],
   roof: [0x55595c],
-  door: [0x5a4a36],
   glass: [0xa8c4c8],
 };
 /** With textures, props are tinted rather than coloured. */
@@ -56,7 +55,6 @@ const PROP_TINTS: Record<PropStyle, number[]> = {
   metal: [0xc0584a, 0x5d8aad, 0x7d9a5e, 0xc8ae62, 0xa4a8ac],
   fence: [0xffffff, 0xe0d4c0],
   roof: [0xa09a90],
-  door: [0x8a7560],
   glass: [0xffffff],
 };
 /** Wood textures are dark; they're brightened past themselves. */
@@ -68,15 +66,12 @@ const PROP_LAYERS: Record<PropStyle, number> = {
   metal: Layer.metal,
   fence: Layer.boards,
   roof: Layer.metal,
-  door: Layer.boards,
   glass: Layer.concrete,
 };
 /** The colour lightning lights the sky, and how much flat light it adds at its brightest. */
 const FLASH_SKY = new THREE.Color(0xc8d2ff);
 const FLASH_HEMI = 1.2;
-const DOOR_MATRIX = new THREE.Matrix4();
 const SUN_LIGHT = new THREE.Color();
-const V_SCALE = new THREE.Vector3();
 
 /** The rendered island: terrain, water, sky, props, vegetation and lighting. */
 export class WorldView {
@@ -91,8 +86,6 @@ export class WorldView {
   private readonly world: World;
   /** The props, each drawn in its shape. */
   private readonly props: Props;
-  /** How far each door leaf had swung when last drawn, from 0 shut to 1 open. */
-  private readonly drawn: Float32Array;
   private readonly terrain: Terrain;
   private readonly trees: Trees;
   /** A map's hillside: its terraces' walls and its outcrops. */
@@ -171,8 +164,6 @@ export class WorldView {
     this.trim = Dressing.build(world);
     this.trim?.nearShadows(this.sun.light.shadow.camera);
     if (this.trim) this.dressing.add(this.trim.group);
-    this.drawn = Float32Array.from(world.doors, (d) => d.swing);
-    this.drawn.forEach((_, i) => this.placeDoor(i));
     this.terrain = new Terrain(world);
     // A map's trees are its own kinds (see greenery.ts); the island's, spruces.
     this.trees = new Trees(world, world.map ? greenery(world) : undefined);
@@ -342,7 +333,7 @@ export class WorldView {
     return this.rain;
   }
 
-  /** Show panels standing or broken and doors open or shut as the world has them, at once. */
+  /** Show panels standing or broken as the world has them, at once. */
   syncPanels(): void {
     this.world.panels.forEach((_, i) => this.showPanel(i));
     this.props.moved();
@@ -359,36 +350,9 @@ export class WorldView {
     this.castersChanged = true;
   }
 
-  /** A door leaf was opened or shut: it swings there, and the light through its doorway changes. */
-  updateDoor(id: number): void {
-    if (this.world.doors[id]) this.light3d.changed();
-  }
-
   private showPanel(id: number): void {
     const p = this.world.panels[id];
-    if (p.box.door !== undefined) this.placeDoor(p.box.door);
-    else this.props.show(p.prop, !p.box.gone);
-  }
-
-  /** Set a door leaf's matrix from how far it has swung. */
-  private placeDoor(id: number): void {
-    const d = this.world.doors[id];
-    const p = this.world.panels[d.panel];
-    if (p.box.gone) {
-      this.props.place(p.prop, null);
-      return;
-    }
-    this.drawn[id] = d.swing;
-    const a = (d.swing * Math.PI) / 2;
-    const dx = d.shutX * Math.cos(a) + d.openX * Math.sin(a);
-    const dz = d.shutZ * Math.cos(a) + d.openZ * Math.sin(a);
-    const [x0, z0, x1, z1] = leafRect(d, false);
-    const thick = Math.min(x1 - x0, z1 - z0);
-    const m = DOOR_MATRIX;
-    m.makeRotationY(Math.atan2(-dz, dx));
-    m.scale(V_SCALE.set(d.length, d.y1 - d.y0, thick));
-    m.setPosition(d.x + (dx * d.length) / 2, (d.y0 + d.y1) / 2, d.z + (dz * d.length) / 2);
-    this.props.place(p.prop, m);
+    this.props.show(p.prop, !p.box.gone);
   }
 
   /** A panel's colour, for its debris: flat, or a tint over its texture once textured. */
@@ -430,7 +394,7 @@ export class WorldView {
     this.sky.position.copy(camera.position);
     groundEye.value.copy(camera.position);
     this.sun.update(focus, near, far);
-    // Broken cover and swung doors reach the island's shadow map now and then, not every time one changes.
+    // Broken cover reaches the island's shadow map now and then, not every time one changes.
     if (this.castersChanged && (time - this.redrawnAt > 2 || time < this.redrawnAt)) {
       this.castersChanged = false;
       this.redrawnAt = time;
@@ -442,7 +406,6 @@ export class WorldView {
     this.cover?.update(camera.position);
     this.rain.update(camera.position, time);
     this.lightning(this.rain.flash);
-    this.swingDoors();
     this.light3d.focus(camera.position);
     this.light3d.update();
     this.townLight?.update(time);
@@ -508,19 +471,6 @@ export class WorldView {
   /** Whether the camera is under the sea. */
   get underwater(): boolean {
     return this.water.under;
-  }
-
-  /** Draw each door leaf that has swung since, where the world has it; the world swings them. */
-  private swingDoors(): void {
-    let moved = false;
-    this.world.doors.forEach((d, i) => {
-      if (this.drawn[i] === d.swing) return;
-      this.placeDoor(i);
-      moved = true;
-      // Come to rest, the leaf's shadow moves in the island's map too.
-      if (d.swing === 0 || d.swing === 1) this.castersChanged = true;
-    });
-    if (moved) this.props.moved();
   }
 }
 

@@ -11,7 +11,7 @@ import { mulberry32 } from '../src/shared/rng.ts';
 import { spawnState, type PlayerState } from '../src/shared/sim.ts';
 import { RIFLE } from '../src/shared/weapons.ts';
 import { vegetationOf } from '../src/shared/vegetation.ts';
-import { inBuilding, watchtower, World } from '../src/shared/world.ts';
+import { watchtower, World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 
 const world = new World(DEFAULT_WORLD.seed);
@@ -314,79 +314,5 @@ describe('bots in play', () => {
     const ticks = SERVER_TICK_RATE * 60;
     for (let t = 0; t < ticks; t++) server.step();
     expect((performance.now() - start) / ticks).toBeLessThan(SERVER_DT * 1000 * 0.25);
-  });
-});
-
-describe('bots and doors', () => {
-  /** A doorway into an outpost's building from outside: its first leaf, its middle, and the way in. */
-  function doorway() {
-    for (const b of world.buildings.filter((h) => h.outpost >= 0)) {
-      for (let i = 0; i < world.doors.length; i++) {
-        const d = world.doors[i];
-        if (!inBuilding(b, d.x, d.z, 0.01) || d.pair < i) continue;
-        const x = (d.x + world.doors[d.pair].x) / 2;
-        const z = (d.z + world.doors[d.pair].z) / 2;
-        if (inBuilding(b, x - d.openX * 2, z - d.openZ * 2)) continue;
-        return { i, d, x, z, inX: d.openX, inZ: d.openZ };
-      }
-    }
-    throw new Error('no outside doorway');
-  }
-
-  /**
-   * A bot walked in through the doorway with `others` about, thinking as it
-   * goes: an operator, chased by the first of them, or a guard on its rounds.
-   * Whether it shut the door.
-   */
-  function goIn(others: Agent[], chased: boolean, seed = 7): boolean {
-    const { i, d, x, z, inX, inZ } = doorway();
-    world.setDoor(i, true);
-    world.setDoor(d.pair, true);
-    const self = agent(1, chased ? 'operator' : 'guard', x - inX * 1, z - inZ * 1);
-    const role: Role = chased
-      ? { kind: 'operator', loot: [], planned: 0, greed: 10 }
-      : { kind: 'guard', route: [{ x: x + inX * 3, y: self.y, z: z + inZ * 3 }], leash: 100 };
-    const bot = new Bot(role, SKILLS.normal, RIFLE, yawToward(self.x, self.z, x, z), mulberry32(seed));
-    const all = [self, ...others];
-    const ctx: BotContext = {
-      world, nav, time: 0, agents: all, agent: (id) => all.find((a) => a.id === id), pathBudget: 10, callout: () => {},
-      extracts: [], lootView: () => null, senses: sensesOf(settled('clear')), bounty: 0, bags: () => [],
-    };
-    let shut = -1;
-    for (let k = 0; k <= 30; k++) {
-      // From a metre out to three in, square through the doorway.
-      const f = -1 + (k / 30) * 4;
-      self.x = x + inX * f;
-      self.z = z + inZ * f;
-      ctx.time = k * 0.1;
-      if (chased) {
-        const g = others[0];
-        (bot as unknown as { contacts: Map<number, unknown> }).contacts.set(g.id, {
-          level: 1, visible: true, headOnly: false, x: g.x, y: g.y, z: g.z, seenAt: ctx.time, since: 0, threatAt: ctx.time,
-        });
-      }
-      bot.think(ctx, self, 0.1);
-      if (bot.shut >= 0) shut = bot.shut;
-      bot.shut = -1;
-    }
-    world.setDoor(i, true);
-    world.setDoor(d.pair, true);
-    return shut === i || shut === d.pair;
-  }
-
-  it('slam a door on a guard chasing them', () => {
-    const { x, z, inX, inZ } = doorway();
-    const guard = agent(2, 'guard', x - inX * 12, z - inZ * 12);
-    for (let seed = 1; seed <= 5; seed++) expect(goIn([guard], true, seed), `seed ${seed}`).toBe(true);
-  });
-
-  it('shut a door behind them on their rounds now and then, but not on a friend coming through', () => {
-    const { x, z, inX, inZ } = doorway();
-    const seeds = [1, 2, 3, 4, 5, 6, 7, 8].filter((s) => goIn([], false, s));
-    // About as often as GUARD_SHUTS says.
-    expect(seeds.length).toBeGreaterThanOrEqual(2);
-    expect(seeds.length).toBeLessThanOrEqual(7);
-    const friend = agent(3, 'guard', x - inX * 2.5, z - inZ * 2.5);
-    for (const seed of seeds) expect(goIn([friend], false, seed), `seed ${seed}`).toBe(false);
   });
 });

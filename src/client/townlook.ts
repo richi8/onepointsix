@@ -8,7 +8,7 @@ import { faces, type TownPaint } from './surfaces.ts';
 // corrugated iron and planks: walls in their building's plaster, floors and
 // flat roofs in terracotta tiles over plastered ceilings, stairs, terraces,
 // freestanding walls and the quay in cut stone, terraces topped with the
-// paving round them; doors painted. And the paving over its ground: the
+// paving round them. And the paving over its ground: the
 // lanes' flagstones, the squares' cobbles, the gardens' grass, and how worn
 // it is where people walk.
 
@@ -92,14 +92,13 @@ function wear(world: World, data: Uint8Array, x0: number, z0: number, w: number,
   }
   const spot = (cx: number, cz: number) =>
     stamp(cx - DOOR_WEAR, cz - DOOR_WEAR, cx + DOOR_WEAR, cz + DOOR_WEAR, (x, z) => Math.max(1 - Math.hypot(x - cx, z - cz) / DOOR_WEAR, 0));
-  world.doors.forEach((d, i) => {
-    // Each doorway once, from its first leaf; its middle between the hinges, or half a leaf from one.
-    if (d.pair >= 0 && d.pair < i) return;
-    const [cx, cz] = d.pair >= 0
-      ? [(d.x + world.doors[d.pair].x) / 2, (d.z + world.doors[d.pair].z) / 2]
-      : [d.x + d.shutX * d.length / 2, d.z + d.shutZ * d.length / 2];
-    if (Math.abs(d.y0 - world.terrainHeight(cx, cz)) < DOOR_GROUND) spot(cx, cz);
-  });
+  for (const f of world.facades) {
+    for (const o of f.openings) {
+      if (o.kind !== 'door') continue;
+      const [cx, cz] = f.axis === 'x' ? [o.at, f.line] : [f.line, o.at];
+      if (Math.abs(f.y - world.terrainHeight(cx, cz)) < DOOR_GROUND) spot(cx, cz);
+    }
+  }
   for (const s of map.stairs) spot(s.x, s.z);
 }
 
@@ -110,16 +109,12 @@ function paveLayer(world: World, x: number, z: number): number {
 
 /** What the plain surfaces are tinted: stone and terracotta as they are. */
 const NEUTRAL = 0xf0ece4;
-/** Doors' paint, as tints over the boards: green, blue, brown and oxblood, brightened past the dark wood. */
-const DOOR_PAINT = [0x5e9a74, 0x5a86b0, 0x9a6a44, 0xa8504a];
-const DOOR_GAIN = 1.7;
-/** Flat colours, before the textures: stone, terracotta and the doors' paint. */
+/** Flat colours, before the textures: stone and terracotta. */
 const STONE_FLAT = 0x9c9482;
 const COTTO_FLAT = 0x8e5a44;
-const DOOR_FLAT = [0x3e6450, 0x3c5a78, 0x6a4a30, 0x74363a];
 
 /** What a map's prop is made of, or null for one drawn as on the island (crates, containers, glass). */
-type Stuff = 'plaster' | 'stone' | 'floor' | 'door';
+type Stuff = 'plaster' | 'stone' | 'floor';
 
 function stuffOf(world: World, i: number): Stuff | null {
   if (!world.map) return null;
@@ -133,20 +128,9 @@ function stuffOf(world: World, i: number): Stuff | null {
       return p.colour !== undefined || p.box.part === 'roof' ? 'floor' : 'stone';
     case 'step':
       return 'stone';
-    case 'door':
-      return 'door';
     default:
       return null;
   }
-}
-
-/** A door's paint, the same for both leaves of a doorway, from where it stands. */
-function paintOf(world: World, i: number): number {
-  const b = world.props[i].box;
-  const d = b.door !== undefined ? world.doors[b.door] : null;
-  const [x, z] = d ? [d.x + (d.pair >= 0 ? world.doors[d.pair].x : d.x), d.z + (d.pair >= 0 ? world.doors[d.pair].z : d.z)] : [b.minX, b.minZ];
-  const h = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
-  return Math.floor(h * DOOR_PAINT.length);
 }
 
 /** Prop `i`'s texture layer code in a map's town, or null to texture it as on the island. */
@@ -158,7 +142,6 @@ export function townLayer(world: World, i: number): number | null {
   switch (stuff) {
     case 'plaster': return Layer.plaster;
     case 'floor': return faces(Layer.cotto, Layer.plaster);
-    case 'door': return Layer.boards;
     // A terrace's or a stair's top is paved as the ground round it.
     case 'stone': return b.walk ? faces(paveLayer(world, x, z), Layer.ashlar) : Layer.ashlar;
   }
@@ -168,10 +151,6 @@ export function townLayer(world: World, i: number): number | null {
 export function townTint(world: World, i: number, textured: boolean, out: THREE.Color): THREE.Color | null {
   const stuff = stuffOf(world, i);
   if (!stuff || stuff === 'plaster') return null;
-  if (stuff === 'door') {
-    const k = paintOf(world, i);
-    return textured ? out.setHex(DOOR_PAINT[k]).multiplyScalar(DOOR_GAIN) : out.setHex(DOOR_FLAT[k]);
-  }
   // The flat roofs' tiles, out in the sun, have bleached.
   if (textured) return world.props[i].box.part === 'roof' ? out.setHex(NEUTRAL).multiplyScalar(1.35) : out.setHex(NEUTRAL);
   return out.setHex(stuff === 'floor' ? COTTO_FLAT : STONE_FLAT);

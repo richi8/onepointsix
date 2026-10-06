@@ -79,7 +79,7 @@ test("a sound's ringing comes back from its side, not from all round", async ({ 
     await sfx.loaded();
     game.camera.updateMatrixWorld();
     sfx.update(game.camera, 0);
-    // The ambience hushed, so only the door is heard.
+    // The ambience hushed, so only the crate is heard.
     const beds = (sfx as unknown as { ambience: Record<string, AudioNode> }).ambience;
     for (const node of Object.values(beds)) {
       if (!(node instanceof GainNode)) continue;
@@ -87,10 +87,10 @@ test("a sound's ringing comes back from its side, not from all round", async ({ 
       node.gain.value = 0;
     }
     const e = game.camera.matrixWorld.elements;
-    // A door slamming 8 m off to the listener's right.
-    sfx.door(false, { x: e[12] + e[0] * 8, y: e[13] + e[1] * 8, z: e[14] + e[2] * 8 });
+    // A crate smashed 8 m off to the listener's right.
+    sfx.smash('crate', { x: e[12] + e[0] * 8, y: e[13] + e[1] * 8, z: e[14] + e[2] * 8 });
     const out = await ctx.startRendering();
-    // After the slam itself is over, only its ringing is left.
+    // After the smash itself is over, only its ringing is left.
     const energy = (ch: number) => {
       const d = out.getChannelData(ch);
       let sum = 0;

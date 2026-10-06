@@ -10,8 +10,6 @@ import {
   DEATHCAM_BEFORE,
   DEATHMATCH_BOT_RESPAWN,
   DEATHMATCH_RESPAWN_WAIT,
-  DOOR_NOISE,
-  DOOR_REACH,
   EYE_HEIGHT,
   EXTRACT_FEE,
   EXTRACT_TIME,
@@ -61,7 +59,7 @@ import { Tape } from '../shared/tape.ts';
 import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '../shared/weapons.ts';
 import { bagShows, vegetationOf } from '../shared/vegetation.ts';
 import { mapFor } from '../shared/maps/index.ts';
-import { inBuilding, leafRect, World, type Box, type Point } from '../shared/world.ts';
+import { World, type Box, type Point } from '../shared/world.ts';
 import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
@@ -84,8 +82,6 @@ const THINK_TICKS = 3;
 const PATH_BUDGET = 6;
 /** Milliseconds a tick spends working out a map's paths ahead (see NavGrid.warm), until they all are. */
 const WARM_MS = 4;
-/** How far ahead of a walking bot a shut door is opened. */
-const BOT_DOOR_REACH = 0.7;
 /** Guards this close to one who spots an enemy hear the callout. */
 const CALLOUT_RANGE = 60;
 /** Guards this close to a called extraction hear the call. */
@@ -362,7 +358,7 @@ export class GameServer {
         this.boardChanged = true;
         p.send({
           t: 'welcome', id, seed: this.seed, tick: this.tick, tickRate: SERVER_TICK_RATE, mode: this.mode,
-          broken: this.world.brokenPanels(), open: this.world.openDoors(),
+          broken: this.world.brokenPanels(),
         });
         break;
       case 'ping':
@@ -448,29 +444,6 @@ export class GameServer {
         rival.protection = 0;
         this.damage(rival, p, rival.hp, 'head', p.weapon, rival.x, rival.y + 1.6, rival.z);
         break;
-      case 'door': {
-        const w = this.world;
-        const o = w.nearestOutpost(p.x, p.z);
-        const b = o && w.buildings.find((h) => h.outpost === w.outposts.indexOf(o.outpost));
-        if (!b) return;
-        // A doorway in from outside: its leaves, and a step out from its middle.
-        for (let i = 0; i < w.doors.length; i++) {
-          const d = w.doors[i];
-          if (d.pair < i || !inBuilding(b, d.x, d.z, 0.01)) continue;
-          const mx = (d.x + w.doors[d.pair].x) / 2;
-          const mz = (d.z + w.doors[d.pair].z) / 2;
-          if (inBuilding(b, mx - d.openX * 2, mz - d.openZ * 2)) continue;
-          for (const leaf of [i, d.pair]) w.setDoor(leaf, false);
-          this.broadcast({ k: 'door', doors: [i, d.pair], open: false, x: mx, y: d.y0, z: mz });
-          p.x = mx - d.openX * 1.5;
-          p.z = mz - d.openZ * 1.5;
-          p.y = w.groundHeight(p.x, p.z, d.y0 + 0.5);
-          p.vx = p.vy = p.vz = 0;
-          p.tape.sync(p);
-          return;
-        }
-        break;
-      }
     }
   }
 
@@ -501,14 +474,11 @@ export class GameServer {
     ctx.senses = sensesOf(this.forecast.at(now));
     ctx.coming = this.forecast.next(now);
     this.bagList = null;
-    this.world.stepDoors(SERVER_DT);
     for (const p of this.players.values()) {
       if (p.actor && !p.dead) this.act(p, p.actor, now);
       if (p.bot && !p.dead) {
         if ((this.tick + p.id) % THINK_TICKS === 0) p.bot.think(ctx, p, THINK_TICKS * SERVER_DT);
         p.queue.push(...p.bot.commands(ctx, p, p.lastSim));
-        if (p.bot.shut >= 0) this.useDoor(p.bot.shut, false, p);
-        p.bot.shut = -1;
       }
       const n = Math.min(p.queue.length, MAX_CMDS_PER_TICK);
       p.tape.beginTick(p, now - SERVER_DT);
@@ -524,7 +494,6 @@ export class GameServer {
         });
         p.tape.record(cmd, p);
         if (p.run && !p.dead) this.use(p, cmd.buttons);
-        if ((p.bot || p.actor) && !p.dead) this.botDoors(p, cmd.buttons, cmd.yaw);
         p.lastSim = cmd.seq;
       }
       p.queue.splice(0, n);
@@ -677,67 +646,11 @@ export class GameServer {
       this.called(p, zone);
       return;
     }
-    const door = this.world.doorFacing(p.x, p.y, p.z, p.yaw, DOOR_REACH);
-    if (door >= 0) this.useDoor(door, !this.world.doors[door].open, p);
   }
 
   /**
-   * Swing a doorway's leaves open or shut, unless someone other than `by`
-   * stands where they'd sweep through; then `by` is told the door is stuck.
-   * Everyone sees it and bots near enough hear it. Returns whether it moved.
-   */
-  private useDoor(id: number, open: boolean, by: Player): boolean {
-    const w = this.world;
-    const d = w.doors[id];
-    const leaves = [id, d.pair].filter((i) => i >= 0 && !w.panels[w.doors[i].panel].box.gone && w.doors[i].open !== open);
-    if (!leaves.length) return false;
-    for (const i of leaves) {
-      for (const p of this.players.values()) {
-        if (p === by || p.dead || !w.sweeps(i, open, p.x, p.y, p.z, PLAYER_RADIUS)) continue;
-        by.events.push({ k: 'doorStuck', doors: leaves });
-        return false;
-      }
-    }
-    for (const i of leaves) w.swingDoor(i, open);
-    const [x0, z0, x1, z1] = leafRect(d, false);
-    const x = d.pair >= 0 ? (d.x + w.doors[d.pair].x) / 2 : (x0 + x1) / 2;
-    const z = d.pair >= 0 ? (d.z + w.doors[d.pair].z) / 2 : (z0 + z1) / 2;
-    this.broadcast({ k: 'door', doors: leaves, open, x, y: d.y0, z });
-    this.noise(x, d.y0, z, DOOR_NOISE, by.id);
-    return true;
-  }
-
-  /**
-   * A bot walking into a shut door opens it: its paths go through doorways
-   * as if they were open. `buttons` and `yaw` are the command it just played.
-   */
-  private botDoors(p: Player, buttons: number, yaw: number): void {
-    const fwd = ((buttons & Btn.Forward) !== 0 ? 1 : 0) - ((buttons & Btn.Back) !== 0 ? 1 : 0);
-    const side = ((buttons & Btn.Right) !== 0 ? 1 : 0) - ((buttons & Btn.Left) !== 0 ? 1 : 0);
-    const len = Math.hypot(fwd, side);
-    if (!len) return;
-    const sin = Math.sin(yaw);
-    const cos = Math.cos(yaw);
-    const x = p.x + ((-sin * fwd + cos * side) / len) * BOT_DOOR_REACH;
-    const z = p.z + ((-cos * fwd - sin * side) / len) * BOT_DOOR_REACH;
-    const w = this.world;
-    for (let i = 0; i < w.doors.length; i++) {
-      const d = w.doors[i];
-      // Out of reach of its hinge: most of them.
-      if (Math.abs(d.x - x) > d.length + 1 || Math.abs(d.z - z) > d.length + 1) continue;
-      if (d.open || p.y > d.y1 || p.y + PLAYER_HEIGHT < d.y0 || w.panels[d.panel].box.gone) continue;
-      const [x0, z0, x1, z1] = leafRect(d, false);
-      if (x > x0 - PLAYER_RADIUS && x < x1 + PLAYER_RADIUS && z > z0 - PLAYER_RADIUS && z < z1 + PLAYER_RADIUS) {
-        this.useDoor(i, true, p);
-        return;
-      }
-    }
-  }
-
-  /**
-   * An actor's tick on the range: back on its post at the start of each loop
-   * (a door it goes through shut again), its commands, and a shooter's shot
-   * that missed made good.
+   * An actor's tick on the range: back on its post at the start of each loop,
+   * its commands, and a shooter's shot that missed made good.
    */
   private act(p: Player, actor: Actor, now: number): void {
     const spec = actor.spec;
@@ -749,11 +662,6 @@ export class GameServer {
       p.queue = [];
       p.tape.sync(p);
       actor.restart(now);
-      if (spec.door) {
-        for (const i of spec.door) this.world.setDoor(i, false);
-        const d = this.world.doors[spec.door[0]];
-        this.broadcast({ k: 'door', doors: spec.door, open: false, x: d.x, y: d.y0, z: d.z });
-      }
     }
     const target = spec.target !== undefined ? this.players.get(this.actorIds[spec.target]) : undefined;
     p.queue.push(...actor.commands(p, target, now, p.lastSim));
@@ -1129,7 +1037,7 @@ export class GameServer {
 
   /**
    * A sound at (x, y, z) that carries `radius` metres, made by `source`: every
-   * bot within it hears it, or only those `who` picks. A friend's door or
+   * bot within it hears it, or only those `who` picks. A friend's
    * footsteps are nothing to look into, though their gunfire is.
    */
   private noise(x: number, y: number, z: number, radius: number, source: number, who?: (p: Player) => boolean, gunfire = false): void {

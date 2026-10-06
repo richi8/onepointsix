@@ -104,10 +104,9 @@ export interface ContractView {
   name: string;
 }
 
-/** The cover as it stands: the panels broken and the door leaves open. */
+/** The cover as it stands: the panels broken. */
 export interface CoverState {
   broken: number[];
-  open: number[];
 }
 
 /** How someone died: by whom (their side, or themselves), with what weapon, and whether in the head. */
@@ -203,10 +202,6 @@ export type GameEvent =
   | { k: 'break'; panels: number[]; x: number; y: number; z: number }
   // To everyone: broken panels were rebuilt.
   | { k: 'repair'; panels: number[] }
-  // To everyone: door leaves were opened or shut, in the doorway at (x, y, z).
-  | { k: 'door'; doors: number[]; open: boolean; x: number; y: number; z: number }
-  // To whoever tried: the door leaves wouldn't move, as someone stands where they'd swing.
-  | { k: 'doorStuck'; doors: number[] }
   // To everyone: a grenade went off.
   | { k: 'boom'; x: number; y: number; z: number }
   // To everyone but the shooter, who predicted it: a round from (ox, oy, oz) that stopped at (ex, ey, ez).
@@ -243,15 +238,12 @@ export type ClientMsg =
  * dropped would show (not in grass or behind cover), `kill` has you
  * kill it, and `give` puts items in your pack or its. `end` ends your run now,
  * `killed` meaning by the rival, or with `self` (or no rival) by your own grenade.
- * `door` puts you a step outside the doorway of the nearest outpost's
- * building, its door shut.
  */
 export type DevCmd =
   | { act: 'end'; outcome: 'extracted' | 'killed' | 'mia'; self?: boolean }
   | { act: 'give'; items: number[]; rival?: boolean }
   | { act: 'rival' }
-  | { act: 'kill' }
-  | { act: 'door' };
+  | { act: 'kill' };
 
 /** An extraction point, as everyone sees it. Where it is comes from the world. */
 export interface ExtractView {
@@ -324,7 +316,7 @@ export interface BountyView {
 
 export type ServerMsg =
   // `broken` lists the panels down right now; the client's world starts from it.
-  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number; mode: Mode; broken: number[]; open: number[] }
+  | { t: 'welcome'; id: number; seed: number; tick: number; tickRate: number; mode: Mode; broken: number[] }
   // `ack` is the highest command seq the server has simulated for the recipient,
   // and `you` its full movement state right after that command, which the
   // client replays its unacknowledged commands on top of.
