@@ -454,9 +454,10 @@ walked on the ground: no upper storeys, walked roofs or window posts, which is w
 builds well. A smaller, plainer map draws faster, bakes its light sooner, and lets the kit,
 bots and tests drop most of what Calabianca needed. Planned on 2026-10-06.
 
-- **Layout:** Dust 2's plan followed closely and in proportion, scaled so a walk from one spawn
-  to the other takes about as long as it does in Counter-Strike (its units are about 1.9 cm, so
-  roughly 85 × 95 m before scaling). Its heights kept: long A's slope, the catwalk up from mid,
+- **Layout:** Dust 2's plan followed closely, at 1:1: its units taken as Source's 1.905 cm (16
+  to the foot), so roughly 85 × 95 m. The movement speeds will be changed later to suit it, so
+  until then a walk from one spawn to the other won't take as long as in Counter-Strike. Its
+  heights kept: long A's slope, the catwalk up from mid,
   the steps up to B, the ramp at A. Its double doors at mid and B are fixed walls with the gap
   between them to see and shoot through, as there are no doors.
 - **Its own:** its own name and look, not Valve's; nothing of Dust 2's textures, models or
@@ -468,7 +469,7 @@ bots and tests drop most of what Calabianca needed. Planned on 2026-10-06.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 67 | **Blockout after Dust 2** | The new map in its own map file, plain-textured: Dust 2's plan drawn as a top-down sketch in the map's coordinates and built over it (walls and blocks, the few covered passages, the levels and ramps, the gaps at mid and B), its scale set by the spawn-to-spawn walk, 20–24 spawn points spread round it; `DEATHMATCH_CAPACITY` 12; `mapFor('deathmatch')` returns it, so Calabianca goes unused (deleted in 69); its board started afresh under its name | It matches the sketch drawn over it; 12 bots play ten minutes on it with nobody stuck and nobody spawned in sight; no spot takes more than 3% of kills; the tests walk every place to stand; a human walks it and finds it plays like Dust 2 | Planned |
+| 67 | **Blockout after Dust 2** | The new map in its own map file, plain-textured: Dust 2's plan drawn as a top-down sketch in the map's coordinates and built over it (walls and blocks, the few covered passages, the levels and ramps, the gaps at mid and B), at 1:1 in metres, 20–24 spawn points spread round it; `DEATHMATCH_CAPACITY` 12; `mapFor('deathmatch')` returns it, so Calabianca goes unused (deleted in 69); its board started afresh under its name | It matches the sketch drawn over it; 12 bots play ten minutes on it with nobody stuck and nobody spawned in sight; no spot takes more than 3% of kills; the tests walk every place to stand; a human walks it and finds it plays like Dust 2 | Planned |
 | 68 | **Its look** | Calabianca's look carried over where it fits: plaster by area, stone at corners and plinths, frames, cornices and parapet caps, paving, ageing, baked light, the sea and hillside backdrop; a few shutters and signs at most; no pots, plants, washing, cables or trees in the streets | From the spawns it reads as a whitewashed town by the sea, not a desert; the benchmark's frame on the map is no slower than the island's, and a cold first load no slower either | Planned |
 | 69 | **Calabianca removed** | Calabianca, its sketch and sketch tools, its tests and screenshots; what only it used, in the kit (pitched roofs and their tiles, courtyards, arcades, balconies, rooms over lanes, outside stairs and hatches if unused), the dressing (plants, washing, cables, aerials, signs not kept), the features' looks no longer placed (lorry, stalls, carts, boats, tombs, the bell tower and the rest), the town greenery inside the bounds, and the bots' window and roof posts if the new map has none; its Known Issues moved to the history as Moot; the changelog | No code is left that only Calabianca used; every test passes; the island's screenshots and fingerprints match | Planned |
 | 70 | **Tuning and the docs** | The heat map's spots and sightlines tuned (mid and long A most of all, against the bolt-action rifle), spawn points moved where deaths come soon, the benchmark and a cold load measured, the bot playtest run; Game Modes, World capacity, Features and the town's chapter rewritten for the new map | No spot over 3% of kills and none killing mostly from afar; deaths within 15 s of spawning no worse than Calabianca's; the testers prefer it to Calabianca | Planned |
