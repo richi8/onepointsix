@@ -31,6 +31,16 @@ interface Bench {
 
 const results: Record<string, Bench> = {};
 
+/** What dev/bench.ts?town reports: the town's spots, each empty and with the crowd. */
+interface Town {
+  gpu: string;
+  size: string;
+  bodies: number;
+  /** With the crowd: the GPU's time drawing a frame (where it can be timed), and the CPU's issuing it. */
+  spots: Record<string, { empty: Stats; crowd: Stats; calls: number; triangles: number; gpu?: Stats; cpu: Stats }>;
+}
+let town: Town | null = null;
+
 /** What dev/bench.ts?adaptive reports: see adaptive() there. */
 interface Adaptive {
   iterations: number;
@@ -59,6 +69,20 @@ for (const [name, type, args] of ENGINES) {
   });
 }
 
+// The same in Deathmatch's town, at the screenshots' spots.
+test('frame cost in the town', async ({ baseURL }) => {
+  test.setTimeout(240_000);
+  const browser = await chromium.launch({ args: ENGINES[0][2] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await page.goto(new URL('dev/bench.html?town', baseURL).href);
+    await page.waitForFunction(() => document.title === 'done', null, { timeout: 220_000, polling: 250 });
+    town = await page.evaluate(() => (window as unknown as { town: Town }).town);
+  } finally {
+    await browser.close();
+  }
+});
+
 // Adaptive resolution on a GPU made slow on purpose, in Chromium only: the
 // point is the controller, and one engine's timing is enough to see it settle.
 // 25 s is long enough to settle (in about 3 s) and for one step back up that
@@ -83,7 +107,7 @@ test('adaptive resolution settles on a slow GPU', async ({ baseURL }) => {
 });
 
 test.afterAll(() => {
-  const baseline: Record<string, Bench> = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
+  const baseline: Record<string, Bench> & { town?: Town } = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
   const was = (v: number, old: number | undefined) => (old === undefined ? `${v}` : `${v} (was ${old})`);
   const lines = ['', 'Frame cost, ms (median / 95th percentile), 1280 × 720 at pixel ratio 1:'];
   for (const [name, b] of Object.entries(results)) {
@@ -107,6 +131,18 @@ test.afterAll(() => {
         `   ${b.crossover!.calls} draw calls, ${Math.round(b.crossover!.triangles / 1000)}k triangles`,
     );
   }
+  if (town) {
+    const o = baseline.town?.spots;
+    lines.push('', `  the town, ${town.bodies} bodies · ${town.gpu}`);
+    for (const [name, s] of Object.entries(town.spots)) {
+      lines.push(
+        `    ${name.padEnd(9)} empty ${was(s.empty.median, o?.[name]?.empty.median)} / ${was(s.empty.p95, o?.[name]?.empty.p95)}` +
+          `, with them ${was(s.crowd.median, o?.[name]?.crowd.median)} / ${was(s.crowd.p95, o?.[name]?.crowd.p95)}` +
+          ` (GPU ${s.gpu ? was(s.gpu.median, o?.[name]?.gpu?.median) : '?'}, CPU ${was(s.cpu.median, o?.[name]?.cpu?.median)})` +
+          `   ${s.calls} draw calls, ${Math.round(s.triangles / 1000)}k triangles`,
+      );
+    }
+  }
   if (adaptive) {
     const steps = adaptive.log.map((l) => `${l.share} at ${l.t} s`).join(', ') || 'none';
     lines.push(
@@ -116,8 +152,8 @@ test.afterAll(() => {
     );
   }
   console.log(lines.join('\n'));
-  if (process.env.BENCH_BASELINE && Object.keys(results).length) {
-    writeFileSync(BASELINE, `${JSON.stringify({ ...baseline, ...results }, null, 2)}\n`);
+  if (process.env.BENCH_BASELINE && (Object.keys(results).length || town)) {
+    writeFileSync(BASELINE, `${JSON.stringify({ ...baseline, ...results, ...(town ? { town } : {}) }, null, 2)}\n`);
     console.log(`Kept as the baseline in ${BASELINE.pathname}`);
   }
 });

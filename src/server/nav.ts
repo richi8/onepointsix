@@ -144,6 +144,8 @@ export class NavGrid {
   private readonly coverCells = new Map<number, boolean>();
   /** Searches run so far, for budgeting and tests. */
   searches = 0;
+  /** The next cell of a map's bounds warm() works out the links of, row by row; past the last, all are warm. */
+  private warmAt = 0;
 
   constructor(world: World) {
     this.world = world;
@@ -397,6 +399,33 @@ export class NavGrid {
       const up = this.floors.get(ni);
       if (up) up.forEach((f, j) => f !== cur && this.linked(cur, k, j + 1, f) && each(f, step, -1, nx, nz));
     }
+  }
+
+  /**
+   * Work out the links from the cells of a map's bounds, and from the floors
+   * over them, ahead of any search needing them, a cell at a time until
+   * `ms` milliseconds have gone: what would otherwise cost a search a hitch
+   * the first time it crosses that part of the town. Returns whether all
+   * are warm. Only what's cached changes, never what a search finds.
+   */
+  warm(ms: number): boolean {
+    const b = this.world.map?.bounds;
+    if (!b) return true;
+    const [x0, x1, z0, z1] = [this.cellX(b.minX), this.cellX(b.maxX), this.cellX(b.minZ), this.cellX(b.maxZ)];
+    const across = x1 - x0 + 1;
+    const total = across * (z1 - z0 + 1);
+    const until = performance.now() + ms;
+    const none = () => {};
+    while (this.warmAt < total) {
+      const ix = x0 + (this.warmAt % across);
+      const iz = z0 + Math.floor(this.warmAt / across);
+      this.warmAt++;
+      const cell = iz * this.n + ix;
+      if (this.state(ix, iz) !== BLOCKED) this.steps(cell, none);
+      for (const f of this.floors.get(cell) ?? []) this.steps(f, none);
+      if (performance.now() > until) break;
+    }
+    return this.warmAt >= total;
   }
 
   /**

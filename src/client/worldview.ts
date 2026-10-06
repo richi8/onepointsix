@@ -169,6 +169,7 @@ export class WorldView {
     this.structures = new Structures(world);
     this.props = new Props(world, (i) => flatColour(world, i), new Set([...Structures.replaces(world), ...replacedProps(world), ...railProps(world)]));
     this.trim = Dressing.build(world);
+    this.trim?.nearShadows(this.sun.light.shadow.camera);
     if (this.trim) this.dressing.add(this.trim.group);
     this.drawn = Float32Array.from(world.doors, (d) => d.swing);
     this.drawn.forEach((_, i) => this.placeDoor(i));

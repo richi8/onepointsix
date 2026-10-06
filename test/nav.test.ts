@@ -113,3 +113,26 @@ describe('NavGrid sneaking', () => {
     expect(hiddenLength).toBeLessThan(plainLength * 1.1);
   });
 });
+
+// Chunk 64: a map's paths worked out ahead in the server's spare time.
+describe('NavGrid warming a map', () => {
+  it('works out every link of the map in slices, and finds the same paths as a cold grid', async () => {
+    const { KIT_YARD } = await import('../src/shared/maps/kityard.ts');
+    const yard = new World(1, KIT_YARD);
+    const cold = new NavGrid(yard);
+    const warm = new NavGrid(yard);
+    expect(new NavGrid(world).warm(1)).toBe(true);
+    let slices = 0;
+    while (!warm.warm(5)) slices++;
+    expect(slices).toBeGreaterThan(0);
+    expect(warm.warm(5)).toBe(true);
+    const rand = mulberry32(64);
+    const b = KIT_YARD.bounds;
+    const spot = () => [b.minX + rand() * (b.maxX - b.minX), b.minZ + rand() * (b.maxZ - b.minZ)] as const;
+    for (let i = 0; i < 12; i++) {
+      const [sx, sz] = spot();
+      const [gx, gz] = spot();
+      expect(warm.findPath(sx, sz, gx, gz)).toEqual(cold.findPath(sx, sz, gx, gz));
+    }
+  });
+});

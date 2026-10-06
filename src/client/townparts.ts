@@ -69,6 +69,47 @@ export class Boxes {
   }
 }
 
+/** Metres a side of the tiles the dressing is split into, so each is culled on its own. */
+export const TILE = 32;
+export const tileKey = (x: number, z: number): string => `${Math.floor(x / TILE)},${Math.floor(z / TILE)}`;
+
+/**
+ * Whether something `a` by `b` by `c` is too fine to matter in the far
+ * shadows or the sea's reflection: under a quarter of a metre across but
+ * along its longest side (a cable, a sill, a leaf, a flower).
+ */
+export function isFine(a: number, b: number, c: number): boolean {
+  return a + b + c - Math.max(a, b, c) - Math.min(a, b, c) < 0.25;
+}
+
+/**
+ * Draw what comes after the first `coarse` of `mesh` (its vertices, or its
+ * instances) only in the view and the near shadow map (`near()`'s camera):
+ * left out of the far and still shadow maps and of the sea's reflection,
+ * which is seen through cameras without the default layer.
+ */
+export function fineAfter(mesh: THREE.Mesh, coarse: number, near: () => THREE.Camera | null): void {
+  const instanced = (mesh as THREE.InstancedMesh).isInstancedMesh;
+  const im = mesh as THREE.InstancedMesh;
+  const full = instanced ? im.count : Infinity;
+  const cut = () => {
+    if (instanced) im.count = coarse;
+    else mesh.geometry.setDrawRange(0, coarse);
+  };
+  const restore = () => {
+    if (instanced) im.count = full;
+    else mesh.geometry.setDrawRange(0, Infinity);
+  };
+  mesh.onBeforeShadow = (_r, _o, _c, shadowCamera) => {
+    if (shadowCamera !== near()) cut();
+  };
+  mesh.onAfterShadow = restore;
+  mesh.onBeforeRender = (_r, _s, camera) => {
+    if (!camera.layers.isEnabled(0)) cut();
+  };
+  mesh.onAfterRender = restore;
+}
+
 /** Shapes merged into one geometry: each vertex's flat colour (`color`), its tint once textured (`tint`) and its layer. */
 export class Shapes {
   private readonly pieces: THREE.BufferGeometry[] = [];
@@ -110,6 +151,31 @@ export class Shapes {
     const g = mergeGeometries(this.pieces)!;
     for (const p of this.pieces) p.dispose();
     return g;
+  }
+
+  /**
+   * The shapes merged by tile (see TILE), each tile's coarse ones first and
+   * its fine ones after (see isFine), with how many vertices the coarse take.
+   */
+  tiles(): { geometry: THREE.BufferGeometry; coarse: number }[] {
+    const by = new Map<string, { coarse: THREE.BufferGeometry[]; fine: THREE.BufferGeometry[] }>();
+    const size = new THREE.Vector3();
+    const mid = new THREE.Vector3();
+    for (const p of this.pieces) {
+      p.computeBoundingBox();
+      p.boundingBox!.getSize(size);
+      p.boundingBox!.getCenter(mid);
+      const key = tileKey(mid.x, mid.z);
+      let t = by.get(key);
+      if (!t) by.set(key, (t = { coarse: [], fine: [] }));
+      (isFine(size.x, size.y, size.z) ? t.fine : t.coarse).push(p);
+    }
+    const out = [...by.values()].map(({ coarse, fine }) => ({
+      geometry: mergeGeometries([...coarse, ...fine])!,
+      coarse: coarse.reduce((n, p) => n + p.getAttribute('position').count, 0),
+    }));
+    for (const p of this.pieces) p.dispose();
+    return out;
   }
 }
 

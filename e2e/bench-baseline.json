@@ -5,26 +5,26 @@
     "bodies": 24,
     "empty": {
       "frame": {
-        "median": 7.4,
-        "p95": 10.4,
-        "max": 12.4
+        "median": 6.1,
+        "p95": 8.7,
+        "max": 9.7
       },
-      "calls": 101,
-      "triangles": 926936
+      "calls": 102,
+      "triangles": 899828
     },
     "crowd": {
       "bodies": {
-        "median": 2.8,
-        "p95": 3.1,
-        "max": 3.2
+        "median": 2.6,
+        "p95": 2.9,
+        "max": 3.1
       },
       "frame": {
-        "median": 13.7,
-        "p95": 16.2,
-        "max": 20.8
+        "median": 13.2,
+        "p95": 14.3,
+        "max": 15.1
       },
-      "calls": 263,
-      "triangles": 1761002
+      "calls": 264,
+      "triangles": 1733894
     },
     "distant": {
       "bodies": {
@@ -33,41 +33,216 @@
         "max": 1.3
       },
       "frame": {
-        "median": 10.9,
-        "p95": 14.2,
-        "max": 14.6
+        "median": 12,
+        "p95": 14.7,
+        "max": 15.1
       },
-      "calls": 175
+      "calls": 176
     },
     "groundCover": {
       "first": {
-        "median": 2.8,
-        "p95": 3.9,
-        "max": 44.3
+        "median": 3,
+        "p95": 4,
+        "max": 46
       },
       "again": {
         "median": 1.8,
         "p95": 2.4,
-        "max": 19.1
+        "max": 19.8
       }
     },
     "rain": {
       "frame": {
-        "median": 11.7,
-        "p95": 12.8,
-        "max": 13.7
+        "median": 13.5,
+        "p95": 14.9,
+        "max": 16.6
       },
-      "calls": 265,
-      "triangles": 1782938
+      "calls": 266,
+      "triangles": 1755830
     },
     "crossover": {
       "frame": {
-        "median": 11.8,
-        "p95": 13,
-        "max": 14
+        "median": 13.6,
+        "p95": 14.8,
+        "max": 16.4
       },
-      "calls": 265,
-      "triangles": 1775906
+      "calls": 266,
+      "triangles": 1744748
+    }
+  },
+  "town": {
+    "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+    "size": "1280x720",
+    "bodies": 16,
+    "spots": {
+      "market": {
+        "empty": {
+          "median": 10,
+          "p95": 12.4,
+          "max": 13.5
+        },
+        "crowd": {
+          "median": 12.4,
+          "p95": 13.4,
+          "max": 15.1
+        },
+        "calls": 377,
+        "triangles": 2338127,
+        "gpu": {
+          "median": 6.46,
+          "p95": 6.99,
+          "max": 8.26
+        },
+        "cpu": {
+          "median": 2.7,
+          "p95": 3.1,
+          "max": 3.6
+        }
+      },
+      "alley": {
+        "empty": {
+          "median": 11,
+          "p95": 12.3,
+          "max": 13.8
+        },
+        "crowd": {
+          "median": 13,
+          "p95": 14.3,
+          "max": 15.4
+        },
+        "calls": 408,
+        "triangles": 2398851,
+        "gpu": {
+          "median": 6.47,
+          "p95": 7.26,
+          "max": 7.67
+        },
+        "cpu": {
+          "median": 3,
+          "p95": 3.5,
+          "max": 3.8
+        }
+      },
+      "piazza": {
+        "empty": {
+          "median": 10.2,
+          "p95": 12.1,
+          "max": 14.5
+        },
+        "crowd": {
+          "median": 12.4,
+          "p95": 13.4,
+          "max": 13.9
+        },
+        "calls": 408,
+        "triangles": 2482072,
+        "gpu": {
+          "median": 6.43,
+          "p95": 7.11,
+          "max": 7.51
+        },
+        "cpu": {
+          "median": 2.8,
+          "p95": 3.3,
+          "max": 4
+        }
+      },
+      "quay": {
+        "empty": {
+          "median": 11.5,
+          "p95": 13.2,
+          "max": 14.7
+        },
+        "crowd": {
+          "median": 12.4,
+          "p95": 13.1,
+          "max": 13.9
+        },
+        "calls": 312,
+        "triangles": 1911669,
+        "gpu": {
+          "median": 7.38,
+          "p95": 8.3,
+          "max": 9.19
+        },
+        "cpu": {
+          "median": 3.3,
+          "p95": 3.6,
+          "max": 4.1
+        }
+      },
+      "roofs": {
+        "empty": {
+          "median": 11.6,
+          "p95": 15.5,
+          "max": 16.4
+        },
+        "crowd": {
+          "median": 14.6,
+          "p95": 19.7,
+          "max": 20.9
+        },
+        "calls": 377,
+        "triangles": 2517230,
+        "gpu": {
+          "median": 8.64,
+          "p95": 12.78,
+          "max": 15.09
+        },
+        "cpu": {
+          "median": 3,
+          "p95": 3.5,
+          "max": 4
+        }
+      },
+      "above": {
+        "empty": {
+          "median": 11.1,
+          "p95": 13.8,
+          "max": 25.2
+        },
+        "crowd": {
+          "median": 12.2,
+          "p95": 13.9,
+          "max": 15.1
+        },
+        "calls": 292,
+        "triangles": 1937081,
+        "gpu": {
+          "median": 8.49,
+          "p95": 10.06,
+          "max": 10.77
+        },
+        "cpu": {
+          "median": 2.3,
+          "p95": 2.7,
+          "max": 3.1
+        }
+      },
+      "hillside": {
+        "empty": {
+          "median": 10.2,
+          "p95": 12.4,
+          "max": 13.8
+        },
+        "crowd": {
+          "median": 12.2,
+          "p95": 14.1,
+          "max": 15
+        },
+        "calls": 277,
+        "triangles": 1399837,
+        "gpu": {
+          "median": 7.53,
+          "p95": 9.46,
+          "max": 9.98
+        },
+        "cpu": {
+          "median": 2.2,
+          "p95": 2.5,
+          "max": 2.7
+        }
+      }
     }
   }
 }

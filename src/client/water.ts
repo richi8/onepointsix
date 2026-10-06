@@ -82,6 +82,11 @@ export function waveHeight(x: number, z: number, t: number, depth: number): numb
 
 const UNDER_FOG = new THREE.Color(0x1d4450);
 const RAY = new THREE.Vector3();
+/** The grid of rays finding where in the mirror's view the sea shows. */
+const RECT_COLUMNS = 24;
+const RECT_ROWS = 14;
+const SUB = new THREE.Matrix4();
+const HIT = new THREE.Vector3();
 const UNDER_NEAR = 0;
 const UNDER_FAR = 22;
 
@@ -95,6 +100,8 @@ interface Reflection {
   unproject: { value: THREE.Matrix4 };
   /** 1 while the picture is up to date, 0 while the sea should fall back to the sky's. */
   on: { value: number };
+  /** The share of the target's width and height the picture takes, from its corner: the part of the mirror's view the sea shows in. */
+  scale: { value: THREE.Vector2 };
 }
 
 /**
@@ -136,6 +143,7 @@ export class Water {
       matrix: { value: new THREE.Matrix4() },
       unproject: { value: new THREE.Matrix4() },
       on: { value: 0 },
+      scale: { value: new THREE.Vector2(1, 1) },
     };
     this.reflection.camera.layers.set(REFLECTED);
     this.probe = seaProbe();
@@ -194,10 +202,19 @@ export class Water {
 
     const cam = r.camera;
     mirror(camera, cam);
-    r.matrix.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+    // Only the part of the mirror's view the sea shows in, drawn into as much
+    // of the target's corner: the rest of the town is neither drawn nor filled.
+    const [x0, x1, y0, y1] = this.seaRect(camera, cam, (scene.fog as THREE.Fog | null)?.far ?? camera.far, size);
+    const [kx, ky] = [(x1 - x0) / 2, (y1 - y0) / 2];
+    cam.projectionMatrix.premultiply(SUB.set(1 / kx, 0, 0, -(x0 + x1) / (x1 - x0), 0, 1 / ky, 0, -(y0 + y1) / (y1 - y0), 0, 0, 1, 0, 0, 0, 0, 1));
+    r.target.viewport.set(0, 0, Math.round(size.x * kx), Math.round(size.y * ky));
+    r.scale.value.set(kx, ky);
+    r.matrix.value.set(0.5 * kx, 0, 0, 0.5 * kx, 0, 0.5 * ky, 0, 0.5 * ky, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
       .multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
     clipBelow(cam, WATER_LEVEL - 0.3);
-    r.unproject.value.copy(cam.projectionMatrix).invert();
+    // The shader unprojects from the target's coordinates as if the picture filled it.
+    r.unproject.value.copy(cam.projectionMatrix).invert()
+      .multiply(SUB.set(1 / kx, 0, 0, 1 / kx - 1, 0, 1 / ky, 0, 1 / ky - 1, 0, 0, 1, 0, 0, 0, 0, 1));
 
     const was = renderer.getRenderTarget();
     const shadows = renderer.shadowMap.autoUpdate;
@@ -211,6 +228,40 @@ export class Water {
     renderer.shadowMap.autoUpdate = shadows;
     scene.matrixWorldAutoUpdate = autoMatrix;
     r.on.value = 1;
+  }
+
+  /**
+   * Where in the mirror's view (`mirrored`, as clip space's x and y, -1 to 1)
+   * the sea shows, as `camera` sees it within `far` metres: from rays through
+   * a grid across the screen to where they meet the surface over water, a
+   * cell's width round them and the most a wave bends the mirrored ray past
+   * that, rounded out to whole pixels of a target `size` big. All of it
+   * when no ray finds the sea, as when only the GPU's probe saw it.
+   */
+  private seaRect(camera: THREE.Camera, mirrored: THREE.Camera, far: number, size: THREE.Vector2): [number, number, number, number] {
+    const eye = camera.position;
+    let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (let i = 0; i < RECT_COLUMNS; i++) {
+      for (let j = 0; j < RECT_ROWS; j++) {
+        const ray = RAY.set((i / (RECT_COLUMNS - 1)) * 2 - 1, (j / (RECT_ROWS - 1)) * 2 - 1, 0.5).unproject(camera).sub(eye).normalize();
+        if (ray.y > -1e-4) continue;
+        const toSea = (WATER_LEVEL - eye.y) / ray.y;
+        if (toSea > far) continue;
+        const at = HIT.copy(eye).addScaledVector(ray, toSea);
+        if (this.world.terrainHeight(at.x, at.z) > WATER_LEVEL + 0.5) continue;
+        at.project(mirrored);
+        [x0, x1, y0, y1] = [Math.min(x0, at.x), Math.max(x1, at.x), Math.min(y0, at.y), Math.max(y1, at.y)];
+      }
+    }
+    if (x0 > x1) return [-1, 1, -1, 1];
+    // A cell either side, and the most a wave bends: 0.06 and 0.1 of the picture, so twice that of clip space.
+    const [mx, my] = [2 / (RECT_COLUMNS - 1) + 0.15, 2 / (RECT_ROWS - 1) + 0.25];
+    const round = (lo: number, hi: number, pixels: number): [number, number] => {
+      const span = Math.min(2, Math.ceil(((Math.min(1, hi) - Math.max(-1, lo)) / 2) * pixels) * (2 / pixels));
+      const from = Math.min(Math.max(-1, lo), 1 - span);
+      return [from, from + span];
+    };
+    return [...round(x0 - mx, x1 + mx, size.x), ...round(y0 - my, y1 + my, size.y)];
   }
 
   /**
@@ -512,6 +563,7 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
     seaReflectionDepth: { value: reflection.target.depthTexture },
     seaReflectionUnproject: reflection.unproject,
     seaReflecting: reflection.on,
+    seaReflectionScale: reflection.scale,
   };
   const common = /* glsl */ `
     uniform float seaTime;
@@ -523,6 +575,7 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
     uniform sampler2D seaReflectionDepth;
     uniform mat4 seaReflectionUnproject;
     uniform float seaReflecting;
+    uniform vec2 seaReflectionScale;
     varying vec3 vSeaPos;
     float seaDepth(vec2 p) {
       vec2 uv = (p + seaMap.y) * seaMap.x + seaMap.z;
@@ -607,7 +660,8 @@ function seaMaterial(world: World, time: { value: number }, centre: { value: THR
             float near = distance(cameraPosition, vec3(vSeaPos.x, ${WATER_LEVEL.toFixed(2)}, vSeaPos.z));
             bend = clamp((whole - near) / max(whole, 1e-3), 0.0, 1.0);
           }
-          vec2 uv = still + seaNormal.xz * vec2(0.06, 0.1) * bend - vec2(0.0, 0.012 * grazing);
+          // Kept inside the part of the target the picture takes.
+          vec2 uv = clamp(still + (seaNormal.xz * vec2(0.06, 0.1) * bend - vec2(0.0, 0.012 * grazing)) * seaReflectionScale, vec2(0.0), seaReflectionScale - 0.002);
           vec3 mirrored = seaUnmap(texture2D(seaReflection, uv).rgb);
           float k = fresnel * (1.0 - foam);
           outgoingLight = mix(outgoingLight, mirrored, k);

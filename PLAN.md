@@ -36,7 +36,7 @@ playing in seconds: no install, no account. Written fully in TypeScript.
 | Mode | Description |
 |---|---|
 | **Extraction** | The core loop below. 8 operator slots, every one starting as a bot, and the guards. Each player who joins takes a bot's slot, and a bot fills it again when they leave. Until there is a multiplayer server, the game runs locally and nobody else can join. |
-| **Deathmatch** | Everyone against everyone: 16 operator slots, filled the same way, and no guards or commanders. Played on a fixed map of its own, the same whatever the world link's seed (see Phase 8): for now a test street of five buildings from the building kit, the town to come. No contracts, extraction points, run clock, bag value or score; crates hold only ammo and medkits. Leaving a game with a kill posts its kills and deaths to the menu's board for the map, best by kills, then fewest deaths. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at one of the map's spawn points: one taken at random that nobody living is within 80 m of or sees from within 200 m, or else the one farthest from them. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
+| **Deathmatch** | Everyone against everyone: 16 operator slots, filled the same way, and no guards or commanders. Played on a fixed map of its own, the same whatever the world link's seed: Calabianca, a whitewashed town on a hillside above the sea (see Phase 8 and the town under Features). No contracts, extraction points, run clock, bag value or score; crates hold only ammo and medkits. Leaving a game with a kill posts its kills and deaths to the menu's board for the map, best by kills, then fewest deaths. A dead player watches the death cam and respawns when it ends, or at once on skipping it (Space); a bot after as long as a death cam plays. Everyone respawns with the starting loadout at one of the map's 32 spawn points: one taken at random that nobody living is within 30 m of or sees from within 200 m, and no shot was fired within 25 m of in the last 6 s, or else the one farthest from them. Tab shows every operator's kills and deaths, bots included. The weather turns as in Extraction. A game has no time or kill limit; it closes as soon as its last player leaves. Operator bots are all hunters: they roam, follow fights by sight and sound, and go for the nearest crate when short of health or ammo. |
 | **Range** | For trying things out by hand: round the island's first outpost, with no guards and no operator bots, about 48 actors each play one routine over and over, between them every way a body moves (walking, running, sprinting and sneaking in circles, crouching, leaning, jumping, aiming, each gun's firing and reload, switching guns, grenades, the flashlight, the watchtower's stairs, climbing onto a crate, a door), and victims are shot from the front, behind and the side, running, or blown up, and get up again after a few seconds. Nothing hurts the player, the run's clock stands still, there are no contracts and nothing counts toward the leaderboard or the run log. |
 
 Online was renamed Extraction on 2026-10-03 (chunk 48): old `mode=online`, `mixed` and `offline`
@@ -52,8 +52,8 @@ every animation (see `src/server/range.ts`), with actors instead of dummies.
 ### World capacity
 
 The island is 800 × 800 m, with 6 outposts. Deathmatch is played on a fixed map instead (since
-chunk 52): for now a test street of 56 × 36 m, in time the town of about 140 × 120 m (see
-Phase 8), set on an island of its own as a backdrop that nobody reaches.
+chunk 52): the town of Calabianca, 135 × 111 m of play inside its walls (since chunk 57; see
+Phase 8), set on the south coast of an island of its own as a backdrop that nobody reaches.
 
 | Kind | Count | Notes |
 |---|---|---|
@@ -65,8 +65,9 @@ Phase 8), set on an island of its own as a backdrop that nobody reaches.
 time in between. The plan started at 12, but chunk 12's bot playtest found that at 12 an operator
 spotted another every 42 s, 8 every 57 s and 6 every 97 s, so 8 is the middle ground until human
 playtests say otherwise. The cap is a single constant (`OPERATOR_CAPACITY`). Deathmatch's 16
-(`DEATHMATCH_CAPACITY`) on the town's 140 × 120 m is about 1,000 m² each, a 32 m square, as on
-the proven maps it's modelled on: a fight round every corner.
+(`DEATHMATCH_CAPACITY`) on the town's 135 × 111 m is about 940 m² each, a 31 m square, as on
+the proven maps it's modelled on: a fight round every corner, more with its upper floors and
+roofs.
 
 ## Core Loop
 
@@ -131,6 +132,19 @@ Extraction's; Deathmatch keeps only the fighting (see Game Modes).
   in fog and give it up seeing the fog lift, hunters stay on to hunt while rain is coming or in
   and close in on fights under it, and campers move in nearer their extraction point as sight
   shortens and stay on
+
+### The town (Deathmatch's map, Phase 8)
+- Calabianca: a whitewashed town falling from a high street to a harbour, its fights round three
+  hubs (the market, the piazza and the palazzo's courtyard), each pair joined by an open way, a
+  tight one and one through a building, and districts that play their own way (chunks 55–57)
+- Houses entered by their doors, stairs to their upper floors and onto their flat roofs, windows
+  to shoot from; bots use the windows and roofs as posts (chunk 58)
+- Cover in the streets: the crashed lorry and the stalls in the market, carts, crates, containers
+  on the quay, two parked cars and sandbags across the longest views, rubble by the ruined chapel
+  (chunks 54–58, 64)
+- Its look: plastered and dressed by district, light baked indoors and out, weathered, façades
+  with surrounds, shutters, signs and life, Mediterranean trees and a hillside of terraced
+  groves round it (chunks 59–63), drawn within the island's frame time (chunk 64)
 
 ### Bots (AI operators)
 - They send the **same input commands as players**, so bot fill in Mixed mode comes for free.
@@ -418,7 +432,7 @@ but windows, crates, fences and door leaves (chunk 49), so its light can be bake
 | 61 | **Age** | The town weathered in its shaders, with no new textures: rising damp and dirt at a wall's foot, streaks under sills, cornices and balconies, plaster fallen away to the stone beneath in patches, faded and uneven paint, each wall's tint varied a little; the paving's repeat broken (samples offset and turned by world position, large-scale variation over it), worn paths darker and smoother; roughness varied, so rain wets the stone unevenly and pools in the cobbles' joints | No two walls look alike, no repeat in the paving can be seen from the roofs or a lane's end, and the town looks lived in for centuries, not built yesterday | **Done** (all in the shaders, from noise over where each surface stands, with no new textures or texture units (`age.ts`, read by `surfaces.ts` through its `age` option, given only in a map, so the island is drawn exactly as before and its screenshots match). The buildings, their trim and the pitched roofs (`ageBuilt`, by each box's texture layer): each face of a building a shade and hue of its own, seeded by the plane it lies in, so every piece of one façade agrees; plaster and doors' paint bleached paler and greyer in broad patches and darker in others, stone and tiles stained and bleached; rising damp from the ground (the terrain's height, read through the `groundHeights` the props already had for `onTiles`) up to a ragged line 0.5–1.8 m up, past the plinths, with a tide mark at it, dirt splashed along the foot and grime over the lower storey; streaks down from the top of each box the walls are built of, so under every sill, string course, cornice and floor; plaster fallen away in patches to rubble stone beneath (the cut stone's texture at a smaller scale), likelier where it's damp and out of doors; lichen on the roofs. Outdoors or not by the rain's roof map, so rooms keep their walls clean of streaks and fallen plaster. The paving (`pavedLayer`, `agePaving`): its repeat broken by patches about 3 m across, each taking the texture shifted and turned a quarter its own way, the darker of two winning where they meet; its tone varied over the town; worn darker and smoother along the map's lanes (`MapLane`, drawn for the dev view and now this), round doorways on the ground and at the stairs' feet, carried in the spare alpha of the paving's texture (`townPaint`). Rain runs down the streaks, soaks the stone unevenly and stands glossy in the joints, found as what's darker than the stone's average (its smallest mip). Tests: `test/age.test.ts` (the paving worn along a lane, less a step aside, most at a doorway and a stair's foot, and most of the town unworn); the town's eight screenshots and the kit yard's two re-recorded; the island's all match. GPU time a frame against chunk 60, best of three rounds alternating on an M3 Pro at 1280 × 720: the town from above 3.77–3.91 to 4.55–4.72 ms, the market 2.76–3.98 to 3.84–4.25, the piazza 3.21–3.60 to 3.85–4.26, the alley 3.60 to 4.03, so up to 0.8 ms more, nearly all of it the buildings' noise (the paving's is lost in the noise); the benchmark draws the island, which is unchanged. Whether the town looks lived in for centuries is the user's) |
 | 62 | **Façades** | Windows and doors set 20–30 cm into their walls, with sills; eaves overhanging pitched roofs, ridge tiles, gutters and drainpipes down the walls, drains through the parapets; iron railings on balconies, wall lamps (lit at night), power and phone cables strung across lanes, washing lines, AC units, aerials, shop signs and painted lettering on the market and quay; edges and steps slightly rounded; the details now drawn as boxes (creepers, window boxes, crowns, wheelhouses) given real shapes; drawn over the same boxes, so play doesn't change | Close up in a lane, nothing reads as a box, and the buildings look like ones people live in | **Done** (all drawn only, in the dressing (`dressing.ts`), so the world, its props and Extraction's islands build exactly as before. Edges rounded in the shader, not the geometry (`rounding.ts`): each instance carries which of its twelve edges to round and how far (`round`, bits + 4096 × mm), and a face bends its normal toward the face round the corner over its last few centimetres, never over less than a pixel and a half; each part of a prop's shape (props.ts' slices) rounds as a box of its own. A prop's edge is rounded only where the air just beyond both its faces and past the corner is clear all along it (`openEdges`, about 0.1 s for the town at load), so where one storey of wall stands on the next, or a wall meets a lintel, the seam stays sharp: walls, terraces and floors 3 cm, steps and sills 2 cm, doors, crates and fences 1 cm all round, window frames 6 mm, the dressing's stone, wood and metal 1.2 cm; a surface option (`round`), given only in a map. Windows and doors 23 cm in: their surrounds stand 8 cm proud with a drip moulding over the head, the glass and leaves in the wall's middle as before, and a stone sill 14 cm proud under each window. The pitched roofs (`roofs.ts`): half-round ridge tiles, a row of tile ends along each eave that looks out over open air, verge tiles, rafters and boards under the overhang, a gutter on brackets and a downpipe from one end (both on a roof over 9 m) down the wall to the ground or the roof below, with its swan neck, brackets and shoe; none past a gable or along an eave where another building stands. Balconies (`balconies.ts`): their railings' props are drawn as wrought iron, bars between a top and a bottom rail with a band of rings (`railProps` hides the boxes, which still collide; the kit's balconies now come from `kitBalconies`), the slab with a moulded stone edge and stepped stone brackets under it. What people have put up (`life.ts`): lanterns on curled brackets by the street (unlit: the game is day only), air conditioners beside some upper windows, cables clipped along under the tops of walls, and from wall anchors, cables (to 15 m) and washing lines on pulleys (to 7.5 m) strung across to the facing wall where a level ray finds one, at least 2.4 m over the lane at their sag, hung with shirts, trousers and towels; aerials on some pitched roofs' ridges and in a corner of some flat roofs, satellite dishes, and a terracotta spout through each parapet over a drop. Signs (`signs.ts`, `MapBuilding.signs`): painted boards over the shops' doors round the market and the quay, the names of the warehouse, the boat yard, the fish market and the market hall painted on their walls, worn, the hotel's blade sign and the tobacconist's and chemist's, their letters drawn into one 2048² canvas at load. Real shapes for the boxes: window boxes are tapered troughs on braced brackets with leaves (folded leaf cards, `Shapes.leaf`) and geranium clusters on stalks; creepers a branching stem with leaves and flowers as leaf cards, thicker; the fishing boats' wheelhouses lean in, with a band of windows and frames, an oval roof, a mast and light and a lifebuoy, and tyres hang along the hulls; clothes are shaped. The trees' crowns are left to chunk 63, which redoes the plane trees and olives. Tests: `test/facades.test.ts` (each edge its own bit; outer corners and terraces rounded, stacked storeys and buried feet not; a window 20–30 cm behind its surround over a sill standing further out; every balcony's railings drawn in iron and still stopping rounds; cables and lines level, wall to wall, 2.4 m over the lane; nothing drawn in a room; every sign finds its wall). Screenshots: the alley, market, roofs and harbour re-recorded, the Albergo's front and a window in the west added; the island's all match. GPU time a frame against chunk 61, best of three rounds alternating on an M3 Pro: the market 11.25 against about 10.4, the alley 11.27 against 10.44, the piazza 11.81 against 10.70, the town from above 13.51 against 13.17, so 0.8–1.1 ms more in the streets, none of it the rounding (the same with it off): about 570 k vertices of shapes, drawn into the shadows too. Warm loads of the town 2.0–2.4 s against 1.7–2.0. No gameplay changed, so no bot playtest was run. Whether the buildings look lived in is the user's) |
 | 63 | **Greenery and backdrop** | Mediterranean plants in the town: cypresses, umbrella pines, plane trees and olives that aren't lumpy balls, bougainvillea and vines on walls, agaves, potted geraniums and lemon trees; the hills round the town as southern Italy, not the island: terraced olive groves behind dry-stone walls, maquis, rock outcrops, sun-bleached ochre grass; chunk 39's trees and impostors used where they fit | From the roofs the town sits in its own landscape, and no plant in it looks stylized | **Done** (chunk 39's trees made general (`trees.ts`): a `Species` is a kind of tree (its near and far shapes, the picture on its cards, its size, sway and near range) and a `Stand` the trees of one kind, each with its own tiles, near trees and impostors; the island's spruces are one species, built as before, and its screenshots match. The kinds' sizes and sway reach their shaders as uniforms, so every kind shares one set of programs. The impostors now turn with their trees, as their shader meant them to. Six kinds generated in `species.ts`: olives (two or three stems twisting apart, an open grey-green crown), plane trees (a pale trunk forking at 4.4 m under a dome of five-lobed leaves), cypresses (a column of dark sprays tapering to a flame), umbrella pines (a bare, leaning trunk under a crown pressed flat), holm oaks and the maquis's shrubs; each grows a skeleton of boughs level by level from a seed and carries cards at its last branches' tips, their pictures drawn on a canvas at load (`dev/plants.html` shows them). What a map plants (`greenery.ts`): the town's two planes and six olives over the trunks they collide as (the blobs in `features.ts` gone); `GameMap.plants`, Calabianca's cypresses round the cemetery's walls and pines over the villa and the shore; the island's trees as holm oaks and pines (35%); olives in rows along terraces, each moved halfway up its own, behind dry-stone walls traced along the ground's contours every 2.2 m (one merged shape with ragged tops, rock-textured); cypresses in short rows along the slope and alone; the maquis in patches; outcrops of pale rock. Which ground is grove or maquis (`shared/hillside.ts`) is read by the ground's paint too, which beyond the town's bounds turns the grass dry and the groves' ground to earth; inside them it's as before, so the grass the bots see through hasn't changed. A map's ground and grass tinted straw and ochre, its bushes the maquis's grey-green (client only). By the town's doors and along its ground floors (`plants.ts`, `MapTrim.pots`, `bougainvillea`, `vines`): terracotta pots of geraniums, agaves and lemon trees, bougainvillea up a door's side and over its head, vines on a wire along a wall, each from a stream of its own so the rest of the dressing is chosen as before. About 1,000 olives, 1,700 shrubs, 370 oaks, 220 pines and 29 cypresses, and 6,700 stretches of terrace wall. Tests: `test/greenery.test.ts` (each kind the same near and far, the far five times cheaper; the town's trees on their trunks and nothing else inside the bounds; the map's plants placed; olives halfway up their terraces and the walls on their contours; outcrops beyond the walls; the island and the ground inside the walls untouched). Screenshots: the town's and the kit yard's re-recorded, the hillside and the olive garden added; the island's all match. GPU time a frame against chunk 62 on an M3 Pro at 1280 × 720, best of three alternating rounds while the machine warmed (the old code's own times drifted from 4.3 to 9.8 ms over the session): 1.3–1.8 ms more in the market and from above, 2.4–4 ms in the alley and the piazza, 4.7–5 ms looking at the hillside, most of it the trees (hiding them saves 2.4–3.7 ms), and of them most the far tiles; cuts to the near detail and ranges made little difference, so it's left for chunk 64 (see Known Issues). Warm loads of the town 2.7–2.8 s against 2.4. No gameplay changed, so no bot playtest was run. Whether the town sits in its own landscape and no plant looks stylized is the user's) |
-| 64 | **Dressing and speed** | Cover and clutter in the streets (market stalls, carts, a car or two, crates, rubble, sandbags where the flow wants them), the benchmark and a cold first load on the map with chunks 59–63's look, cut back where they don't hold; the changelog, Game Modes, World capacity and Features updated | The benchmark holds its frame time in the town, a cold load is no slower than the island's, and the testers prefer it to the island for Deathmatch | Planned |
+| 64 | **Dressing and speed** | Cover and clutter in the streets (market stalls, carts, a car or two, crates, rubble, sandbags where the flow wants them), the benchmark and a cold first load on the map with chunks 59–63's look, cut back where they don't hold; the changelog, Game Modes, World capacity and Features updated | The benchmark holds its frame time in the town, a cold load is no slower than the island's, and the testers prefer it to the island for Deathmatch | **Done** (cover where `sim:deathmatch` drew its longest kill lines: two old saloons, rounded, on four wheels, one on the high street and one on the road's first leg where Via del Porto looks along it, leaning with the ramp it stands on; sandbags in staggered rows along the market's south side and in Via del Porto past the hotel's door; rubble fallen from the ruined chapel by its door and its arch, chunks of stone and plaster on a bed of grit with a beam across it (`MapLook` `car`, `sandbags`, `rubble`, drawn in place of their boxes). The market's stalls and the carts were already there and were left as they were. Sim, seeds 1–3: nobody stuck, deaths within 15 s of spawning 76/65/61 (81/81/68 before), kills from 40 m or more 4–6% (3–6%). `npm run bench` measures the town too (`dev/bench.html?town`): seven of the screenshots' spots, empty and with 16 soldiers, with the GPU's and the CPU's time; the baseline re-recorded with it. The speed: the dressing split into 32 m tiles, each tile's coarse boxes and shapes first and its fine ones after (`isFine`: under a quarter of a metre across but along its length), the fine left out of the far and still shadow maps and the sea's reflection by cutting the draw count in `onBeforeShadow` and `onBeforeRender` (`fineAfter`); olives, oaks and shrubs fade into their impostors from 60, 70 and 40 m (`Species.fadeRange`); the sea's reflection drawn only for the part of the mirror's view the sea shows in, from a grid of rays, its camera narrowed to it and drawing into as much of its target's corner (`Water.seaRect`). Against chunk 63, alternating runs: 25–55% fewer triangles a frame, the GPU's time 0.2–2.2 ms less where the sea or the hillside is in view and about the same in the streets, the CPU's 0.3–0.5 ms more for about 100 more draw calls. The town with 16 soldiers takes 12.2–14.6 ms a frame against 13.2 for the island's 24 (empty, 10–11.6 against 6.1: see Known Issues). The island's own phases matched chunk 63's in alternating runs. Cold first loads from a production build with the Metal shader cache cleared: island and town both about 12 s, before and after, warm 0.9 s. The bots' paths: each tick on a map spends about 4 ms working links out ahead (`NavGrid.warm`), all done after about 26 s of play; the worst tick after a game's first 10 s fell from 0.27–0.6 s to 0.11–0.17 s, the games playing out exactly as before. Tests: the dressing's tiles, fine split and draw cuts (`test/townlook.test.ts`), and a warmed grid finding the same paths as a cold one (`test/nav.test.ts`). Screenshots: `town-car` and `town-sandbags` added; the cemetery, the hillside and the kit yard re-recorded (the rubble, the olives' impostors). Game Modes, World capacity and Features updated for the town. Only Deathmatch's map changed how it plays, so no bot playtest was run. Whether the testers prefer it to the island is theirs) |
 
 ## Known Issues
 
@@ -448,7 +462,10 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Some features collide where nothing is drawn** (chunk 59): they're drawn over their boxes,
   which are solid all through: the 0.3 m over the lorry's cab, the corners of the hauled-out
   boats' boxes beside their hulls, the space under a cart's bed, a stall's under its counter's
-  edge.
+  edge. Since chunk 64 too: the cars' boxes fill out past their rounded bodies and over their
+  bonnets and boots up to the roof's height; the one on the road's ramp, a box level across its
+  slope, reaches 0.4 m over its roof at its lower end; a rubble heap is a box as high as its
+  peak, stood on flat.
 - **The town's details are boxes** (chunk 59), **Resolved in part** (chunks 62, 63): leaves,
   flowers, window boxes and wheelhouses have real shapes, and the trees are real trees (chunk
   63), but the stalls, carts and the lorry's body are still boxes, and the ruined chapel is
@@ -456,10 +473,17 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Balconies' railings are drawn as iron but collide as plaster** (chunk 62): rounds stop at
   the whole railing and bots can't see through it, though it's drawn as bars a player sees
   between, so shooting at legs behind a balcony's railing hits nothing.
-- **The façades' details cost about 1 ms a frame in the streets** (chunk 62): about 570 k
-  vertices of shapes (leaves, tiles, cables, rings, flowers), all cast shadows; and building
-  them, the signs and the rounded edges on the main thread adds about 0.3 s to the town's
-  load. Left for the speed (chunk 64): fewer shadow casters, coarser far, or built in a worker.
+- **The façades' details cost about 1 ms a frame in the streets** (chunk 62), **resolved in
+  part** (chunk 64): about 570 k vertices of shapes (leaves, tiles, cables, rings, flowers)
+  and 14,000 boxes. Since chunk 64 they're split into 32 m tiles, so each pass draws only the
+  tiles it sees, and what's fine (see below) casts only into the near shadows; but building
+  them, the signs and the rounded edges on the main thread still adds about 0.3 s to the
+  town's load, and the tiles cost about 100 more draw calls a frame, 0.3–0.5 ms of the CPU's.
+- **Small things on the walls cast no shadow past 32 m** (chunk 64): what's under a quarter of
+  a metre across but along its length (sills, cables, string courses, flowers, leaves, a
+  shape's rings and rods) is drawn into the near shadow map alone, and left out of the far and
+  the still ones and out of the sea's reflection. A long cornice's shadow along a façade is
+  lost past 32 m, and a balcony's railing reflects without its bars.
 - **Rounded edges are only shading** (chunk 62): the silhouettes and shadows stay square, and an
   edge open only part of its length (a wall's end beside a window, between sill and lintel)
   stays sharp all along.
@@ -481,9 +505,13 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   market and from above, most looking at the hillside. Most of it is the trees' far tiles,
   which draw the plainer trees out to 145 m past a tile's edge (about 1,000 olives and 1,700
   shrubs round the town) and cast them into the shadows; the leaf cards' overdraw counts too.
-  Cutting the near detail and the near range changed little. Left for the speed (chunk 64):
-  impostors sooner for the small and the many, fewer shadow casters, fewer olives and shrubs.
-  Drawing the leaf pictures and baking six kinds' impostors adds about 0.35 s to a warm load.
+  Cutting the near detail and the near range changed little. **Resolved in part** (chunk 64):
+  the small and the many hand over to their impostors sooner (`Species.fadeRange`): shrubs
+  from 40 to 55 m, olives 60 to 80, oaks 70 to 90, the rest still 110 to 140, and their tiles
+  are drawn only that far out; the hillside's frame took 1.4 ms less of the GPU's time and
+  from 3.1 to 1.4 million triangles. Their impostors are flat cards, so from a roof the near
+  groves read a little flatter than before. Drawing the leaf pictures and baking six kinds'
+  impostors adds about 0.35 s to a warm load.
 - **The terraces aren't cut into the ground** (chunk 63): the terrain is 4 m a cell, too coarse
   for a level terrace, so each dry-stone wall stands on the hillside's even slope, 0.8 m over
   its contour on both sides, rather than holding up a level step. From the town they read as
@@ -557,7 +585,12 @@ Nothing open: the last was resolved on 2026-10-03 (see the history).
   climbing to windows and roofs since chunk 58 meet more cold links all game: the worst tick
   after the first 10 s is 0.19–0.61 s, and a bot's first roam after spawning is kept on the
   street, as heading straight for a window from every spawn doubled the first second's cost.
-  Left for speed (chunk 64).
+  **Resolved in part** (chunk 64): on a map, each tick spends about 4 ms after its work working
+  out the links ahead (`NavGrid.warm`), cell by cell across the town, done after about 26 s
+  of play; what searches find is the same, only sooner. The worst tick after the first 10 s
+  is now 0.12–0.17 s. The first second still costs 0.5–1.6 s, as the warm-up can't get ahead
+  of every bot planning at once; a server already running when the player joins, as a real one
+  will be, would hide it.
 
 ### Playtest and tuning
 Nothing open: the last was accepted on 2026-10-03 (see the history, and the bot extraction
@@ -637,10 +670,19 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   only Deathmatch uses them. Warm loads didn't change (2.0 s locally, island and town); a slow
   connection and a cold load pay for the 0.77 MB. An array of the town's own, loaded for
   Deathmatch only, would spare the others.
-- **The town's dressing isn't measured for speed** (chunk 59): 11,300 boxes (136,000 triangles)
-  and 41,000 triangles of shapes, all casting shadows, drawn as two meshes; and four new
-  programs to compile on a cold load (the dressing's two, the paved terrain, the roofs' tiles).
-  Left for speed (chunk 64).
+- **The town is heavier to draw than the island with nobody about** (chunk 64): the benchmark's
+  empty frame takes 10–11.6 ms at the town's seven spots against 6.1 on the island, about
+  6.5–8.6 ms of it the GPU's; with 16 soldiers 12.2–14.6 ms, against 13.2 for the island's 24.
+  The town's surfaces are shaded with more (baked light, age, rounded edges, rain), and it
+  stands 1.4–2.5 million triangles a frame against the island's 0.9. From above, where the sea
+  fills half the view, its reflection still draws most of the town. The benchmark's GPU times
+  come from timer queries, which on ANGLE's Metal disagree from run to run; only alternating
+  runs of old and new code told a change apart.
+- **The new cover is placed by the simulation, not playtested** (chunk 64): the cars and
+  sandbags stand across the longest views `sim:deathmatch` drew (Via del Porto into the road,
+  the high street), and kills from 40 m or more came out about the same (4–6% against 3–6%);
+  whether they read as cover where a player wants it is the testers'. No more stalls or carts
+  were added: the market's four and the three carts already break its views.
 
 ## Future
 - **Multiplayer**

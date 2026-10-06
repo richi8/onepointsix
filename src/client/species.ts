@@ -444,15 +444,16 @@ export function shapeOf(kind: Kind, seed: number, near: boolean): TreeShape {
  * How each kind sways, from where up; how its bark is tinted, brightened by
  * `gain` past the bark's dark texture (a plane's is pale and mottled, an
  * olive's grey); its wood's colour before the textures; and how far out
- * it's drawn in full detail, less for the small and the many.
+ * it's drawn in full detail, less for the small and the many, and for them
+ * how far out before they turn into their impostors.
  */
-const HABITS: Record<Kind, { stiff: number; sway: number; bark: number; gain: number; wood: number; near: [number, number] }> = {
-  olive: { stiff: 1, sway: 0.1, bark: 0xc8c4bc, gain: 1.6, wood: 0x6e6a60, near: [16, 24] },
+const HABITS: Record<Kind, { stiff: number; sway: number; bark: number; gain: number; wood: number; near: [number, number]; fade?: [number, number] }> = {
+  olive: { stiff: 1, sway: 0.1, bark: 0xc8c4bc, gain: 1.6, wood: 0x6e6a60, near: [16, 24], fade: [60, 80] },
   plane: { stiff: 4, sway: 0.3, bark: 0xf2ead0, gain: 2.3, wood: 0xa8a088, near: [30, 40] },
   cypress: { stiff: 1, sway: 0.5, bark: 0xa08878, gain: 1.2, wood: 0x4a3a2c, near: [18, 26] },
   pine: { stiff: 7, sway: 0.25, bark: 0xd8a888, gain: 1.4, wood: 0x6a4a36, near: [24, 32] },
-  oak: { stiff: 1.5, sway: 0.15, bark: 0xa8a49c, gain: 1.3, wood: 0x4a4440, near: [18, 26] },
-  shrub: { stiff: 0.2, sway: 0.08, bark: 0xa09080, gain: 1.2, wood: 0x4a3a2c, near: [10, 16] },
+  oak: { stiff: 1.5, sway: 0.15, bark: 0xa8a49c, gain: 1.3, wood: 0x4a4440, near: [18, 26], fade: [70, 90] },
+  shrub: { stiff: 0.2, sway: 0.08, bark: 0xa09080, gain: 1.2, wood: 0x4a3a2c, near: [10, 16], fade: [40, 55] },
 };
 
 /** How tall and how far round a shape reaches. */
@@ -497,6 +498,7 @@ export function species(kind: Kind, seed: number): Species {
     bark: new THREE.Color(h.bark).multiplyScalar(h.gain),
     bake: [Math.max(64, Math.round(half * 2 * scale)), Math.max(64, Math.round(height * scale))],
     nearRange: h.near,
+    ...(h.fade ? { fadeRange: h.fade } : {}),
   };
 }
 

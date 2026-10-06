@@ -2244,6 +2244,15 @@ notes the chunk it came from.
   bot flanking a lost target goes up to one half the time; they're found from the world's
   windows and walked roofs (`src/server/vantage.ts`). In six 10-minute games bots were upstairs
   10–15% of the time and on the roofs 3–5%, and 5–12% of kills came from windows and roofs.
+- **The town's dressing isn't measured for speed** (chunk 59): 11,300 boxes (136,000 triangles)
+  and 41,000 triangles of shapes, all casting shadows, drawn as two meshes; and four new
+  programs to compile on a cold load (the dressing's two, the paved terrain, the roofs' tiles).
+  **Resolved** (chunk 64): `npm run bench` measures the town too, at seven of the screenshots'
+  spots, with nobody about and with 16 soldiers, and reports the GPU's and the CPU's share. The
+  dressing is drawn in 32 m tiles, its fine detail only in the near shadows, and with the
+  trees' and the reflection's cuts the town's frame with 16 soldiers holds the island's with
+  24 (see the open item on its empty frame). A cold first load of the town takes as long as the
+  island's, about 12 s on an M3 Pro, and a warm one 0.9 s.
 
 ## Dropped
 

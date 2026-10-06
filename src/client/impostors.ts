@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { World } from '../shared/world.ts';
 import { addGroundDrop, groundEye } from './terrain.ts';
-import { needles, NEEDLES_WET, swayOf, thickened, treeFade, treeFadeGlsl, type Planting, type Species } from './trees.ts';
+import { fadeOf, needles, NEEDLES_WET, swayOf, thickened, treeFadeGlsl, type Planting, type Species } from './trees.ts';
 import { WIND_GLSL, wind, windStrength } from './wind.ts';
 import { wetMaterial } from './rain.ts';
 
@@ -104,7 +104,7 @@ export class Impostors {
       impostorAlbedo: { value: albedo.texture },
       impostorNormal: { value: normals.texture },
       treeEye: groundEye,
-      treeFade,
+      treeFade: fadeOf(sp),
       windTime: wind,
       windStrength,
       treeSway: { value: swayOf(sp) },

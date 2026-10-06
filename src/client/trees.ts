@@ -37,8 +37,8 @@ export const SWAY = 0.35;
 /** Metres from the camera over which a tree dissolves from full into its impostor. */
 export const FADE_START = 110;
 export const FADE_END = 140;
-/** A tile draws its full trees while its nearest edge is within this of the camera, a little past FADE_END. */
-const TILE_REACH = FADE_END + 5;
+/** A tile draws its full trees while its nearest edge is within this of the end of their fade. */
+const TILE_SLACK = 5;
 /**
  * Metres from the camera over which a tree hands over from its full detail to
  * the plainer version drawn farther off (see fir()).
@@ -77,6 +77,8 @@ export interface Species {
   bake: [number, number];
   /** Metres from the camera over which it hands over from full detail to plainer: NEAR_START to NEAR_END unless it says. */
   nearRange?: [number, number];
+  /** Metres from the camera over which it dissolves into its impostor: FADE_START to FADE_END unless it says. */
+  fadeRange?: [number, number];
 }
 
 /** A tree of a stand: where its foot stands, its scale and turn, and the tint over its foliage. */
@@ -131,6 +133,16 @@ export function treeFadeGlsl(varying = true): string {
 }
 /** The range over which trees fade into impostors: none until the impostors are in. */
 export const treeFade = { value: new THREE.Vector2(1e6, 1e6 + 1) };
+/** The same for each kind with a range of its own (Species.fadeRange). */
+const fades = new WeakMap<Species, { value: THREE.Vector2 }>();
+
+/** The uniform a kind's trees and impostors fade by: its own, or every other kind's. */
+export function fadeOf(species: Species): { value: THREE.Vector2 } {
+  if (!species.fadeRange) return treeFade;
+  let f = fades.get(species);
+  if (!f) fades.set(species, (f = { value: new THREE.Vector2(1e6, 1e6 + 1) }));
+  return f;
+}
 
 type Lod = 'near' | 'far';
 
@@ -164,6 +176,7 @@ export class Trees {
     const { Impostors } = await import('./impostors.ts');
     for (const s of this.stands) s.bake(renderer, Impostors);
     treeFade.value.set(FADE_START, FADE_END);
+    for (const s of this.stands) fadeOf(s.species).value.set(...(s.species.fadeRange ?? [FADE_START, FADE_END]));
   }
 
   update(eye: THREE.Vector3): void {
@@ -320,7 +333,7 @@ export class Stand {
     for (const t of this.tiles) {
       const dx = Math.max(Math.abs(t.x - eye.x) - this.tile / 2, 0);
       const dz = Math.max(Math.abs(t.z - eye.z) - this.tile / 2, 0);
-      const near = Math.hypot(dx, dz) < TILE_REACH;
+      const near = Math.hypot(dx, dz) < (this.species.fadeRange?.[1] ?? FADE_END) + TILE_SLACK;
       if (near === t.near) continue;
       t.near = near;
       for (const mesh of t.meshes) mesh.visible = near;
@@ -347,7 +360,7 @@ function full<M extends THREE.Material>(material: M, world: World, lod: Lod, spe
   material.onBeforeCompile = (shader, renderer) => {
     before.call(material, shader, renderer);
     shader.uniforms.treeEye = groundEye;
-    shader.uniforms.treeFade = treeFade;
+    shader.uniforms.treeFade = fadeOf(species);
     shader.uniforms.treeNear = { value: new THREE.Vector2(...(species.nearRange ?? [NEAR_START, NEAR_END])) };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${treeFadeGlsl(!shadow)}\nuniform vec2 treeNear;\n${varying}float vTreeNear;`)

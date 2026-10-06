@@ -9,6 +9,7 @@ import { Forecast, type Weather } from '../src/shared/weather.ts';
 import type { PlayerSnap } from '../src/shared/protocol.ts';
 import { World } from '../src/shared/world.ts';
 import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
+import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 
 // A frame-cost benchmark on the default island, run by `npm run bench`
 // (e2e/bench.e2e.ts) or by hand at /dev/bench.html on the dev server:
@@ -27,17 +28,23 @@ import { DEFAULT_WORLD } from '../src/shared/worldconfig.ts';
 //
 // It sets window.bench to the results and document.title to "done".
 //
+// With `?town` it runs on Deathmatch's town instead, its light baked: at each
+// of a few spots (the screenshots' own), a frame with nobody about and one
+// with `n` soldiers in front (16 by default, the town's capacity). It sets
+// window.town.
+//
 // With `?adaptive=<seconds>` it instead checks the adaptive resolution on a
 // slow GPU: an extra pass over every pixel, weighed so that the full
 // resolution runs at about 38 fps, slows the frames, and the game's own
 // Resolution runs for that long. It sets window.adaptive.
 
 const q = new URLSearchParams(location.search);
-const N = Number(q.get('n') ?? 24);
+const TOWN = q.has('town');
+const N = Number(q.get('n') ?? (TOWN ? 16 : 24));
 const WARMUP = 60;
 const FRAMES = Number(q.get('frames') ?? 240);
 
-const world = new World(DEFAULT_WORLD.seed);
+const world = TOWN ? new World(CALABIANCA.seed, CALABIANCA) : new World(DEFAULT_WORLD.seed);
 const view = new WorldView(world, 'clear');
 view.preview = false;
 const scene = view.scene;
@@ -51,18 +58,45 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.autoClear = false;
 document.body.append(renderer.domElement);
 await view.prepare(renderer);
+if (TOWN) view.finishLight();
 
-// On the ground by the quarry, looking into it.
-const post = world.outposts[2];
-const eyeX = post.x + 24;
-const eyeZ = post.z + 18;
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 2000);
-camera.position.set(eyeX, world.floorHeight(eyeX, eyeZ) + 1.6, eyeZ);
-camera.lookAt(post.x, post.y + 1, post.z);
-camera.updateMatrixWorld();
-const focus = new THREE.Vector3(eyeX, camera.position.y - 1.6, eyeZ);
+const focus = new THREE.Vector3();
 const forward = new THREE.Vector3();
-camera.getWorldDirection(forward);
+let eyeX = 0;
+let eyeZ = 0;
+
+/** The eye at (x, y, z) looking at (tx, ty, tz), the shadows round what it looks at; the soldiers in front of it. */
+function place(x: number, y: number, z: number, tx: number, ty: number, tz: number, focusAtEye = false): void {
+  [eyeX, eyeZ] = [x, z];
+  camera.position.set(x, y, z);
+  camera.lookAt(tx, ty, tz);
+  camera.updateMatrixWorld();
+  camera.getWorldDirection(forward);
+  if (focusAtEye) focus.set(x, y - 1.6, z);
+  else focus.set(tx, ty, tz);
+}
+
+if (!TOWN) {
+  // On the ground by the quarry, looking into it.
+  const post = world.outposts[2];
+  const [x, z] = [post.x + 24, post.z + 18];
+  place(x, world.floorHeight(x, z) + 1.6, z, post.x, post.y + 1, post.z, true);
+}
+
+/**
+ * The town's spots, as the screenshots have them (e2e/visual.e2e.ts): eye,
+ * then what it looks at.
+ */
+const SPOTS: Record<string, [number, number, number, number, number, number]> = {
+  market: [-21, 7.7, 262, 10, 8, 256],
+  alley: [-37.5, 7.7, 265, -37.5, 10, 245],
+  piazza: [-7, 13.7, 243, -10, 14, 222],
+  quay: [-50, 4.8, 290, 40, 4.8, 290],
+  roofs: [-44, 15.6, 241, 0, 9, 250],
+  above: [-70, 55, 320, 0, 8, 240],
+  hillside: [0, 30, 200, 0, 40, 100],
+};
 
 const bodies = new Bodies(scene, world);
 const assets = await loadAssets(renderer);
@@ -107,10 +141,18 @@ interface Phase {
   frame: number[];
   calls: number;
   triangles: number;
+  /** The GPU's time drawing the frame, ms, where the browser can time it. */
+  gpu: number[];
+  /** The CPU's time issuing it, ms: the world's update and the render calls, before waiting on the GPU. */
+  cpu: number[];
 }
 
+const timer = gl.getExtension('EXT_disjoint_timer_query_webgl2') as { TIME_ELAPSED_EXT: number } | null;
+const gl2 = gl as WebGL2RenderingContext;
+
 async function measure(n: number, far = false): Promise<Phase> {
-  const out: Phase = { bodies: [], frame: [], calls: 0, triangles: 0 };
+  const out: Phase = { bodies: [], frame: [], calls: 0, triangles: 0, gpu: [], cpu: [] };
+  const queries: WebGLQuery[] = [];
   let t = 0;
   const dt = 1 / 60;
   for (let f = 0; f < WARMUP + FRAMES; f++) {
@@ -120,17 +162,30 @@ async function measure(n: number, far = false): Promise<Phase> {
     const t0 = performance.now();
     bodies.update(players, dt, camera);
     const t1 = performance.now();
+    const query = timer && f >= WARMUP ? gl2.createQuery() : null;
+    if (query) gl2.beginQuery(timer!.TIME_ELAPSED_EXT, query);
     view.update(camera, focus, 32, 230, t);
     view.reflect(renderer, camera);
     renderer.clear();
     renderer.render(scene, camera);
+    if (query) {
+      gl2.endQuery(timer!.TIME_ELAPSED_EXT);
+      queries.push(query);
+    }
+    const issued = performance.now();
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
     const t2 = performance.now();
     if (f < WARMUP) continue;
+    out.cpu.push(issued - t1);
     out.bodies.push(t1 - t0);
     out.frame.push(t2 - t0);
     out.calls = renderer.info.render.calls;
     out.triangles = renderer.info.render.triangles;
+  }
+  for (const query of queries) {
+    while (!gl2.getQueryParameter(query, gl2.QUERY_RESULT_AVAILABLE)) await new Promise((r) => setTimeout(r, 1));
+    out.gpu.push(gl2.getQueryParameter(query, gl2.QUERY_RESULT) / 1e6);
+    gl2.deleteQuery(query);
   }
   return out;
 }
@@ -261,6 +316,7 @@ async function adaptive(seconds: number, target = 26) {
 
 await renderer.compileAsync(scene, camera);
 if (q.has('adaptive')) Object.assign(window, { adaptive: await adaptive(Number(q.get('adaptive')) || 25) });
+else if (TOWN) Object.assign(window, { town: await townCost() });
 else Object.assign(window, { bench: await frameCost() });
 document.title = 'done';
 
@@ -273,18 +329,8 @@ async function frameCost() {
   const rain = await inWeather('rain', 'rain', 1);
   const crossover = await inWeather('rain', 'fog', 0.5);
 
-  const stats = (v: number[]) => {
-    const s = [...v].sort((a, b) => a - b);
-    const at = (p: number) => s[Math.min(Math.floor(p * s.length), s.length - 1)];
-    const r = (x: number) => Math.round(x * 100) / 100;
-    return { median: r(at(0.5)), p95: r(at(0.95)), max: r(s[s.length - 1]) };
-  };
-
   const bench = {
-    gpu: (() => {
-      const info = gl.getExtension('WEBGL_debug_renderer_info');
-      return String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
-    })(),
+    gpu: gpu(),
     size: `${innerWidth}x${innerHeight}`,
     bodies: N,
     empty: { frame: stats(empty.frame), calls: empty.calls, triangles: empty.triangles },
@@ -297,6 +343,36 @@ async function frameCost() {
   return bench;
 }
 
+function stats(v: number[]) {
+  const s = [...v].sort((a, b) => a - b);
+  const at = (p: number) => s[Math.min(Math.floor(p * s.length), s.length - 1)];
+  const r = (x: number) => Math.round(x * 100) / 100;
+  return { median: r(at(0.5)), p95: r(at(0.95)), max: r(s[s.length - 1]) };
+}
+
+function gpu(): string {
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  return String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+}
+
+/** The town's spots, each empty and with the crowd. */
+async function townCost() {
+  type S = ReturnType<typeof stats>;
+  const spots: Record<string, { empty: S; crowd: S; calls: number; triangles: number; gpu: S; cpu: S }> = {};
+  for (const [name, at] of Object.entries(SPOTS)) {
+    if (q.get('spot') && !q.get('spot')!.split(',').includes(name)) continue;
+    place(...at);
+    await renderer.compileAsync(scene, camera);
+    const empty = await measure(0);
+    const crowd = await measure(N);
+    spots[name] = {
+      empty: stats(empty.frame), crowd: stats(crowd.frame), calls: crowd.calls, triangles: crowd.triangles,
+      ...(crowd.gpu.length ? { gpu: stats(crowd.gpu) } : {}) as { gpu: S }, cpu: stats(crowd.cpu),
+    };
+  }
+  return { gpu: gpu(), size: `${innerWidth}x${innerHeight}`, bodies: N, spots };
+}
+
 /** The close-up crowd `blend` of the way through a change from `from` to `to`, over 45 s. */
 async function inWeather(from: Weather, to: Weather, blend: number): Promise<Phase> {
   const forecast = Forecast.held(from, to, 45);
@@ -307,3 +383,4 @@ async function inWeather(from: Weather, to: Weather, blend: number): Promise<Pha
   await renderer.compileAsync(scene, camera);
   return measure(N);
 }
+

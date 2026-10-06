@@ -12,7 +12,7 @@ import { roofs } from './roofs.ts';
 import { balconies, railProps } from './balconies.ts';
 import { Life } from './life.ts';
 import { signs } from './signs.ts';
-import { BLOOMS, Boxes, CANVAS, CREAM, IRON, LEAVES, painted, plain, Shapes, STEM, STONE, TERRACOTTA, type Stuff } from './townparts.ts';
+import { BLOOMS, Boxes, CANVAS, CREAM, fineAfter, IRON, isFine, LEAVES, painted, plain, Shapes, STEM, STONE, TERRACOTTA, tileKey, type Stuff } from './townparts.ts';
 import { bougainvillea, pots, vine } from './plants.ts';
 
 // A map town's buildings dressed over their walls, drawn only: nothing here
@@ -25,7 +25,7 @@ import { bougainvillea, pots, vine } from './plants.ts';
 // and striped awnings over them, pots by them, bougainvillea over them and
 // vines along its walls (see plants.ts); and a stone cap along every parapet and
 // freestanding wall. All of it is boxes, each a few centimetres proud of the
-// wall, drawn as one instanced mesh.
+// wall, drawn as instanced meshes, one a tile.
 
 const T = KIT_WALL;
 /** How far apart along a face it's sampled for where it looks outdoors. */
@@ -111,29 +111,60 @@ interface Run {
   top: boolean;
 }
 
-/** The dressing of a map's town and its features (see features.ts). */
+/**
+ * The dressing of a map's town and its features (see features.ts), split
+ * into tiles so each pass draws only those it sees, each tile's fine detail
+ * left out of the far shadows and the sea's reflection (see fineAfter).
+ */
 export class Dressing {
   readonly group = new THREE.Group();
-  private readonly mesh: THREE.InstancedMesh;
+  /** Each tile's boxes, and which of `boxes` they are, coarse ones first. */
+  private readonly tiles: { mesh: THREE.InstancedMesh; boxes: number[] }[] = [];
   private readonly boxes: Boxes;
-  /** What isn't a box: wheels, trees' crowns, hulls, the bell tower's roof. */
-  private readonly shapes: THREE.Mesh | null;
+  /** What isn't a box: wheels, leaves, hulls, the bell tower's roof; by tile. */
+  private readonly shapes: THREE.Mesh[] = [];
+  /** The near shadow map's camera, whose map alone the fine detail is drawn into. */
+  private near: THREE.Camera | null = null;
 
-  private constructor(world: World, boxes: Boxes, shapes: THREE.BufferGeometry | null, lettering: THREE.Mesh | null) {
+  private constructor(world: World, boxes: Boxes, shapes: { geometry: THREE.BufferGeometry; coarse: number }[], lettering: THREE.Mesh | null) {
     this.boxes = boxes;
-    const geometry = roundable(new THREE.BoxGeometry(1, 1, 1));
-    geometry.deleteAttribute('uv');
-    // Stone, wood and metal rounded at every edge; cloth, leaves and flowers left as they are.
-    geometry.setAttribute('round', new THREE.InstancedBufferAttribute(Float32Array.from(boxes.stuffs, (s) => (s.layer < UNTEXTURED ? roundCode(ALL_EDGES, 0.012) : 0)), 1));
-    this.mesh = new THREE.InstancedMesh(geometry, onTiles(new THREE.MeshStandardMaterial({ roughness: 0.85 }), world), boxes.matrices.length);
+    const near = () => this.near;
+    const base = roundable(new THREE.BoxGeometry(1, 1, 1));
+    base.deleteAttribute('uv');
+    const material = onTiles(new THREE.MeshStandardMaterial({ roughness: 0.85 }), world);
+    const byTile = new Map<string, { coarse: number[]; fine: number[] }>();
+    const at = new THREE.Vector3();
+    const size = new THREE.Vector3();
     boxes.matrices.forEach((m, i) => {
-      this.mesh.setMatrixAt(i, m);
-      this.mesh.setColorAt(i, boxes.stuffs[i].flat);
+      at.setFromMatrixPosition(m);
+      size.setFromMatrixScale(m);
+      const key = tileKey(at.x, at.z);
+      let t = byTile.get(key);
+      if (!t) byTile.set(key, (t = { coarse: [], fine: [] }));
+      (isFine(size.x, size.y, size.z) ? t.fine : t.coarse).push(i);
     });
-    geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(Float32Array.from(boxes.stuffs, (s) => s.layer), 1));
-    this.shapes = shapes ? new THREE.Mesh(shapes, new THREE.MeshStandardMaterial({ roughness: 0.85, vertexColors: true, side: THREE.DoubleSide })) : null;
-    for (const mesh of [this.mesh, this.shapes]) {
-      if (!mesh) continue;
+    for (const { coarse, fine } of byTile.values()) {
+      const which = [...coarse, ...fine];
+      const geometry = base.clone();
+      // Stone, wood and metal rounded at every edge; cloth, leaves and flowers left as they are.
+      geometry.setAttribute('round', new THREE.InstancedBufferAttribute(Float32Array.from(which, (i) => (boxes.stuffs[i].layer < UNTEXTURED ? roundCode(ALL_EDGES, 0.012) : 0)), 1));
+      geometry.setAttribute('layer', new THREE.InstancedBufferAttribute(Float32Array.from(which, (i) => boxes.stuffs[i].layer), 1));
+      const mesh = new THREE.InstancedMesh(geometry, material, which.length);
+      which.forEach((b, k) => {
+        mesh.setMatrixAt(k, boxes.matrices[b]);
+        mesh.setColorAt(k, boxes.stuffs[b].flat);
+      });
+      fineAfter(mesh, coarse.length, near);
+      this.tiles.push({ mesh, boxes: which });
+    }
+    base.dispose();
+    const shapeMaterial = new THREE.MeshStandardMaterial({ roughness: 0.85, vertexColors: true, side: THREE.DoubleSide });
+    for (const { geometry, coarse } of shapes) {
+      const mesh = new THREE.Mesh(geometry, shapeMaterial);
+      fineAfter(mesh, coarse, near);
+      this.shapes.push(mesh);
+    }
+    for (const mesh of [...this.tiles.map((t) => t.mesh), ...this.shapes]) {
       mesh.castShadow = mesh.receiveShadow = true;
       this.group.add(mesh);
     }
@@ -153,20 +184,29 @@ export class Dressing {
     roofs(world, boxes, shapes);
     balconies(world, boxes, shapes);
     const lettering = signs(world, boxes);
-    return new Dressing(world, boxes, shapes.geometry(), lettering);
+    return new Dressing(world, boxes, shapes.tiles(), lettering);
+  }
+
+  /** Draw the fine detail into the shadow map seen through `camera` alone: the near one's. */
+  nearShadows(camera: THREE.Camera): void {
+    this.near = camera;
   }
 
   /** Swap the flat colours for the textures, tinted. */
   applyAssets(assets: Assets, world: World): void {
-    const old = [this.mesh.material, this.shapes?.material] as (THREE.Material | undefined)[];
-    this.mesh.material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { indoor: true, wet: true, age: world, round: true }), world);
-    this.boxes.stuffs.forEach((s, i) => this.mesh.setColorAt(i, s.tint));
-    this.mesh.instanceColor!.needsUpdate = true;
-    if (this.shapes) {
-      this.shapes.material = surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85, vertexColors: true, side: THREE.DoubleSide }, 1, { indoor: true, wet: true });
-      this.shapes.geometry.setAttribute('color', this.shapes.geometry.getAttribute('tint'));
+    const old = new Set([...this.tiles.map((t) => t.mesh.material), ...this.shapes.map((m) => m.material)] as THREE.Material[]);
+    const material = onTiles(surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85 }, 1, { indoor: true, wet: true, age: world, round: true }), world);
+    for (const { mesh, boxes } of this.tiles) {
+      mesh.material = material;
+      boxes.forEach((b, k) => mesh.setColorAt(k, this.boxes.stuffs[b].tint));
+      mesh.instanceColor!.needsUpdate = true;
     }
-    for (const m of old) m?.dispose();
+    const shapeMaterial = surfaceMaterial(assets, { kind: 'instanced' }, { roughness: 0.85, vertexColors: true, side: THREE.DoubleSide }, 1, { indoor: true, wet: true });
+    for (const mesh of this.shapes) {
+      mesh.material = shapeMaterial;
+      mesh.geometry.setAttribute('color', mesh.geometry.getAttribute('tint'));
+    }
+    for (const m of old) m.dispose();
   }
 }
 

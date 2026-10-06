@@ -719,6 +719,18 @@ const FEATURES: MapBox[] = [
   as(solid(32.5, 34.5, 17, 20, 1.3), 'cart'),
   as(solid(-32, -29, -42.5, -40.5, 1.3), 'cart'),
   as(solid(-4.5, -1.5, -41, -39, 1.3), 'cart'),
+  // Cars parked where the longest views run: on the high street, and on the
+  // road's first leg, against the cottages, where Via del Porto looks along it.
+  as(solid(14, 17.8, -45.6, -43.9, 1.45), 'car'),
+  // That one on the slope: its box from the ramp at its lower end to its roof at the higher.
+  { minX: 47, maxX: 50.8, minZ: 32.2, maxZ: 33.9, y0: 4.1, y1: 6.2, look: 'car' },
+  // Sandbags across the same view, along the market's south side and in Via
+  // del Porto against the hotel's wall, past its door.
+  as(solid(10.2, 13.4, 31.15, 31.85, 1.1), 'sandbags'),
+  as(solid(25, 28.2, 30.15, 30.85, 1.1), 'sandbags'),
+  // Rubble fallen from the ruined chapel, by its arch and its door.
+  as(solid(-55.85, -53.6, -51.4, -49.6, 0.8), 'rubble'),
+  as(solid(-63.5, -61.8, -43.85, -42.4, 0.6), 'rubble'),
   // The piazza: the fountain, the plane trees, the war memorial and the kiosk.
   as(solid(-11, -5, -11, -5, 0.9), 'fountain'),
   trunk(-23.5, -11.5, 5, 0.8, 'plane'),

@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-10-06',
+    title: 'Cover in Calabianca, and a smoother town',
+    notes: [
+      'Two old cars are parked in Calabianca: one on the high street and one on the road up from the quay, where Via del Porto looks along it. Both stop bullets and can be crouched behind.',
+      'Sandbags are stacked along the market’s south side and in Via del Porto, across the long view from the market to the road.',
+      'Rubble has fallen from the ruined chapel by the cemetery, by its door and its side arch.',
+      'The town draws faster where the sea is in view, and its far hillside’s olives and shrubs turn into simpler pictures sooner. Small details on the walls (sills, cables, flowers, leaves) no longer cast shadows far from you, where they were too small to see.',
+      'Bots no longer pause as often when they first head somewhere new in the town.',
+    ],
+  },
+  {
     date: '2026-10-05',
     title: 'Calabianca’s trees and hills',
     notes: [
