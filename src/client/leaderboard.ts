@@ -1,5 +1,5 @@
 import { mapFor } from '../shared/maps/index.ts';
-import type { Mode } from '../shared/protocol.ts';
+import { isDeathmatch, type Mode } from '../shared/protocol.ts';
 
 /** Scores kept per island and mode. */
 export const BOARD_SIZE = 10;
@@ -86,7 +86,8 @@ export class Leaderboard {
  */
 export function boardKey(seed: number, mode: Mode): string {
   const map = mapFor(mode);
-  return map ? `board:${map.id}:${mode}` : `board:${seed >>> 0}:${mode}`;
+  // Both Deathmatches keep their boards as Deathmatch's, under their maps: the old town's is the one it had.
+  return map ? `board:${map.id}:${isDeathmatch(mode) ? 'deathmatch' : mode}` : `board:${seed >>> 0}:${mode}`;
 }
 
 /**

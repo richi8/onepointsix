@@ -12,6 +12,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Two Deathmatches',
+    notes: [
+      'Deathmatch is two modes on the menu for now: Calabianca DM, in the old town by the sea, and Dust DM, on the map after the classic.',
+      'Each keeps its own board of your best games; Calabianca DM’s still has the ones you played there before.',
+    ],
+  },
+  {
+    date: '2026-10-07',
     title: 'Calabianca’s roads slope',
     notes: [
       'Calabianca’s roads and squares slope smoothly as the classic’s do, down long A, up mid and the ramps, with no more little steps all over the ground; there are stairs only where the original has stairs.',

@@ -81,6 +81,30 @@ test('Deathmatch: no clock or extraction, every operator on Tab, and back in aft
   expect(await page.evaluate(() => (window.game.view as unknown as { extractGroup: { visible: boolean } }).extractGroup.visible)).toBe(true);
 });
 
+test('Calabianca DM: Deathmatch on the old town, its board apart from Dust DM\'s', async ({ page }) => {
+  await open(page);
+  await pickMode(page, 'calabianca');
+  await expect(page.locator('#modes button.on')).toHaveText('Calabianca DM');
+  expect(await page.evaluate(() => (window.game.world as { map: { id: string } | null }).map?.id)).toBe('calabianca');
+  await expect(page.locator('#board h3')).toHaveText('Your best here · Calabianca DM');
+  await play(page, 'calabianca');
+  await expect(page.locator('#clock')).toBeHidden();
+  await page.keyboard.down('Tab');
+  await expect(page.locator('#scoreboard tbody tr')).toHaveCount(DEATHMATCH_CAPACITY);
+  await page.keyboard.up('Tab');
+  await dev(page, { act: 'rival' });
+  await dev(page, { act: 'kill' });
+  await page.waitForFunction(() => window.game.conn!.board.some((r) => r.id === window.game.conn!.id && r.kills === 1));
+  await page.evaluate(() => document.exitPointerLock());
+  await page.click('#leave');
+  await expect(page.locator('#board li').first()).toContainText('1 kill · 0 deaths');
+  // Dust DM: the other map, and its own board.
+  await pickMode(page, 'deathmatch');
+  await expect(page.locator('#modes button.on')).toHaveText('Dust DM');
+  expect(await page.evaluate(() => (window.game.world as { map: { id: string } | null }).map?.id)).toBe('calabianca-2');
+  await expect(page.locator('#board .empty')).toBeVisible();
+});
+
 test('a test map behind the menu is played as Deathmatch on it', async ({ page }) => {
   await open(page, '?map=kit-yard');
   await expect(page.locator('#modes button.on')).toHaveAttribute('data-mode', 'deathmatch');

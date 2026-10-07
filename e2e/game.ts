@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { ITEMS } from '../src/shared/loot.ts';
 import { boardKey, type BoardEntry } from '../src/client/leaderboard.ts';
-import type { DevCmd, Mode } from '../src/shared/protocol.ts';
+import { isDeathmatch, type DevCmd, type Mode } from '../src/shared/protocol.ts';
 
 // Driving the game in a test browser, through the page and the development
 // build's window.game.
@@ -57,12 +57,12 @@ export async function open(page: Page, query = ''): Promise<void> {
 }
 
 /**
- * Pick a mode on the menu. Into or out of Deathmatch, played on a map of its
- * own, the page loads again to build it: wait for that.
+ * Pick a mode on the menu. Into, out of or between the Deathmatches, each
+ * played on a map of its own, the page loads again to build it: wait for that.
  */
 export async function pickMode(page: Page, mode: Mode): Promise<void> {
   const current = await page.locator('#modes button.on').getAttribute('data-mode');
-  if ((current === 'deathmatch') === (mode === 'deathmatch')) {
+  if (current === mode || (!isDeathmatch(current as Mode) && !isDeathmatch(mode))) {
     await page.click(`#modes [data-mode=${mode}]`);
     return;
   }

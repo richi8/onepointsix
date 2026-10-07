@@ -1,5 +1,6 @@
 import type { Mode } from '../protocol.ts';
 import type { Rect } from '../world.ts';
+import { CALABIANCA } from './calabianca.ts';
 import { CALABIANCA_2 } from './calabianca2.ts';
 
 // A fixed map: the ground, buildings and everything else a mode is played on,
@@ -367,7 +368,7 @@ export function pavingAt(map: GameMap, x: number, z: number): Paving | null {
 
 /** The fixed map a mode is played on, or null for the island made from the game's seed. */
 export function mapFor(mode: Mode): GameMap | null {
-  return mode === 'deathmatch' ? CALABIANCA_2 : null;
+  return mode === 'deathmatch' ? CALABIANCA_2 : mode === 'calabianca' ? CALABIANCA : null;
 }
 
 /**

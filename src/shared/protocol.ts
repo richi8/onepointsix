@@ -28,10 +28,16 @@ export interface InputCmd {
 /**
  * How a game is played. Extraction is a run against guards and 8 operators, where players who
  * join take bot operators' places. Deathmatch is 16 operators and no guards, everyone against
- * everyone, respawning, with only kills and deaths counted. The range is for trying things out:
- * actors going through every move round an outpost, and nobody to hurt you.
+ * everyone, respawning, with only kills and deaths counted, on the map after Dust 2; Calabianca
+ * is Deathmatch on the old town. The range is for trying things out: actors going through every
+ * move round an outpost, and nobody to hurt you.
  */
-export type Mode = 'extraction' | 'deathmatch' | 'range';
+export type Mode = 'extraction' | 'deathmatch' | 'calabianca' | 'range';
+
+/** Whether `m` is a Deathmatch, on either map. */
+export function isDeathmatch(m: Mode | null | undefined): boolean {
+  return m === 'deathmatch' || m === 'calabianca';
+}
 
 /** Whether `id` will do as a player's id in hello: letters, digits and dashes, 8 to 64 of them. */
 export function validPlayerId(id: unknown): id is string {
@@ -40,7 +46,7 @@ export function validPlayerId(id: unknown): id is string {
 
 /** A mode named in a link or saved setting; Online, and Mixed and Offline before it, are now Extraction. */
 export function parseMode(m: string | null): Mode | null {
-  if (m === 'extraction' || m === 'deathmatch' || m === 'range') return m;
+  if (m === 'extraction' || m === 'deathmatch' || m === 'calabianca' || m === 'range') return m;
   return m === 'online' || m === 'mixed' || m === 'offline' ? 'extraction' : null;
 }
 
