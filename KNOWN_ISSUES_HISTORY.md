@@ -3065,3 +3065,9 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   **Resolved** (2026-10-07): each railing is three boxes, a solid foot (12 cm) and top rail (6 cm)
   and the bars between, flagged `open` (`Box.open`): bodies still stop at it, but rounds and
   sight (`raycast`, `collidersAlong`) pass through, so legs behind a railing can be shot and seen.
+
+- **Downpipes run through cornices and string courses** (62, part of "Things drawn on the walls
+  are walked through"): **Resolved** (2026-10-07, found already so): a downpipe stands `PIPE_OFF`
+  0.17 m off its wall with a 0.05 m radius, so its inner face is 0.12 m out, as far as a
+  cornice (0.12 m) or any string course (0.04 m) stands; it touches the cornice and doesn't
+  cross it. The rest of that issue, things on the walls that don't collide, stays open.
