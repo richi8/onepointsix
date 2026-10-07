@@ -3110,3 +3110,15 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
 - **Rooms in the town take the sky's blue (60)**: **Accepted** (2026-10-07): a room lit only through windows is bluish, as in daylight; the tint is mild and the rooms are readable.
 
 - **The new map's ground floats a few centimetres over its floors (2026-10-07)**: **Accepted** (2026-10-07): 6 cm is inside a footstep's bounce, and the alternative, seams showing between floor boxes, looked worse.
+
+- **The greenery costs 2–5 ms a frame** (63) on an M3 Pro at 1280 × 720: most of it the trees'
+  far tiles, which drew the plainer trees out to 145 m past a tile's edge and cast them into the
+  shadows, with the leaf cards' overdraw. **Resolved in part** (64): the small and the many hand
+  over to their impostors sooner (`Species.fadeRange`), 1.4 ms less GPU time at the hillside.
+  **Resolved** (2026-10-07): what no spot a player can stand on sees isn't planted or drawn
+  (`sightlines.ts`: lines of sight over the terrain from a viewpoint every 12 m on the ground and
+  on each walkable roof and floor, to a target's top, with 1.5 m's slack): of 3,348 trees 962 are
+  left, of 6,744 terrace walls 1,379, of 195 rocks 88; the town's screenshots are unchanged and
+  the benchmark's triangles are down 12-15%, at about 0.1 s more load. Frame times didn't separate
+  from the noise over two alternating runs. Buildings aren't counted as hiding anything, only
+  the ground, so a tree behind a house is kept. Its leaf cards close up are the trees' own issue.

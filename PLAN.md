@@ -509,25 +509,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   tiles it sees, and what's fine (see below) casts only into the near shadows; but building
   them, the signs and the rounded edges on the main thread still adds about 0.3 s to the
   town's load, and the tiles cost about 100 more draw calls a frame, 0.3–0.5 ms of the CPU's.
-- **The greenery costs 2–5 ms a frame** (chunk 63) on an M3 Pro at 1280 × 720: least in the
-  market and from above, most looking at the hillside. Most of it is the trees' far tiles,
-  which draw the plainer trees out to 145 m past a tile's edge (about 1,000 olives and 1,700
-  shrubs round the town) and cast them into the shadows; the leaf cards' overdraw counts too.
-  Cutting the near detail and the near range changed little. **Resolved in part** (chunk 64):
-  the small and the many hand over to their impostors sooner (`Species.fadeRange`): shrubs
-  from 40 to 55 m, olives 60 to 80, oaks 70 to 90, the rest still 110 to 140, and their tiles
-  are drawn only that far out; the hillside's frame took 1.4 ms less of the GPU's time and
-  from 3.1 to 1.4 million triangles. Their impostors are flat cards, so from a roof the near
-  groves read a little flatter than before. Drawing the leaf pictures and baking six kinds'
-  impostors adds about 0.35 s to a warm load.
-  **Resolved in part** (2026-10-07): what no spot a player can stand on sees isn't planted or
-  drawn (`sightlines.ts`: a line of sight over the terrain from a viewpoint every 12 m on the
-  ground and on each walkable roof and floor, to a target's top, with 1.5 m's slack): of 3,348
-  trees 962 are left, of 6,744 terrace walls 1,379, of 195 rocks 88, the town's screenshots
-  unchanged, the benchmark's triangles down 12–15% (2.0 M to 1.8 M at its busiest spot), at
-  about 0.1 s more load. Its frame times didn't separate from the noise over two alternating
-  runs. Buildings aren't counted as hiding anything, only the ground, so a tree behind a house
-  is kept.
 - **The town's light is baked at every load** (chunk 60): about 3 s in a worker on an M3 Pro,
   longer on slower machines, with about 250 MB in use while it runs; until it's done the town
   is lit as if all of it were out in the open, then the light fades in over a second. It
