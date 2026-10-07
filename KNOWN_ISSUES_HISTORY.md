@@ -2471,6 +2471,19 @@ notes the chunk it came from.
   officers and Red the guards' soldiers in helmets (the body drawn as the side's team). The
   sides' ids alternate, so a body's avatar is picked by half its id, or every Blue would wear the
   same one of the two officers.
+- **Bots don't play as a side** (2026-10-07): each hunted on its own as in Deathmatch, with no
+  calls to friends, grouping or holding a part of the map; they only left friends alone and
+  didn't shoot through them.
+  **Resolved** (2026-10-07): a bot that first makes out an enemy calls it to friends on its side
+  within 60 m, and any not in a fight or hurt goes to look; and bots on a side go about in
+  squads of two or three that roam to the same place together, keeping to it 45 s, different
+  squads to different places. The callouts alone changed nothing the simulation measures (bots
+  were already bunched, median 9–11 m from a friend). The squads spread the fighting: kills in
+  Blue's half rose from 17–30 to 40–50 of about 215 a game. Over eight 10-minute games, with and
+  without the bases swapped, Red made 53–54% of the kills both ways (904 to 799, 898 to 773), a
+  mild lean that follows the side, not the map, and is accepted. Not done: a side holding a part
+  of the map; the pre-squad code wasn't run over the same eight seeds, so whether the lean is
+  new is unknown.
 
 ## Dropped
 
