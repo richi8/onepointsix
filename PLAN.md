@@ -517,14 +517,6 @@ in their side's colour. Its board is `board:calabianca-2:team`, apart from the D
 played on that map before. `sim:deathmatch` takes `team` as a third argument. What it lacks:
 Nothing open: the last was resolved on 2026-10-07 (see the history).
 ### Deathmatch
-- **The town is heavier to draw than the island with nobody about** (chunk 64): the benchmark's
-  empty frame takes 10–11.6 ms at the town's seven spots against 6.1 on the island, about
-  6.5–8.6 ms of it the GPU's; with 16 soldiers 12.2–14.6 ms, against 13.2 for the island's 24.
-  The town's surfaces are shaded with more (baked light, age, rounded edges, rain), and it
-  stands 1.4–2.5 million triangles a frame against the island's 0.9. From above, where the sea
-  fills half the view, its reflection still draws most of the town. The benchmark's GPU times
-  come from timer queries, which on ANGLE's Metal disagree from run to run; only alternating
-  runs of old and new code told a change apart.
 - **The new cover is placed by the simulation, not playtested** (chunk 64): the sandbags
   stand across the longest views `sim:deathmatch` drew (Via del Porto into the road, along the
   market's south side); whether they read as cover where a player wants it is the testers'.

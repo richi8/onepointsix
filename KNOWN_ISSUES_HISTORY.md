@@ -3083,6 +3083,16 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   **Accepted** (2026-10-03): the user accepted it as it is, and the 17% rate with it.
 
 ### Deathmatch
+- **The town is heavier to draw than the island with nobody about** (chunk 64): the benchmark's
+  empty frame takes 10–11.6 ms at the town's seven spots against 6.1 on the island, about
+  6.5–8.6 ms of it the GPU's; with 16 soldiers 12.2–14.6 ms, against 13.2 for the island's 24.
+  The town's surfaces are shaded with more (baked light, age, rounded edges, rain), and it
+  stands 1.4–2.5 million triangles a frame against the island's 0.9. From above, where the sea
+  fills half the view, its reflection still draws most of the town. The benchmark's GPU times
+  come from timer queries, which on ANGLE's Metal disagree from run to run; only alternating
+  runs of old and new code told a change apart.
+  **Accepted** (2026-10-07): the town is the heavier map, with more to draw and shade; at the
+  user's word there is little to be done and it stays as it is.
 - **Ramps are drawn as steps** (56): a ramp is steps of up to 0.25 m drawn as a stair's, 1–2 m
   deep each; a smooth slope drawn over them was left for the town's look (chunk 59).
   **Dropped** (chunk 59): the road's legs are kept as a stepped street, a *cordonata*, as these
