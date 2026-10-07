@@ -709,10 +709,6 @@ const FEATURES: MapBox[] = [
   { minX: WEST, maxX: EAST, minZ: SEA + 0.5, maxZ: 60, y0: -6, y1: 3, look: 'quay' },
   // The bell tower, solid, beside the church.
   as(solid(2.15, 8, -24, -18, 18, 0.5), 'belltower'),
-  // Sandbags where the longest views run, along the market's south side and in Via
-  // del Porto against the hotel's wall, past its doorway.
-  as(solid(10.2, 13.4, 31.15, 31.85, 1.1), 'sandbags'),
-  as(solid(25, 28.2, 30.15, 30.85, 1.1), 'sandbags'),
   // The piazza: the fountain, the plane trees, the war memorial and the kiosk.
   as(solid(-11, -5, -11, -5, 0.9), 'fountain'),
   trunk(-23.5, -11.5, 5, 0.8, 'plane'),

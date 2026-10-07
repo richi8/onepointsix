@@ -208,7 +208,7 @@ export interface MapBox extends Rect {
  */
 export type MapLook =
   | 'fountain' | 'plane' | 'olive' | 'memorial' | 'kiosk' | 'boat'
-  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'sandbags' | 'rubble' | 'doors' | 'under';
+  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'rubble' | 'doors' | 'under';
 
 /**
  * A flight of steps outside, `width` wide, its foot's middle at (x, z) on

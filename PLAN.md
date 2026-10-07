@@ -517,12 +517,6 @@ in their side's colour. Its board is `board:calabianca-2:team`, apart from the D
 played on that map before. `sim:deathmatch` takes `team` as a third argument. What it lacks:
 Nothing open: the last was resolved on 2026-10-07 (see the history).
 ### Deathmatch
-- **The new cover is placed by the simulation, not playtested** (chunk 64): the sandbags
-  stand across the longest views `sim:deathmatch` drew (Via del Porto into the road, along the
-  market's south side); whether they read as cover where a player wants it is the testers'.
-  The two cars that stood across the high street and the road's first leg were removed in
-  chunk 66, as they didn't look good, and nothing took their place. The market's stalls and
-  lorry and the three carts were removed later too (2026-10-07), so its views are more open.
 - **Kills gather at the new map's chokes** (chunk 67, redone 2026-10-07): over three 10-minute
   games, the 6 m squares outside long and at long's doors take 4–6% of kills each, against the
   3% the chunk asked. That's the original's chokes doing what they do; chunk 70 tunes them.

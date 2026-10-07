@@ -9,7 +9,7 @@ import { Boxes, CREAM, IRON, painted, plain, Shapes, STONE, stuff, type Stuff } 
 // A map's features drawn as what they are, over the boxes they collide as
 // (MapBox.look): the crashed truck, the market's stalls, the carts, the
 // fountain, the war memorial, the kiosk, the
-// boats hauled out, the parked cars, the sandbags, the rubble, the water tower, the tombs, the bell tower's belfry and
+// boats hauled out, the parked cars, the rubble, the water tower, the tombs, the bell tower's belfry and
 // roof, along the quay's face its bollards and the boats moored off it, and
 // the leaves of double doors fixed in place.
 // What stands inside its box replaces it (Features.replaces); what reaches
@@ -22,7 +22,6 @@ const WATER = plain(0x2e4a52);
 const WOOD = stuff(Layer.boards, 0xc8b8a4, 0x6b5a44);
 const STEEL = stuff(Layer.metal, 0xa8b0aa, 0x6e7670);
 const ROOF = plain(0xa45a3c);
-const BURLAP = [plain(0xb8a47a), plain(0xa89468), plain(0xc4b088)];
 const DEBRIS = stuff(Layer.concrete, 0xf0ebe0, 0xc8c0b0);
 const RUBBLE = stuff(Layer.plaster, 0xeee8dc, 0xd8d0c0);
 const HULLS = [0xeeeae0, 0x2f5f86, 0xd8c8a0, 0x3d7a5a];
@@ -194,7 +193,7 @@ export function standsOn(world: World, b: MapBox): number {
 }
 
 /** The looks drawn in place of their boxes; the rest are drawn over them. */
-const REPLACED: ReadonlySet<MapLook> = new Set(['fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble', 'doors', 'under']);
+const REPLACED: ReadonlySet<MapLook> = new Set(['fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'rubble', 'doors', 'under']);
 
 /** The props drawn here in place of their boxes. */
 export function replacedProps(world: World): Set<number> {
@@ -244,27 +243,6 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
         rod(shapes, new THREE.Vector3(cx, top + 1.3, cz), new THREE.Vector3(cx, top + 1.6, cz), 0.35, STONE, 14, 1);
         rod(shapes, new THREE.Vector3(cx, top + 1.55, cz), new THREE.Vector3(cx, top + 1.58, cz), 0.92, WATER, 14);
         rod(shapes, new THREE.Vector3(cx, top + 1.6, cz), new THREE.Vector3(cx, top + 2.3, cz), 0.12, STONE, 8, 0.06);
-        break;
-      }
-      case 'sandbags': {
-        // Rows of bags two deep, each row half a bag along from the one under it.
-        const BAG = 0.55;
-        const rows = Math.max(1, Math.round((top - y) / 0.2));
-        const rise = (top - y) / rows;
-        const bag = new THREE.SphereGeometry(1, 8, 5);
-        for (let k = 0; k < rows; k++) {
-          const shift = k % 2 ? BAG / 2 : 0;
-          const n = Math.floor((len - shift) / BAG);
-          for (let i = 0; i < n; i++) {
-            for (const v of [-W / 2, W / 2]) {
-              const [x, z] = at(-L + shift + BAG * (i + 0.5), v + (rand() - 0.5) * 0.04);
-              const q = new THREE.Quaternion().setFromAxisAngle(UP, (alongX ? 0 : Math.PI / 2) + (rand() - 0.5) * 0.15);
-              const size = new THREE.Vector3(BAG * 0.54, rise * 0.62, W * 0.56);
-              shapes.add(bag.clone(), new THREE.Matrix4().compose(new THREE.Vector3(x, y + rise * (k + 0.5), z), q, size), BURLAP[Math.floor(rand() * BURLAP.length)]);
-            }
-          }
-        }
-        bag.dispose();
         break;
       }
       case 'under':

@@ -3083,6 +3083,8 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   **Accepted** (2026-10-03): the user accepted it as it is, and the 17% rate with it.
 
 ### Deathmatch
+- **The new cover is placed by the simulation, not playtested (64)**: **Moot** (2026-10-07). The cars went in chunk 66, the market's stalls, lorry, carts and the chapel's rubble earlier the same day, and now the last of it, the two sandbag stacks, is gone from Calabianca too (their boxes, the `sandbags` look and its drawing, the `town-sandbags` screenshot), so there is no new cover left to playtest.
+
 - **The town is heavier to draw than the island with nobody about** (chunk 64): the benchmark's
   empty frame takes 10–11.6 ms at the town's seven spots against 6.1 on the island, about
   6.5–8.6 ms of it the GPU's; with 16 soldiers 12.2–14.6 ms, against 13.2 for the island's 24.

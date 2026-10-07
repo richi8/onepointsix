@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'No sandbags in the old town',
+    notes: ['The sandbag stacks along the market’s south side and in Via del Porto are gone from Calabianca, so the long views there are open.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'A barer old town',
     notes: ['The market’s crashed lorry and stalls, the carts along the streets and the rubble by the ruined chapel are gone from Calabianca, as they didn’t look good; the market and the high street are more open.'],
   },
