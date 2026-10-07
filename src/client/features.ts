@@ -9,7 +9,7 @@ import { Boxes, CREAM, IRON, painted, plain, Shapes, STONE, stuff, type Stuff } 
 // A map's features drawn as what they are, over the boxes they collide as
 // (MapBox.look): the crashed truck, the market's stalls, the carts, the
 // fountain, the war memorial, the kiosk, the
-// boats hauled out, the parked cars, the rubble, the water tower, the tombs, the bell tower's belfry and
+// boats hauled out, the parked cars, the water tower, the tombs, the bell tower's belfry and
 // roof, along the quay's face its bollards and the boats moored off it, and
 // the leaves of double doors fixed in place.
 // What stands inside its box replaces it (Features.replaces); what reaches
@@ -22,8 +22,6 @@ const WATER = plain(0x2e4a52);
 const WOOD = stuff(Layer.boards, 0xc8b8a4, 0x6b5a44);
 const STEEL = stuff(Layer.metal, 0xa8b0aa, 0x6e7670);
 const ROOF = plain(0xa45a3c);
-const DEBRIS = stuff(Layer.concrete, 0xf0ebe0, 0xc8c0b0);
-const RUBBLE = stuff(Layer.plaster, 0xeee8dc, 0xd8d0c0);
 const HULLS = [0xeeeae0, 0x2f5f86, 0xd8c8a0, 0x3d7a5a];
 const STRIPES = [0x2f5f86, 0xb83a30, 0xd0a030, 0x2f3a46];
 /** Old double doors' faded paint over weathered planks: a pair's leaves alike. */
@@ -193,7 +191,7 @@ export function standsOn(world: World, b: MapBox): number {
 }
 
 /** The looks drawn in place of their boxes; the rest are drawn over them. */
-const REPLACED: ReadonlySet<MapLook> = new Set(['fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'rubble', 'doors', 'under']);
+const REPLACED: ReadonlySet<MapLook> = new Set(['fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'doors', 'under']);
 
 /** The props drawn here in place of their boxes. */
 export function replacedProps(world: World): Set<number> {
@@ -228,7 +226,6 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
       if (alongX) boxes.box(cx + u0, y0, cz + v0, cx + u1, y1, cz + v1, s);
       else boxes.box(cx + v0, y0, cz + u0, cx + v1, y1, cz + u1, s);
     };
-    const at = (u: number, v: number): [number, number] => (alongX ? [cx + u, cz + v] : [cx + v, cz + u]);
     const [L, W] = [len / 2, wid / 2];
     switch (b.look) {
       case 'fountain': {
@@ -256,31 +253,6 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
           for (const h of [0.35, 1.5, 2.6]) local(-L + 0.06, v, y + h, L - 0.06, v + 0.03, y + h + 0.16, paint);
           for (const h of [0.45, 2.7]) local(-L + 0.03, v - 0.01, y + h - 0.03, L - 0.03, v + 0.04, y + h + 0.03, IRON);
         }
-        break;
-      }
-      case 'rubble': {
-        // A heap of broken plaster and fallen blocks of stone, a beam across it:
-        // a low bed of grit, and chunks piled on it, highest in the middle.
-        const h = top - y;
-        for (const u of [-L / 2, L / 2]) {
-          const [x, z] = at(u, 0);
-          const r = Math.max(W, L / 2) * 1.05;
-          blob(shapes, x, y, z, r, DEBRIS, rand, (h * 0.45) / r);
-        }
-        for (let k = 0; k < 46; k++) {
-          const [fu, fv] = [rand() * 2 - 1, rand() * 2 - 1];
-          const d = Math.min(1, Math.hypot(fu, fv));
-          const [x, z] = at(fu * L * 1.05, fv * W * 1.05);
-          const big = k < 10;
-          const sz = big
-            ? new THREE.Vector3(0.3 + rand() * 0.3, 0.18 + rand() * 0.14, 0.22 + rand() * 0.2)
-            : new THREE.Vector3(0.1 + rand() * 0.18, 0.06 + rand() * 0.1, 0.08 + rand() * 0.16);
-          const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((rand() - 0.5) * 0.9, rand() * Math.PI, (rand() - 0.5) * 0.9));
-          boxes.turned(new THREE.Vector3(x, y + h * (1 - d) * (0.55 + rand() * 0.4), z), sz, q, big || rand() < 0.4 ? STONE : RUBBLE);
-        }
-        const [x0, z0] = at(-L * 0.8, -W * 0.3);
-        const [x1, z1] = at(L * 0.6, W * 0.4);
-        rod(shapes, new THREE.Vector3(x0, y + 0.1, z0), new THREE.Vector3(x1, top + 0.05, z1), 0.08, WOOD, 6);
         break;
       }
       case 'plane':
