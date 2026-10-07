@@ -108,7 +108,7 @@ export function surfaceMaterial(
         ${terrain ? 'attribute vec4 splatA; attribute float splatB; varying vec4 vSplatA; varying float vSplatB;' : ''}
         ${mapping.kind === 'instanced' ? 'attribute float layer; varying float vSurfLayer;' : ''}
         ${uv ? 'attribute vec2 surfUv; varying vec2 vSurfUv;' : ''}
-        ${ageBuilt ? 'varying float vAgeBelow;' : ''}
+        ${ageBuilt ? 'varying float vAgeBelow;\nvarying float vAgeLift;\n#ifdef USE_INSTANCING\nattribute vec4 ageFoot;\n#endif' : ''}
         ${round ? ROUND_VERTEX_HEAD : ''}`],
       ['#include <worldpos_vertex>', /* glsl */ `
         {
@@ -135,10 +135,13 @@ export function surfaceMaterial(
         ${round ? ROUND_VERTEX : ''}
         ${ageBuilt ? `
         // How far below its box's top: streaks run down from there.
+        // And how far the ground outside the side this vertex faces stands over the terrain.
         #ifdef USE_INSTANCING
           vAgeBelow = (modelMatrix * instanceMatrix * vec4(0.0, 0.5, 0.0, 1.0)).y - vSurfPos.y;
+          vAgeLift = objectNormal.x > 0.5 ? ageFoot.x : objectNormal.x < -0.5 ? ageFoot.y : objectNormal.z > 0.5 ? ageFoot.z : objectNormal.z < -0.5 ? ageFoot.w : 0.0;
         #else
           vAgeBelow = 100.0;
+          vAgeLift = 0.0;
         #endif` : ''}`],
     ]);
 
@@ -160,7 +163,7 @@ export function surfaceMaterial(
         ${uv ? UV_GLSL : ''}
         ${aged ? AGE_GLSL : ''}
         ${ageGround ? AGE_PAVING_GLSL : ''}
-        ${ageBuilt ? `varying float vAgeBelow;\n${AGE_BUILT_GLSL}` : ''}
+        ${ageBuilt ? `varying float vAgeBelow;\nvarying float vAgeLift;\n${AGE_BUILT_GLSL}` : ''}
         ${round ? ROUND_FRAGMENT_HEAD : ''}`],
       // Replaces the colour map, which these materials don't use.
       ['#include <map_fragment>', /* glsl */ `
@@ -194,7 +197,7 @@ export function surfaceMaterial(
       ...(ageBuilt ? [['#include <color_fragment>', /* glsl */ `
         {
           float layer = surfLayer >= ${UV}.0 ? surfLayer - ${UV}.0 : surfLayer;
-          ageBuilt(layer, vSurfPos, wn, vAgeBelow, 1.0 - underRoof(vSurfPos + wn * 0.3), diffuseColor.rgb, surfN, ageRough, ageStreaks);
+          ageBuilt(layer, vSurfPos, wn, vAgeBelow, vAgeLift, 1.0 - underRoof(vSurfPos + wn * 0.3), diffuseColor.rgb, surfN, ageRough, ageStreaks);
         }`] as [string, string]] : []),
       ['#include <normal_fragment_maps>', /* glsl */ `
         ${local ? 'surfN = vSurfFrame * surfN;' : ''}

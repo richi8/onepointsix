@@ -1,4 +1,6 @@
+import * as THREE from 'three';
 import { Layer } from '../shared/layers.ts';
+import type { World } from '../shared/world.ts';
 
 // A map's town weathered in its shaders, with no textures of its own: the
 // years drawn from noise over where each surface stands. Walls are each a
@@ -12,6 +14,29 @@ import { Layer } from '../shared/layers.ts';
 
 /** The cut stone's tint, as the trim's (see townparts.ts), for the stone where plaster has fallen. */
 const STONE_TINT = 'vec3(0.92, 0.89, 0.83)';
+
+/**
+ * How far the ground just outside each side of the box drawn by `m` (+x, -x,
+ * +z, -z of its own) stands over the terrain, where the box stands on a
+ * terrace, a ramp or a lower roof: where rising damp starts on that side.
+ * Zero where it meets the terrain, or hangs over open air (an upper storey).
+ */
+export function footLifts(world: World, m: THREE.Matrix4): [number, number, number, number] {
+  const c = new THREE.Vector3().setFromMatrixPosition(m);
+  const ax = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  m.extractBasis(ax[0], ax[1], ax[2]);
+  const half = ax.map((a) => a.length() / 2);
+  const bottom = c.y - half[1];
+  const out: [number, number, number, number] = [0, 0, 0, 0];
+  [[0, 1], [0, -1], [2, 1], [2, -1]].forEach(([k, sign], side) => {
+    const d = ax[k].clone().normalize();
+    const x = c.x + d.x * sign * (half[k] + 0.4);
+    const z = c.z + d.z * sign * (half[k] + 0.4);
+    const top = world.groundHeight(x, z, bottom + 0.05, 0.05);
+    out[side] = Math.max(0, Math.min(top, bottom) - world.terrainHeight(x, z));
+  });
+  return out;
+}
 
 /** GLSL every aged material has: hashes and noise. */
 export const AGE_GLSL = /* glsl */ `
@@ -37,15 +62,15 @@ export const AGE_GLSL = /* glsl */ `
 
 /**
  * GLSL for the buildings, their trim and their roofs, after the colour is
- * known: \`ageBuilt(layer, p, n, below, open, color, normal, rough, streaks)\`
+ * known: \`ageBuilt(layer, p, n, below, lift, open, color, normal, rough, streaks)\`
  * weathers the surface of texture layer \`layer\` at world point \`p\` facing \`n\`,
- * \`below\` metres under the top of its box, \`open\` 1 out of doors and 0
+ * \`below\` metres under the top of its box, \`lift\` metres the ground it stands on is over the terrain, \`open\` 1 out of doors and 0
  * under a roof; it sets how much rougher it is than its material says and
  * how streaked, for the rain to run down. Needs \`groundLevel\` (terrain.ts),
  * \`triplanar\` (surfaces.ts) and AGE_GLSL.
  */
 export const AGE_BUILT_GLSL = /* glsl */ `
-  void ageBuilt(float layer, vec3 p, vec3 n, float below, float open, inout vec3 color, inout vec3 normal, out float rough, out float streaks) {
+  void ageBuilt(float layer, vec3 p, vec3 n, float below, float lift, float open, inout vec3 color, inout vec3 normal, out float rough, out float streaks) {
     rough = 1.0;
     streaks = 0.0;
     bool plaster = abs(layer - ${Layer.plaster}.0) < 0.5;
@@ -89,7 +114,7 @@ export const AGE_BUILT_GLSL = /* glsl */ `
     if (!wall) return;
 
     // Rising damp: darker and browner up to a ragged line, a tide mark at it.
-    float h = p.y - groundLevel(p.xz + n.xz * 0.4, 1);
+    float h = p.y - groundLevel(p.xz + n.xz * 0.4, 1) - lift;
     // It climbs past the plinth's top, as high as 1.8 m in places.
     float rise = (0.5 + 1.3 * smoothstep(0.2, 0.8, ageNoise(vec2(q.x * 0.35, seed * 9.0)))) * (stone ? 0.6 : 1.0);
     // Its edge ragged.

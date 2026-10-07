@@ -4,6 +4,7 @@ import { mulberry32 } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
 import { dimIndoors } from './indoorlight.ts';
 import { onTiles } from './terrain.ts';
+import { footLifts } from './age.ts';
 import { ALL_EDGES, openEdges, roundCode } from './rounding.ts';
 
 // The props drawn in the shapes of what they are, not as the boxes they
@@ -354,6 +355,23 @@ export class Props {
       codes.get(mesh)![this.at[i]] = code;
     });
     for (const [mesh, a] of codes) mesh.geometry.setAttribute('round', new THREE.InstancedBufferAttribute(a, 1));
+    this.ageFeet(world);
+  }
+
+  /**
+   * Where each wall's damp starts (see age.ts): `ageFoot`, per instance, how
+   * far the ground just outside each of its four sides (+x, -x, +z, -z of
+   * its own) stands over the terrain, because the box stands on a terrace, a
+   * ramp or a lower roof. Zero where the wall meets the terrain, or hangs
+   * over open air (an upper storey).
+   */
+  private ageFeet(world: World): void {
+    const feet = new Map<THREE.InstancedMesh, Float32Array>();
+    for (const mesh of this.meshes.values()) feet.set(mesh, new Float32Array(mesh.count * 4));
+    this.mesh.forEach((mesh, i) => {
+      if (mesh && this.shapes[i] === 'box') feet.get(mesh)!.set(footLifts(world, this.rest[i]), this.at[i] * 4);
+    });
+    for (const [mesh, a] of feet) mesh.geometry.setAttribute('ageFoot', new THREE.InstancedBufferAttribute(a, 4));
   }
 
   /** Send the matrices changed since to the GPU. */

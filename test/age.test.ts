@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 import { World } from '../src/shared/world.ts';
+import * as THREE from 'three';
+import { footLifts } from '../src/client/age.ts';
 import { townPaint } from '../src/client/townlook.ts';
 
 // Calabianca's age (chunk 61): how worn its paving is where people walk,
@@ -37,5 +39,31 @@ describe('Calabianca\'s worn paving', () => {
     let n = 0;
     for (let i = 3; i < data.length; i += 4) if (data[i] < 26) n++;
     expect(n / (data.length / 4)).toBeGreaterThan(0.5);
+  });
+});
+
+describe('Calabianca\'s damp', () => {
+  const box = (x: number, y: number, z: number) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(4, 3, 0.4));
+
+  it('starts at the ground a wall stands on, so a wall on a terrace or a lower roof is damp at its foot', () => {
+    let lifted = 0;
+    let walls = 0;
+    for (const b of town.colliders) {
+      if (b.kind !== 'box') continue;
+      if (b.part !== 'wall' || b.gone) continue;
+      walls++;
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2),
+        new THREE.Quaternion(),
+        new THREE.Vector3(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ),
+      );
+      if (Math.max(...footLifts(town, m)) > 0.3) lifted++;
+    }
+    expect(walls).toBeGreaterThan(100);
+    expect(lifted).toBeGreaterThan(0);
+  });
+
+  it('is zero for a wall hanging over open air', () => {
+    expect(footLifts(town, box(0, 300, 0))).toEqual([0, 0, 0, 0]);
   });
 });
