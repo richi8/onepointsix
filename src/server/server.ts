@@ -60,7 +60,7 @@ import { damageAt, GRENADE, spawnWeapons, WEAPONS, type Shot, type Toss } from '
 import { bagShows, vegetationOf } from '../shared/vegetation.ts';
 import { mapFor, type GameMap } from '../shared/maps/index.ts';
 import { World, type Box, type Point } from '../shared/world.ts';
-import { Bot, hostile, type Agent, type BotContext, type Noise, type Post } from './bot.ts';
+import { Bot, hostile, type Agent, type BotContext, type Noise, type Post, type Squad } from './bot.ts';
 import { Containers } from './containers.ts';
 import { contractReward, contractView, planContracts, reachesIntel, type Contract } from './contracts.ts';
 import { Cover } from './cover.ts';
@@ -130,6 +130,8 @@ interface Player extends PlayerState {
   team: Team;
   /** In Team Deathmatch, the side they play on. */
   side?: Side;
+  /** In Team Deathmatch, the squad of bots it roams with. */
+  squad?: Squad;
   send: (msg: ServerMsg) => void;
   /** Set once the client says hello; until then it gets no snapshots. */
   joined: boolean;
@@ -1013,7 +1015,18 @@ export class GameServer {
       const { role, skill, primary } = p.plan;
       p.bot = new Bot(role, role.kind === 'operator' ? SKILLS[skill] : guardSkill(SKILLS[skill]), primary, post.yaw, mulberry32((this.seed ^ Math.imul(p.id, 0x9e3779b1) ^ p.life) >>> 0));
       p.weapon = primary;
+      if (p.side && p.team === 'operator') p.bot.squad = this.squadOf(p);
     }
+  }
+
+  /** The squad of two or three a bot on a side roams with: its own, or one on the side with room, or a new one. */
+  private squadOf(p: Player): Squad {
+    if (p.squad) return p.squad;
+    const sizes = new Map<Squad, number>();
+    for (const o of this.players.values()) if (o.squad && o.side === p.side) sizes.set(o.squad, (sizes.get(o.squad) ?? 0) + 1);
+    const open = [...sizes].filter(([q, n]) => n < q.size).map(([q]) => q);
+    p.squad = open.length ? open[Math.floor(this.botRng() * open.length)] : { size: 2 + Math.floor(this.botRng() * 2), goal: null, at: 0 };
+    return p.squad;
   }
 
   /**

@@ -13,7 +13,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
     title: 'Team bots call out enemies',
-    notes: ['In Team Deathmatch, a bot that spots an enemy now tells its side, and friends nearby come to look.'],
+    notes: ['In Team Deathmatch, a bot that spots an enemy now tells its side, and friends nearby come to look.', 'Bots on a side go about in squads of two or three, roaming to the same place together, and different squads head for different places.'],
   },
   {
     date: '2026-10-07',

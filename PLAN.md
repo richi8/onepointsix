@@ -531,8 +531,11 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
   in a fight and not hurt goes to look (the bounty's and fights' lure; 600–700 times in 5 minutes).
   Over three 10-minute games it changed nothing the simulation measures (kills a minute, life
   before dying, how close friends stand: median 9–11 m, 61–69% within 15 m, both before and
-  after), as bots on a side already spawn together and stay bunched. Still missing: no holding
-  a part of the map, no lanes. About 85–90% of kills are made in Red's half (Blue pushes in,
+  after), as bots on a side already spawn together and stay bunched. Squads of two or three
+  per side (2026-10-07) now pick a place to roam to together and keep to it 45 s (150–180 roams
+  with a squad in 10 minutes): kills made in Blue's half rose from 17–30 to 40–50 of about 215,
+  and the Red/Blue split moved between games (125/107, 120/70, 85/142), not yet read as a lean
+  either way. Still missing: no holding a part of the map. About 85–90% of kills are made in Red's half (Blue pushes in,
   Red waits there), which is the map's lean the Deathmatch item below accepted; a side that
   holds its own half and contests the middle would change that, and the tuning with it.
 ### Deathmatch

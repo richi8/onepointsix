@@ -323,6 +323,18 @@ const CAMP_NEAREST = 12;
 const CAMP_HOLD = 0.85;
 const CAMP_LINGER = 150;
 
+/** Seconds a squad keeps to the place it set off for before any of it picks another. */
+const SQUAD_HOLD = 45;
+
+/** Two or three bots on a side that roam to the same place together, in Team Deathmatch. */
+export interface Squad {
+  /** How many it takes in. */
+  size: number;
+  /** Where it's going, and when that was picked. */
+  goal: Spot | null;
+  at: number;
+}
+
 /** What bots have been up to, summed over every bot, for the playtest. */
 export const tally = {
   /** Places taken to hide from a threat, and of those in a bush. */
@@ -333,6 +345,8 @@ export const tally = {
   bushWaits: 0,
   /** Fights between others gone to, and how far off the real shooter the guess was, summed. */
   joins: 0,
+  /** Roams that followed a squad mate's pick rather than a pick of their own. */
+  follows: 0,
   /** Times a bot set off for a friend's sighting, in Team Deathmatch. */
   rallies: 0,
   guessOff: 0,
@@ -498,6 +512,8 @@ export class Bot {
   private gunfire: (Point & { source: number; at: number })[] = [];
   /** Where the bounty was last called, if it's worth going after. */
   private lure: (Point & { at: number }) | null = null;
+  /** The squad it roams with, if any. */
+  squad: Squad | null = null;
   /** Time of the latest gunfire or call acted on, so each is followed once. */
   private stalkAt = -Infinity;
   /** Where the fight or the bounty being closed in on is. */
@@ -1514,6 +1530,21 @@ export class Bot {
 
   /** Somewhere for a hunter to go looking: an extraction point, or a random spot within reach. */
   private roamPoint(ctx: BotContext, self: Agent): Spot | null {
+    const q = this.squad;
+    if (q?.goal && ctx.time - q.at < SQUAD_HOLD) {
+      tally.follows++;
+      this.spotYaw = null;
+      return this.streetSpot(ctx, q.goal);
+    }
+    const spot = this.pickRoam(ctx, self);
+    if (q && spot) {
+      q.goal = { x: spot.x, y: spot.y, z: spot.z };
+      q.at = ctx.time;
+    }
+    return spot;
+  }
+
+  private pickRoam(ctx: BotContext, self: Agent): Spot | null {
     this.spotYaw = null;
     const w = ctx.world;
     if (w.map) {

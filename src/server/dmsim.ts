@@ -266,7 +266,7 @@ for (const seed of seeds) {
   console.log(`  stuck ${stuck.length} times${stuck.length ? `: ${stuck.slice(0, 12).join('; ')}` : ''}`);
   console.log(`  where: ${Object.entries(where).map(([k, n]) => `${k} ${Math.round((n / alive) * 100)}%`).join(', ')}`);
   if (!server.world.map) continue;
-  console.log(`  watched from ${botTally.posts - told.posts} windows and roofs (${botTally.postsHeld - told.postsHeld} got to), ${botTally.streetSpots - told.streetSpots} street spots beside cover; ${botTally.joins - told.joins} fights joined${mode === 'team' ? `, ${botTally.rallies - told.rallies} set off for a friend's sighting` : ''}`);
+  console.log(`  watched from ${botTally.posts - told.posts} windows and roofs (${botTally.postsHeld - told.postsHeld} got to), ${botTally.streetSpots - told.streetSpots} street spots beside cover; ${botTally.joins - told.joins} fights joined${mode === 'team' ? `, ${botTally.rallies - told.rallies} set off for a friend's sighting, ${botTally.follows - told.follows} roams with a squad` : ''}`);
 
   // Where the kills came from.
   const n = killsAt.length;
