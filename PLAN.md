@@ -486,8 +486,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 [KNOWN_ISSUES_HISTORY.md](KNOWN_ISSUES_HISTORY.md).
 
 ### Look and animation
-- **The town's age costs up to 0.8 ms a frame** (chunk 61), most from above, where the
-  buildings' boxes, drawn in no order, shade the same pixel many times over.
 - **The town's details are boxes** (chunk 59), **Resolved in part** (chunks 62, 63): leaves,
   flowers, window boxes and wheelhouses have real shapes, and the trees are real trees (chunk
   63), but the stalls, carts and the lorry's body are still boxes, and the ruined chapel is
