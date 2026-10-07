@@ -3146,3 +3146,5 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   **Resolved** (2026-10-07): the server works out every link as it's built (`NavGrid.warm(Infinity)`
   in the `GameServer` constructor, about 3.8 s), before any bot plans a path, in place of 4 ms a
   tick over the first 26 s; so no first path is cold.
+
+- **The town's age is noise, not where water runs (61)**: **Resolved in part** (2026-10-07), the rest **Accepted**: damp now rises from the ground a wall stands on (`footLifts`), so walls on terraces, ramps and lower roofs are damp at their foot. Accepted: streaks start at the top of each wall box and none fall from the drawn-only trim, fallen plaster is in rounded blobs rather than at corners and edges, two fronts flush in one plane share a shade (a per-building seed would split them from their trim, which `dressing.ts` makes without knowing its building), and wheels, crowns, hulls, the bell tower's roof, the lorry and the containers aren't aged; each is seen only a metre or two from the wall and costs more to fix than it shows.
