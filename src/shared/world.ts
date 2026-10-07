@@ -8,7 +8,7 @@ import {
   WATER_LEVEL,
   WORLD_SIZE,
 } from './constants.ts';
-import { clamp, rayAabb, rayCylinder, rayExit, smoothstep } from './geom.ts';
+import { clamp, rayAabb, rayCylinder, rayExit, rayTiltedBox, smoothstep } from './geom.ts';
 import { rayRock, rockExit, rockNormal, rockShape, ROCK_BULGE, ROCK_SQUASH } from './rock.ts';
 import { buildKit, flightSteps, type KitGable, type KitWall, rampSteps } from './kit.ts';
 import type { GameMap, MapGround, MapRamp, MapStair } from './maps/index.ts';
@@ -46,6 +46,10 @@ export interface Box {
   walk?: boolean;
   /** What it is. */
   part: Part;
+  /** A top sloping as a road does: rising `x` metres a metre toward +x and `z` toward +z, at `maxY` at its highest corner. Flat if left out. */
+  tilt?: { x: number; z: number };
+  /** A map's ground: its top drawn with the rest of the ground, as one surface, and only its sides as a box. */
+  ground?: boolean;
 }
 
 export type Collider = Cyl | Box;
@@ -227,11 +231,23 @@ const WINDOW_SILL = 1;
 const WINDOW_TOP = 2;
 /** Room kept clear between a building and the outpost's walls. */
 const HOUSE_CLEARANCE = 1.65;
+/** On a map, the most a walked floor's lip may stand over the feet and still be underfoot: sloping floors meet a few centimetres out of true. */
+const SEAM = 0.1;
 /** Longest ray the collider walk follows, past which nothing is left to hit. */
 const MAX_RAY = WORLD_SIZE * 1.5;
 
-function topOf(c: Collider): number {
-  return c.kind === 'cyl' ? c.y1 : c.maxY;
+/** A box's top over (x, z), taken at the nearest point of its footprint: its maxY, but under a sloping top's highest corner by the slope. */
+export function boxTop(c: Box, x: number, z: number): number {
+  const t = c.tilt;
+  if (!t) return c.maxY;
+  const px = clamp(x, c.minX, c.maxX);
+  const pz = clamp(z, c.minZ, c.maxZ);
+  return c.maxY - (t.x > 0 ? (c.maxX - px) * t.x : (px - c.minX) * -t.x) - (t.z > 0 ? (c.maxZ - pz) * t.z : (pz - c.minZ) * -t.z);
+}
+
+/** A collider's top over (x, z): a sloping box's where it's nearest. */
+function topAt(c: Collider, x: number, z: number): number {
+  return c.kind === 'cyl' ? c.y1 : c.tilt ? boxTop(c, x, z) : c.maxY;
 }
 
 function bottomOf(c: Collider): number {
@@ -365,7 +381,7 @@ export class World {
   groundHeight(x: number, z: number, feetY: number, pad = PLAYER_RADIUS * 0.6): number {
     let h = this.floorHeight(x, z);
     for (const c of this.query(x, z, PLAYER_RADIUS)) {
-      const top = topOf(c);
+      const top = topAt(c, x, z);
       if (top > feetY + STEP_HEIGHT || top <= h) continue;
       if (overlapsFootprint(c, x, z, pad)) h = top;
     }
@@ -393,7 +409,8 @@ export class World {
     for (const c of this.query(x, z, r)) {
       if (c.kind !== 'box' || !(c.walk || (roofs && (c.part === 'roof' || c.part === 'tiles')))) continue;
       if (c.maxX <= x - r || c.minX >= x + r || c.maxZ <= z - r || c.minZ >= z + r) continue;
-      if (!out.includes(c.maxY)) out.push(c.maxY);
+      const top = boxTop(c, x, z);
+      if (!out.includes(top)) out.push(top);
     }
     return out.sort((a, b) => a - b);
   }
@@ -402,7 +419,7 @@ export class World {
   ledgeHeight(x: number, z: number, minY: number, maxY: number): number {
     let best = -Infinity;
     for (const c of this.query(x, z, 0)) {
-      const top = topOf(c);
+      const top = topAt(c, x, z);
       if (top <= minY || top > maxY || top <= best) continue;
       if (c.kind === 'box' && c.part === 'tiles') continue;
       if (overlapsFootprint(c, x, z, 0)) best = top;
@@ -422,10 +439,19 @@ export class World {
    */
   clear(x: number, feetY: number, z: number, height: number, pad: number, step = 0.01): boolean {
     for (const c of this.query(x, z, pad)) {
-      if (topOf(c) <= feetY + step || bottomOf(c) >= feetY + height) continue;
+      if (topAt(c, x, z) <= feetY + this.lip(c, step) || bottomOf(c) >= feetY + height) continue;
       if (overlapsFootprint(c, x, z, pad)) return false;
     }
     return true;
+  }
+
+  /**
+   * How far over the feet a collider's top may stand and still be underfoot,
+   * not in the way: `step`, but on a map, where sloping floors meet at a seam
+   * a few centimetres out of true, a walked floor's lip up to SEAM.
+   */
+  private lip(c: Collider, step: number): number {
+    return this.map && c.kind === 'box' && c.walk ? Math.max(step, SEAM) : step;
   }
 
   /**
@@ -434,7 +460,7 @@ export class World {
    */
   clearAsBuilt(x: number, feetY: number, z: number, height: number, pad: number): boolean {
     for (const c of this.query(x, z, pad, true)) {
-      if (topOf(c) <= feetY + 0.01 || bottomOf(c) >= feetY + height) continue;
+      if (topAt(c, x, z) <= feetY + this.lip(c, 0.01) || bottomOf(c) >= feetY + height) continue;
       if (overlapsFootprint(c, x, z, pad)) return false;
     }
     return true;
@@ -445,7 +471,7 @@ export class World {
     const R = PLAYER_RADIUS;
     for (let iter = 0; iter < 2; iter++) {
       for (const c of this.query(b.x, b.z, R + 0.1)) {
-        if (topOf(c) <= b.y + STEP_HEIGHT || bottomOf(c) >= b.y + height) continue;
+        if (topAt(c, b.x, b.z) <= b.y + STEP_HEIGHT || bottomOf(c) >= b.y + height) continue;
         let nx = 0;
         let nz = 0;
         let pen = 0;
@@ -503,15 +529,15 @@ export class World {
     out.x = out.y = out.z = 0;
     let any = false;
     for (const c of this.query(x, z, r)) {
-      if (topOf(c) <= y - r || bottomOf(c) >= y + r) continue;
+      if (topAt(c, x, z) <= y - r || bottomOf(c) >= y + r) continue;
       // The nearest point of the collider to the centre.
       let px: number;
       let py: number;
       let pz: number;
       if (c.kind === 'box') {
         px = clamp(x, c.minX, c.maxX);
-        py = clamp(y, c.minY, c.maxY);
         pz = clamp(z, c.minZ, c.maxZ);
+        py = clamp(y, c.minY, boxTop(c, px, pz));
       } else {
         const dx = x - c.x;
         const dz = z - c.z;
@@ -537,7 +563,7 @@ export class World {
         // The centre is inside: out through the nearest face.
         const faces: [number, number, number, number][] = [
           [x - c.minX, -1, 0, 0], [c.maxX - x, 1, 0, 0], [y - c.minY, 0, -1, 0],
-          [c.maxY - y, 0, 1, 0], [z - c.minZ, 0, 0, -1], [c.maxZ - z, 0, 0, 1],
+          [boxTop(c, x, z) - y, 0, 1, 0], [z - c.minZ, 0, 0, -1], [c.maxZ - z, 0, 0, 1],
         ];
         const [depth, fx, fy, fz] = faces.reduce((a, b) => (b[0] < a[0] ? b : a));
         (nx = fx), (ny = fy), (nz = fz), (pen = depth + r);
@@ -696,7 +722,11 @@ export class World {
 
   /** Where a ray first meets a collider, a boulder by its faces, or Infinity; rayExit() or rockExit() then gives where it leaves. */
   private rayCollider(c: Collider, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
-    if (c.kind === 'box') return rayAabb(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
+    if (c.kind === 'box') {
+      return c.tilt
+        ? rayTiltedBox(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ, c.tilt.x, c.tilt.z)
+        : rayAabb(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
+    }
     if (c.rock) return rayRock(this.rockShape, c.rock, ox, oy, oz, dx, dy, dz);
     return rayCylinder(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, c.y0, c.y1);
   }
@@ -1202,7 +1232,10 @@ export class World {
     }
     for (const w of map.walls) {
       for (const c of w.collides ?? [w]) {
-        this.addWall(c.minX, c.y0, c.minZ, c.maxX, c.y1, c.maxZ).walk = !!w.walk;
+        const box = this.addWall(c.minX, c.y0, c.minZ, c.maxX, c.y1, c.maxZ);
+        box.walk = !!w.walk;
+        if (w.tilt) box.tilt = this.walls[this.walls.length - 1].tilt = { ...w.tilt };
+        if (w.ground) box.ground = true;
         plaster(this.props.length - 1, w.colour);
       }
     }

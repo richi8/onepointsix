@@ -12,6 +12,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Calabianca’s roads slope',
+    notes: [
+      'Calabianca’s roads and squares slope smoothly as the classic’s do, down long A, up mid and the ramps, with no more little steps all over the ground; there are stairs only where the original has stairs.',
+      'Its diagonal walls are straight walls, not jagged corners, and its houses stand a height each, not stepping every few paces.',
+      'Its boxes stand as they do in the original, turned where they’re turned.',
+    ],
+  },
+  {
+    date: '2026-10-07',
     title: 'Calabianca rebuilt, true to the classic',
     notes: [
       'Calabianca is laid out again, this time following the classic three-lane map exactly: every lane, corner, slope, step and box where it should be, and at its true size, about a third bigger each way than before.',

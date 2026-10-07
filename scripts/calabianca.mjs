@@ -11,15 +11,19 @@
 // The steps, on the grid: each cell takes the floors of the patches over its
 // middle (two where one floor runs over another: the way out of the
 // defenders' end runs under the walk from short to A); the floors are
-// widened by a player's radius, as the mesh keeps that far off every wall;
-// heights are put on 25 cm steps, as the game's ramps climb, so slopes become
-// steps too low to notice. What's left is solid: a small hole in the floor is
-// a piece of cover; the rest are houses standing 6 m over the highest floor
-// within 6 m (on whole metres), but along the sea behind the attackers' end, where it's a
-// parapet a metre thick and nothing beyond. The covered ways (the tunnels)
-// are roofed 3.25 m over their floor, the double doors are fixed leaves with
-// a gap between them under a lintel, and the spawn points are spread over
-// the whole map, as far from each other as they'll go.
+// widened by a player's radius, as the mesh keeps that far off every wall,
+// and smoothed of the mesh's bumps. The floors are then rectangles each with
+// a plane for its top, flat or sloping as the original's roads do, but
+// flights of 25 cm steps where it's as steep as stairs. The original's boxes
+// are stone (turned as they stand, where they're box-shaped) or, square and
+// small, crates. What's left is solid: a small hole in the floor is a piece
+// of cover; the rest are houses standing 6 m over the highest floor within
+// 6 m, one height to an 8 m plot, their diagonal walls straightened; but
+// along the sea behind the attackers' end, a parapet a metre thick and
+// nothing beyond. The covered ways (the tunnels) are roofed 3.25 m over
+// their floor, the double doors are fixed leaves with a gap between them
+// under a lintel, and the spawn points are spread over the floor bots walk,
+// as far from each other as they'll go.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -38,6 +42,9 @@ const STEP = 0.25;
 const N = Math.ceil((1024 * PX * U) / C);
 /** Cells a player's radius widens the floors by (the mesh keeps 16 units, 0.41 m, off the walls). */
 const HULL = 2;
+/** Steeper than this (rise over run), a floor is a flight of stairs; how near its plane a sloping floor keeps to the floor under it, metres. */
+const STAIRS = 0.45;
+const SLOPE_FIT = 0.03;
 /** Cells each way the floors' heights are smoothed over, and how near in height they're taken to be one floor. */
 const SMOOTH = 4;
 const BUMP = 0.4;
@@ -49,6 +56,10 @@ const COVER = 1.2;
 /** How far a house stands over the highest floor within HOUSE_REACH metres, its top put on whole metres. */
 const HOUSE = 6;
 const HOUSE_REACH = 6;
+/** How far a house's outline may stray from a straight wall and still be one, metres: the stairs of cells the grid makes of a diagonal stray up to about that. */
+const STRAIGHT = 0.3;
+/** A house plot's side, metres. */
+const PLOT = 8;
 /** The parapet along the sea: how far it stands over the floor behind it, and how thick it is; how near the plan's south edge the floor must end for it. */
 const PARAPET = 1.1;
 const PARAPET_THICK = 1;
@@ -100,6 +111,8 @@ const SWING_CLEAR = 0.6;
  * 1.2 m, so a box's top would be a trap) and players climb.
  */
 const BOX_RISE = 0.75;
+/** How much of its least turned rectangle a box's cells fill at the least for it to be drawn as one. */
+const TURNED_FILL = 0.75;
 const BOX_AREA = 16;
 const CRATE = [0.9, 1.7];
 
@@ -210,6 +223,8 @@ for (let pass = 0; pass < 2; pass++) {
     });
   }
 }
+/** Each cell's lowest floor before it's put on the steps, metres: the slopes are laid at these. */
+const exact = floors.map((f) => (f.length ? f[0] : NaN));
 for (const f of floors) f.forEach((y, j) => (f[j] = Math.round(y / STEP)));
 // Where the original's doors swing open, floor: each cell near a leaf takes
 // the floor of the nearest that has one.
@@ -238,7 +253,10 @@ for (const f of floors) f.forEach((y, j) => (f[j] = Math.round(y / STEP)));
       else filled.push([c, from]);
     }
     if (!filled.length) break;
-    for (const [c, from] of filled) floors[c] = [...floors[from]];
+    for (const [c, from] of filled) {
+      floors[c] = [...floors[from]];
+      exact[c] = exact[from];
+    }
     left = next;
   }
 }
@@ -248,6 +266,39 @@ for (const f of floors) f.forEach((y, j) => (f[j] = Math.round(y / STEP)));
 const crates = [];
 /** Each stone box's top, in steps; NaN elsewhere. */
 const boxTop = new Float64Array(N * N).fill(NaN);
+/**
+ * The stone boxes as the original's stand, turned or square, which the grid
+ * makes stairs and ragged edges of: each the least rectangle at any angle
+ * round its cells, where it fills most of it, drawn in place of its cells
+ * (which still collide).
+ */
+const turned = [];
+/** Which cells are under a turned box. */
+const isTurned = new Uint8Array(N * N);
+function stone(cells, foot) {
+  let best = null;
+  for (let deg = 0; deg < 90; deg += 1) {
+    const a = (deg * Math.PI) / 180;
+    const [ca, sa] = [Math.cos(a), Math.sin(a)];
+    let [u0, u1, v0, v1] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const d of cells) {
+      for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const [x, z] = [((d % N) + ox) * C, (Math.floor(d / N) + oz) * C];
+        const [u, v] = [x * ca + z * sa, -x * sa + z * ca];
+        [u0, u1, v0, v1] = [Math.min(u0, u), Math.max(u1, u), Math.min(v0, v), Math.max(v1, v)];
+      }
+    }
+    const area = (u1 - u0) * (v1 - v0);
+    if (!best || area < best.area - 1e-9) best = { area, deg, u0, u1, v0, v1, ca, sa };
+  }
+  // Too ragged to be a box (a stack, a box against a wall): left as its cells.
+  if (cells.length * C * C < TURNED_FILL * best.area) return;
+  const [um, vm] = [(best.u0 + best.u1) / 2, (best.v0 + best.v1) / 2];
+  const [cx, cz] = [um * best.ca - vm * best.sa, um * best.sa + vm * best.ca];
+  const top = Math.max(...cells.map((d) => floors[d][0]));
+  turned.push([cx * 100, cz * 100, (best.u1 - best.u0) * 100, (best.v1 - best.v0) * 100, best.deg * 10, foot, top].map(Math.round));
+  for (const d of cells) isTurned[d] = 1;
+}
 {
   const seen = new Uint8Array(N * N);
   const rise = Math.round(BOX_RISE / STEP);
@@ -283,11 +334,15 @@ const boxTop = new Float64Array(N * N).fill(NaN);
     const [w, d] = [(Math.max(...is) - Math.min(...is) + 1) * C, (Math.max(...ks) - Math.min(...ks) + 1) * C];
     if (Math.abs(w - d) > 0.4 || Math.min(w, d) < CRATE[0] || Math.max(w, d) > CRATE[1] || cells.length * C * C < 0.75 * w * d) {
       for (const e of cells) boxTop[e] = floors[e][0];
+      stone(cells, foot);
       continue;
     }
     const size = Math.min(w, d, (h - foot) * STEP);
     crates.push([(Math.min(...is) * C + w / 2), (Math.min(...ks) * C + d / 2), size, foot]);
-    for (const e of cells) floors[e] = [foot];
+    for (const e of cells) {
+      floors[e] = [foot];
+      exact[e] = foot * STEP;
+    }
   }
 }
 const open = (c) => floors[c].length > 0;
@@ -334,6 +389,19 @@ const nearest = new Float64Array(N * N).fill(NaN);
 }
 /** A house's top over a floor `h` steps up: HOUSE over it, on whole metres. */
 const houseTop = (h) => Math.ceil((h + STEP_OF(HOUSE)) / 4) * 4;
+/**
+ * The houses, plots PLOT metres square, each one height all over: HOUSE over
+ * the highest floor within reach of any of it, so a row of houses steps from
+ * one to the next, not from one cell to the next.
+ */
+const P = Math.round(PLOT / C);
+const plotOf = (c) => Math.floor((c % N) / P) + Math.floor(Math.floor(c / N) / P) * Math.ceil(N / P);
+const plotHigh = new Float64Array(Math.ceil(N / P) ** 2).fill(-Infinity);
+for (let c = 0; c < N * N; c++) {
+  const h = Number.isFinite(near[c]) ? near[c] : nearest[c];
+  if (Number.isFinite(h)) plotHigh[plotOf(c)] = Math.max(plotHigh[plotOf(c)], h);
+}
+const plotTop = (c) => houseTop(plotHigh[plotOf(c)]);
 // The holes and the solid round them, as pieces.
 const piece = new Int32Array(N * N).fill(-1);
 const pieces = [];
@@ -375,7 +443,7 @@ for (const { cells, border } of pieces) {
     }
     continue;
   }
-  for (const d of cells) solidTop[d] = houseTop(Number.isFinite(near[d]) ? near[d] : nearest[d]);
+  for (const d of cells) solidTop[d] = plotTop(d);
 }
 // Along the sea: south of the last floor in each column, where that's near the south edge, a parapet and then nothing.
 const seaRows = Math.round(SEA_SIDE / C);
@@ -440,7 +508,7 @@ for (const [a, b, c2, d] of DOORS) {
   }
 }
 /** A roof's top: the houses' height round it. */
-const roofTop = (c) => houseTop(near[c]);
+const roofTop = (c) => plotTop(c);
 
 // ---------------------------------------------------------------- spawn points
 
@@ -573,11 +641,177 @@ function merged(get) {
   return out.map((r) => [...r]);
 }
 
-const FLOORS = merged((c) => (open(c) && Number.isNaN(boxTop[c]) ? [lowest(c)] : null));
-const BOXES = merged((c) => (Number.isNaN(boxTop[c]) ? null : [boxTop[c]]));
+// The floors: where the original climbs steeper than STAIRS, a flight of
+// steps on the height steps, as its stairs are; everywhere else rectangles
+// each with a plane for its top, within SLOPE_FIT of the floor under every
+// cell of it, flat or sloping, as its roads and squares are.
+const floored = (c) => open(c) && Number.isNaN(boxTop[c]);
+/** How steeply the floor climbs at a cell, from the cells either side of it on the same floor. */
+const steepness = (c) => {
+  const [i, k] = [c % N, Math.floor(c / N)];
+  const along = (a, b) => {
+    if (!inside(...a) || !inside(...b)) return 0;
+    const [p, q] = [idx(...a), idx(...b)];
+    if (!floored(p) || !floored(q) || Math.abs(exact[p] - exact[q]) > 1) return 0;
+    return Math.abs(exact[q] - exact[p]) / (2 * C);
+  };
+  return Math.hypot(along([i - 1, k], [i + 1, k]), along([i, k - 1], [i, k + 1]));
+};
+const stair = new Uint8Array(N * N);
+for (let c = 0; c < N * N; c++) if (floored(c) && steepness(c) > STAIRS) stair[c] = 1;
+const FLOORS = merged((c) => (floored(c) && stair[c] ? [lowest(c)] : null));
+const SLOPES = [];
+{
+  const used = new Uint8Array(N * N);
+  const free = (i, k) => inside(i, k) && floored(idx(i, k)) && !stair[idx(i, k)] && !used[idx(i, k)];
+  /** The least-squares plane over cells i0..i1-1, k0..k1-1: its height at the first cell's middle and its slopes a metre, and how far off it the farthest cell is. */
+  const plane = (i0, i1, k0, k1) => {
+    let [n, sx, sz, sh, sxx, szz, sxz, sxh, szh] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (let k = k0; k < k1; k++) for (let i = i0; i < i1; i++) {
+      const [x, z, h] = [(i - i0) * C, (k - k0) * C, exact[idx(i, k)]];
+      n++, (sx += x), (sz += z), (sh += h), (sxx += x * x), (szz += z * z), (sxz += x * z), (sxh += x * h), (szh += z * h);
+    }
+    // Centred sums, then the 2 × 2 solve for the slopes.
+    const [mx, mz, mh] = [sx / n, sz / n, sh / n];
+    const [cxx, czz, cxz, cxh, czh] = [sxx / n - mx * mx, szz / n - mz * mz, sxz / n - mx * mz, sxh / n - mx * mh, szh / n - mz * mh];
+    const det = cxx * czz - cxz * cxz;
+    let [gx, gz] = [0, 0];
+    if (det > 1e-12) [gx, gz] = [(cxh * czz - czh * cxz) / det, (czh * cxx - cxh * cxz) / det];
+    else if (cxx > 1e-12) gx = cxh / cxx;
+    else if (czz > 1e-12) gz = czh / czz;
+    const h0 = mh - gx * mx - gz * mz;
+    let off = 0;
+    for (let k = k0; k < k1; k++) for (let i = i0; i < i1; i++) off = Math.max(off, Math.abs(h0 + gx * (i - i0) * C + gz * (k - k0) * C - exact[idx(i, k)]));
+    return { h0, gx, gz, off };
+  };
+  for (let k = 0; k < N; k++) {
+    for (let i = 0; i < N; i++) {
+      if (!free(i, k)) continue;
+      /** Whether a plane fits: near every cell, and no steeper than a road. */
+      const fits = (p) => p.off <= SLOPE_FIT && Math.hypot(p.gx, p.gz) <= STAIRS;
+      let i1 = i + 1;
+      while (free(i1, k) && fits(plane(i, i1 + 1, k, k + 1))) i1++;
+      let k1 = k + 1;
+      for (;;) {
+        let row = true;
+        for (let u = i; u < i1 && row; u++) if (!free(u, k1)) row = false;
+        if (!row || !fits(plane(i, i1, k, k1 + 1))) break;
+        k1++;
+      }
+      for (let kk = k; kk < k1; kk++) for (let u = i; u < i1; u++) used[idx(u, kk)] = 1;
+      const { h0, gx, gz } = plane(i, i1, k, k1);
+      // The top at its highest corner: the plane out to the rectangle's edges, half a cell past the cells' middles.
+      const corners = [[-0.5, -0.5], [i1 - i - 0.5, -0.5], [-0.5, k1 - k - 0.5], [i1 - i - 0.5, k1 - k - 0.5]].map(([a, b]) => h0 + gx * a * C + gz * b * C);
+      const flat = Math.abs(gx) < 0.005 && Math.abs(gz) < 0.005;
+      SLOPES.push([i, i1, k, k1, Math.round((flat ? Math.max(h0, ...corners.map(() => h0)) : Math.max(...corners)) * 100), flat ? 0 : Math.round(gx * 1000), flat ? 0 : Math.round(gz * 1000)]);
+    }
+  }
+}
+const BOXES = merged((c) => (Number.isNaN(boxTop[c]) ? null : [boxTop[c], isTurned[c]]));
+const TURNED = turned;
 const DECKS = merged((c) => (floors[c].length > 1 ? [highest(c)] : null));
 const BLOCKS = merged((c) => (!open(c) && !isCover[c] && !isParapet[c] && !Number.isNaN(solidTop[c]) ? [solidTop[c]] : null));
 const PARAPETS = merged((c) => (isParapet[c] ? [solidTop[c]] : null));
+
+// The houses' diagonal walls, which the grid makes stairs of 25 cm corners,
+// and those along it that step in and out by a cell where the mesh's edge
+// wanders: each traced along the houses' outline, straightened, and given a
+// face of its own to be drawn over the corners (the corners still collide).
+const house = (c) => !open(c) && !isCover[c] && !isParapet[c] && !Number.isNaN(solidTop[c]);
+const FACADES = [];
+{
+  // The outline: an edge between each house cell and a floor beside it, the house on its right, joined into chains corner to corner.
+  const edges = new Map();
+  const add = (a, b) => {
+    const key = `${a[0]},${a[1]}`;
+    if (!edges.has(key)) edges.set(key, []);
+    edges.get(key).push(b);
+  };
+  for (let k = 0; k < N; k++) for (let i = 0; i < N; i++) {
+    if (!house(idx(i, k))) continue;
+    const floorAt = (p, q) => inside(p, q) && open(idx(p, q));
+    if (floorAt(i, k - 1)) add([i, k], [i + 1, k]);
+    if (floorAt(i + 1, k)) add([i + 1, k], [i + 1, k + 1]);
+    if (floorAt(i, k + 1)) add([i + 1, k + 1], [i, k + 1]);
+    if (floorAt(i - 1, k)) add([i, k + 1], [i, k]);
+  }
+  const chains = [];
+  for (const [start, list] of edges) {
+    while (list.length) {
+      const chain = [start.split(',').map(Number)];
+      let next = list.pop();
+      while (next) {
+        chain.push(next);
+        const more = edges.get(`${next[0]},${next[1]}`);
+        next = more?.length ? more.pop() : null;
+      }
+      chains.push(chain);
+    }
+  }
+  /** The chain's points from a to b, straightened: Douglas and Peucker's. */
+  const straight = (pts, a, b, out) => {
+    const [ax, az] = pts[a];
+    const [bx, bz] = pts[b];
+    const len = Math.hypot(bx - ax, bz - az) || 1;
+    let [far, at] = [0, -1];
+    for (let j = a + 1; j < b; j++) {
+      const d = Math.abs((bx - ax) * (az - pts[j][1]) - (ax - pts[j][0]) * (bz - az)) / len;
+      if (d > far) [far, at] = [d, j];
+    }
+    if (far > STRAIGHT / C) {
+      straight(pts, a, at, out);
+      straight(pts, at, b, out);
+    } else out.push([a, b]);
+  };
+  for (const pts of chains) {
+    if (pts.length < 3) continue;
+    const segs = [];
+    const [sx, sz] = pts[0];
+    const [ex, ez] = pts[pts.length - 1];
+    if (sx === ex && sz === ez) {
+      // A loop: straightened in two halves, split at the point farthest from its start.
+      let [far, at] = [0, 1];
+      for (let j = 1; j < pts.length - 1; j++) {
+        const d = Math.hypot(pts[j][0] - sx, pts[j][1] - sz);
+        if (d > far) [far, at] = [d, j];
+      }
+      straight(pts, 0, at, segs);
+      straight(pts, at, pts.length - 1, segs);
+    } else straight(pts, 0, pts.length - 1, segs);
+    for (const [a, b] of segs) {
+      const [ax, az] = pts[a];
+      const [bx, bz] = pts[b];
+      const [dx, dz] = [bx - ax, bz - az];
+      const len = Math.hypot(dx, dz);
+      // A metre long at least, and diagonal, or along the grid but stepping in and out of true: the rest are the grid's own straight walls.
+      if (len * C < 1) continue;
+      let jagged = false;
+      for (let j = a; j <= b && !jagged; j++) if (Math.abs(dx * (pts[j][1] - az) - dz * (pts[j][0] - ax)) / len > 0.01) jagged = true;
+      if (!jagged) continue;
+      // How far the corners stand out of the line on the floor's side (left, the house on the right) and back into the house.
+      let [outward, inward] = [0, 0];
+      for (let j = a; j <= b; j++) {
+        const side = (dx * (pts[j][1] - az) - dz * (pts[j][0] - ax)) / len;
+        // Positive to the right of the way along, the house's side; negative, the floor's.
+        outward = Math.max(outward, -side);
+        inward = Math.max(inward, side);
+      }
+      // The house's top behind it and the floor in front: from the cells along it.
+      let [top, low] = [-Infinity, Infinity];
+      for (let j = a; j <= b; j++) {
+        const [i, k] = pts[j];
+        for (const [di, dk] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) {
+          if (!inside(i + di, k + dk)) continue;
+          const c = idx(i + di, k + dk);
+          if (house(c)) top = Math.max(top, solidTop[c]);
+          else if (open(c)) low = Math.min(low, lowest(c));
+        }
+      }
+      if (!Number.isFinite(top) || !Number.isFinite(low)) continue;
+      FACADES.push([ax * C * 100, az * C * 100, bx * C * 100, bz * C * 100, outward * C * 100, (inward * C + 0.3) * 100, low - 2, top].map(Math.round));
+    }
+  }
+}
 const COVERS = merged((c) => (isCover[c] ? [solidTop[c]] : null));
 const ROOFS = merged((c) => (Number.isNaN(ceiling[c]) ? null : [ceiling[c], Math.max(roofTop(c), ceiling[c] + 2)]));
 const CRATES = crates.map(([x, z, size, foot]) => [Math.round(x * 100), Math.round(z * 100), Math.round(size * 100), foot]);
@@ -592,14 +826,17 @@ writeFileSync(OUT, `// Made by scripts/calabianca.mjs from the navigation mesh o
 
 /** Cells a side, a cell's size and a height step's, metres. */
 export const GRID = { size: ${N}, cell: ${C}, step: ${STEP} };
-${list('FLOORS', 'Floors, each a box solid down to the ground: minX, maxX, minZ, maxZ (cells) and its top (steps).', FLOORS)}
+${list('FLOORS', 'Stairs, each step a box solid down to the ground: minX, maxX, minZ, maxZ (cells) and its top (steps).', FLOORS)}
+${list('SLOPES', 'Floors, each a box solid down to the ground, its top a plane: minX, maxX, minZ, maxZ (cells), its top at its highest corner (centimetres over the lowest floor) and its slopes a metre along x and z (thousandths).', SLOPES)}
 ${list('DECKS', 'Floors over other floors, each a slab: minX, maxX, minZ, maxZ and its top.', DECKS)}
 ${list('BLOCKS', 'Houses: minX, maxX, minZ, maxZ and the top.', BLOCKS)}
+${list('FACADES', "The houses' diagonal walls straightened: from x0, z0 to x1, z1 along the outline (the house on the right, centimetres), how far the face stands out of that line and how deep it reaches back into the house (centimetres), its foot and its top (steps).", FACADES)}
 ${list('PARAPETS', 'The parapet along the sea: minX, maxX, minZ, maxZ and the top.', PARAPETS)}
-${list('BOXES', 'The original\'s boxes, stone, not walked by bots: minX, maxX, minZ, maxZ and the top.', BOXES)}
+${list('BOXES', "The original's boxes, stone, not walked by bots: minX, maxX, minZ, maxZ, the top, and 1 if a turned box (TURNED) is drawn in their place.", BOXES)}
+${list('TURNED', "The original's boxes turned as they stand there, drawn over the cells: the middle's x and z, the width along its turn and the depth across (centimetres), the turn (tenths of a degree from +x toward +z), its foot and its top (steps).", TURNED)}
 ${list('COVERS', 'Cover standing in the floor: minX, maxX, minZ, maxZ and the top.', COVERS)}
 ${list('ROOFS', 'Roofs over the covered ways: minX, maxX, minZ, maxZ, the ceiling and the top.', ROOFS)}
 ${list('LEAVES', "The doors' leaves: minX, maxX, minZ, maxZ (centimetres), the floor and the top (steps).", LEAVES)}
 ${list('CRATES', 'Crates: x, z, a side (centimetres) and the floor under it (steps).', CRATES)}
 ${list('SPAWNS', "Spawn points: x, z (cells; the cell's middle) and the way it looks, eighths of a turn from +x toward +z.", SPAWN_POINTS)}`);
-console.log(`${N}² cells: ${FLOORS.length} floors, ${DECKS.length} decks, ${BLOCKS.length} blocks, ${PARAPETS.length} parapets, ${COVERS.length} covers, ${BOXES.length} boxes, ${ROOFS.length} roofs, ${LEAVES.length} leaves, ${CRATES.length} crates, ${SPAWN_POINTS.length} spawns`);
+console.log(`${N}² cells: ${FLOORS.length} stair steps, ${SLOPES.length} floors, ${DECKS.length} decks, ${BLOCKS.length} blocks, ${PARAPETS.length} parapets, ${FACADES.length} diagonal walls, ${COVERS.length} covers, ${BOXES.length} boxes, ${TURNED.length} turned, ${ROOFS.length} roofs, ${LEAVES.length} leaves, ${CRATES.length} crates, ${SPAWN_POINTS.length} spawns`);

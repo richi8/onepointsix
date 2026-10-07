@@ -2310,6 +2310,14 @@ notes the chunk it came from.
   **Resolved** (2026-10-07, chunk 67 redone at the user's word that it was far from the
   original): the layout is made from the original's navigation mesh, every floor at its own
   height, at 2.54 cm a unit (114 m a side); see `scripts/calabianca.mjs`.
+- **The new map's slopes are steps** (chunk 67, redone): the floors were boxes on 25 cm steps,
+  as the game's ramps are, so the original's slopes (long A, mid, the T ramp) were flights of
+  25 cm steps, their edges seen as lines across the ground, and its houses' tops stepped from
+  cell to cell.
+  **Resolved** (2026-10-07, at the user's word that the roads and houses were stepped): boxes
+  can have a sloping top (`Box.tilt`); the floors are planes fitted to the original's ground,
+  drawn as one surface; stairs only where it's as steep as stairs; the houses one height to an
+  8 m plot.
 
 ## Dropped
 

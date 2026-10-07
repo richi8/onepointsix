@@ -1,6 +1,6 @@
 import { PLAYER_HEIGHT, PLAYER_RADIUS, STEP_HEIGHT, WATER_LEVEL } from '../shared/constants.ts';
 import { vegetationOf } from '../shared/vegetation.ts';
-import { type Box, type Rect, type World } from '../shared/world.ts';
+import { boxTop, type Box, type Rect, type World } from '../shared/world.ts';
 
 // Where bots can walk: a 1 m grid over the island, each cell open, wet
 // (walkable but slow, so paths avoid it) or blocked by something taller than a
@@ -168,7 +168,7 @@ export class NavGrid {
       cells(c.minX, c.minZ, c.maxX, c.maxZ, CELL, (i) => {
         const x = this.center(i % this.n);
         const z = this.center(Math.floor(i / this.n));
-        if (x > c.minX + INSIDE && x < c.maxX - INSIDE && z > c.minZ + INSIDE && z < c.maxZ - INSIDE) this.tops.set(i, Math.max(c.maxY, this.tops.get(i) ?? -Infinity));
+        if (x > c.minX + INSIDE && x < c.maxX - INSIDE && z > c.minZ + INSIDE && z < c.maxZ - INSIDE) this.tops.set(i, Math.max(boxTop(c, x, z), this.tops.get(i) ?? -Infinity));
         else this.grounded.add(i);
       });
     }

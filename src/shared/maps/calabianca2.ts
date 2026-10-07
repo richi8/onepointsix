@@ -1,15 +1,16 @@
 import { yawToward } from '../geom.ts';
 import type { Rect } from '../world.ts';
-import { BLOCKS, BOXES, COVERS, CRATES, DECKS, FLOORS, GRID, LEAVES, PARAPETS, ROOFS, SPAWNS } from './calabianca2grid.ts';
-import { moved, type GameMap, type MapBox, type MapLane, type MapProp, type MapSpawn, type Paving } from './index.ts';
+import { BLOCKS, BOXES, COVERS, CRATES, DECKS, FACADES, FLOORS, GRID, LEAVES, PARAPETS, ROOFS, SLOPES, SPAWNS, TURNED } from './calabianca2grid.ts';
+import { moved, type GameMap, type MapBox, type MapFacade, type MapLane, type MapStone, type MapProp, type MapSpawn, type Paving } from './index.ts';
 import { levelGround } from './levels.ts';
 
 // Calabianca rebuilt (Phase 10): Deathmatch's map, laid out after the most
 // played three-lane map there is, from its navigation mesh, at 1:1 with its
 // units taken as 2.54 cm, a player's height there as here. The geometry is
 // made by scripts/calabianca.mjs into calabianca2grid.ts: floors on a 25 cm
-// grid, each a box solid down to the ground, climbing in steps too low to
-// notice where the original slopes; decks where one floor runs over another
+// grid, each a box solid down to the ground, its top a plane sloping as the
+// original's roads do, but flights of steps where it's as steep as stairs;
+// decks where one floor runs over another
 // (the walk from short to A, over the way out of the defenders' end); houses
 // standing 6 m over the floors beside them wherever there's no floor, cover
 // where there's a small hole in it, the original's boxes in stone (bots go
@@ -123,7 +124,18 @@ const height = (steps: number) => BASE + steps * STEP;
 /** A house's plaster, from the middle of its box. */
 const plastered = (r: Rect) => ({ colour: plasterAt((r.minX + r.maxX) / 2, (r.minZ + r.maxZ) / 2) });
 
-const FLOOR_BOXES: MapBox[] = rows(FLOORS, 5).map((r) => ({ ...cells(r), y0: BASE - UNDER, y1: height(r[4]), walk: true }));
+/** The stairs, a box a step. */
+const STAIR_BOXES: MapBox[] = rows(FLOORS, 5).map((r) => ({ ...cells(r), y0: BASE - UNDER, y1: height(r[4]), walk: true }));
+/** The floors, flat or sloping as the original's roads do, each solid deep enough under its lowest corner. */
+const FLOOR_BOXES: MapBox[] = [
+  ...STAIR_BOXES,
+  ...rows(SLOPES, 7).map(([i0, i1, k0, k1, top, gx, gz]): MapBox => {
+    const r = cells([i0, i1, k0, k1]);
+    const tilt = { x: gx / 1000, z: gz / 1000 };
+    const rise = Math.abs(tilt.x) * (r.maxX - r.minX) + Math.abs(tilt.z) * (r.maxZ - r.minZ);
+    return { ...r, y0: BASE - UNDER - rise, y1: BASE + top / 100, walk: true, ground: true, ...(gx || gz ? { tilt } : {}) };
+  }),
+];
 const DECK_BOXES: MapBox[] = rows(DECKS, 5).map((r) => ({ ...cells(r), y0: height(r[4]) - DECK, y1: height(r[4]), walk: true }));
 const BLOCK_BOXES: MapBox[] = rows(BLOCKS, 5).map((r) => {
   const box = { ...cells(r), y0: BASE - UNDER, y1: height(r[4]) };
@@ -131,14 +143,24 @@ const BLOCK_BOXES: MapBox[] = rows(BLOCKS, 5).map((r) => {
 });
 const PARAPET_BOXES: MapBox[] = rows(PARAPETS, 5).map((r) => ({ ...cells(r), y0: BASE - UNDER, y1: height(r[4]) }));
 const COVER_BOXES: MapBox[] = rows(COVERS, 5).map((r) => ({ ...cells(r), y0: BASE - UNDER, y1: height(r[4]) }));
-/** The original's boxes, stone: players climb them, bots go round. */
-const STONE_BOXES: MapBox[] = rows(BOXES, 5).map((r) => ({ ...cells(r), y0: BASE - UNDER, y1: height(r[4]) }));
+/** The original's boxes, stone: players climb them, bots go round; drawn as they stand (STONES) where they're box-shaped. */
+const STONE_BOXES: MapBox[] = rows(BOXES, 6).map((r) => ({ ...cells(r), y0: BASE - UNDER, y1: height(r[4]), ...(r[5] ? { look: 'under' as const } : {}) }));
+const STONES: MapStone[] = rows(TURNED, 7).map(([x, z, width, depth, turn, y0, y1]) => ({
+  // Down into the ground under the floor round it, which may slope away from it.
+  x: x / 100, z: z / 100, width: width / 100, depth: depth / 100, turn: (turn / 10) * (Math.PI / 180), y0: Math.min(height(y0) - 0.2, BASE - UNDER), y1: height(y1),
+}));
 const ROOF_BOXES: MapBox[] = rows(ROOFS, 6).map((r) => {
   const box = { ...cells(r), y0: height(r[4]), y1: height(r[5]) };
   return { ...box, ...plastered(box) };
 });
 const DOOR_LEAVES: MapBox[] = rows(LEAVES, 6).map((r) => ({
   minX: r[0] / 100, maxX: r[1] / 100, minZ: r[2] / 100, maxZ: r[3] / 100, y0: height(r[4]) - 0.2, y1: height(r[5]), look: 'doors',
+}));
+
+/** The houses' diagonal walls, straightened over the stairs of corners their boxes make. */
+const FACADE_WALLS: MapFacade[] = rows(FACADES, 8).map(([x0, z0, x1, z1, out, depth, y0, y1]) => ({
+  x0: x0 / 100, z0: z0 / 100, x1: x1 / 100, z1: z1 / 100, out: out / 100, depth: depth / 100, y0: height(y0), y1: height(y1),
+  colour: plasterAt((x0 + x1) / 200, (z0 + z1) / 200),
 }));
 
 /** The original's boxes square and of a crate's size, as crates: bots go to them for ammunition. */
@@ -221,6 +243,8 @@ const PLAN: GameMap = {
     ],
   },
   lanes: LANES,
+  facades: FACADE_WALLS,
+  stones: STONES,
   areas: PLACES.map(([name, ...r]) => ({ name, ...px(...r) })),
 };
 

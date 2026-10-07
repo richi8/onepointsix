@@ -1,8 +1,11 @@
-import type { MapBox } from '../shared/maps/index.ts';
+import * as THREE from 'three';
+import { Layer } from '../shared/layers.ts';
+import type { MapBox, MapFacade } from '../shared/maps/index.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { Rect, World } from '../shared/world.ts';
+import { plasterColor } from './structures.ts';
 import { coveredLamps } from './townbake.ts';
-import { Boxes, IRON, painted, plain, STONE, type Stuff } from './townparts.ts';
+import { Boxes, IRON, painted, plain, STONE, stuff, type Stuff } from './townparts.ts';
 
 // A map's solid blocks dressed as the houses they stand for, where it has
 // blocks in place of buildings (see maps/calabianca2.ts), drawn only like
@@ -91,6 +94,13 @@ class Side {
     const [p, q] = [this.at(Math.min(a0, a1), Math.min(o0, o1)), this.at(Math.max(a0, a1), Math.max(o0, o1))];
     this.boxes.box(Math.min(p[0], q[0]), y0, Math.min(p[1], q[1]), Math.max(p[0], q[0]), y1, Math.max(p[1], q[1]), s);
   }
+
+  /** A box as `box`, from y0 to y1 at its middle along, rising `g` a metre along. */
+  sloped(a0: number, a1: number, o0: number, o1: number, y0: number, y1: number, g: number, s: Stuff): void {
+    const [p, q] = [this.at(Math.min(a0, a1), Math.min(o0, o1)), this.at(Math.max(a0, a1), Math.max(o0, o1))];
+    const [gx, gz] = this.alongX ? [g, 0] : [0, g];
+    this.boxes.sheared(Math.min(p[0], q[0]), y0, Math.min(p[1], q[1]), Math.max(p[0], q[0]), y1, Math.max(p[1], q[1]), gx, gz, s);
+  }
 }
 
 /** What's in front of a face at a point along it: the ground, and how high it's open to the sky or a ceiling; null if nothing is. */
@@ -128,7 +138,74 @@ export function dressBlocks(world: World, boxes: Boxes): void {
     ];
     for (const side of sides) dressSide(world, b, side);
   }
+  for (const f of world.map?.facades ?? []) facade(world, boxes, f);
+  for (const s of world.map?.stones ?? []) {
+    // Turned about the vertical, its own x along its width: a box of cut stone with a stone cap.
+    const q = new THREE.Quaternion().setFromAxisAngle(UP, -s.turn);
+    boxes.turned(new THREE.Vector3(s.x, (s.y0 + s.y1) / 2 - 0.04, s.z), new THREE.Vector3(s.width, s.y1 - s.y0 - 0.08, s.depth), q, STONE);
+    boxes.turned(new THREE.Vector3(s.x, s.y1 - 0.04, s.z), new THREE.Vector3(s.width + 0.06, 0.08, s.depth + 0.06), q, STONE);
+  }
   for (const [x, y, z] of coveredLamps(world)) lantern(boxes, x, y, z);
+}
+
+/** A facade's way along, unit, its length, and the way out of it toward the floor. */
+function frame(f: MapFacade): { ux: number; uz: number; len: number; nx: number; nz: number } {
+  const len = Math.hypot(f.x1 - f.x0, f.z1 - f.z0);
+  const [ux, uz] = [(f.x1 - f.x0) / len, (f.z1 - f.z0) / len];
+  // The house is on its right looking along it, the floor on its left.
+  return { ux, uz, len, nx: uz, nz: -ux };
+}
+
+/** Whether (x, z) is behind one of the map's straightened diagonal walls, or within `pad` in front of it. */
+function behindFacade(world: World, x: number, z: number, pad: number): boolean {
+  for (const f of world.map?.facades ?? []) {
+    const { ux, uz, len, nx, nz } = frame(f);
+    const t = (x - f.x0) * ux + (z - f.z0) * uz;
+    if (t < -pad || t > len + pad) continue;
+    const s = (x - f.x0) * nx + (z - f.z0) * nz;
+    if (s <= f.out + pad && s >= -f.depth - pad) return true;
+  }
+  return false;
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
+const ALONG = new THREE.Vector3(0, 0, 1);
+
+/**
+ * A house's diagonal wall drawn straight over the stair of corners its boxes
+ * make: a plastered face from its foot to its top, a cornice along the top,
+ * and a stone plinth along its foot, following the ground's slope.
+ */
+function facade(world: World, boxes: Boxes, f: MapFacade): void {
+  const { ux, uz, len, nx, nz } = frame(f);
+  const c = new THREE.Color();
+  const plaster = stuff(Layer.plaster, plasterColor(f.colour, true, c).getHex(), plasterColor(f.colour, false, c).getHex());
+  // Its own x along it, z out of it.
+  const turn = new THREE.Quaternion().setFromAxisAngle(UP, Math.atan2(-uz, ux));
+  /** A box along it from `o0` to `o1` out of its line (toward the floor), `y0` to `y1`, `past` beyond its ends, tilted up its length by `rise` a metre. */
+  const piece = (o0: number, o1: number, y0: number, y1: number, past: number, s: Stuff, rise = 0) => {
+    const o = (o0 + o1) / 2;
+    const at = new THREE.Vector3((f.x0 + f.x1) / 2 + nx * o, (y0 + y1) / 2, (f.z0 + f.z1) / 2 + nz * o);
+    const q = turn.clone().multiply(new THREE.Quaternion().setFromAxisAngle(ALONG, Math.atan(rise)));
+    boxes.turned(at, new THREE.Vector3(len + 2 * past, y1 - y0, o1 - o0), q, s);
+  };
+  // The turned box's z is out of the wall: its local +z is toward -n or +n as the turn has it; a box spans o0..o1 either way.
+  piece(-f.depth, f.out, f.y0, f.y1, 0.05, plaster);
+  piece(f.out, f.out + 0.12, f.y1 - 0.1, f.y1 + 0.08, 0.05, STONE);
+  piece(f.out, f.out + 0.06, f.y1 - 0.26, f.y1 - 0.1, 0.02, STONE);
+  // The plinth, a metre at a time, following the ground in front from end to end of each; none where the ground steps.
+  const ground = (t: number) => world.groundHeight(f.x0 + ux * t + nx * (f.out + 0.4), f.z0 + uz * t + nz * (f.out + 0.4), f.y1);
+  const n = Math.max(1, Math.round(len));
+  for (let k = 0; k < n; k++) {
+    const [t0, t1] = [(len * k) / n, (len * (k + 1)) / n];
+    const [g0, g1] = [ground(t0 + 0.05), ground(t1 - 0.05)];
+    const rise = (g1 - g0) / (t1 - t0 - 0.1);
+    if (Math.abs(rise) > 0.5 || g0 > f.y1 - 1 || g1 > f.y1 - 1) continue;
+    const mid = (g0 + g1) / 2;
+    const at = new THREE.Vector3(f.x0 + ux * (t0 + t1) / 2 + nx * (f.out + 0.03), mid + 0.15, f.z0 + uz * (t0 + t1) / 2 + nz * (f.out + 0.03));
+    const q = turn.clone().multiply(new THREE.Quaternion().setFromAxisAngle(ALONG, Math.atan(rise)));
+    boxes.turned(at, new THREE.Vector3((t1 - t0) * Math.hypot(1, rise), 0.6, 0.06), q, STONE);
+  }
 }
 
 /** A lantern's glass. */
@@ -156,10 +233,11 @@ function dressSide(world: World, b: MapBox, side: Side): void {
     const bottom = Math.max(ground, b.y0);
     const top = Math.min(b.y1, world.ceilingHeight(x, z, bottom + 0.1));
     const open = top - bottom > 0.3 && world.clearAsBuilt(x, bottom + 0.02, z, top - bottom - 0.04, 0.02);
-    fronts.push(open ? { a, bottom, top } : null);
+    // Not where a straightened diagonal wall is drawn over it.
+    fronts.push(open && !behindFacade(world, x, z, 0.3) ? { a, bottom, top } : null);
   }
   /** Stretches of the side alike by `same`, from a0 to a1 along it. */
-  const stretches = (same: (p: Front, q: Front) => boolean) => {
+  const stretches = (same: (p: Front, q: Front) => boolean, second?: (p: Front, q: Front) => void) => {
     const out: { a0: number; a1: number; fronts: Front[] }[] = [];
     let last: (typeof out)[number] | null = null;
     for (const f of fronts) {
@@ -167,7 +245,10 @@ function dressSide(world: World, b: MapBox, side: Side): void {
         last = null;
         continue;
       }
-      if (last && same(last.fronts[last.fronts.length - 1], f)) {
+      const prev = last?.fronts[last.fronts.length - 1];
+      // A stretch's second front sets what follows it, if asked (a slope's rate).
+      if (last && prev && last.fronts.length === 1 && second && Math.abs(f.a - prev.a - STEP) < 1e-6 && Math.abs(f.bottom - prev.bottom) / STEP <= 0.5) second(prev, f);
+      if (last && prev && same(prev, f)) {
         last.a1 = f.a + STEP / 2;
         last.fronts.push(f);
       } else out.push((last = { a0: f.a - STEP / 2, a1: f.a + STEP / 2, fronts: [f] }));
@@ -188,14 +269,23 @@ function dressSide(world: World, b: MapBox, side: Side): void {
     side.box(st.a0 - lo, st.a1 + hi, -CAP_BACK, CAP_OUT, b.y1, b.y1 + CAP, STONE);
   }
 
-  // A house's: the plinth along its foot, a piece for each stretch of ground alike.
-  for (const st of stretches((p, q) => Math.abs(p.bottom - q.bottom) < 0.01)) {
+  // A house's: the plinth along its foot, a piece for each stretch of ground
+  // flat or sloping evenly, following its slope.
+  let rate = 0;
+  for (const st of stretches((p, q) => {
+    const d = (q.bottom - p.bottom) / STEP;
+    // A step up or down, not a slope, breaks it.
+    if (Math.abs(d) > 0.5) return false;
+    return Math.abs(q.a - p.a - STEP) < 1e-6 && Math.abs(d - rate) < 0.04;
+  }, (p, q) => (rate = (q.bottom - p.bottom) / STEP))) {
     const f = st.fronts[0];
+    const g = st.fronts.length > 1 ? (st.fronts[st.fronts.length - 1].bottom - f.bottom) / (st.fronts.length - 1) / STEP : 0;
     // Not where the block's foot is a way's ceiling, nor along a lower block's top.
     if (b.y1 - f.bottom < HOUSE || f.bottom <= b.y0 + 0.01 || !onGround(world, side, f)) continue;
     const lo = atEnd(st.a0, -1) && corner(st.a0, -1, f.bottom + 0.3) ? PLINTH_OUT : 0;
     const hi = atEnd(st.a1, 1) && corner(st.a1, 1, f.bottom + 0.3) ? PLINTH_OUT : 0;
-    side.box(st.a0 - lo, st.a1 + hi, 0, PLINTH_OUT, f.bottom - 0.1, f.bottom + PLINTH, STONE);
+    const mid = f.bottom + g * ((st.a0 + st.a1) / 2 - f.a);
+    side.sloped(st.a0 - lo, st.a1 + hi, 0, PLINTH_OUT, mid - 0.15, mid + PLINTH, g, STONE);
   }
 
   // Its cornice, along the top where the sky's over it, and a lintel along the foot where it roofs a way through.

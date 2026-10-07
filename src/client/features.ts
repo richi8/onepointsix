@@ -206,7 +206,7 @@ export function standsOn(world: World, b: MapBox): number {
 }
 
 /** The looks drawn in place of their boxes; the rest are drawn over them. */
-const REPLACED: ReadonlySet<MapLook> = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble', 'doors']);
+const REPLACED: ReadonlySet<MapLook> = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble', 'doors', 'under']);
 
 /** The props drawn here in place of their boxes. */
 export function replacedProps(world: World): Set<number> {
@@ -349,6 +349,9 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
         bag.dispose();
         break;
       }
+      case 'under':
+        // Drawn as the stone box it's under (see blocks.ts).
+        break;
       case 'doors': {
         // Painted planks, battens across both faces and iron straps over them, a gap at the foot.
         const paint = DOOR_PAINT[Math.floor(Math.abs(alongX ? cz : cx) * 3.7) % DOOR_PAINT.length];

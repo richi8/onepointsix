@@ -18,7 +18,7 @@ import { ALL_EDGES, openEdges, roundCode } from './rounding.ts';
 // instance's scale in the shader. A batten is 9 cm wide on a crate of any size.
 
 /** How each prop is drawn. `glass` is see-through and drawn apart, with its frame. */
-type Shape = 'box' | 'crate' | 'fence' | 'table' | 'step' | 'sill' | 'glass' | 'frame';
+type Shape = 'box' | 'ground' | 'crate' | 'fence' | 'table' | 'step' | 'sill' | 'glass' | 'frame';
 
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0);
 const TURN = new THREE.Matrix4().makeRotationY(Math.PI / 2);
@@ -183,7 +183,22 @@ function plain(): THREE.BufferGeometry {
   return s.geometry();
 }
 
-const GEOMETRY: Record<Shape, () => THREE.BufferGeometry> = { box: plain, crate, fence, table, step, sill, glass: plain, frame };
+/** A box without its top: a map's ground, whose top is drawn with the ground's surface (see terrain.ts). */
+function sides(): THREE.BufferGeometry {
+  const g = plain();
+  const pos = g.getAttribute('position');
+  const index = g.getIndex()!;
+  const kept: number[] = [];
+  for (let t = 0; t < index.count; t += 3) {
+    const [a, b, c] = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+    if (pos.getY(a) > 0 && pos.getY(b) > 0 && pos.getY(c) > 0) continue;
+    kept.push(a, b, c);
+  }
+  g.setIndex(kept);
+  return g;
+}
+
+const GEOMETRY: Record<Shape, () => THREE.BufferGeometry> = { box: plain, ground: sides, crate, fence, table, step, sill, glass: plain, frame };
 
 /** The window frames' colour: flat, and as a tint over the boards once textured. */
 export const FRAME_COLOR = 0x8a8478;
@@ -196,7 +211,7 @@ function shapeOf(world: World, i: number): Shape {
   if (p.style === 'crate') return 'crate';
   if (p.style === 'fence') return 'fence';
   if (p.box.part === 'step' || p.box.part === 'table' || p.box.part === 'sill') return p.box.part;
-  return 'box';
+  return p.box.ground ? 'ground' : 'box';
 }
 
 /** Add the metres each vertex is set in from its point of the unit box, whatever the instance's scale. */
@@ -274,9 +289,17 @@ export class Props {
       const d = box.maxZ - box.minZ;
       const m = new THREE.Matrix4();
       // Shapes run along their own x: one longer across z is turned.
-      if (shapes[i] !== 'box' && d > w) m.makeScale(d, box.maxY - box.minY, w).premultiply(TURN);
-      else m.makeScale(w, box.maxY - box.minY, d);
-      m.setPosition((box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2, (box.minZ + box.maxZ) / 2);
+      if (box.tilt) {
+        // A sloping top: the box sheared up its slope, its bottom (deep under the ground) sheared with it.
+        const { x: gx, z: gz } = box.tilt;
+        const top = box.maxY - (Math.abs(gx) * w + Math.abs(gz) * d) / 2;
+        const h = top - box.minY;
+        m.set(w, 0, 0, (box.minX + box.maxX) / 2, gx * w, h, gz * d, top - h / 2, 0, 0, d, (box.minZ + box.maxZ) / 2, 0, 0, 0, 1);
+      } else {
+        if (shapes[i] !== 'box' && shapes[i] !== 'ground' && d > w) m.makeScale(d, box.maxY - box.minY, w).premultiply(TURN);
+        else m.makeScale(w, box.maxY - box.minY, d);
+        m.setPosition((box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2, (box.minZ + box.maxZ) / 2);
+      }
       if (shapes[i]) {
         this.place(i, box.gone ? null : m);
         // The glass takes its colour from its material.
@@ -325,7 +348,7 @@ export class Props {
         if (frames && this.frameOf[i] >= 0) codes.get(frames)![this.frameOf[i]] = roundCode(ALL_EDGES, 0.006);
         return;
       }
-      const code = shape === 'box' ? roundCode(openEdges(world, this.rest[i]), 0.03)
+      const code = shape === 'box' || shape === 'ground' ? roundCode(openEdges(world, this.rest[i]), 0.03)
         : shape === 'step' || shape === 'sill' ? roundCode(openEdges(world, this.rest[i]), 0.02)
         : roundCode(ALL_EDGES, 0.01);
       codes.get(mesh)![this.at[i]] = code;

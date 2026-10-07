@@ -22,8 +22,8 @@ export function area(name: string): MapArea {
 }
 
 /**
- * The clear spot in `a` nearest its middle on its ground: the floor most of
- * it stands at, not a box's top. With `lowest` (as by default), of its lower
+ * The clear spot in `a` nearest its middle on its ground: the band of
+ * heights most of it stands in, not a box's top. With `lowest` (as by default), of its lower
  * floor where one runs over another, else its upper; null if there's none.
  */
 export function standIn(world: World, a: MapArea, lowest = true): Spot | null {
@@ -36,8 +36,10 @@ export function standIn(world: World, a: MapArea, lowest = true): Spot | null {
     }
   }
   if (!spots.length) return null;
+  // The ground: the half-metre band of heights most of it stands in (it slopes).
+  const band = (y: number) => Math.round(y * 2);
   const count = new Map<number, number>();
-  for (const s of spots) count.set(s.y, (count.get(s.y) ?? 0) + 1);
+  for (const s of spots) count.set(band(s.y), (count.get(band(s.y)) ?? 0) + 1);
   const ground = [...count].reduce((m, e) => (e[1] > m[1] ? e : m))[0];
-  return spots.filter((s) => s.y === ground).reduce((m, s) => (Math.hypot(s.x - cx, s.z - cz) < Math.hypot(m.x - cx, m.z - cz) ? s : m));
+  return spots.filter((s) => band(s.y) === ground).reduce((m, s) => (Math.hypot(s.x - cx, s.z - cz) < Math.hypot(m.x - cx, m.z - cz) ? s : m));
 }

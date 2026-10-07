@@ -62,6 +62,14 @@ export class Boxes {
     this.stuffs.push(s);
   }
 
+  /** A box from (x0, y0, z0) to (x1, y1, z1) at its middle, sheared up `gx` a metre along x and `gz` along z: following a slope. */
+  sheared(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, gx: number, gz: number, s: Stuff): void {
+    if (x1 - x0 < 1e-3 || y1 - y0 < 1e-3 || z1 - z0 < 1e-3) return;
+    const [w, h, d] = [x1 - x0, y1 - y0, z1 - z0];
+    this.matrices.push(new THREE.Matrix4().set(w, 0, 0, (x0 + x1) / 2, gx * w, h, gz * d, (y0 + y1) / 2, 0, 0, d, (z0 + z1) / 2, 0, 0, 0, 1));
+    this.stuffs.push(s);
+  }
+
   /** A box `size` big, turned by `q`, its middle at `at`. */
   turned(at: THREE.Vector3, size: THREE.Vector3, q: THREE.Quaternion, s: Stuff): void {
     this.matrices.push(new THREE.Matrix4().compose(at, q, size));

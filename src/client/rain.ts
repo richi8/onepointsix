@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../shared/constants.ts';
-import type { Box, World } from '../shared/world.ts';
+import { boxTop, type Box, type World } from '../shared/world.ts';
 import { ISLAND_GLSL, islandUniforms, shelters } from './islandmap.ts';
 
 // Rain: streaks falling through a box that follows the camera, as many as it's
@@ -474,7 +474,7 @@ export class Rain implements Shelter {
   /** Whether a roof, or a floor, is over (x, y, z). */
   sheltered(x: number, y: number, z: number): boolean {
     for (const b of this.shelters) {
-      if (b.maxY > y && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) return true;
+      if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && boxTop(b, x, z) > y) return true;
     }
     return false;
   }
@@ -572,7 +572,7 @@ export function roofHeights(world: World, x0: number, z0: number, out = new Floa
     const j0 = Math.max(Math.ceil((b.minZ - z0) / ROOF_CELL - 0.5), 0);
     const j1 = Math.min(Math.floor((b.maxZ - z0) / ROOF_CELL - 0.5), ROOF_CELLS - 1);
     for (let j = j0; j <= j1; j++) {
-      for (let i = i0; i <= i1; i++) out[j * ROOF_CELLS + i] = Math.max(out[j * ROOF_CELLS + i], b.maxY);
+      for (let i = i0; i <= i1; i++) out[j * ROOF_CELLS + i] = Math.max(out[j * ROOF_CELLS + i], boxTop(b, x0 + (i + 0.5) * ROOF_CELL, z0 + (j + 0.5) * ROOF_CELL));
     }
   }
   return out;

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { smoothstep } from '../shared/geom.ts';
 import { fbm } from '../shared/rng.ts';
-import type { World } from '../shared/world.ts';
+import { boxTop, type Box, type World } from '../shared/world.ts';
 import { paint } from '../shared/ground.ts';
 
 // The island's ground as square tiles, each drawn at full detail up close and
@@ -66,6 +66,14 @@ export class Terrain {
         }
         this.group.add(lod);
       }
+    }
+    // A map's ground of boxes, drawn as one surface over them.
+    const ground = groundSurface(world);
+    if (ground) {
+      const mesh = new THREE.Mesh(ground, material);
+      mesh.receiveShadow = true;
+      this.meshes.push(mesh);
+      this.group.add(mesh);
     }
   }
 
@@ -345,4 +353,106 @@ export function onTiles<M extends THREE.Material>(material: M, world: World): M 
   };
   material.customProgramCacheKey = () => `${key}-on-tiles`;
   return material;
+}
+
+/** Metres between a map's ground surface's vertices. */
+const GROUND_STEP = 0.25;
+/** Tops nearer than this where boxes meet are one surface, their seam closed; farther, a ledge, its box's side showing. */
+const GROUND_SEAM = 0.15;
+/**
+ * How far the surface is lifted over the boxes' tops, so none of their sides
+ * shows through it where it meets a box a little out of true (a top is
+ * within 3 cm of the floor under it, see scripts/calabianca.mjs), and how
+ * far a skirt hangs from its edges, down past the lift, to meet the sides at
+ * a ledge.
+ */
+const GROUND_LIFT = 0.035;
+const GROUND_SKIRT = 0.15;
+/** The ground surface's colour before the textures: the paving's. */
+const GROUND_FLAT = new THREE.Color(0x9a8f7c);
+
+/**
+ * A map's ground made of boxes (Box.ground: its floors, flat and sloping) as
+ * one surface over their tops, drawn with the terrain's material so it's
+ * paved, worn and wet as the terrain is: a grid of vertices every
+ * GROUND_STEP over each box, each at the mean of the tops of the boxes
+ * meeting there that are near its own, so where two boxes' slopes meet a
+ * little out of true the seam closes, and where they're a ledge apart it
+ * stays open, the box's side showing. Null if the world has no such boxes.
+ */
+function groundSurface(world: World): THREE.BufferGeometry | null {
+  const boxes = world.props.map((p) => p.box).filter((b) => b.ground);
+  if (!boxes.length) return null;
+  // Boxes by 2 m cell, for the ones meeting at a point.
+  const CELL = 2;
+  const cells = new Map<string, Box[]>();
+  for (const b of boxes) {
+    for (let i = Math.floor(b.minX / CELL); i <= Math.floor(b.maxX / CELL); i++) {
+      for (let k = Math.floor(b.minZ / CELL); k <= Math.floor(b.maxZ / CELL); k++) {
+        const key = `${i},${k}`;
+        const list = cells.get(key);
+        if (list) list.push(b);
+        else cells.set(key, [b]);
+      }
+    }
+  }
+  const E = 1e-6;
+  /** The surface's height at (x, z) on box `b`'s side of any ledge. */
+  const height = (b: Box, x: number, z: number) => {
+    const own = boxTop(b, x, z);
+    let [sum, n] = [0, 0];
+    for (const g of cells.get(`${Math.floor(x / CELL)},${Math.floor(z / CELL)}`) ?? []) {
+      if (x < g.minX - E || x > g.maxX + E || z < g.minZ - E || z > g.maxZ + E) continue;
+      const top = boxTop(g, x, z);
+      if (Math.abs(top - own) < GROUND_SEAM) (sum += top), n++;
+    }
+    return n ? sum / n : own;
+  };
+  const pos: number[] = [];
+  const index: number[] = [];
+  for (const b of boxes) {
+    const nx = Math.max(1, Math.round((b.maxX - b.minX) / GROUND_STEP));
+    const nz = Math.max(1, Math.round((b.maxZ - b.minZ) / GROUND_STEP));
+    const first = pos.length / 3;
+    for (let k = 0; k <= nz; k++) {
+      for (let i = 0; i <= nx; i++) {
+        const x = b.minX + ((b.maxX - b.minX) * i) / nx;
+        const z = b.minZ + ((b.maxZ - b.minZ) * k) / nz;
+        pos.push(x, height(b, x, z) + GROUND_LIFT, z);
+      }
+    }
+    for (let k = 0; k < nz; k++) {
+      for (let i = 0; i < nx; i++) {
+        const a = first + k * (nx + 1) + i;
+        index.push(a, a + nx + 1, a + 1, a + 1, a + nx + 1, a + nx + 2);
+      }
+    }
+    // The skirt round its edge, each vertex there again, dropped, facing out.
+    const at = (i: number, k: number) => first + k * (nx + 1) + i;
+    const rim = [
+      ...Array.from({ length: nx + 1 }, (_, i) => at(i, 0)),
+      ...Array.from({ length: nz }, (_, k) => at(nx, k + 1)),
+      ...Array.from({ length: nx }, (_, i) => at(nx - 1 - i, nz)),
+      ...Array.from({ length: nz }, (_, k) => at(0, nz - 1 - k)),
+    ];
+    // Its own copies of the rim's vertices, so the skirt doesn't bend the surface's normals at its edge.
+    const top = pos.length / 3;
+    for (const v of rim) pos.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]);
+    const low = pos.length / 3;
+    for (const v of rim) pos.push(pos[v * 3], pos[v * 3 + 1] - GROUND_SKIRT, pos[v * 3 + 2]);
+    for (let e = 0; e + 1 < rim.length; e++) index.push(top + e, low + e, top + e + 1, top + e + 1, low + e, low + e + 1);
+  }
+  const count = pos.length / 3;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  const fill = (n: number, v: number[]) => new THREE.Float32BufferAttribute(Array.from({ length: count * n }, (_, i) => v[i % n]), n);
+  geo.setAttribute('color', fill(3, [GROUND_FLAT.r, GROUND_FLAT.g, GROUND_FLAT.b]));
+  geo.setAttribute('tint', fill(3, [1, 1, 1]));
+  // Bare earth under it, where it isn't paved (the pit).
+  geo.setAttribute('splatA', fill(4, [0, 0, 1, 0]));
+  geo.setAttribute('splatB', fill(1, [0]));
+  geo.computeBoundingSphere();
+  return geo;
 }

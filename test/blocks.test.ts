@@ -26,7 +26,7 @@ describe('the new Calabianca\'s look', () => {
   it('plasters its blocks by part of the map, and keeps the parapet along the sea and the cover in stone', () => {
     const blocks = dressedBlocks(world);
     const houses = blocks.filter((b) => b.colour !== undefined);
-    expect(houses.length).toBeGreaterThan(300);
+    expect(houses.length).toBeGreaterThan(150);
     expect(new Set(houses.map((b) => b.colour)).size).toBe(5);
     // The rest, stone: low, the parapet along the south edge and the cover.
     const stone = blocks.filter((b) => b.colour === undefined);
@@ -73,8 +73,17 @@ describe('the new Calabianca\'s look', () => {
       at.setFromMatrixPosition(m);
       size.setFromMatrixScale(m);
       if (lamps.some(([x, y, z]) => Math.hypot(at.x - x, at.z - z) < 0.3 && Math.abs(at.y - y) < 0.7)) continue;
+      // A turned box's size is its own, not the world's: measured round its middle.
+      const reach = Math.hypot(size.x, size.z) / 2;
       const near = blocks.some((b) =>
-        at.x - size.x / 2 < b.maxX + 0.2 && at.x + size.x / 2 > b.minX - 0.2 && at.z - size.z / 2 < b.maxZ + 0.2 && at.z + size.z / 2 > b.minZ - 0.2);
+        at.x - size.x / 2 < b.maxX + 0.2 && at.x + size.x / 2 > b.minX - 0.2 && at.z - size.z / 2 < b.maxZ + 0.2 && at.z + size.z / 2 > b.minZ - 0.2)
+        // Or a straightened diagonal wall, or a box drawn as it stands.
+        || (CALABIANCA_2.facades ?? []).some((f) => {
+          const len = Math.hypot(f.x1 - f.x0, f.z1 - f.z0);
+          const t = Math.max(0, Math.min(len, ((at.x - f.x0) * (f.x1 - f.x0) + (at.z - f.z0) * (f.z1 - f.z0)) / len));
+          return Math.hypot(at.x - f.x0 - ((f.x1 - f.x0) * t) / len, at.z - f.z0 - ((f.z1 - f.z0) * t) / len) < f.out + f.depth + 0.5;
+        })
+        || (CALABIANCA_2.stones ?? []).some((t) => Math.hypot(at.x - t.x, at.z - t.z) < Math.hypot(t.width, t.depth) / 2 + 0.2 && reach < Math.hypot(t.width, t.depth));
       if (!near) stray++;
     }
     expect(stray).toBe(0);

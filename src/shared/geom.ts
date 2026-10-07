@@ -69,6 +69,32 @@ export function rayAabb(
   return T0 > 0 ? T0 : 0;
 }
 
+/**
+ * A box whose top slopes: rising `tx` a metre toward +x and `tz` toward +z,
+ * `maxY` at its highest corner (see World's Box.tilt).
+ */
+export function rayTiltedBox(
+  ox: number, oy: number, oz: number,
+  dx: number, dy: number, dz: number,
+  minX: number, minY: number, minZ: number,
+  maxX: number, maxY: number, maxZ: number,
+  tx: number, tz: number,
+): number {
+  T0 = -Infinity;
+  T1 = Infinity;
+  if (!slab(ox, dx, minX, maxX) || !slab(oy, dy, minY, maxY) || !slab(oz, dz, minZ, maxZ)) return Infinity;
+  // Under the top's plane, y <= p0 + tx x + tz z: a half-space, linear along the ray.
+  const p0 = maxY - (tx > 0 ? maxX : minX) * tx - (tz > 0 ? maxZ : minZ) * tz;
+  const f0 = oy - p0 - tx * ox - tz * oz;
+  const f1 = dy - tx * dx - tz * dz;
+  if (Math.abs(f1) < 1e-12) {
+    if (f0 > 0) return Infinity;
+  } else if (f1 > 0) T1 = Math.min(T1, -f0 / f1);
+  else T0 = Math.max(T0, -f0 / f1);
+  if (T0 > T1 || T1 < 0) return Infinity;
+  return T0 > 0 ? T0 : 0;
+}
+
 /** Vertical finite cylinder. */
 export function rayCylinder(
   ox: number, oy: number, oz: number,

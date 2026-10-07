@@ -77,170 +77,170 @@
     "spots": {
       "above": {
         "empty": {
-          "median": 10.1,
-          "p95": 11.2,
-          "max": 13
+          "median": 9.4,
+          "p95": 10.4,
+          "max": 11.2
         },
         "crowd": {
           "median": 10.4,
-          "p95": 11.5,
-          "max": 13.3
+          "p95": 10.7,
+          "max": 12.2
         },
-        "calls": 197,
-        "triangles": 1454560,
+        "calls": 201,
+        "triangles": 1455076,
         "gpu": {
-          "median": 7.19,
-          "p95": 8.02,
-          "max": 10.2
+          "median": 7.05,
+          "p95": 7.18,
+          "max": 7.99
         },
         "cpu": {
           "median": 1.9,
-          "p95": 2.4,
-          "max": 2.9
+          "p95": 2.1,
+          "max": 2.3
         }
       },
       "t-spawn": {
         "empty": {
-          "median": 8.6,
-          "p95": 11,
-          "max": 16
+          "median": 11.1,
+          "p95": 13.6,
+          "max": 14.3
         },
         "crowd": {
-          "median": 13.7,
-          "p95": 15.8,
-          "max": 17
+          "median": 12.9,
+          "p95": 14.1,
+          "max": 18.7
         },
-        "calls": 264,
-        "triangles": 1734686,
+        "calls": 269,
+        "triangles": 1741238,
         "gpu": {
-          "median": 8.92,
-          "p95": 11.02,
-          "max": 12.09
+          "median": 8.74,
+          "p95": 10.08,
+          "max": 11.24
         },
         "cpu": {
-          "median": 2,
-          "p95": 2.2,
-          "max": 2.5
+          "median": 1.8,
+          "p95": 2,
+          "max": 2.2
         }
       },
       "sea": {
         "empty": {
-          "median": 11.6,
-          "p95": 13.3,
-          "max": 18.1
+          "median": 8.9,
+          "p95": 12.5,
+          "max": 13.8
         },
         "crowd": {
-          "median": 16.3,
-          "p95": 17,
-          "max": 17.8
+          "median": 12.6,
+          "p95": 14.6,
+          "max": 16.1
         },
-        "calls": 199,
-        "triangles": 1417763,
+        "calls": 204,
+        "triangles": 1523903,
         "gpu": {
-          "median": 11.22,
-          "p95": 11.41,
-          "max": 11.56
+          "median": 8.24,
+          "p95": 10.36,
+          "max": 11.79
         },
         "cpu": {
-          "median": 2.3,
-          "p95": 2.7,
-          "max": 3.4
+          "median": 2,
+          "p95": 2.3,
+          "max": 2.5
         }
       },
       "long": {
         "empty": {
-          "median": 10.8,
-          "p95": 17.3,
-          "max": 17.8
+          "median": 11.7,
+          "p95": 14.8,
+          "max": 17.7
         },
         "crowd": {
-          "median": 16.8,
-          "p95": 21.4,
-          "max": 27.2
+          "median": 13.5,
+          "p95": 14.8,
+          "max": 15.5
         },
-        "calls": 293,
-        "triangles": 1912695,
+        "calls": 298,
+        "triangles": 2000679,
         "gpu": {
-          "median": 11.71,
-          "p95": 15.65,
-          "max": 21.22
+          "median": 9.22,
+          "p95": 10.47,
+          "max": 11.1
         },
         "cpu": {
-          "median": 2.3,
-          "p95": 2.8,
-          "max": 3.4
+          "median": 1.9,
+          "p95": 2.2,
+          "max": 2.5
         }
       },
       "mid": {
         "empty": {
-          "median": 10.9,
-          "p95": 16.7,
-          "max": 17.7
+          "median": 14.4,
+          "p95": 16.3,
+          "max": 17.8
         },
         "crowd": {
-          "median": 15.8,
-          "p95": 22,
-          "max": 22.5
+          "median": 21.3,
+          "p95": 22.3,
+          "max": 22.7
         },
-        "calls": 281,
-        "triangles": 1860337,
+        "calls": 285,
+        "triangles": 1901137,
         "gpu": {
-          "median": 10.31,
-          "p95": 16,
-          "max": 16.24
+          "median": 16.84,
+          "p95": 17.09,
+          "max": 17.56
         },
         "cpu": {
-          "median": 2.4,
-          "p95": 2.9,
-          "max": 3.2
+          "median": 2.1,
+          "p95": 2.5,
+          "max": 3
         }
       },
       "b": {
         "empty": {
-          "median": 10.8,
-          "p95": 13.6,
-          "max": 20.3
+          "median": 15.2,
+          "p95": 16.9,
+          "max": 17.4
         },
         "crowd": {
-          "median": 12.1,
-          "p95": 13,
-          "max": 14.2
+          "median": 20,
+          "p95": 21,
+          "max": 22
         },
-        "calls": 290,
-        "triangles": 1948630,
+        "calls": 294,
+        "triangles": 2014294,
         "gpu": {
-          "median": 7.04,
-          "p95": 7.91,
-          "max": 8.74
+          "median": 15.19,
+          "p95": 15.63,
+          "max": 17.39
         },
         "cpu": {
           "median": 2.2,
-          "p95": 2.5,
+          "p95": 2.6,
           "max": 3.1
         }
       },
       "tunnels": {
         "empty": {
-          "median": 11.5,
-          "p95": 12.8,
-          "max": 13.4
+          "median": 14.7,
+          "p95": 16,
+          "max": 16.4
         },
         "crowd": {
-          "median": 12.1,
-          "p95": 13.4,
-          "max": 14.5
+          "median": 17.9,
+          "p95": 19.2,
+          "max": 23.1
         },
-        "calls": 264,
-        "triangles": 1765993,
+        "calls": 267,
+        "triangles": 1831009,
         "gpu": {
-          "median": 7.02,
-          "p95": 8.39,
-          "max": 8.96
+          "median": 13.52,
+          "p95": 13.99,
+          "max": 17.95
         },
         "cpu": {
-          "median": 2.2,
-          "p95": 2.6,
-          "max": 3
+          "median": 2,
+          "p95": 2.4,
+          "max": 2.9
         }
       }
     }

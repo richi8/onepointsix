@@ -1,5 +1,5 @@
 import { WATER_LEVEL } from '../shared/constants.ts';
-import type { PropStyle, World } from '../shared/world.ts';
+import { boxTop, type PropStyle, type World } from '../shared/world.ts';
 import { groundLayerAt } from '../shared/ground.ts';
 import { Layer } from '../shared/layers.ts';
 import { pavingAt, type Paving } from '../shared/maps/index.ts';
@@ -52,7 +52,7 @@ export class Surfaces {
     if (y > w.floorHeight(x, z) + 0.2) {
       for (const i of this.cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL))) ?? []) {
         const { box, style } = w.props[i];
-        if (box.gone || Math.abs(box.maxY - y) > 0.25) continue;
+        if (box.gone || Math.abs(boxTop(box, x, z) - y) > 0.25) continue;
         if (x >= box.minX - 0.3 && x <= box.maxX + 0.3 && z >= box.minZ - 0.3 && z <= box.maxZ + 0.3) {
           if (!w.map || box.part === 'crate' || box.part === 'table') return PROP_SURFACE[style];
           // A terrace is paved as the ground round it.

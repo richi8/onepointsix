@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Btn, CMD_DT, PLAYER_RADIUS } from '../src/shared/constants.ts';
-import { rayAabb, rayCylinder } from '../src/shared/geom.ts';
+import { rayAabb, rayCylinder, rayTiltedBox } from '../src/shared/geom.ts';
 import { rayRock, rockNormal, ROCK_SQUASH } from '../src/shared/rock.ts';
 import { mulberry32 } from '../src/shared/rng.ts';
 import { applyCmd, spawnState } from '../src/shared/sim.ts';
@@ -159,3 +159,23 @@ describe('applyCmd with collision', () => {
   });
 });
 
+
+describe('a box with a sloping top', () => {
+  // 4 m along x, its top rising 0.25 a metre toward +x from 1 m to 2 m.
+  const box = [0, 0, 0, 4, 2, 1] as const;
+  const ray = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number) => rayTiltedBox(ox, oy, oz, dx, dy, dz, ...box, 0.25, 0);
+
+  it('meets a ray coming down on its top where the slope is', () => {
+    expect(ray(0.5, 5, 0.5, 0, -1, 0)).toBeCloseTo(5 - 1.125, 6);
+    expect(ray(3.5, 5, 0.5, 0, -1, 0)).toBeCloseTo(5 - 1.875, 6);
+  });
+
+  it('lets a ray pass over its low end that a flat box as high would stop', () => {
+    expect(ray(-1, 1.5, 0.5, 1, 0, 0)).toBeCloseTo(3, 6);
+    expect(rayAabb(-1, 1.5, 0.5, 1, 0, 0, ...box)).toBeCloseTo(1, 6);
+  });
+
+  it('misses a ray over it all', () => {
+    expect(ray(-1, 2.5, 0.5, 1, 0, 0)).toBe(Infinity);
+  });
+});

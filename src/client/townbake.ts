@@ -41,6 +41,8 @@ export interface BakeInput {
   boxes: Float32Array;
   /** Each box's colour, linear red, green and blue. */
   albedo: Float32Array;
+  /** Each box's top's slope, a metre along x and along z, 0 for a flat one (see Box.tilt); none at all if no box slopes. */
+  tilts?: Float32Array;
   /** The ground's height at the corners of a grid half a cell across over the volume, (2nx + 1) × (2nz + 1), rows along x. */
   ground: Float32Array;
   /** The ground's colour, linear. */
@@ -178,9 +180,11 @@ export function bakeInput(world: World, colourOf: (box: Box) => number, sun: [nu
   const kept = world.colliders.filter((c): c is Box => c.kind === 'box' && c.panel === undefined && !c.clear && inside(c));
   const boxes = new Float32Array(kept.length * 6);
   const albedo = new Float32Array(kept.length * 3);
+  const tilts = kept.some((c) => c.tilt) ? new Float32Array(kept.length * 2) : undefined;
   kept.forEach((c, i) => {
     boxes.set([c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ], i * 6);
     albedo.set(linear(colourOf(c)), i * 3);
+    if (tilts && c.tilt) tilts.set([c.tilt.x, c.tilt.z], i * 2);
   });
   const gw = 2 * nx + 1;
   const ground = new Float32Array(gw * (2 * nz + 1));
@@ -201,7 +205,7 @@ export function bakeInput(world: World, colourOf: (box: Box) => number, sun: [nu
   });
   const l = Math.hypot(...sun);
   const lamps = Float32Array.from(coveredLamps(world).flat());
-  return { x0, y0, z0, nx, ny, nz, boxes, albedo, ground, groundAlbedo: linear(PAVING), sun: [sun[0] / l, sun[1] / l, sun[2] / l], horizon, lamps };
+  return { x0, y0, z0, nx, ny, nz, boxes, albedo, ...(tilts ? { tilts } : {}), ground, groundAlbedo: linear(PAVING), sun: [sun[0] / l, sun[1] / l, sun[2] / l], horizon, lamps };
 }
 
 /** An sRGB colour's linear red, green and blue. */
@@ -371,6 +375,15 @@ function occupancy(input: BakeInput): { solid: Uint8Array; colour: Uint16Array }
   const count = boxes.length / 6;
   for (let b = 0; b < count; b++) {
     const [minX, minY, minZ, maxX, maxY, maxZ] = boxes.subarray(b * 6, b * 6 + 6);
+    const tx = input.tilts?.[b * 2] ?? 0;
+    const tz = input.tilts?.[b * 2 + 1] ?? 0;
+    /** A sloping top's height over a cell's middle. */
+    const topAt = (i: number, k: number) => {
+      if (!tx && !tz) return maxY;
+      const x = Math.min(Math.max(x0 + (i + 0.5) * C, minX), maxX);
+      const z = Math.min(Math.max(z0 + (k + 0.5) * C, minZ), maxZ);
+      return maxY - (tx > 0 ? (maxX - x) * tx : (x - minX) * -tx) - (tz > 0 ? (maxZ - z) * tz : (z - minZ) * -tz);
+    };
     const i0 = Math.max(0, Math.floor((minX - x0) / C));
     const i1 = Math.min(nx - 1, Math.floor((maxX - x0) / C - 1e-6));
     const j0 = Math.max(0, Math.floor((minY - y0) / C));
@@ -380,8 +393,9 @@ function occupancy(input: BakeInput): { solid: Uint8Array; colour: Uint16Array }
     for (let k = k0; k <= k1; k++) {
       const oz = Math.min(maxZ, z0 + (k + 1) * C) - Math.max(minZ, z0 + k * C);
       for (let j = j0; j <= j1; j++) {
-        const oy = Math.min(maxY, y0 + (j + 1) * C) - Math.max(minY, y0 + j * C);
         for (let i = i0; i <= i1; i++) {
+          const top = topAt(i, k);
+          const oy = Math.min(top, y0 + (j + 1) * C) - Math.max(minY, y0 + j * C);
           const ox = Math.min(maxX, x0 + (i + 1) * C) - Math.max(minX, x0 + i * C);
           if (ox <= 0 || oy <= 0 || oz <= 0) continue;
           const c = (k * ny + j) * nx + i;

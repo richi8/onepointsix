@@ -193,6 +193,10 @@ export interface MapBox extends Rect {
   look?: MapLook;
   /** Its plaster, for its look alone: a block of houses plastered over; cut stone if left out. */
   colour?: number;
+  /** The map's ground: its top drawn as one surface with the ground round it (see client/terrain.ts), only its sides as a box. */
+  ground?: boolean;
+  /** Its top sloping as a road does, rising `x` a metre toward +x and `z` toward +z, at `y1` at its highest corner (see World's Box.tilt). */
+  tilt?: { x: number; z: number };
   /** The boxes it collides as, in place of itself, where what's drawn isn't a box (a heap of rubble). */
   collides?: (Rect & { y0: number; y1: number })[];
 }
@@ -203,7 +207,7 @@ export interface MapBox extends Rect {
  */
 export type MapLook =
   | 'truck' | 'stall' | 'cart' | 'fountain' | 'plane' | 'olive' | 'memorial' | 'kiosk' | 'boat'
-  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'sandbags' | 'rubble' | 'doors';
+  | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'sandbags' | 'rubble' | 'doors' | 'under';
 
 /**
  * A flight of steps outside, `width` wide, its foot's middle at (x, z) on
@@ -282,6 +286,42 @@ export interface MapPlant {
   s?: number;
 }
 
+/**
+ * A straight wall drawn over a house's outline where the map's boxes make a
+ * stair of corners of a diagonal one, for its look alone (the corners still
+ * collide): along the line from (x0, z0) to (x1, z1), the house on its right
+ * looking along it, its face `out` metres out of that line toward the
+ * floor, reaching `depth` back into the house, from `y0` to `y1`, plastered
+ * `colour`.
+ */
+export interface MapFacade {
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+  out: number;
+  depth: number;
+  y0: number;
+  y1: number;
+  colour: number;
+}
+
+/**
+ * A box of stone standing turned as it stands, for its look alone, drawn
+ * over the boxes it collides as (MapBox.look 'under'): its middle at
+ * (x, z), `width` along its turn and `depth` across, turned `turn` radians
+ * from +x toward +z, from `y0` to `y1`.
+ */
+export interface MapStone {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  turn: number;
+  y0: number;
+  y1: number;
+}
+
 /** A named place on a map, for the Deathmatch simulation's report of where fights happen and the dev view. */
 export interface MapArea extends Rect {
   name: string;
@@ -310,6 +350,10 @@ export interface GameMap {
   plants?: MapPlant[];
   /** Its places by name, where it has no buildings to name them by. */
   areas?: MapArea[];
+  /** Its houses' diagonal walls, straightened, for its look alone. */
+  facades?: MapFacade[];
+  /** Its boxes of stone as they stand, for their look alone. */
+  stones?: MapStone[];
 }
 
 /** What the ground of `map` is paved with at (x, z), or null beyond its paving's area. */
@@ -352,5 +396,7 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
     lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),
     plants: map.plants?.map(at),
     areas: map.areas?.map(rect),
+    facades: map.facades?.map((f) => ({ ...f, x0: f.x0 + dx, x1: f.x1 + dx, z0: f.z0 + dz, z1: f.z1 + dz })),
+    stones: map.stones?.map(at),
   };
 }
