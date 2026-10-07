@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Paving worn where people walk',
+    notes: ['In both Calabianca maps, the paving is now darker and smoother along the routes people actually take through the town, instead of along a few hand-drawn lines.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Damp where the walls really stand',
     notes: ['In the old town, walls that stand on a terrace, a ramp or a lower roof are now damp and dirty at their foot, as the ones on the street are.'],
   },

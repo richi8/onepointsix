@@ -263,6 +263,38 @@ export type Paving = 'flagstones' | 'cobbles' | 'grass' | 'earth';
 export interface MapPaving {
   area: Rect;
   patches: (Rect & { kind: Paving })[];
+  /** How worn it is by where bots walk, from the Deathmatch simulation (see footfall.ts); none worn by it if left out. */
+  footfall?: Footfall;
+}
+
+/**
+ * Where people walk over a map's paving: a grid of `w` × `h` cells of `cell`
+ * metres from the paving area's lowest corner, row by row, each a byte of
+ * how worn the ground is there (0 to 255), as base64.
+ */
+export interface Footfall {
+  cell: number;
+  w: number;
+  h: number;
+  data: string;
+}
+
+/** How worn `f` says the paving is at (x, z), 0 to 1, over `paving`'s area, smooth between cells. */
+export function wornAt(paving: MapPaving, bytes: Uint8Array, x: number, z: number): number {
+  const f = paving.footfall!;
+  const u = (x - paving.area.minX) / f.cell - 0.5;
+  const v = (z - paving.area.minZ) / f.cell - 0.5;
+  const i = Math.floor(u);
+  const j = Math.floor(v);
+  const at = (a: number, b: number) => (a < 0 || b < 0 || a >= f.w || b >= f.h ? 0 : bytes[b * f.w + a]);
+  const fu = u - i;
+  const fv = v - j;
+  return ((at(i, j) * (1 - fu) + at(i + 1, j) * fu) * (1 - fv) + (at(i, j + 1) * (1 - fu) + at(i + 1, j + 1) * fu) * fv) / 255;
+}
+
+/** A footfall's cells as bytes. */
+export function footfallBytes(f: Footfall): Uint8Array {
+  return Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
 }
 
 /**
@@ -396,7 +428,7 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
     props: map.props.map((p) => (p.kind === 'crate' ? at(p) : rect(p))),
     spawns: map.spawns.map(at),
     ...(map.bases ? { bases: { red: at(map.bases.red), blue: at(map.bases.blue) } } : {}),
-    ...(map.paving ? { paving: { area: rect(map.paving.area), patches: map.paving.patches.map(rect) } } : {}),
+    ...(map.paving ? { paving: { ...map.paving, area: rect(map.paving.area), patches: map.paving.patches.map(rect) } } : {}),
     lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),
     plants: map.plants?.map(at),
     areas: map.areas?.map(rect),

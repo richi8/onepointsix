@@ -3,6 +3,7 @@ import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
 import { World } from '../src/shared/world.ts';
 import * as THREE from 'three';
 import { footLifts } from '../src/client/age.ts';
+import { footfallBytes } from '../src/shared/maps/index.ts';
 import { townPaint } from '../src/client/townlook.ts';
 
 // Calabianca's age (chunk 61): how worn its paving is where people walk,
@@ -20,11 +21,31 @@ const worn = (x: number, z: number) =>
   data[(Math.floor((z - paint.rect.minZ) / 0.5) * width + Math.floor((x - paint.rect.minX) / 0.5)) * 4 + 3] / 255;
 
 describe('Calabianca\'s worn paving', () => {
-  it('is worn along a lane, less so a step to its side, and not at all well off it', () => {
-    // The quay runs along z = 50 from x = -62 to 18.
-    expect(worn(-30, 50 + Z)).toBeGreaterThan(0.7);
-    expect(worn(-30, 48.5 + Z)).toBeLessThan(worn(-30, 50 + Z));
-    expect(worn(-30, 48.5 + Z)).toBeGreaterThan(0.2);
+  it('is worn where the bots walked, less so a few steps off it, and not at all where they never went', () => {
+    const paving = town.map!.paving!;
+    const f = paving.footfall!;
+    const bytes = footfallBytes(f);
+    // The busiest cell and the doorways' and stairs' spots aside, the wear follows what the simulation recorded.
+    const busiest = bytes.indexOf(Math.max(...bytes));
+    const x = paving.area.minX + ((busiest % f.w) + 0.5) * f.cell;
+    const z = paving.area.minZ + (Math.floor(busiest / f.w) + 0.5) * f.cell;
+    expect(worn(x, z)).toBeGreaterThan(0.7);
+    // Where none of a cell's neighbours were walked either, it's unworn (but at a doorway or a stair's foot).
+    let unwalked = 0;
+    let unworn = 0;
+    for (let j = 3; j < f.h - 3; j += 2) {
+      for (let i = 3; i < f.w - 3; i += 2) {
+        let sum = 0;
+        for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) sum += bytes[(j + dj) * f.w + i + di];
+        if (sum > 0) continue;
+        unwalked++;
+        if (worn(paving.area.minX + (i + 0.5) * f.cell, paving.area.minZ + (j + 0.5) * f.cell) < 0.05) unworn++;
+      }
+    }
+    expect(unwalked).toBeGreaterThan(100);
+    expect(unworn / unwalked).toBeGreaterThan(0.9);
+    // The quay, which they cross, is worn along its length.
+    expect(worn(-30, 50 + Z)).toBeGreaterThan(0.5);
   });
 
   it('is worn most at a doorway on the ground and at a stair\'s foot', () => {

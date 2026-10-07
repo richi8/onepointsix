@@ -9,12 +9,15 @@
 // and a heat map of every game, written to test-results/deathmatch-<seed>.png
 // (see heatmap.ts). For tuning Deathmatch before and between playtests: on the
 // old town, or with `team` Team Deathmatch on the map after Dust 2.
-// Usage: npm run sim:deathmatch [seconds] [seeds, comma-separated] [deathmatch|team]
+// With `footfall` after the mode, it also writes where the bots stood outdoors, over all the seeds, into the map's
+// `-footfall.ts`, which wears the town's paving (see footfall.ts).
+// Usage: npm run sim:deathmatch [seconds] [seeds, comma-separated] [deathmatch|team] [footfall]
 
 import { DEATHMATCH_CAPACITY, EYE_HEIGHT, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
 import type { Side } from '../shared/protocol.ts';
 import { inBuilding, type World } from '../shared/world.ts';
+import { FootfallCount, footfallSource } from './footfall.ts';
 import { heatPicture, LONG, type KillAt, type Where } from './heatmap.ts';
 import { MODES } from './directory.ts';
 import { ARENA_SIGHT, arenaPicks } from './population.ts';
@@ -90,6 +93,10 @@ function placeOf(world: World, x: number, y: number, z: number): string {
 const seconds = Number(process.argv[2] ?? 600);
 const seeds = (process.argv[3] ?? String(DEFAULT_WORLD.seed)).split(',').map(Number);
 const mode = process.argv[4] === 'team' ? 'team' : 'deathmatch';
+const writeFootfall = process.argv[5] === 'footfall';
+/** Where the bots stood outdoors, over every seed, if it's to be written. */
+let walked: FootfallCount | undefined;
+let walkedMap = '';
 
 function median(values: readonly number[]): number {
   const s = [...values].sort((a, b) => a - b);
@@ -168,6 +175,12 @@ for (const seed of seeds) {
       const s = b.state;
       stateTicks.set(b.bot.state, (stateTicks.get(b.bot.state) ?? 0) + 1);
       if (!s.dead) where[whereIs(server.world, s.x, s.y, s.z)]++;
+      if (writeFootfall && !s.dead && server.world.map?.paving) {
+        walked ??= new FootfallCount(server.world.map.paving);
+        walkedMap = server.world.map.id;
+        // On the terrain itself, not on a terrace, a floor or a roof, and not indoors.
+        if (s.y - server.world.terrainHeight(s.x, s.z) < 0.6 && !server.world.buildings.some((h) => inBuilding(h, s.x, s.z))) walked.step(s.x, s.z);
+      }
       const life = lastLife.get(b.id);
       if (life === undefined || s.life !== life) {
         const on = spawnPoint(s.x, s.z);
@@ -270,4 +283,11 @@ for (const seed of seeds) {
   const file = `test-results/deathmatch-${seed}.png`;
   fs.writeFileSync(file, await heatPicture(server.world, killsAt));
   console.log(`  heat map: ${file}`);
+}
+
+if (walked) {
+  const name = walkedMap.replace('-', '');
+  const file = `src/shared/maps/${name}-footfall.ts`;
+  fs.writeFileSync(file, new TextEncoder().encode(footfallSource(walked.footfall())));
+  console.log(`footfall: ${file}`);
 }

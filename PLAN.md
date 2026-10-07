@@ -486,10 +486,13 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 [KNOWN_ISSUES_HISTORY.md](KNOWN_ISSUES_HISTORY.md).
 
 ### Look and animation
-- **The town's paving is worn by hand-drawn lanes** (chunk 61): along the dev view's lines,
-  round doorways and at stairs' feet, not where players and bots actually walk (the
-  `sim:deathmatch` heat map could say). Where two of its patches meet, their joints may show
-  doubled for a hand's breadth, and a dark stone counts as a joint and holds water in rain.
+- **The town's paving is worn where the bots walk, not where players do** (chunk 61): the
+  wear comes from where 12 bots stood outdoors over five 10-minute `sim:deathmatch` games
+  (`sim:deathmatch 600 1,2,3,4,5 deathmatch|team footfall` rewrites `-footfall.ts`; run it again
+  after the map's walls, stairs or spawns change, or the wear is of the old layout). Players
+  cut corners, camp and sprint differently. Where two of the paving's patches meet, their
+  joints may show doubled for a hand's breadth, and a dark stone counts as a joint and holds
+  water in rain.
 - **The town's age costs up to 0.8 ms a frame** (chunk 61), most from above, where the
   buildings' boxes, drawn in no order, shade the same pixel many times over.
 - **The town's details are boxes** (chunk 59), **Resolved in part** (chunks 62, 63): leaves,

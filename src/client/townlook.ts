@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Layer } from '../shared/layers.ts';
-import { pavingAt, type Paving } from '../shared/maps/index.ts';
+import { footfallBytes, pavingAt, wornAt, type Paving } from '../shared/maps/index.ts';
 import type { World } from '../shared/world.ts';
 import { faces, type TownPaint } from './surfaces.ts';
 
@@ -22,7 +22,7 @@ const PAVING_LAYER: Record<Paving, number> = {
 
 /** Metres a texel of the paving's texture covers. */
 const PAINT_TEXEL = 0.5;
-/** Metres from a lane's line its paving is worn, falling off as a bell; how worn it is on the line. */
+/** Metres from a lane's line its paving is worn, falling off as a bell; how worn it is on the line (or, by footfall, at the most). */
 const LANE_WEAR = 1.6;
 const LANE_WORN = 0.8;
 /** Metres round a doorway on the ground, or a stair's foot, the paving is worn, wholly at the middle. */
@@ -58,7 +58,9 @@ export function townPaint(world: World): TownPaint | undefined {
 /**
  * How worn the paving is, 0 to 255, into the alpha of `data`, the paint's
  * w × h texels from (x0, z0): darker and smoother along the map's lanes, at
- * the doorways on the ground and at the stairs' feet, where people walk.
+ * the doorways on the ground and at the stairs' feet, where people walk:
+ * by the footfall the bots' simulation recorded (see footfall.ts), or where a
+ * map has none, along its lanes.
  */
 function wear(world: World, data: Uint8Array, x0: number, z0: number, w: number, h: number): void {
   const map = world.map!;
@@ -76,7 +78,14 @@ function wear(world: World, data: Uint8Array, x0: number, z0: number, w: number,
     }
   };
   const reach = LANE_WEAR * 2.5;
-  for (const lane of map.lanes ?? []) {
+  // Where the bots walked in the simulation, if the map has it, wears the paving; else the lanes drawn on its dev view do.
+  const footfall = map.paving?.footfall;
+  if (footfall) {
+    const bytes = footfallBytes(footfall);
+    const a = map.paving!.area;
+    stamp(a.minX, a.minZ, a.maxX, a.maxZ, (x, z) => LANE_WORN * wornAt(map.paving!, bytes, x, z));
+  }
+  for (const lane of footfall ? [] : map.lanes ?? []) {
     for (let k = 1; k < lane.points.length; k++) {
       const [ax, az] = lane.points[k - 1];
       const [bx, bz] = lane.points[k];

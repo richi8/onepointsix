@@ -1,6 +1,7 @@
 import { yawToward } from '../geom.ts';
 import type { Rect } from '../world.ts';
 import { moved, type Facing, type GameMap, type MapBlock, type MapBox, type MapBuilding, type MapCrate, type MapFlight, type MapOpening, type MapPlant, type MapProp, type MapRamp, type MapSign, type MapSpawn, type MapStair, type MapTrim } from './index.ts';
+import { FOOTFALL } from './calabianca-footfall.ts';
 import { levelGround, type Level } from './levels.ts';
 
 // Calabianca: a whitewashed town on a hillside above the sea, Deathmatch's
@@ -865,6 +866,7 @@ const TOWN: GameMap = {
       { ...r(WEST, -36, NORTH, -30), kind: 'grass' },
       { ...r(WEST, -56, 40, SEA), kind: 'earth' },
     ],
+    footfall: FOOTFALL,
   },
   lanes: [
     { name: 'quay', points: [[-62, 50], [18, 50], [20, 44], [40, 44], [60, 42], [65, 36]] },

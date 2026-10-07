@@ -2,6 +2,7 @@ import { yawToward } from '../geom.ts';
 import type { Rect } from '../world.ts';
 import { BLOCKS, BOXES, COVERS, CRATES, DECKS, FACADES, FLOORS, GRID, LEAVES, PARAPETS, ROOFS, SLOPES, SPAWNS, TURNED } from './calabianca2grid.ts';
 import { moved, type GameMap, type MapBox, type MapFacade, type MapLane, type MapStone, type MapProp, type MapSpawn, type Paving } from './index.ts';
+import { FOOTFALL } from './calabianca2-footfall.ts';
 import { levelGround } from './levels.ts';
 
 // Calabianca rebuilt (Phase 10): Team Deathmatch's map, laid out after the most
@@ -243,6 +244,7 @@ const PLAN: GameMap = {
       patch('cobbles', 70, 10, 262, 180),
       patch('earth', 845, 555, 930, 705),
     ],
+    footfall: FOOTFALL,
   },
   lanes: LANES,
   facades: FACADE_WALLS,
