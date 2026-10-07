@@ -13,7 +13,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
     title: 'Tidier washing lines',
-    notes: ['In the old town, cables and washing lines no longer cross each other over the lanes.'],
+    notes: ['In the old town, cables and washing lines no longer cross each other over the lanes, and a washing line is tied off beside a window opposite rather than on a blank wall.'],
   },
   {
     date: '2026-10-07',

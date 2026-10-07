@@ -3052,3 +3052,10 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   were strung from random anchors to whatever wall a level ray met, so two could cross.
   **Resolved** (2026-10-07): `Life.string` skips a line that crosses one already strung
   within half a metre of its height; lines to blank walls and the lack of sway stay in Known Issues.
+
+- **Washing lines run to blank walls; nothing sways** (62, the rest of "strung by a straight look"):
+  a line was strung from beside a window to whatever wall a level ray met.
+  **Resolved** (2026-10-07): a washing line now ends only at a hook beside a window on the wall
+  facing it, within 1.5 m of where its ray met the wall (`Life.hookNear`), at the same height, or
+  isn't strung. **Accepted**: nothing sways, as the lines and clothes are static geometry merged
+  into the town's tiles; animating them would take a wind shader on every one for little to see.

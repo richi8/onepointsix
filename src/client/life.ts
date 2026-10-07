@@ -53,6 +53,8 @@ function hang(shapes: Shapes, a: THREE.Vector3, b: THREE.Vector3, sag: number, r
 
 export class Life {
   private readonly anchors: Anchor[] = [];
+  /** Where a washing line may end: beside every window high enough to hang one from, on the wall facing `out`. */
+  private readonly hooks: { at: THREE.Vector3; out: THREE.Vector3 }[] = [];
   /** Every line strung across a lane: its ends, how far it sags and what it is. */
   readonly strung: { from: THREE.Vector3; to: THREE.Vector3; sag: number; kind: Anchor['kind'] }[] = [];
   private readonly world: World;
@@ -107,6 +109,10 @@ export class Life {
       }
       // A washing line from beside a window.
       for (const o of windows) {
+        for (const side of [-1, 1]) {
+          const [hx, hz] = face.at(o.at + side * (o.width / 2 + 0.2), 0.12);
+          this.hooks.push({ at: new THREE.Vector3(hx, w.y + 2.05, hz), out: this.outOf(face) });
+        }
         if (rand() > 0.2) continue;
         const a = o.at + (rand() < 0.5 ? -1 : 1) * (o.width / 2 + 0.2);
         const [x, z] = face.at(a, 0.12);
@@ -177,8 +183,14 @@ export class Life {
       const from = at.clone().addScaledVector(out, 0.05);
       const t = world.raycast(from.x, from.y, from.z, out.x, out.y, out.z, far);
       if (!(t >= near && t <= far)) continue;
-      const end = from.clone().addScaledVector(out, t - 0.04);
+      let end = from.clone().addScaledVector(out, t - 0.04);
       if (!onWall(end.clone().addScaledVector(out, 0.04), out)) continue;
+      // A washing line is tied off beside a window opposite, not to a blank wall.
+      if (kind === 'line') {
+        const hook = this.hookNear(end, out);
+        if (!hook) continue;
+        end = hook.at.clone();
+      }
       const mid = from.clone().lerp(end, 0.5);
       const sag = kind === 'cable' ? 0.03 * t + 0.08 : 0.04 * t + 0.05;
       // High over the lane below, with room to walk under.
@@ -190,6 +202,18 @@ export class Life {
         for (const p of [from, end]) this.boxes.box(p.x - 0.03, p.y - 0.03, p.z - 0.03, p.x + 0.03, p.y + 0.03, p.z + 0.03, IRON);
       } else this.washing(from, end, sag, rand);
     }
+  }
+
+  /** The nearest hook on the wall facing `out` within a metre and a half of `p` along it and half a metre of its height, or null. */
+  private hookNear(p: THREE.Vector3, out: THREE.Vector3): { at: THREE.Vector3; out: THREE.Vector3 } | null {
+    let best: { at: THREE.Vector3; out: THREE.Vector3 } | null = null;
+    let bestD = 1.5;
+    for (const h of this.hooks) {
+      if (h.out.dot(out) > -0.9 || Math.abs(h.at.y - p.y) > 0.5) continue;
+      const d = Math.hypot(h.at.x - p.x, h.at.z - p.z);
+      if (d < bestD) (best = h), (bestD = d);
+    }
+    return best;
   }
 
   /** A washing line from a to b, sagging `sag`, hung with clothes. */
