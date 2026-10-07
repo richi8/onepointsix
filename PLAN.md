@@ -533,17 +533,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
 - **Bots don't play as a side** (2026-10-07): each hunts on its own as in Deathmatch, with no
   calls to friends, grouping or holding a part of the map; they only leave friends alone and
   don't shoot through them.
-- **Not tuned** (2026-10-07), **resolved in part** (2026-10-07): `npm run sim:deathmatch -- 600
-  1,2,3 team` (which since reports each side's kills, the kills made in each half, and respawns
-  in the other's half and near or seen by an enemy) gives: Blue won all three games, 127–107,
-  121–80 and 131–108; 80–88% of kills are made in Red's half (nearer T spawn), so the fighting
-  happens on Red's side of the map; a respawn lands in the other side's half 2–7 times of about
-  120 for Red and never for Blue; no respawn was in an enemy's sight, and the nearest enemy was
-  a median 48–50 m off, none under 15 m. Still 60–76 of 200–240 deaths came within 15 s of
-  spawning, about as many as in the old town's Deathmatch. Why Blue wins (its half's
-  sightlines, or Red's spawns being run into) isn't known, and nothing has been tuned; the
-  playtest stays the testers'.
-
 ### Deathmatch
 - **Respawns are still often near a fight** (chunk 54), **resolved in part** (chunk 58): with 16
   in the town, no spawn point is 30 m from everyone and out of sight in 24–43% of respawns, so
