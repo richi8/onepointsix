@@ -2234,6 +2234,11 @@ export class Bot {
     return ctx.nav.stands(self.x + x * 1, self.y, self.z + z * 1) ? { x, z } : dir;
   }
 
+  /** Whether it has somewhere it is making for, as against holding or watching where it stands. */
+  get heading(): boolean {
+    return this.goal !== null;
+  }
+
   /** Unit direction to move in this command, or null to stand still. */
   private moveDir(ctx: BotContext, self: Agent, target: Agent | undefined): Waypoint | null {
     if (this.goal) {

@@ -2,7 +2,7 @@
 // they went: how often people die and how long they live, how kills spread,
 // how safe respawns are, whether anyone runs out of ammo and what the bots
 // spend their time on, and where: on the ground, upstairs or on the roofs;
-// and any bot stuck, trying to go somewhere and not getting 2 m in 30 s.
+// and any bot stuck, making for somewhere and not getting 2 m in 30 s (not one holding where it stands).
 // On a map, where the fights happen: the places killers stood that killed the
 // most (a room's storey, a roof, or a few metres of street), those that
 // killed most from afar, and the spawn points whose operators died soonest;
@@ -226,7 +226,7 @@ for (const seed of seeds) {
       }
       lastLife.set(b.id, s.life);
       const at = still.get(b.id);
-      if (s.dead || !MOVING.has(b.bot.state)) still.delete(b.id);
+      if (s.dead || !MOVING.has(b.bot.state) || !b.bot.heading) still.delete(b.id);
       else if (!at || at.life !== s.life || Math.hypot(s.x - at.x, s.z - at.z) > STUCK_REACH) still.set(b.id, { x: s.x, z: s.z, y: s.y, t: server.time, life: s.life });
       else if (server.time - at.t > STUCK_SPAN) {
         stuck.push(`${b.bot.state} at ${s.x.toFixed(1)}, ${s.y.toFixed(1)}, ${s.z.toFixed(1)}`);
