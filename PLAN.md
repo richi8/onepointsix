@@ -575,10 +575,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
 - **Kills gather at the new map's chokes** (chunk 67, redone 2026-10-07): over three 10-minute
   games, the 6 m squares outside long and at long's doors take 4–6% of kills each, against the
   3% the chunk asked. That's the original's chokes doing what they do; chunk 70 tunes them.
-- **Respawns on the new map come soon after death** (chunk 67, redone): 12 operators on 114 m
-  leave no spawn point 30 m from everyone and out of sight in 39–53% of respawns, so the
-  farthest is taken (none was seen); 54–63% of deaths come within 15 s of spawning, against the
-  old town's 27–33%. Chunk 70 moves the points.
 - **The new map's frames cost more and weren't measured cleanly** (chunk 67, redone): two runs
   of the town bench with 12 soldiers on 2026-10-07, with the sloping floors and the ground drawn
   as one surface with the terrain's material, gave 10.4–21.3 ms and 11.8–20.4 ms at the same
