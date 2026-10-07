@@ -26,6 +26,9 @@ export const LAYERS = [
   { name: 'cotto', polyHaven: 'terracotta_floor_tiles', scale: 2.08, tint: [1, 1, 1] },
 ] as const;
 
+/** How many layers are the island's: the rest, a map town's, are in the full textures only. */
+export const ISLAND_LAYERS = 10;
+
 type LayerName = (typeof LAYERS)[number]['name'];
 
 /** Each layer's index by name. */

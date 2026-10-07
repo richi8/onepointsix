@@ -637,11 +637,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
   picked to watch from, 32–49 are got to; the rest are given up for someone seen on the way, a
   shot from somewhere else or a death. So bots are upstairs 10–15% of the time and on the roofs
   3–5%, not more.
-- **Every mode loads the town's textures** (chunk 59): the six new layers are stacked into the
-  same arrays as the island's, 2.12 MB against 1.35 MB, transcoded on every first visit though
-  only Deathmatch uses them. Warm loads didn't change (2.0 s locally, island and town); a slow
-  connection and a cold load pay for the 0.77 MB. An array of the town's own, loaded for
-  Deathmatch only, would spare the others.
 - **The town is heavier to draw than the island with nobody about** (chunk 64): the benchmark's
   empty frame takes 10–11.6 ms at the town's seven spots against 6.1 on the island, about
   6.5–8.6 ms of it the GPU's; with 16 soldiers 12.2–14.6 ms, against 13.2 for the island's 24.

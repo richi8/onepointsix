@@ -4,7 +4,7 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { AVATAR_NAMES } from '../shared/avatars.ts';
-import { reporter } from './loading.ts';
+import { reporter, swap } from './loading.ts';
 
 // Everything the game downloads, all CC0 but the soldiers, which are MIT (see
 // public/assets/CREDITS.md), as packed by scripts/fetch-assets.mjs. The main bundle imports this module
@@ -52,11 +52,14 @@ export async function loadAssets(renderer: THREE.WebGLRenderer, clipSun = false)
     const url = `${BASE}${file}`;
     return loader.loadAsync(url, reporter(url));
   };
+  // A map's town has layers of its own, which come last in the textures; the island's modes load them without.
+  const [colorFile, normalFile] = ['color', 'normal'].map((kind) => `textures/${kind}${clipSun ? '' : '-island'}.ktx2`);
+  if (clipSun) for (const kind of ['color', 'normal']) swap(`${BASE}textures/${kind}-island.ktx2`, `${BASE}textures/${kind}.ktx2`);
   try {
     const [[albedo, normal, sky, skyPhoto], models] = await Promise.all([
       Promise.all([
-        load<THREE.Texture>(ktx2, 'textures/color.ktx2'),
-        load<THREE.Texture>(ktx2, 'textures/normal.ktx2'),
+        load<THREE.Texture>(ktx2, colorFile),
+        load<THREE.Texture>(ktx2, normalFile),
         load<THREE.Texture>(new HDRLoader(), 'sky.hdr'),
         load<THREE.Texture>(photoLoader(), 'sky.jpg'),
       ]),

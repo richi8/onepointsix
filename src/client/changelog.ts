@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Lighter first load',
+    notes: ['Extraction and the other island modes no longer download the old town’s textures, which about 0.75 MB less on a first visit.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'See-through balcony railings',
     notes: ['In the old town, you can now see and shoot between the bars of a balcony’s railing, so whoever crouches behind one can be hit through it. Its solid foot and top rail still stop rounds, and nobody can walk through it.'],
   },

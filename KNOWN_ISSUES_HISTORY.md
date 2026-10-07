@@ -3071,3 +3071,11 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   0.17 m off its wall with a 0.05 m radius, so its inner face is 0.12 m out, as far as a
   cornice (0.12 m) or any string course (0.04 m) stands; it touches the cornice and doesn't
   cross it. The rest of that issue, things on the walls that don't collide, stays open.
+
+- **Every mode loads the town's textures** (59): the town's six layers were stacked into the
+  same arrays as the island's, 2.12 MB against 1.35 MB, transcoded on every first visit though
+  only Deathmatch used them. **Resolved** (2026-10-07): the town's layers come last, so
+  `fetch-assets.mjs` also writes `color-island.ktx2` and `normal-island.ktx2` (the first
+  `ISLAND_LAYERS` = 10 layers, 1.37 MB together); `loadAssets` loads those unless it's a map,
+  which loads the full arrays as before (the loading bar's `swap` swaps its expected sizes).
+  The layer indices don't change, and the full files came out byte for byte as before.

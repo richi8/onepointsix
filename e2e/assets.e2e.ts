@@ -1,18 +1,25 @@
-import { expect, test } from '@playwright/test';
-import { LAYERS } from '../src/shared/layers.ts';
+import { expect, test, type Page } from '@playwright/test';
+import { ISLAND_LAYERS, LAYERS } from '../src/shared/layers.ts';
 import { open } from './game.ts';
 
 // The assets as the game loads them: through our own Basis transcoder in
 // every engine, and measured against the originals they were made from (see
 // dev/assets.ts).
 
-test('the textures load through the transcoder', async ({ page }) => {
+/** How many layers each texture array has, once the game is loaded. */
+const depths = (page: Page) => page.evaluate(() => {
+  const assets = (window as unknown as { assets?: { albedo: { image: { depth: number } }; normal: { image: { depth: number } } } }).assets;
+  return assets && [assets.albedo.image.depth, assets.normal.image.depth];
+});
+
+test('the textures load through the transcoder, without a town\'s layers on the island', async ({ page }) => {
   await open(page);
-  const layers = await page.evaluate(() => {
-    const assets = (window as unknown as { assets?: { albedo: { image: { depth: number } }; normal: { image: { depth: number } } } }).assets;
-    return assets && [assets.albedo.image.depth, assets.normal.image.depth];
-  });
-  expect(layers).toEqual([LAYERS.length, LAYERS.length]);
+  expect(await depths(page)).toEqual([ISLAND_LAYERS, ISLAND_LAYERS]);
+});
+
+test('a map\'s textures have its town\'s layers too', async ({ page }) => {
+  await open(page, '?map=old-calabianca');
+  expect(await depths(page)).toEqual([LAYERS.length, LAYERS.length]);
 });
 
 interface Report {

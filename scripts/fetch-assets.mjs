@@ -21,7 +21,7 @@ import { ALL_EXTENSIONS, KHRTextureBasisu } from '@gltf-transform/extensions';
 import { meshopt, prune, resample } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 import { AVATAR_NAMES, AVATARS } from '../src/shared/avatars.ts';
-import { LAYERS } from '../src/shared/layers.ts';
+import { ISLAND_LAYERS, LAYERS } from '../src/shared/layers.ts';
 import { rebase, retarget } from './retarget.mjs';
 import { ffmpeg, get } from './tools.mjs';
 
@@ -211,12 +211,17 @@ if (doing('textures')) {
 }
 mkdirSync(join(OUT, 'textures'), { recursive: true });
 // The colour space is stated, since ffmpeg's PNGs carry it only when their JPEG did.
-const common = ['create', '--layers', String(LAYERS.length), '--generate-mipmap', '--encode', 'basis-lz', '--clevel', '2', '--assign-primaries', 'bt709'];
-execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_SRGB', '--assign-tf', 'srgb', '--qlevel', '200',
+const common = (layers) => ['create', '--layers', String(layers), '--generate-mipmap', '--encode', 'basis-lz', '--clevel', '2', '--assign-primaries', 'bt709'];
+execFileSync(ktx.bin, [...common(LAYERS.length), '--format', 'R8G8B8_SRGB', '--assign-tf', 'srgb', '--qlevel', '200',
   ...pngs.color, join(OUT, 'textures/color.ktx2')], { env: ktx.env, stdio: 'inherit' });
 // Two-channel normals (X in RGB, Y in alpha); the shader rebuilds Z.
-execFileSync(ktx.bin, [...common, '--format', 'R8G8B8_UNORM', '--assign-tf', 'linear', '--normal-mode', '--qlevel', '192',
+execFileSync(ktx.bin, [...common(LAYERS.length), '--format', 'R8G8B8_UNORM', '--assign-tf', 'linear', '--normal-mode', '--qlevel', '192',
   ...pngs.normal, join(OUT, 'textures/normal.ktx2')], { env: ktx.env, stdio: 'inherit' });
+// The same without a town's layers (they come last), for the modes on the island.
+execFileSync(ktx.bin, [...common(ISLAND_LAYERS), '--format', 'R8G8B8_SRGB', '--assign-tf', 'srgb', '--qlevel', '200',
+  ...pngs.color.slice(0, ISLAND_LAYERS), join(OUT, 'textures/color-island.ktx2')], { env: ktx.env, stdio: 'inherit' });
+execFileSync(ktx.bin, [...common(ISLAND_LAYERS), '--format', 'R8G8B8_UNORM', '--assign-tf', 'linear', '--normal-mode', '--qlevel', '192',
+  ...pngs.normal.slice(0, ISLAND_LAYERS), join(OUT, 'textures/normal-island.ktx2')], { env: ktx.env, stdio: 'inherit' });
 rmSync(work, { recursive: true });
 }
 

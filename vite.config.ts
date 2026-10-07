@@ -7,14 +7,14 @@ import { AVATAR_NAMES } from './src/shared/avatars.ts';
 
 type OutputChunk = Rollup.OutputChunk;
 
-/** Files in public/ the loading screen waits for, and ones loaded in their place in other browsers. */
+/** Files in public/ the loading screen waits for, and ones loaded in their place (a map's textures, with its town's layers). */
 const START_FILES = [
   'assets/basis/basis_transcoder.js', 'assets/basis/basis_transcoder.wasm',
-  'assets/textures/color.ktx2', 'assets/textures/normal.ktx2', 'assets/sky.hdr', 'assets/sky.jpg',
+  'assets/textures/color-island.ktx2', 'assets/textures/normal-island.ktx2', 'assets/sky.hdr', 'assets/sky.jpg',
   ...AVATAR_NAMES.map((name) => `assets/soldiers/${name}.glb`), 'assets/guns/rifle.glb', 'assets/guns/pistol.glb', 'assets/guns/bolt.glb',
   'assets/sounds.json', 'assets/sounds-early.ogg',
 ];
-const ALTERNATIVES: string[] = [];
+const ALTERNATIVES = ['assets/textures/color.ktx2', 'assets/textures/normal.ktx2'];
 /** Modules the game imports lazily, but at once, while the loading screen is up. */
 const START_MODULES = ['src/client/assets.ts', 'src/client/groundcover.ts', 'src/client/impostors.ts'];
 
