@@ -523,24 +523,7 @@ Nothing open: the last was resolved on 2026-10-02 (see the history).
 Nothing open: the last was resolved on 2026-10-03 (see the history).
 
 ### Code and testing
-- **A bot's first path through part of the town costs a hitch** (chunk 54), **resolved in part**
-  (chunk 57): the nav grid works out whether a body gets between floor nodes the first time a
-  search needs it, and the town is mostly floors (roofs, upper storeys, terraces). A broken
-  window or a door no longer throws away the links of whole tiles, and a test keeps every spot
-  in reach (a search for one out of reach looks through the whole town), so the worst tick
-  after a game's first 10 s is 0.17–0.34 s; but in those first seconds, as all 16 bots plan
-  their first paths at once, some cold searches up into the town take 0.5–0.7 s each, and the
-  first second costs 1–3 s of the server's time: the bots stand still that long (the server
-  runs in a worker, so the player's frames don't stall). Warming every link takes 3.8 s. Bots
-  climbing to windows and roofs since chunk 58 meet more cold links all game: the worst tick
-  after the first 10 s is 0.19–0.61 s, and a bot's first roam after spawning is kept on the
-  street, as heading straight for a window from every spawn doubled the first second's cost.
-  **Resolved in part** (chunk 64): on a map, each tick spends about 4 ms after its work working
-  out the links ahead (`NavGrid.warm`), cell by cell across the town, done after about 26 s
-  of play; what searches find is the same, only sooner. The worst tick after the first 10 s
-  is now 0.12–0.17 s. The first second still costs 0.5–1.6 s, as the warm-up can't get ahead
-  of every bot planning at once; a server already running when the player joins, as a real one
-  will be, would hide it.
+Nothing open: the last was resolved on 2026-10-07 (see the history).
 
 ### Playtest and tuning
 Nothing open: the last was accepted on 2026-10-03 (see the history, and the bot extraction

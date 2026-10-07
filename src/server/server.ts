@@ -80,8 +80,6 @@ const HISTORY_TICKS = Math.ceil(MAX_REWIND * SERVER_TICK_RATE) + 2;
 const THINK_TICKS = 3;
 /** Path searches all bots together may start per tick. */
 const PATH_BUDGET = 6;
-/** Milliseconds a tick spends working out a map's paths ahead (see NavGrid.warm), until they all are. */
-const WARM_MS = 4;
 /** Guards this close to one who spots an enemy hear the callout. */
 const CALLOUT_RANGE = 60;
 /** Guards this close to a called extraction hear the call. */
@@ -221,8 +219,6 @@ export class GameServer {
   readonly forecast: Forecast;
   readonly world: World;
   readonly nav: NavGrid;
-  /** Whether a map's paths are all worked out ahead (see NavGrid.warm). */
-  private warm = false;
   readonly containers: Containers;
   readonly extracts: Extracts;
   readonly cover: Cover;
@@ -279,6 +275,8 @@ export class GameServer {
     this.contractRng = mulberry32(this.seed ^ 0x3c6ef372);
     this.bountyRng = mulberry32(this.seed ^ 0x2545f491);
     this.nav = new NavGrid(this.world);
+    // Work out the whole map's paths now, while it loads, rather than as the bots first walk it.
+    this.nav.warm(Infinity);
     // Paint the ground now rather than on the first bot's first look.
     vegetationOf(this.world);
     this.containers = new Containers(this.world, mulberry32(this.seed ^ 0x27d4eb2f), !!options.deathmatch);
@@ -586,8 +584,6 @@ export class GameServer {
       if (p.events.length) p.send({ t: 'events', tick: this.tick, events: p.events });
       p.events = [];
     }
-    // A map's paths worked out ahead, in what's left of the tick.
-    if (!this.warm && this.world.map) this.warm = this.nav.warm(WARM_MS);
   }
 
   // -------------------------------------------------------------- runs
