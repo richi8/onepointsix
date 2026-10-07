@@ -5,6 +5,12 @@ they are, kept with how each was resolved. Grouped by the same areas as in the p
 notes the chunk it came from.
 
 ### Look and animation
+- **The town's details are boxes** (chunk 59), resolved in part (chunks 62, 63): leaves,
+  flowers, window boxes and wheelhouses have real shapes, and the trees are real trees, but
+  the stalls, carts and the lorry's body were still boxes, and the ruined chapel drawn whole.
+  **Resolved** (2026-10-07): at the user's word, as they didn't look good, the lorry, stalls,
+  carts and the chapel's rubble were removed from Calabianca, with the code that drew them; the
+  ruined chapel stays, drawn whole, accepted as it is.
 - **No death animation or ragdoll** (9). Bodies topple backward stiffly around their feet and
   can sink into the ground or walls.
   **Resolved** (13): the soldier's death clip plays, and the body lies down away from its killer.

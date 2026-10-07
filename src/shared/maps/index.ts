@@ -207,7 +207,7 @@ export interface MapBox extends Rect {
  * the shapes keep inside it but where they're too small to matter.
  */
 export type MapLook =
-  | 'truck' | 'stall' | 'cart' | 'fountain' | 'plane' | 'olive' | 'memorial' | 'kiosk' | 'boat'
+  | 'fountain' | 'plane' | 'olive' | 'memorial' | 'kiosk' | 'boat'
   | 'tank' | 'leg' | 'tomb' | 'belltower' | 'quay' | 'sandbags' | 'rubble' | 'doors' | 'under';
 
 /**

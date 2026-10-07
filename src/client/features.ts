@@ -4,7 +4,7 @@ import { Layer } from '../shared/layers.ts';
 import type { MapBox, MapLook } from '../shared/maps/index.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { World } from '../shared/world.ts';
-import { Boxes, CANVAS, CREAM, IRON, painted, plain, Shapes, STONE, stuff, type Stuff } from './townparts.ts';
+import { Boxes, CREAM, IRON, painted, plain, Shapes, STONE, stuff, type Stuff } from './townparts.ts';
 
 // A map's features drawn as what they are, over the boxes they collide as
 // (MapBox.look): the crashed truck, the market's stalls, the carts, the
@@ -16,17 +16,12 @@ import { Boxes, CANVAS, CREAM, IRON, painted, plain, Shapes, STONE, stuff, type 
 // past it, a canopy or a cross, is only drawn.
 
 const WHEEL = plain(0x1c1c1c);
-const HUB = plain(0x8a8a86);
 const GLASS = plain(0x2a3a44);
 const DARK = plain(0x14110e);
 const WATER = plain(0x2e4a52);
 const WOOD = stuff(Layer.boards, 0xc8b8a4, 0x6b5a44);
-const PLANKS = stuff(Layer.planks, 0xe0d8c8, 0x7a6448);
-const TRUCK_BOX = stuff(Layer.metal, 0xe4ded2, 0xb8b2a6);
-const TRUCK_CAB = plain(0x2f5a80);
 const STEEL = stuff(Layer.metal, 0xa8b0aa, 0x6e7670);
 const ROOF = plain(0xa45a3c);
-const FRUIT = [plain(0xe08a20), plain(0xf0d040), plain(0xc0302a), plain(0x5a8a2a), plain(0x7a3a6a)];
 const BURLAP = [plain(0xb8a47a), plain(0xa89468), plain(0xc4b088)];
 const DEBRIS = stuff(Layer.concrete, 0xf0ebe0, 0xc8c0b0);
 const RUBBLE = stuff(Layer.plaster, 0xeee8dc, 0xd8d0c0);
@@ -43,13 +38,6 @@ function rod(shapes: Shapes, a: THREE.Vector3, b: THREE.Vector3, r: number, s: S
   const g = new THREE.CylinderGeometry(r1, r, len, seg);
   const q = new THREE.Quaternion().setFromUnitVectors(UP, b.clone().sub(a).normalize());
   shapes.add(g, new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, 1, 1)), s);
-}
-
-/** A wheel at (x, y, z), radius r and `w` wide, its axle along x or z. */
-function wheel(shapes: Shapes, x: number, y: number, z: number, r: number, w: number, axleX: boolean, s = WHEEL): void {
-  const q = new THREE.Quaternion().setFromAxisAngle(axleX ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0), Math.PI / 2);
-  shapes.add(new THREE.CylinderGeometry(r, r, w, 14), new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, 1, 1)), s);
-  shapes.add(new THREE.CylinderGeometry(r * 0.45, r * 0.45, w + 0.04, 10), new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, 1, 1)), HUB);
 }
 
 /** A lumpy ball of leaves, radius r, at (x, y, z), flattened by `squash`. */
@@ -206,7 +194,7 @@ export function standsOn(world: World, b: MapBox): number {
 }
 
 /** The looks drawn in place of their boxes; the rest are drawn over them. */
-const REPLACED: ReadonlySet<MapLook> = new Set(['truck', 'stall', 'cart', 'fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble', 'doors', 'under']);
+const REPLACED: ReadonlySet<MapLook> = new Set(['fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb', 'sandbags', 'rubble', 'doors', 'under']);
 
 /** The props drawn here in place of their boxes. */
 export function replacedProps(world: World): Set<number> {
@@ -244,76 +232,6 @@ export function features(world: World, boxes: Boxes, shapes: Shapes): void {
     const at = (u: number, v: number): [number, number] => (alongX ? [cx + u, cz + v] : [cx + v, cz + u]);
     const [L, W] = [len / 2, wid / 2];
     switch (b.look) {
-      case 'truck': {
-        // Its cab at the far end, as the hash falls.
-        const dir = rand() < 0.5 ? 1 : -1;
-        const cab = 2.4;
-        const [b0, b1] = dir > 0 ? [-L, L - cab - 0.1] : [-L + cab + 0.1, L];
-        local(b0, -W, y + 0.75, b1, W, top, TRUCK_BOX);
-        local(-L + 0.3, -W + 0.3, y + 0.35, L - 0.3, W - 0.3, y + 0.75, DARK);
-        const [c0, c1] = dir > 0 ? [L - cab, L] : [-L, -L + cab];
-        local(c0, -W + 0.05, y + 0.6, c1, W - 0.05, top - 0.3, TRUCK_CAB);
-        // Its windscreen and side windows, and the bumper.
-        const front = dir > 0 ? L : -L;
-        local(front - dir * 0.01, -W + 0.25, top - 1.3, front + dir * 0.01, W - 0.25, top - 0.45, GLASS);
-        for (const v of [-W + 0.04, W - 0.04]) local(front - dir * 1.1, v - 0.02, top - 1.3, front - dir * 0.2, v + 0.02, top - 0.5, GLASS);
-        local(front - dir * 0.15, -W, y + 0.3, front + dir * 0.05, W, y + 0.6, DARK);
-        local(front - dir * 0.01, -W * 0.5, y + 0.7, front + dir * 0.02, W * 0.5, y + 1.3, DARK);
-        for (const v of [-W + 0.35, W - 0.35]) local(front - dir * 0.01, v - 0.18, y + 0.8, front + dir * 0.03, v + 0.18, y + 1.05, plain(0xf0eee0));
-        for (const v of [-W + 0.03, W - 0.03]) local(c0, v - 0.03, y + 1.4, c1, v + 0.03, y + 1.55, CREAM);
-        for (const u of [-L + 1.3, -L + 2.5, L - 1.4].map((u) => u * dir)) {
-          for (const v of [-W + 0.25, W - 0.25]) {
-            const [x, z] = at(u, v);
-            wheel(shapes, x, y + 0.5, z, 0.5, 0.4, !alongX);
-          }
-        }
-        break;
-      }
-      case 'stall': {
-        const paint = painted(CANVAS[Math.floor(rand() * CANVAS.length)]);
-        local(-L, -W, y, L, W, top, WOOD);
-        local(-L - 0.03, -W - 0.03, top - 0.12, L + 0.03, W + 0.03, top, paint);
-        // Fruit and greens in crates along the top.
-        for (let u = -L + 0.35; u < L - 0.3; u += 0.6) {
-          for (const v of [-W / 2, W / 2]) {
-            local(u - 0.25, v - 0.35, top, u + 0.25, v + 0.35, top + 0.12, PLANKS);
-            const fruit = FRUIT[Math.floor(rand() * FRUIT.length)];
-            for (let k = 0; k < 6; k++) {
-              const [x, z] = at(u - 0.18 + rand() * 0.36, v - 0.28 + rand() * 0.56);
-              blob(shapes, x, top + 0.14, z, 0.07, fruit, rand, 1);
-            }
-          }
-        }
-        // Poles at the corners and a striped canopy over it.
-        for (const u of [-L + 0.05, L - 0.05]) for (const v of [-W + 0.05, W - 0.05]) local(u - 0.03, v - 0.03, top, u + 0.03, v + 0.03, top + 1.3, IRON);
-        const stripes = Math.round(len / 0.3);
-        for (let k = 0; k < stripes; k++) {
-          const u0 = -L - 0.2 + ((len + 0.4) * k) / stripes;
-          local(u0, -W - 0.3, top + 1.3, u0 + (len + 0.4) / stripes, W + 0.3, top + 1.34, k % 2 ? CREAM : plain(CANVAS[Math.floor(rand() * CANVAS.length)]));
-        }
-        break;
-      }
-      case 'cart': {
-        // A two-wheeled cart: its bed on the axle, the shafts out in front, a load of sacks.
-        local(-L, -W, y + 0.45, L, W, top - 0.1, PLANKS);
-        local(-L, -W, top - 0.1, L, -W + 0.08, top + 0.2, WOOD);
-        local(-L, W - 0.08, top - 0.1, L, W, top + 0.2, WOOD);
-        for (const v of [-W - 0.06, W + 0.06]) {
-          const [x, z] = at(0, v);
-          wheel(shapes, x, y + 0.6, z, 0.6, 0.08, alongX ? false : true, WOOD);
-        }
-        for (const v of [-W + 0.2, W - 0.2]) {
-          const [x0, z0] = at(L, v);
-          const [x1, z1] = at(L + 1.2, v * 0.6);
-          rod(shapes, new THREE.Vector3(x0, top - 0.3, z0), new THREE.Vector3(x1, y + 0.4, z1), 0.04, WOOD, 6);
-        }
-        for (let k = 0; k < 4; k++) {
-          const [x, z] = at(-L + 0.4 + rand() * (len - 0.8), -W + 0.4 + rand() * (wid - 0.8));
-          blob(shapes, x, top + 0.1, z, 0.35, plain(0xc8b48a), rand, 0.6);
-        }
-        local(-L - 0.02, -W - 0.02, y + 0.3, L + 0.02, W + 0.02, y + 0.45, DARK);
-        break;
-      }
       case 'fountain': {
         // A square stone basin brimming, a column in its middle and a bowl spilling over.
         const R = 0.35;

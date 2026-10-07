@@ -7,9 +7,8 @@ import { levelGround, type Level } from './levels.ts';
 // Calabianca: a whitewashed town on a hillside above the sea, Deathmatch's
 // map, built from its sketch (dev/townsketch.ts). It falls from the high
 // street at the back (north) to the quay at the sea (south), and its fights
-// turn round three hubs: the market low in the middle, with a crashed truck,
-// stalls and an arcaded loggia; the piazza above it, in front of the church
-// and its bell tower, joined to the market by a grand stair; and the
+// turn round three hubs: the market low in the middle, with an arcaded loggia;
+// the piazza above it, in front of the church and its bell tower, joined to the market by a grand stair; and the
 // palazzo's courtyard to the east. Each pair is joined by an open way, a
 // tight one and one through a building.
 //
@@ -703,16 +702,6 @@ function edgeWalls(): MapBox[] {
 /** An olive's or a plane's trunk. */
 const trunk = (x: number, z: number, h: number, w: number, look: 'plane' | 'olive') => ({ ...solid(x - w / 2, x + w / 2, z - w / 2, z + w / 2, h), look });
 const as = (box: MapBox, look: MapBox['look']): MapBox => ({ ...box, look });
-/**
- * A heap of rubble `h` high over the rectangle, as drawn: colliding as three
- * tiers, a low bed over all of it, higher toward the middle, its peak there.
- */
-function heap(minX: number, maxX: number, minZ: number, maxZ: number, h: number): MapBox {
-  const box = as(solid(minX, maxX, minZ, maxZ, h), 'rubble');
-  const [cx, cz, hx, hz] = [(minX + maxX) / 2, (minZ + maxZ) / 2, (maxX - minX) / 2, (maxZ - minZ) / 2];
-  const tier = (share: number, top: number) => ({ minX: cx - hx * share, maxX: cx + hx * share, minZ: cz - hz * share, maxZ: cz + hz * share, y0: box.y0, y1: box.y1 - h * (1 - top) });
-  return { ...box, collides: [tier(1, 0.4), tier(0.55, 0.75), tier(0.25, 1)] };
-}
 
 const FEATURES: MapBox[] = [
   // The sea wall along the quay, and the quay's face down into the harbour under it.
@@ -720,23 +709,10 @@ const FEATURES: MapBox[] = [
   { minX: WEST, maxX: EAST, minZ: SEA + 0.5, maxZ: 60, y0: -6, y1: 3, look: 'quay' },
   // The bell tower, solid, beside the church.
   as(solid(2.15, 8, -24, -18, 18, 0.5), 'belltower'),
-  // The market: the crashed truck and the stalls.
-  as(solid(-12, -3, 20, 23, 3), 'truck'),
-  as(solid(-20, -17, 26, 28, 1.1), 'stall'),
-  as(solid(-14, -11, 27, 29, 1.1), 'stall'),
-  as(solid(2, 5, 25, 27, 1.1), 'stall'),
-  as(solid(6, 9, 17, 19, 1.1), 'stall'),
-  // Carts: in the yard at the road's hairpin, and two along the high street, breaking up its long views.
-  as(solid(32.5, 34.5, 17, 20, 1.3), 'cart'),
-  as(solid(-32, -29, -42.5, -40.5, 1.3), 'cart'),
-  as(solid(-4.5, -1.5, -41, -39, 1.3), 'cart'),
   // Sandbags where the longest views run, along the market's south side and in Via
   // del Porto against the hotel's wall, past its doorway.
   as(solid(10.2, 13.4, 31.15, 31.85, 1.1), 'sandbags'),
   as(solid(25, 28.2, 30.15, 30.85, 1.1), 'sandbags'),
-  // Rubble fallen from the ruined chapel, by its arch and its door.
-  heap(-55.85, -53.6, -51.4, -49.6, 0.8),
-  heap(-63.5, -61.8, -43.85, -42.4, 0.6),
   // The piazza: the fountain, the plane trees, the war memorial and the kiosk.
   as(solid(-11, -5, -11, -5, 0.9), 'fountain'),
   trunk(-23.5, -11.5, 5, 0.8, 'plane'),

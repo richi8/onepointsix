@@ -486,10 +486,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 [KNOWN_ISSUES_HISTORY.md](KNOWN_ISSUES_HISTORY.md).
 
 ### Look and animation
-- **The town's details are boxes** (chunk 59), **Resolved in part** (chunks 62, 63): leaves,
-  flowers, window boxes and wheelhouses have real shapes, and the trees are real trees (chunk
-  63), but the stalls, carts and the lorry's body are still boxes, and the ruined chapel is
-  drawn whole.
 - **The façades' details cost about 1 ms a frame in the streets** (chunk 62), **resolved in
   part** (chunk 64): about 570 k vertices of shapes (leaves, tiles, cables, rings, flowers)
   and 14,000 boxes. Since chunk 64 they're split into 32 m tiles, so each pass draws only the
@@ -549,8 +545,8 @@ Nothing open: the last was resolved on 2026-10-07 (see the history).
   stand across the longest views `sim:deathmatch` drew (Via del Porto into the road, along the
   market's south side); whether they read as cover where a player wants it is the testers'.
   The two cars that stood across the high street and the road's first leg were removed in
-  chunk 66, as they didn't look good, and nothing took their place. No more stalls or carts
-  were added: the market's four and the three carts already break its views.
+  chunk 66, as they didn't look good, and nothing took their place. The market's stalls and
+  lorry and the three carts were removed later too (2026-10-07), so its views are more open.
 - **Kills gather at the new map's chokes** (chunk 67, redone 2026-10-07): over three 10-minute
   games, the 6 m squares outside long and at long's doors take 4–6% of kills each, against the
   3% the chunk asked. That's the original's chokes doing what they do; chunk 70 tunes them.
