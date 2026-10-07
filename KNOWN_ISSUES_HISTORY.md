@@ -2214,6 +2214,20 @@ notes the chunk it came from.
   **Accepted** (2026-10-03): the user is fine with it for now.
 
 ### Deathmatch
+- **Respawns are still often near a fight** (chunk 54), **resolved in part** (chunk 58): with 16
+  in the town, no spawn point is 30 m from everyone and out of sight in 24–43% of respawns, so
+  the farthest out of sight is taken, and 27–33% of deaths come within 15 s of spawning (chunk
+  57, six 10-minute games, none spawned in anyone's sight). A spawn point within 25 m of a shot
+  fired in the last 6 s now counts as near someone, which took deaths within 15 s from 323 to
+  295 and within 5 s from 47 to 43 over four games; over six, 26–32% within 15 s and 2–6% within
+  5 s. With bots living a median 22–25 s, much of the 15 s count is the pace of the game rather
+  than where they come in. The corner points (the fish market's, the boat yard's) are taken 20–40
+  times a game, as the farthest from everyone, against 4–10 for most.
+  Tried (chunk 65, not kept): preferring spawn points hidden and 70 m, then 50 m, from everyone
+  over the first that is 30 m clear. Over four 10-minute games, deaths within 15 s went from 181
+  to 171, within 5 s from 15 to 14, the nearest operator's median 36 m either way: no change
+  beyond the noise. The town is too small for 16 to keep apart.
+  **Accepted** (2026-10-07): at the user's word respawns stay as they are.
 - **Kills while you watch your death cam go unseen** (48): the client sets aside the game's events
   while a death cam plays, so those kills miss the feed, and their bodies lie down after a short
   wait instead of falling from the round that killed them.
