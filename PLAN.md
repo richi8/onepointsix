@@ -638,17 +638,12 @@ spawn) first; a side's kills its score, at the top of the screen and on Tab, the
 by side; a chevron over each friend, their name within 40 m, through walls; the kill feed's names
 in their side's colour. Its board is `board:calabianca-2:team`, apart from the Deathmatch games
 played on that map before. `sim:deathmatch` takes `team` as a third argument. What it lacks:
-- **A game never ends** (2026-10-07): there's no score to reach, round or clock, as in
-  Deathmatch; the sides' scores run on until the last player leaves.
 - **Bots don't play as a side** (2026-10-07): each hunts on its own as in Deathmatch, with no
   calls to friends, grouping or holding a part of the map; they only leave friends alone and
   don't shoot through them.
 - **Not tuned** (2026-10-07): no `sim:deathmatch -- 600 1,2,3 team` run or playtest yet, so how
   often a side spawns into the other's half, how near fights spawns are, and whether one side's
   half plays better, are unmeasured.
-- **Sides aren't told apart by their look** (2026-10-07): both sides wear the same soldiers;
-  only the marker over a friend says who's who, so an enemy and a friend whose marker is off
-  screen or behind you look the same.
 
 ### Deathmatch
 - **Picking Deathmatch on the menu reloads the page** (chunk 50): its world differs from the

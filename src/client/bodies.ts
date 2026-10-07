@@ -41,7 +41,7 @@ import { REFLECTED } from './water.ts';
 // you see is what you hit.
 // Sides are told apart by their avatars: operators are SWAT officers, guards
 // soldiers in helmets, and commanders soldiers in caps, each body's picked by
-// the island's seed.
+// the island's seed. In Team Deathmatch, Blue dress as operators and Red as guards.
 // Each soldier is drawn in two draw calls a pass: its body with its kit as
 // one skinned mesh, and its gun with its suppressor (see
 // baked.ts). They take the world's shadows everywhere and cast them as far as
@@ -587,7 +587,8 @@ export class Bodies {
         f = undefined;
       }
       if (!f) {
-        f = this.create(p.id, p.team, p.commander);
+        // In Team Deathmatch Blue wear the operators' SWAT officers and Red the guards' soldiers in helmets.
+        f = this.create(p.id, p.side === 'red' ? 'guard' : p.side === 'blue' ? 'operator' : p.team, p.commander, !!p.side);
         this.figures.set(p.id, f);
         f.lastX = p.x;
         f.lastY = p.y;
@@ -749,7 +750,8 @@ export class Bodies {
     f.soldier?.mixer.stopAllAction();
   }
 
-  private create(id: number, team: Team, commander: boolean): Figure {
+  /** `sided`: in Team Deathmatch, where `team` is what the body's side wears. */
+  private create(id: number, team: Team, commander: boolean, sided = false): Figure {
     const group = new THREE.Group();
     const gun = new THREE.Group();
     const soak = new Soak();
@@ -781,7 +783,8 @@ export class Bodies {
       // Far off, bodies take turns to be posed rather than all in one frame.
       wait: Math.random() * FAR_UPDATE,
     };
-    if (this.avatars.length) f.soldier = this.soldier(f, id, commander ? 'commander' : team);
+    // The sides' bodies come in turn, so by id alone every other one: Blue's would all wear one of the two officers.
+    if (this.avatars.length) f.soldier = this.soldier(f, id, commander ? 'commander' : team, sided ? id >> 1 : id);
     else this.placeholder(f, team);
     for (const m of f.materials) {
       flashWhereHit(m, f.hit);
@@ -806,8 +809,9 @@ export class Bodies {
     Object.assign(f, { head, torso, legs });
   }
 
-  private soldier(f: Figure, id: number, side: Side): Soldier {
-    const avatar = this.avatars[this.pick(id, side)];
+  /** `wear` picks its avatar: its id but in Team Deathmatch. */
+  private soldier(f: Figure, id: number, side: Side, wear = id): Soldier {
+    const avatar = this.avatars[this.pick(wear, side)];
     const gltf = avatar.gltf;
     const model = SkeletonUtils.clone(gltf.scene);
     model.scale.setScalar(avatar.scale);

@@ -15,6 +15,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     title: 'Team Deathmatch',
     notes: [
       'Dust DM is now Team DM: Red against Blue on the map after the classic, six a side, players spread over both and bots filling the rest.',
+      'Blue are SWAT officers in black and Red soldiers in green camouflage and helmets, so you can tell the sides apart at a glance.',
       'Every kill scores for your side, shown at the top of the screen; you can’t hurt your own side, and an arrow over each friend shows where they are, through walls too.',
       'You come back on your side’s half of the map while it’s clear of the other side. Tab lists both sides, yours first, with their scores, and the kill feed names everyone in their side’s colour.',
       'Calabianca DM, in the old town, is plain Deathmatch again, everyone against everyone; Team DM keeps a board of its own.',

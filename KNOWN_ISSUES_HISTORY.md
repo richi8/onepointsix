@@ -2319,6 +2319,17 @@ notes the chunk it came from.
   drawn as one surface; stairs only where it's as steep as stairs; the houses one height to an
   8 m plot.
 
+### Team Deathmatch
+- **A game never ends** (Team Deathmatch, 2026-10-07): there's no score to reach, round or
+  clock, as in Deathmatch; the sides' scores run on until the last player leaves.
+  **Accepted** (2026-10-07): at the user's word it's fine as it is.
+- **Sides aren't told apart by their look** (Team Deathmatch, 2026-10-07): both sides wore the
+  same soldiers; only the marker over a friend said who's who.
+  **Resolved** (2026-10-07): at the user's word Blue, at CT spawn, wear the operators' SWAT
+  officers and Red the guards' soldiers in helmets (the body drawn as the side's team). The
+  sides' ids alternate, so a body's avatar is picked by half its id, or every Blue would wear the
+  same one of the two officers.
+
 ## Dropped
 
 Open issues taken off the plan on 2026-09-28 as not worth pursuing: records of what was measured
