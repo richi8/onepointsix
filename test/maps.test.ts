@@ -28,7 +28,8 @@ function fingerprint(w: World): string {
   h.update(Buffer.from(w.heights.buffer));
   h.update(Buffer.from(groundWeights(w).buffer));
   // Rounded to a micrometre: the last bit of a float can differ between machines (a rock's x on Mac arm64 and Linux x64).
-  const strip = (o: unknown): string => JSON.stringify(o, (k, v: unknown) => (k === 'stamp' ? undefined : typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v));
+  // Less `stamp`, and `open` (chunk 62's railings, which the island has none of).
+  const strip = (o: unknown): string => JSON.stringify(o, (k, v: unknown) => (k === 'stamp' || k === 'open' ? undefined : typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v));
   for (const part of [w.trees, w.rocks, w.props, w.panels, w.outposts, w.extracts, w.walls, w.buildings, w.towers, w.colliders]) h.update(strip(part));
   return h.digest('hex').slice(0, 16);
 }

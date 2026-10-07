@@ -19,6 +19,9 @@ export const SLAB = 0.2;
 const PARAPET = 1;
 export const RAIL = 1;
 const RAIL_THICK = 0.1;
+/** How much of a railing's foot and top is solid, the bars between. */
+const RAIL_FOOT = 0.12;
+const RAIL_TOP = 0.06;
 /** A flight's rise and run per step, as the island's buildings' stairs. */
 const STEP_RISE = 0.5;
 const STEP_RUN = 0.55;
@@ -76,6 +79,8 @@ export interface KitBox extends Rect {
   part: Part;
   walk: boolean;
   colour?: number;
+  /** Bars: bodies stop at it, rounds and sight pass through. */
+  open?: boolean;
   /** A layer of the pitched roof `gable` (an index into Kit.gables), drawn as its slopes. */
   gable?: number;
 }
@@ -541,7 +546,13 @@ export function buildKit(
   // Balconies: a slab out from the wall, railed round.
   for (const b of kitBalconies(placed)) {
     box(b.slab, b.y - SLAB, b.y, 'floor', true, b.colour);
-    for (const r of b.rails) box(r, b.y, b.y + RAIL, 'wall', false, b.colour);
+    // Solid at the foot and along the top rail, open between for rounds and sight, as drawn.
+    for (const r of b.rails) {
+      box(r, b.y, b.y + RAIL_FOOT, 'wall', false, b.colour);
+      box(r, b.y + RAIL_FOOT, b.y + RAIL - RAIL_TOP, 'wall', false, b.colour);
+      boxes[boxes.length - 1].open = true;
+      box(r, b.y + RAIL - RAIL_TOP, b.y + RAIL, 'wall', false, b.colour);
+    }
   }
 
   // Crates in the rooms.

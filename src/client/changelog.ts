@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'See-through balcony railings',
+    notes: ['In the old town, you can now see and shoot between the bars of a balcony’s railing, so whoever crouches behind one can be hit through it. Its solid foot and top rail still stop rounds, and nobody can walk through it.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Tidier washing lines',
     notes: ['In the old town, cables and washing lines no longer cross each other over the lanes, and a washing line is tied off beside a window opposite rather than on a blank wall.'],
   },

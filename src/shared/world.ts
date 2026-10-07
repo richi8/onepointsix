@@ -42,6 +42,8 @@ export interface Box {
   gone?: boolean;
   /** Glass: sight and light pass through it, though bodies and rounds don't. */
   clear?: boolean;
+  /** Railing's bars: bodies stop at it, but rounds and sight pass through. */
+  open?: boolean;
   /** A floor up off the ground that bots can climb to and walk on: stairs, an upper storey, a watchtower's platform. */
   walk?: boolean;
   /** What it is. */
@@ -625,7 +627,7 @@ export class World {
       const cell = this.grid.get((gx + GRID_OFFSET) * 4096 + gz + GRID_OFFSET);
       if (cell) {
         for (const c of cell) {
-          if (c.stamp === stamp || c.gone) continue;
+          if (c.stamp === stamp || c.gone || (c.kind === 'box' && c.open)) continue;
           c.stamp = stamp;
           const t = this.rayCollider(c, ox, oy, oz, dx, dy, dz);
           if (t < len) visit(c, Math.min(c.kind === 'cyl' && c.rock ? rockExit() : rayExit(), len) - t);
@@ -807,7 +809,7 @@ export class World {
         for (const c of cell) {
           if (c.stamp === stamp || c.gone) continue;
           c.stamp = stamp;
-          if (glass && c.kind === 'box' && c.clear) continue;
+          if (c.kind === 'box' && (c.open || (glass && c.clear))) continue;
           const t = this.rayCollider(c, ox, oy, oz, dx, dy, dz);
           if (t < best) (best = t), (this.hit = c);
         }
@@ -932,7 +934,7 @@ export class World {
     // Every field there from the start, in one order, so the collision loops see boxes of one shape.
     const box: Box = {
       kind: 'box', minX, minY, minZ, maxX, maxY, maxZ, stamp: 0,
-      panel: undefined, gone: false, clear: false, walk: false, part,
+      panel: undefined, gone: false, clear: false, open: false, walk: false, part,
     };
     this.props.push({ box, style: PART_STYLE[part], tint, panel: -1 });
     this.colliders.push(box);
@@ -1221,7 +1223,9 @@ export class World {
     this.facades.push(...kit.walls);
     for (const g of kit.gables) this.gables.push({ ...g, props: [] });
     for (const b of kit.boxes) {
-      this.addProp(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, b.part).walk = b.walk;
+      const added = this.addProp(b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, b.part);
+      added.walk = b.walk;
+      added.open = !!b.open;
       plaster(this.props.length - 1, b.colour);
       if (b.gable !== undefined) this.gables[b.gable].props.push(this.props.length - 1);
     }

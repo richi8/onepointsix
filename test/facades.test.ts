@@ -44,7 +44,8 @@ describe('rounded edges', () => {
   });
 
   it('rounds buildings\' outer corners and terraces\' tops, but not where one storey of wall stands on the next nor in the ground', () => {
-    const walls = town.props.map((_, i) => i).filter((i) => town.props[i].box.part === 'wall');
+    const rails = railProps(town);
+    const walls = town.props.map((_, i) => i).filter((i) => town.props[i].box.part === 'wall' && !rails.has(i));
     const edges = new Map(walls.map((i) => [i, openEdges(town, matrixOf(i))]));
     const top = [edgeBit(1, 1, 0, -1), edgeBit(1, 1, 0, 1), edgeBit(1, 1, 2, -1), edgeBit(1, 1, 2, 1)].reduce((a, b) => a | b);
     const bottom = [edgeBit(1, -1, 0, -1), edgeBit(1, -1, 0, 1), edgeBit(1, -1, 2, -1), edgeBit(1, -1, 2, 1)].reduce((a, b) => a | b);
@@ -96,21 +97,28 @@ describe('Calabianca\'s façades', () => {
     expect(reach(o.at, w.y + 0.97)).toBeGreaterThan(jamb);
   });
 
-  it('draws every balcony\'s railings in iron, the railings it collides as still there to stop rounds', () => {
+  it('draws every balcony\'s railings in iron, solid at the foot and top and open between for rounds and sight', () => {
     const count = CALABIANCA.buildings.flatMap((b) => b.blocks.flatMap((k) => k.balconies ?? [])).length;
     expect(count).toBeGreaterThan(3);
     const rails = railProps(town);
-    expect(rails.size).toBe(count * 3);
+    // Each railing is a foot, the bars and a top rail.
+    expect(rails.size).toBe(count * 3 * 3);
+    let open = 0;
     for (const i of rails) {
       const b = town.props[i].box;
       expect(b.part).toBe('wall');
-      expect(b.maxY - b.minY).toBeCloseTo(1, 5);
-      // A round at its middle from beside it stops on it.
+      // A round at its middle from beside it passes the bars and stops at the foot and the top rail.
       const [x, y, z] = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2];
       const alongX = b.maxX - b.minX > b.maxZ - b.minZ;
-      const t = alongX ? town.raycast(x, y, z + 3, 0, 0, -1, 5) : town.raycast(x + 3, y, z, -1, 0, 0, 5);
-      expect(t).toBeLessThan(3);
+      const t = alongX ? town.raycast(x, y, z + 0.3, 0, 0, -1, 0.6) : town.raycast(x + 0.3, y, z, -1, 0, 0, 0.6);
+      if (b.open) {
+        open++;
+        expect(t).toBeGreaterThan(0.6);
+        // Bodies still stop at it.
+        expect(town.clear(x, b.minY, z, 0.5, 0.01)).toBe(false);
+      } else expect(t).toBeLessThan(0.4);
     }
+    expect(open).toBe(count * 3);
     expect(railProps(new World(1)).size).toBe(0);
   });
 

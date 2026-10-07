@@ -3059,3 +3059,9 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   facing it, within 1.5 m of where its ray met the wall (`Life.hookNear`), at the same height, or
   isn't strung. **Accepted**: nothing sways, as the lines and clothes are static geometry merged
   into the town's tiles; animating them would take a wind shader on every one for little to see.
+
+- **Balconies' railings are drawn as iron but collide as plaster** (62): rounds stopped at the
+  whole railing and bots couldn't see through it, though it's drawn as bars.
+  **Resolved** (2026-10-07): each railing is three boxes, a solid foot (12 cm) and top rail (6 cm)
+  and the bars between, flagged `open` (`Box.open`): bodies still stop at it, but rounds and
+  sight (`raycast`, `collidersAlong`) pass through, so legs behind a railing can be shot and seen.

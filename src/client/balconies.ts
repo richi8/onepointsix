@@ -25,7 +25,7 @@ export function railProps(world: World): Set<number> {
   world.props.forEach((p, i) => {
     const b = p.box;
     if (b.part !== 'wall') return;
-    if (rails.some((r) => near(r.minX, b.minX) && near(r.maxX, b.maxX) && near(r.minZ, b.minZ) && near(r.maxZ, b.maxZ) && near(r.y, b.minY))) out.add(i);
+    if (rails.some((r) => near(r.minX, b.minX) && near(r.maxX, b.maxX) && near(r.minZ, b.minZ) && near(r.maxZ, b.maxZ) && b.minY > r.y - 1e-6 && b.minY < r.y + RAIL - 1e-6)) out.add(i);
   });
   return out;
 }

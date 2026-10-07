@@ -512,9 +512,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   flowers, window boxes and wheelhouses have real shapes, and the trees are real trees (chunk
   63), but the stalls, carts and the lorry's body are still boxes, and the ruined chapel is
   drawn whole.
-- **Balconies' railings are drawn as iron but collide as plaster** (chunk 62): rounds stop at
-  the whole railing and bots can't see through it, though it's drawn as bars a player sees
-  between, so shooting at legs behind a balcony's railing hits nothing.
 - **The façades' details cost about 1 ms a frame in the streets** (chunk 62), **resolved in
   part** (chunk 64): about 570 k vertices of shapes (leaves, tiles, cables, rings, flowers)
   and 14,000 boxes. Since chunk 64 they're split into 32 m tiles, so each pass draws only the
