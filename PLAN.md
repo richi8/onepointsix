@@ -644,10 +644,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
   picked to watch from, 32–49 are got to; the rest are given up for someone seen on the way, a
   shot from somewhere else or a death. So bots are upstairs 10–15% of the time and on the roofs
   3–5%, not more.
-- **A spawn zone's points see each other** (chunk 57): the town's spawn points stand four to a
-  zone, as the sketch has them, so one operator in a zone spoils all four; as a game starts,
-  with 15 bots spread over the eight zones, nearly every point is seen, and a player joining
-  then can come in seen.
 - **Every mode loads the town's textures** (chunk 59): the six new layers are stacked into the
   same arrays as the island's, 2.12 MB against 1.35 MB, transcoded on every first visit though
   only Deathmatch uses them. Warm loads didn't change (2.0 s locally, island and town); a slow

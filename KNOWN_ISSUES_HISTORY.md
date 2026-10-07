@@ -3039,3 +3039,11 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   held its post after firing from it until its wait was up.
   **Resolved** (2026-10-07): a hunter that fought while standing at its post gives it up
   (`postFired`) and roams to another when the fight's over.
+
+- **A spawn zone's points see each other** (57): the town's spawn points stand four to a zone, so
+  one operator in a zone spoils all four; as a game starts, with 15 bots over the eight zones,
+  nearly every point is seen, and a player joining then can come in seen.
+  **Accepted** (2026-10-07): it matters only to a human joining the instant a game starts; later
+  respawns have fewer operators about, and the picker already takes the farthest unseen point.
+  Starting bots two or three to a zone, or holding zones back for joins, would leave a zone free
+  but change the opening for everyone.
