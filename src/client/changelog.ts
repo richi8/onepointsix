@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'The sea wall',
+    notes: ['In Calabianca DM you no longer start climbing the sea wall only to be stopped at the edge of the map: the wall holds you back, as the other edges do.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Team Deathmatch',
     notes: [
       'Dust DM is now Team DM: Red against Blue on the map after the classic, six a side, players spread over both and bots filling the rest.',

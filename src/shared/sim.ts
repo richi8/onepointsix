@@ -304,13 +304,15 @@ function startMantle(world: World, p: PlayerState): void {
   const reach = PLAYER_RADIUS + MANTLE_REACH;
   let tx = p.x + dx * reach;
   let tz = p.z + dz * reach;
+  // Nothing past the bounds is climbed onto: the wall there holds a player back, not the edge.
+  if (!world.inBounds(tx, tz)) return;
   const top = world.ledgeHeight(tx, tz, p.y + STEP_HEIGHT, p.y + (p.onGround ? MANTLE_MAX_HEIGHT : MANTLE_AIR_HEIGHT));
   if (top === -Infinity) return;
   if (world.ceilingHeight(p.x, p.z, p.y + bodyHeight(p)) < top + CROUCH_HEIGHT) return;
   // Land well onto the ledge if it is deep enough, else just over its edge.
   const fx = tx + dx * MANTLE_LAND_DEPTH;
   const fz = tz + dz * MANTLE_LAND_DEPTH;
-  if (world.ledgeHeight(fx, fz, top - 1e-6, top) === top && world.fits(fx, top, fz, CROUCH_HEIGHT)) {
+  if (world.inBounds(fx, fz) && world.ledgeHeight(fx, fz, top - 1e-6, top) === top && world.fits(fx, top, fz, CROUCH_HEIGHT)) {
     tx = fx;
     tz = fz;
   } else if (!world.fits(tx, top, tz, CROUCH_HEIGHT)) return;

@@ -391,6 +391,14 @@ describe('Calabianca', () => {
     }
   });
 
+  it('holds a player at the sea wall, not climbing onto it past the bounds', () => {
+    const z = town.bounds.maxZ - 1;
+    const p = spawnState(0, town.groundHeight(0, z, 100), z);
+    for (let i = 0; i < 2 / CMD_DT; i++) applyCmd(town, p, { seq: i, buttons: Btn.Forward | Btn.Jump, yaw: Math.PI, pitch: 0 }, CMD_DT);
+    expect(p.mantling).toBe(false);
+    expect(p.y).toBeCloseTo(town.groundHeight(0, z, 100), 1);
+  });
+
   it('leaves nowhere to stand that bots can\'t walk to, which a search would look through the whole town for', { timeout: 60_000 }, () => {
     const nav = new NavGrid(town);
     const from = town.spawns[0];

@@ -893,6 +893,29 @@ notes the chunk it came from.
   only partly against a neighbour (one in the west has a free middle and a corner in the next
   house) keeps its overhang on the slope that looks out. The ridge and verge tiles stop as
   before. A test checks no slope of Calabianca's reaches into another building's room.
+- **Signs are drawn with the machine's own fonts** (chunk 62), Georgia and Arial where it has
+  them, so their letters differ from machine to machine; they don't weather or get wet as the
+  walls do. The lanterns are never lit, as the game is day only.
+  **Accepted** (2026-10-07): Unlit lanterns are day only by design; fonts differ only where a machine lacks Georgia or Arial, on the old town.
+- **The terraces aren't cut into the ground** (chunk 63): the terrain is 4 m a cell, too coarse
+  for a level terrace, so each dry-stone wall stands on the hillside's even slope, 0.8 m over
+  its contour on both sides, rather than holding up a level step. From the town they read as
+  terraces; up close it's a low wall on a slope.
+  **Accepted** (2026-10-07): Beyond the bounds, and they read as terraces from the town.
+- **The hillside's trees aren't the world's** (chunk 63): a map's world still places the
+  island's trees as spruce-shaped colliders, drawn as oaks and pines but left out in the groves
+  and near the town, where they stand invisible; the olives, cypresses, shrubs, walls and rocks
+  out there collide with nothing. All beyond the bounds, so nobody meets them, but a round
+  flying out of the town passes through what's drawn and may stop on what isn't.
+  **Accepted** (2026-10-07): All of it is beyond the bounds.
+- **The island's sky light still holds the sun** (chunk 60): only a map's town has it taken
+  out, so on the island the shade is still lit from the sun's way, as before, and outposts
+  read flatter than the town. Taking it out there too would darken the island's rooms and
+  shade, which the testers know.
+  **Accepted** (2026-10-07): Kept on purpose: the testers know the island's shade as it is.
+- **The sky's photograph is soft close up** (chunk 60): 4096 pixels round, about 11 a degree
+  against about 18 on screen, and the same sky in every game.
+  **Accepted** (2026-10-07): Day only, one sky; a sharper one costs download for little.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no
@@ -1947,6 +1970,15 @@ notes the chunk it came from.
   within the reach the server allows less a quarter metre, with nothing between the eyes and the
   crate. The other 92 crates' spots are as before. A test walks a body along the path from
   outside each building to every crate on islands 1–6 and finds it ends within reach.
+- **Browser tests can stall under load** (found in chunk 63): in one of three full runs the
+  textures' test timed out, passing alone; a dev server left running through a long session of
+  edits made the death cam's test fail every time, until restarted. (The doors test that failed
+  the same way went with the doors in chunk 65.)
+  **Accepted** (2026-10-07): Worked round by running one suite at a time and restarting a long-lived dev server.
+- **Island buildings still draw a number for each doorway** (chunk 65): the leaves were found
+  open or shut from the buildings' stream, and dropping the draw would move everything placed
+  after it on every island; so `addFacade` still draws it and throws it away.
+  **Accepted** (2026-10-07): One throwaway draw keeps every island as it was; costs nothing.
 
 ### Playtest and tuning
 - **Wider drop-in spacing may fall back to anywhere** (12). Insertion points now keep 130 m from
@@ -2318,6 +2350,100 @@ notes the chunk it came from.
   can have a sloping top (`Box.tilt`); the floors are planes fitted to the original's ground,
   drawn as one surface; stairs only where it's as steep as stairs; the houses one height to an
   8 m plot.
+- **The heat map counts a room fought through as a window held** (chunk 58): kills from upstairs
+  are summed by the building's storey or roof, so the quay house's upper floor, a way from the
+  market down to the quay, tops the list every game (1–5% of kills, from 4–10 m) as if held from
+  a window; only the median range tells them apart. Where a window sees far shows only as the
+  lines of kills from 40 m.
+  **Accepted** (2026-10-07): A dev tool's reading; the median range already tells them apart.
+- **The yard where the quay steps come up by the hotel is the busiest place** (chunk 58): the
+  steps, Via del Porto, the road's hairpin and the hotel's way through meet there, and a cart and
+  a crate didn't move it off the top of the list, at 2–3% of kills. No place has more than 3%.
+  **Accepted** (2026-10-07): No place is over the 3% asked.
+- **The kit trusts its map** (chunk 53): blocks that overlap, openings running past a wall's
+  end or into a corner, and flights of stairs with no room at their foot or top are built as
+  given; only the test that walks a bot's path into every room finds them, and anywhere bots
+  can't reach; crates standing in a narrow gap were found and moved by hand (chunk 57). The
+  door leaves' slots (chunk 57) went with the doors (chunk 65).
+  **Accepted** (2026-10-07): The test that walks into every room catches what matters.
+- **Pitched roofs collide as steps** (chunk 56): each is layers 0.6–1.2 m high stepping in
+  toward the ridge under the slopes drawn over it, so a round can stop up to half a layer off
+  the drawn slope, either way. Nobody walks up them or mantles onto them, but a jump (1.4 m at
+  its height) carries a player up a layer where one can be reached, and someone dropping onto
+  one from higher stands on it. The town keeps pitched roofs out of reach by placing them.
+  **Accepted** (2026-10-07): The town keeps them out of reach.
+- **Joined pitched roofs aren't mitred** (chunk 56): each block's roof is its own, so two
+  pitched blocks of an L or round a courtyard cross each other's slopes and gables at the
+  corner instead of meeting in a valley or a hip.
+  **Accepted** (2026-10-07): Old town only; seen from below at most.
+- **A wall between two buildings is plastered as one of them** (chunk 56): a shared wall is
+  one box, so it takes the colour of whichever building's stretch comes first along it, on
+  both faces.
+  **Accepted** (2026-10-07): Old town only, and rare.
+- **A courtyard's rooms are joined only at its corners** (chunk 56): the kit cuts a 2.4 m
+  archway at each of its four inside corners on every storey, whether wanted or not, and no
+  other way between its ranges unless the map adds one; an arcade is only on a ground storey,
+  its bays all one width.
+  **Accepted** (2026-10-07): How the kit builds; maps add more ways where wanted.
+- **Bots don't fit through a doorway or arch under 2.4 m centred on a whole metre** (chunk 56):
+  the nav grid's cells are 1 m with 0.55 m kept clear round a body, so a 2 m arch at x = 0 has
+  no cell open in it, though a player walks through. A 2.2 m door has a cell open in it only
+  where it's centred on a whole metre, as the maps have them so far; the kit's corner
+  archways are 2.4 m for it.
+  **Accepted** (2026-10-07): The maps are built to it.
+- **The sea is hidden from the attackers' end but toward the horizon** (chunk 67, redone): the
+  parapet stands 1.1 m over the floor behind it, a body's eye 1.6, so from a spawn the near sea
+  is under it and only the far sea shows over it.
+  **Accepted** (2026-10-07): The far sea shows; lowering the parapet changes cover.
+- **A sloping box is drawn sheared** (2026-10-07): a box with a sloping top (`Box.tilt`) is
+  drawn by shearing its instance, which tilts its sides' and top's normals wrongly; the map's
+  sloping floors' tops aren't drawn as boxes (the ground surface is), so it shows only on their
+  sides, a few centimetres high.
+  **Accepted** (2026-10-07): It shows only on a few centimetres of floor sides.
+- **The new map's doors were read off the overview by eye** (chunk 67, redone): the original's
+  leaves stand open, and the mesh keeps off them, so the floor is carried over where they swing
+  (0.6 m round each leaf as drawn on the overview) and our fixed leaves are set across each
+  doorway's narrowest part, measured along the line between its hinges, with a 1.6 m gap. Small
+  nubs of wall are left where a leaf met its frame.
+  **Accepted** (2026-10-07): The leaves are fixed and the gaps measured; only their angle is by eye.
+- **Only five of the original's boxes are crates** (chunk 67, redone): a box top the mesh walks
+  on, 0.75 m over the floor round it at least, square and 0.9–1.7 m a side, is a crate; the rest
+  (larger, oblong, stacked) are stone, walked on. Bots resupply at the five.
+  **Accepted** (2026-10-07): By the rule chosen; more crates is tuning for chunk 70.
+- **Crates stand on the floors only on a map of blocks** (chunk 67, redone): a map's crates
+  used to be set on the terrain under any terrace, so two of the old town's are buried 0.7–1.9 m
+  in theirs; on the new map they stand on the floor (`World.buildMap`), but the old town is
+  left as it was, as setting them on its terraces leaves spots bots can't reach, until it goes
+  in chunk 69. Likewise `lootCrates` counts a crate on a walked floor as loot only on a map
+  without buildings.
+  **Accepted** (2026-10-07): The old town is kept as it was on purpose while both maps are played.
+- **The new map's windows are blind** (chunk 68): its houses are solid blocks, so their windows
+  are drawn with their shutters shut, and nothing is behind them; no shutters stand open, no
+  signs are put up, as the plan asked for few.
+  **Accepted** (2026-10-07): As the plan asked: few shutters, no signs.
+- **The new map's cold load is half a second over the island's** (chunk 68): 13.0–13.4 s
+  against 12.7–13.0 on an M3 Pro, as at chunk 67, so not its look's; chunk 70 measures again.
+  **Accepted** (2026-10-07): Or fold it into chunk 70's measuring; 0.3–0.4 s.
+- **Production builds carry the old town until it's removed** (chunk 67): the server worker
+  imports the dev test maps for `?map`, and the old Calabianca works its ground out as its
+  module loads, so a build can't leave it out as it does the kit yard; it was in the worker
+  before too, as Deathmatch's map. Chunk 69 removes it. Since 2026-10-07 it's played again, as
+  Calabianca DM, so the client carries it too, until the user picks one map.
+  **Accepted** (2026-10-07): Both maps are played now, so the build needs it.
+- **The edge can be met on top of a wall** (chunk 54): the bounds stand a body's width inside the
+  edge walls, the houses' backs and the sea wall, so walking into them meets the wall itself;
+  but the sea wall is low enough to mantle, and a player trying to climb onto it is held back
+  by the bound, not the wall.
+  **Resolved** (2026-10-07): a mantle doesn't start onto a ledge past the bounds (`startMantle`
+  in sim.ts), so a player trying to climb the sea wall is held at its foot by the wall itself; a
+  test walks one into it. Letting players onto the wall's top instead, by moving the bound to
+  its middle, was tried and dropped: the roofs whose backs stand on the sea wall could then be
+  walked off onto it, and the warehouse's onto a ledge outside the town.
+- **The plinth steps up the ramps** (chunk 68): along a block beside a ramp it's cut every
+  25 cm at the ground's height there, a stair of stone rather than a slope.
+  **Resolved** (2f348b5, checked 2026-10-07): the plinth is laid a metre at a time, each piece
+  tilted to the ground under it (`blocks.ts`), and left out where the ground steps; the
+  `calabianca-mid` screenshot shows it running straight down the sloping road.
 
 ### Team Deathmatch
 - **A game never ends** (Team Deathmatch, 2026-10-07): there's no score to reach, round or

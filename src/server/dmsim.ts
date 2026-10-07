@@ -13,6 +13,7 @@
 
 import { DEATHMATCH_CAPACITY, EYE_HEIGHT, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
+import type { Side } from '../shared/protocol.ts';
 import { inBuilding, type World } from '../shared/world.ts';
 import { heatPicture, LONG, type KillAt, type Where } from './heatmap.ts';
 import { MODES } from './directory.ts';
@@ -109,8 +110,11 @@ for (const seed of seeds) {
   /** When each bot last spawned, and its life count as last seen. */
   const spawnedAt = new Map<number, number>();
   const lastLife = new Map<number, number>();
-  /** At each respawn: the nearest living operator, and whether anyone in reach saw the spot. */
-  const spawns: { nearest: number; seen: boolean }[] = [];
+  /** At each respawn: the nearest living operator, and whether anyone in reach saw the spot; in Team Deathmatch, its side, whether in its own half, and the same of the other side alone. */
+  const spawns: { nearest: number; seen: boolean; side?: Side; own?: boolean; foe?: number; foeSeen?: boolean }[] = [];
+  /** In Team Deathmatch, kills by each side, and kills made in each side's half. */
+  const sideKills: Record<Side, number> = { red: 0, blue: 0 };
+  const halfKills: Record<Side, number> = { red: 0, blue: 0 };
   const dry = new Set<number>();
   let ranDry = 0;
   const stateTicks = new Map<string, number>();
@@ -130,6 +134,11 @@ for (const seed of seeds) {
     const v = server.bots().find((b) => b.id === e.victim)?.state;
     if (!k || !v || e.killer === e.victim) return;
     const w = server.world;
+    const side = server.bots().find((b) => b.id === e.killer)?.side;
+    if (side) {
+      sideKills[side]++;
+      halfKills[halfOf(k.x, k.z)!]++;
+    }
     killsAt.push({
       kx: k.x, ky: k.y, kz: k.z, vx: v.x, vz: v.z, where: whereIs(w, k.x, k.y, k.z),
       place: placeOf(w, k.x, k.y, k.z), range: Math.hypot(v.x - k.x, v.z - k.z),
@@ -137,6 +146,10 @@ for (const seed of seeds) {
   };
   /** Which of the map's spawn points (x, z) is, if any. */
   const spawnPoint = (x: number, z: number): number => server.world.spawns.findIndex((p) => Math.hypot(p.x - x, p.z - z) < 1);
+  /** Whose base (x, z) is nearer, on a map with bases. */
+  const bases = server.world.map?.bases;
+  const halfOf = (x: number, z: number): Side | undefined =>
+    bases && (Math.hypot(bases.red.x - x, bases.red.z - z) < Math.hypot(bases.blue.x - x, bases.blue.z - z) ? 'red' : 'blue');
   const picks = { ...arenaPicks };
   const told = { ...botTally };
 
@@ -169,13 +182,20 @@ for (const seed of seeds) {
       else if (s.life !== life) {
         let nearest = Infinity;
         let seen = false;
+        let foe = Infinity;
+        let foeSeen = false;
         for (const o of bots) {
           if (o === b || o.state.dead) continue;
           const d = Math.hypot(o.state.x - s.x, o.state.z - s.z);
+          const enemy = !b.side || o.side !== b.side;
           nearest = Math.min(nearest, d);
-          if (d < ARENA_SIGHT && server.world.hasLineOfSight(o.state.x, o.state.y + EYE_HEIGHT, o.state.z, s.x, s.y + EYE_HEIGHT, s.z)) seen = true;
+          if (enemy) foe = Math.min(foe, d);
+          if (d < ARENA_SIGHT && server.world.hasLineOfSight(o.state.x, o.state.y + EYE_HEIGHT, o.state.z, s.x, s.y + EYE_HEIGHT, s.z)) {
+            seen = true;
+            if (enemy) foeSeen = true;
+          }
         }
-        spawns.push({ nearest, seen });
+        spawns.push(b.side ? { nearest, seen, side: b.side, own: halfOf(s.x, s.z) === b.side, foe, foeSeen } : { nearest, seen });
         spawnedAt.set(b.id, server.time);
       }
       lastLife.set(b.id, s.life);
@@ -208,6 +228,12 @@ for (const seed of seeds) {
   console.log(`  kills per bot: best ${perBot.slice(0, 3).join(', ')}, median ${median(perBot)}, ${perBot.filter((k) => k === 0).length} of ${DEATHMATCH_CAPACITY} with none`);
   console.log(`  life before dying: median ${median(lives).toFixed(0)} s; ${lives.filter((l) => l < SPAWN_KILL).length} died within ${SPAWN_KILL} s of spawning, ${lives.filter((l) => l < SPAWN_KILLED).length} within ${SPAWN_KILLED} s`);
   console.log(`  respawns ${spawns.length}: nearest living operator median ${median(spawns.map((s) => s.nearest)).toFixed(0)} m, least ${Math.min(...spawns.map((s) => s.nearest)).toFixed(0)} m; ${spawns.filter((s) => s.seen).length} in sight; ${unclear} of ${picked} spawns found no clear spot, ${seenPicks} none out of sight`);
+  if (mode === 'team') {
+    const sided = spawns.filter((s) => s.side);
+    const away = (side: Side) => sided.filter((s) => s.side === side && !s.own).length;
+    console.log(`  sides: red ${sideKills.red} kills, blue ${sideKills.blue}; kills made in red's half ${halfKills.red}, in blue's ${halfKills.blue}`);
+    console.log(`  respawns in the other side's half: red ${away('red')} of ${sided.filter((s) => s.side === 'red').length}, blue ${away('blue')} of ${sided.filter((s) => s.side === 'blue').length}; nearest enemy median ${median(sided.map((s) => s.foe!)).toFixed(0)} m, under 15 m ${sided.filter((s) => s.foe! < 15).length}; ${sided.filter((s) => s.foeSeen).length} in an enemy's sight`);
+  }
   console.log(`  ran out of ammo ${ranDry} times; time spent: ${states.join(', ')}`);
   const alive = where.ground + where.upstairs + where.roofs;
   console.log(`  stuck ${stuck.length} times${stuck.length ? `: ${stuck.slice(0, 12).join('; ')}` : ''}`);
