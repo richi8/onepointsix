@@ -455,12 +455,15 @@ walked on the ground: no upper storeys, walked roofs or window posts, which is w
 builds well. A smaller, plainer map draws faster, bakes its light sooner, and lets the kit,
 bots and tests drop most of what Calabianca needed. Planned on 2026-10-06.
 
-- **Layout:** Dust 2's plan followed closely, at 1:1: its units taken as Source's 1.905 cm (16
-  to the foot), so roughly 85 × 95 m. The movement speeds will be changed later to suit it, so
-  until then a walk from one spawn to the other won't take as long as in Counter-Strike. Its
-  heights kept: long A's slope, the catwalk up from mid,
-  the steps up to B, the ramp at A. Its double doors at mid and B are fixed walls with the gap
-  between them to see and shoot through, as there are no doors.
+- **Layout:** Dust 2's plan followed exactly, at 1:1, its units taken as 2.54 cm, as its
+  players are 72 tall and ours 1.8 m (the user's choice on 2026-10-07, over the 1.905 cm first
+  planned), so about 114 m a side. It's made from the original's navigation mesh, every patch of
+  floor with its height (see `scripts/calabianca.mjs`), so its heights and joins are the
+  original's: long A's slope, the catwalk up from mid, the steps up to B, the ramp at A, the walk
+  from short to A over the way out of the defenders' end. The movement speeds will be changed
+  later to suit it, so until then a walk from one spawn to the other won't take as long as in
+  Counter-Strike. Its double doors at mid, B and long are fixed walls with a gap between them to
+  see and shoot through, as there are no doors.
 - **Its own:** Calabianca's name and look, not Valve's; nothing of Dust 2's textures, models or
   name. The sea along one edge in place of desert, the hills behind as now.
 - **Players:** **12 operators** (`DEATHMATCH_CAPACITY` 12), spawn points spread round the whole
@@ -470,7 +473,7 @@ bots and tests drop most of what Calabianca needed. Planned on 2026-10-06.
 
 | # | Chunk | Scope | Done when | Status |
 |---|---|---|---|---|
-| 67 | **Blockout after Dust 2** | The new Calabianca in its own map file, beside the old one until 69, plain-textured: Dust 2's plan drawn as a top-down sketch in the map's coordinates and built over it (walls and blocks, the few covered passages, the levels and ramps, the gaps at mid and B), at 1:1 in metres, 20–24 spawn points spread round it; `DEATHMATCH_CAPACITY` 12; `mapFor('deathmatch')` returns it, so the old layout goes unused (deleted in 69); still named Calabianca, but its board started afresh under a new id (`calabianca-2`), as the old scores were set on another map | It matches the sketch drawn over it; 12 bots play ten minutes on it with nobody stuck and nobody spawned in sight; no spot takes more than 3% of kills; the tests walk every place to stand; a human walks it and finds it plays like Dust 2 | **Done, but for the 3% and the human walk** (`src/shared/maps/calabianca2.ts`, `CALABIANCA_2`. The plan was traced from the original's overview picture, 1024 px over 4505 units, about 86 m a side, and its colours, which grade by height, read as four heights over the lowest: 0.3, 1.8, 3.8 and 5 m. It's written as 62 places, rectangles on whole metres at one of those heights (`PLACES`, named as players name them: long A, the pit, short, mid doors, the upper and lower tunnels…), with 8 flights of stairs and 7 ramps between them; every metre of the 88 m square that isn't one is solid, merged into blocks 6 m over the highest ground within 4 m, but a parapet 1.1 m high along the sea behind the attackers' end. The tunnels and doorways are places with a ceiling, the block carried over them. The four pairs of double doors are fixed leaves with a 1.4 m gap. Cover from the overview's boxes as 26 stone boxes and 7 crates. The ground is the levels' (`levelGround`), the terrain flat at the lowest and walked terraces topping it up. 24 spawn points, at least four in each quarter. The map format gained `areas`, named places, which `sim:deathmatch` names its spots by and `dev/map.html?sketch` draws over the built map (the dev view shows the new map by default, `map=old` the old). A spawn now stands on the highest walked floor under it, where it used to take the bare terrain. The baked light's volume reaches a map's blocks' tops when it has no buildings, and a mesh with no instances no longer stops the textures loading. The old town is a dev test map (`?map=old-calabianca`) for its 14 screenshots until chunk 69, which still match. New tests in `test/maps.test.ts`: every place roomy enough to stand in stands at its height, every metre outside the plan is solid and too high to climb from beside it, a bot's path reaches every place from the first spawn and a player walks it, the spawn points are spread and reached, and each pair of doors is seen through at its gap and not its leaves; and in `test/townlight.test.ts`, the light baked on a map with no buildings, its tunnels darker than its lanes. `sim:deathmatch -- 600 1,2,3`: nobody stuck; one respawn of 951 in sight (seed 2, when no point was out of everyone's sight); the busiest 6 m squares take 5–7% of kills (the lower tunnels' end at mid, mid by its doors, the upper tunnels), over the 3% asked, left to chunk 70's tuning; 53–63% of deaths within 15 s of spawning; kills from 30 m or more 1–2%. Whether it plays like the original is the user's to walk) |
+| 67 | **Blockout after Dust 2** | The new Calabianca in its own map file, beside the old one until 69, plain-textured: Dust 2's plan drawn as a top-down sketch in the map's coordinates and built over it (walls and blocks, the few covered passages, the levels and ramps, the gaps at mid and B), at 1:1 in metres, 20–24 spawn points spread round it; `DEATHMATCH_CAPACITY` 12; `mapFor('deathmatch')` returns it, so the old layout goes unused (deleted in 69); still named Calabianca, but its board started afresh under a new id (`calabianca-2`), as the old scores were set on another map | It matches the sketch drawn over it; 12 bots play ten minutes on it with nobody stuck and nobody spawned in sight; no spot takes more than 3% of kills; the tests walk every place to stand; a human walks it and finds it plays like Dust 2 | **Done, but for the 3% and the human walk** (`src/shared/maps/calabianca2.ts`, `CALABIANCA_2`. The plan was traced from the original's overview picture, 1024 px over 4505 units, about 86 m a side, and its colours, which grade by height, read as four heights over the lowest: 0.3, 1.8, 3.8 and 5 m. It's written as 62 places, rectangles on whole metres at one of those heights (`PLACES`, named as players name them: long A, the pit, short, mid doors, the upper and lower tunnels…), with 8 flights of stairs and 7 ramps between them; every metre of the 88 m square that isn't one is solid, merged into blocks 6 m over the highest ground within 4 m, but a parapet 1.1 m high along the sea behind the attackers' end. The tunnels and doorways are places with a ceiling, the block carried over them. The four pairs of double doors are fixed leaves with a 1.4 m gap. Cover from the overview's boxes as 26 stone boxes and 7 crates. The ground is the levels' (`levelGround`), the terrain flat at the lowest and walked terraces topping it up. 24 spawn points, at least four in each quarter. The map format gained `areas`, named places, which `sim:deathmatch` names its spots by and `dev/map.html?sketch` draws over the built map (the dev view shows the new map by default, `map=old` the old). A spawn now stands on the highest walked floor under it, where it used to take the bare terrain. The baked light's volume reaches a map's blocks' tops when it has no buildings, and a mesh with no instances no longer stops the textures loading. The old town is a dev test map (`?map=old-calabianca`) for its 14 screenshots until chunk 69, which still match. New tests in `test/maps.test.ts`: every place roomy enough to stand in stands at its height, every metre outside the plan is solid and too high to climb from beside it, a bot's path reaches every place from the first spawn and a player walks it, the spawn points are spread and reached, and each pair of doors is seen through at its gap and not its leaves; and in `test/townlight.test.ts`, the light baked on a map with no buildings, its tunnels darker than its lanes. `sim:deathmatch -- 600 1,2,3`: nobody stuck; one respawn of 951 in sight (seed 2, when no point was out of everyone's sight); the busiest 6 m squares take 5–7% of kills (the lower tunnels' end at mid, mid by its doors, the upper tunnels), over the 3% asked, left to chunk 70's tuning; 53–63% of deaths within 15 s of spawning; kills from 30 m or more 1–2%. Whether it plays like the original is the user's to walk) **Redone on 2026-10-07** at the user's word that it was far from the original (A different, no way under the walk to A, too small): made from the original's navigation mesh by `scripts/calabianca.mjs` into `calabianca2grid.ts`, at 2.54 cm a unit, 114 m a side. Floors on a 25 cm grid at the mesh's heights (smoothed, then on 25 cm steps), widened by the 0.41 m the mesh keeps off walls; decks where the walk from short to A runs over the way out of the defenders' end; houses 6 m over the highest floor within 6 m wherever there's no floor; the original's boxes in stone, which bots go round (their paths drop no more than 1.2 m, so a box's top was a trap), five square ones as crates for ammunition; the tunnels and the doorways roofed; the open door leaves the mesh keeps off cleared, and fixed leaves set across each doorway with a 1.6 m gap; the parapet along the sea; 24 spawn points spread by farthest-point over the floor bots walk both ways. Its places named from the overview (`areas`), its plaster, paving and lanes re-placed. Crates on a map of blocks now stand on the walked floor (they were set on the terrain under it) and count as loot there. Tests rewritten (`test/maps.test.ts`, `test/blocks.test.ts`, the helper `test/calabianca.ts`): room to stand in every place, the original's heights (the pit lowest, A over long, the attackers' end over the defenders'), the deck with room under it, the tunnels roofed, the houses too high to climb, a bot's path to every place walked by a player, 24 spawn points in every quarter, the doors' gaps. `sim:deathmatch -- 600 1,2,3`: nobody stuck, none spawned in sight, 54–63% of deaths within 15 s of spawning, kills from 30 m or more 5–13%, the busiest 6 m squares outside long and at long's doors with 4–6% of kills. Nine screenshots, `calabianca-*`. Bench with 12 soldiers: 10.4–16.8 ms a frame against the island's 13.4 with 24. Cold first load 14.1–14.5 s against the island's 13.1–13.6) |
 | 68 | **Its look** | The old layout's look carried over where it fits: plaster by area, stone at corners and plinths, frames, cornices and parapet caps, paving, ageing, baked light, the sea and hillside backdrop; a few shutters and signs at most; no pots, plants, washing, cables or trees in the streets | From the spawns it reads as a whitewashed town by the sea, not a desert; the benchmark's frame on the map is no slower than the island's, and a cold first load no slower either | **Done, but for the cold load** (Each block is plastered by its part of the map (`MapBox.colour`, carried to its props as a building's plaster): whitewash round B and the tunnels, cream through mid and the corridor, ochre round A, rose along long A and the pit, pale blue on the attackers' side; the parapet along the sea and the cover stay stone. A new dressing pass, `client/blocks.ts`, dresses every block face that looks outdoors: a stone plinth following the ground, a cornice under the top, quoins at outside corners while the corner turns outdoors, a stone lintel over every tunnel mouth and doorway, about half the places high on a house wall a window framed in stone with its shutters shut, and a stone cap along the low blocks; the buildings' dressing pass now runs for a map with no buildings. The fixed door leaves are drawn as old painted planks with battens and iron straps (look `doors`), uncapped. Paving: cobbles at both ends and the sites, earth in the pit, flagstones elsewhere, worn along six `lanes`. The ageing, the baked light, the sea and the hillside came with the map. Two things the look needed beyond the list: the tunnels were near black under one bounce of sky light, so lamps now hang down the middle of every covered stretch of 10 m² or more, 5 m apart (`coveredLamps`), baked in as warm light and drawn as iron lanterns; and the parapet along the sea, 5 m deep, hid the sea from the spawns, so it's a metre thick now with a ledge along the shore behind it, out of bounds. No shutters open, no signs, plants, washing or trees. Tests: `test/blocks.test.ts` (plaster, paving, doors, dressing kept to the faces, lamps out of the way and lighting the lower tunnels, the sea seen from the top spawns); seven new screenshots, `calabianca-*`. Bench, 1280 × 720 on an M3 Pro: the town's bench now runs on the new map at those spots with 12 soldiers, 11–13.6 ms median a frame against the island's 13.6 with 24 (the sea spot swung 12.5–16 ms between runs); the town's baseline re-recorded. Cold first load: 13.0–13.4 s against the island's 12.7–13.0, the same as chunk 67's map measured alternately with this (13.0–13.7 s), so the half second over the island is chunk 67's, left to chunk 70. `sim:deathmatch -- 600 1,2,3`: nobody stuck, none spawned in sight, 1–2% of kills from 30 m or more) |
 | 69 | **The old layout removed** | The old Calabianca, its sketch and sketch tools, its tests and screenshots; what only it used, in the kit (pitched roofs and their tiles, courtyards, arcades, balconies, rooms over lanes, outside stairs and hatches if unused), the dressing (plants, washing, cables, aerials, signs not kept), the features' looks no longer placed (lorry, stalls, carts, boats, tombs, the bell tower and the rest), the town greenery inside the bounds, and the bots' window and roof posts if the new map has none; its Known Issues moved to the history as Moot; the changelog | No code is left that only the old layout used; every test passes; the island's screenshots and fingerprints match | Planned |
 | 70 | **Tuning and the docs** | The heat map's spots and sightlines tuned (mid and long A most of all, against the bolt-action rifle), spawn points moved where deaths come soon, the benchmark and a cold load measured, the bot playtest run; Game Modes, World capacity, Features and the town's chapter rewritten for the new map | No spot over 3% of kills and none killing mostly from afar; deaths within 15 s of spawning no worse than the old layout's; the testers prefer it to the old layout | Planned |
@@ -706,21 +709,54 @@ Nothing open: the last were resolved or accepted on 2026-10-03 (see the history)
   chunk 66, as they didn't look good, and nothing took their place. No more stalls or carts
   were added: the market's four and the three carts already break its views.
 
-- **Kills gather at the new map's chokes** (chunk 67): over three 10-minute games, the 6 m
-  squares where the lower tunnels meet mid, mid by its doors and the upper tunnels' junction
-  take 5–7% of kills each, against the 3% the chunk asked; moving the spawn point out of the
-  upper tunnels barely moved them. That's the original's chokes doing what they do; chunk 70
-  tunes them.
-- **Respawns on the new map come soon after death** (chunk 67): 12 operators on 86 m leave no
-  spawn point 30 m from everyone and out of sight in 75–86% of respawns, so the farthest is
-  taken, and once in 951 that farthest was seen; 53–63% of deaths come within 15 s of spawning,
-  against the old town's 27–33%. Chunk 70 moves the points.
-- **The new map's heights and joins are read off a picture** (chunk 67): the heights come from
-  the overview's shading, put in four steps, not the original's own; its slanted walls are
-  squared to whole metres; where the shading was unclear (the defenders' end beside short,
-  hatched over), a wide flight was put from the defenders' end up to a landing that joins short
-  and A, which may not be how the original joins them. The raised platform on A (1.6 m) is
-  climbed only by mantling, so bots never stand on it.
+- **Kills gather at the new map's chokes** (chunk 67, redone 2026-10-07): over three 10-minute
+  games, the 6 m squares outside long and at long's doors take 4–6% of kills each, against the
+  3% the chunk asked. That's the original's chokes doing what they do; chunk 70 tunes them.
+- **Respawns on the new map come soon after death** (chunk 67, redone): 12 operators on 114 m
+  leave no spawn point 30 m from everyone and out of sight in 39–53% of respawns, so the
+  farthest is taken (none was seen); 54–63% of deaths come within 15 s of spawning, against the
+  old town's 27–33%. Chunk 70 moves the points.
+- **The new map's long views cost frames** (chunk 67, redone): with 12 soldiers, the bench's
+  frame down long A, up mid and over the sea is 15.8–16.8 ms against the island's 13.4 with 24
+  (the GPU 10–12 ms, from the walls' many boxes and the dressing over them); the rest are
+  10.4–13.7. A cold first load is 14.1–14.5 s against the island's 13.1–13.6. Chunk 70 measures
+  again.
+- **The sea is hidden from the attackers' end but toward the horizon** (chunk 67, redone): the
+  parapet stands 1.1 m over the floor behind it, a body's eye 1.6, so from a spawn the near sea
+  is under it and only the far sea shows over it.
+- **The new map is made from another game's navigation mesh** (chunk 67, redone 2026-10-07):
+  its floors and heights come from Dust 2's mesh as the analysis library awpy (MIT) publishes it
+  for its tests, fetched by `scripts/calabianca.mjs` from a pinned commit and not committed
+  here; only the boxes made from it are. The layout is followed exactly, as the plan asks; none
+  of the original's textures, models or name are used. Whether following a layout this closely
+  is fine for a released game is a licensing question left open.
+- **The new map's walls are where the mesh leaves off, its roofs by eye** (chunk 67, redone):
+  the mesh keeps 0.41 m off every wall, so the floors are widened by that much, to the nearest
+  25 cm; a wall thinner than about 0.5 m between two floors at one height can close up, and
+  slots of floor a cell or two wide are filled. Which ways are roofed (the upper and lower
+  tunnels, the way out to B, the way in from outside the tunnels) is read off screenshots and
+  memory, not the mesh, which says nothing of ceilings; the B window isn't roofed. The walls'
+  tops are the plan's own (6 m over the highest floor within 6 m, on whole metres), not the
+  original's.
+- **The new map's slopes are steps** (chunk 67, redone): the floors are boxes on 25 cm steps,
+  as the game's ramps are, so the original's slopes (long A, mid, the T ramp) are flights of
+  25 cm steps, their edges seen as lines across the ground, and the mesh's bumps of a few
+  centimetres are smoothed out first so they don't round to steps of their own. A slope running
+  diagonally makes a stair-stepped edge.
+- **The new map's doors were read off the overview by eye** (chunk 67, redone): the original's
+  leaves stand open, and the mesh keeps off them, so the floor is carried over where they swing
+  (0.6 m round each leaf as drawn on the overview) and our fixed leaves are set across each
+  doorway's narrowest part, measured along the line between its hinges, with a 1.6 m gap. Small
+  nubs of wall are left where a leaf met its frame.
+- **Only five of the original's boxes are crates** (chunk 67, redone): a box top the mesh walks
+  on, 0.75 m over the floor round it at least, square and 0.9–1.7 m a side, is a crate; the rest
+  (larger, oblong, stacked) are stone, walked on. Bots resupply at the five.
+- **Crates stand on the floors only on a map of blocks** (chunk 67, redone): a map's crates
+  used to be set on the terrain under any terrace, so two of the old town's are buried 0.7–1.9 m
+  in theirs; on the new map they stand on the floor (`World.buildMap`), but the old town is
+  left as it was, as setting them on its terraces leaves spots bots can't reach, until it goes
+  in chunk 69. Likewise `lootCrates` counts a crate on a walked floor as loot only on a map
+  without buildings.
 - **The new map's tunnels are lit by lamps that aren't there to the sound or the bots** (chunk
   68): the lamps' light is baked as the sun's bounced light, warm, and their lanterns are drawn
   only; they cast no shadows of their own, players and bodies under them are lit by the bake
@@ -902,6 +938,11 @@ extraction stays as hard as it is.
   to keep the re-run exact, tests broke over unrelated changes, and making old replays play on a
   new build would have needed the old simulation kept around. Players mostly want to see how
   they died, which the death cam still shows. Replays may come back from a multiplayer server.
+- **Calabianca is the original three-lane map at its players' scale** (2026-10-07): its units
+  are taken as 2.54 cm, so a player there (72 tall) is ours (1.8 m), making the map 114 m a
+  side, not the 1.905 cm a unit (86 m) first planned; and its layout is made from the
+  original's navigation mesh rather than traced by eye, at the user's word that the traced one
+  was far from the original. Spawn points stay spread round the whole map for now.
 - **The sky light stays as tuned** (20): measured, it's 24% brighter than the original sky
   would give, but the lighting was tuned by eye on it, so it wasn't scaled down to match.
 - **Testing:** Vitest for the shared simulation (determinism, movement, collision), and from

@@ -11,7 +11,8 @@ import { groundWeights } from '../src/shared/ground.ts';
 import { Layer } from '../src/shared/layers.ts';
 import { lootCrates } from '../src/shared/loot.ts';
 import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
-import { CALABIANCA_2, PLACES } from '../src/shared/maps/calabianca2.ts';
+import { CALABIANCA_2 } from '../src/shared/maps/calabianca2.ts';
+import { area, standIn } from './calabianca.ts';
 import { mapFor, type GameMap, type MapBlock } from '../src/shared/maps/index.ts';
 import { KIT_YARD } from '../src/shared/maps/kityard.ts';
 import { TEST_STREET } from '../src/shared/maps/teststreet.ts';
@@ -484,30 +485,9 @@ describe.each([
 describe('Calabianca, after the three-lane map (Phase 10)', () => {
   const world = new World(1, CALABIANCA_2);
   const areas = CALABIANCA_2.areas!;
-  const flights = flightsOf(CALABIANCA_2);
-  const ramps = CALABIANCA_2.ramps ?? [];
-  const within = (r: Rect, x: number, z: number) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ;
-  /** Whether (x, z) lies in the plan: a place or a ramp. */
-  const planned = (x: number, z: number) => areas.some((a) => within(a, x, z)) || ramps.some((r) => within(r, x, z));
-  /** A clear spot in each place roomy enough to stand in off its stairs, as near its middle as there is one, at the place's height. */
-  /** The places roomy enough to stand in, but those that are a flight of stairs or a ramp. */
-  const roomy = areas.filter((a) => {
-    const [x, z] = [(a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2];
-    return a.maxX - a.minX >= 2 && a.maxZ - a.minZ >= 2 && !onFlight(flights, x, z) && !ramps.some((r) => within(r, x, z));
-  });
-  const spots = areas.flatMap((a, i) => {
-    if (!roomy.includes(a)) return [];
-    const y = PLACES[i].y;
-    const [cx, cz] = [(a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2];
-    let best: { x: number; z: number } | null = null;
-    for (let x = a.minX + 0.6; x < a.maxX - 0.6; x += 0.25) {
-      for (let z = a.minZ + 0.6; z < a.maxZ - 0.6; z += 0.25) {
-        if (onFlight(flights, x, z) || ramps.some((r) => within(r, x, z)) || !world.clear(x, y, z, 1.8, 0.6) || Math.abs(world.groundHeight(x, z, y + 0.3) - y) > 0.01) continue;
-        if (!best || Math.hypot(x - cx, z - cz) < Math.hypot(best.x - cx, best.z - cz)) best = { x, z };
-      }
-    }
-    return best ? [{ name: `${a.name} at ${a.minX}, ${a.minZ}`, y, ...best }] : [];
-  });
+  /** A clear spot in each place, as near its middle as there is one. */
+  const spots = areas.map((a) => standIn(world, a));
+  const spot = (name: string) => spots[areas.lastIndexOf(area(name))]!;
 
   it('is Deathmatch\'s, for 12 operators, with its own board', () => {
     expect(mapFor('deathmatch')).toBe(CALABIANCA_2);
@@ -515,44 +495,72 @@ describe('Calabianca, after the three-lane map (Phase 10)', () => {
     expect(CALABIANCA_2.name).toBe('Calabianca');
     expect(DEATHMATCH_CAPACITY).toBe(12);
     const b = CALABIANCA_2.bounds;
-    // At 1:1 with the original's 4505 units a side at 1.905 cm.
-    expect(b.maxX - b.minX).toBeGreaterThan(75);
-    expect(b.maxZ - b.minZ).toBeGreaterThan(80);
+    // At 1:1 with the original's units at 2.54 cm, its players' height.
+    expect(b.maxX - b.minX).toBeGreaterThan(100);
+    expect(b.maxZ - b.minZ).toBeGreaterThan(100);
   });
 
-  it('stands every place of its plan at its height, but those too narrow to stand in, stairs or ramps', () => {
-    expect(roomy.filter((a) => !spots.some((s) => s.name === `${a.name} at ${a.minX}, ${a.minZ}`)).map((a) => `${a.name} at ${a.minX}, ${a.minZ}`)).toEqual([]);
-    expect(spots.length).toBeGreaterThan(50);
+  it('has room to stand in every place', () => {
+    expect(areas.filter((_, i) => !spots[i]).map((a) => a.name)).toEqual([]);
   });
 
-  it('is solid wherever the plan isn\'t, too high to climb from beside it', () => {
-    const b = world.bounds;
+  it('keeps the original\'s heights: the pit lowest, A over long, the attackers\' end over the defenders\'', () => {
+    const y = (name: string) => spot(name).y;
+    for (const name of ['long A', 'mid', 'A site', 'B site', 'T spawn', 'CT spawn', 'upper tunnels']) expect(y('pit'), name).toBeLessThan(y(name));
+    expect(y('A site')).toBeGreaterThan(y('long A'));
+    expect(y('T spawn')).toBeGreaterThan(y('CT spawn') + 4);
+    expect(y('upper tunnels')).toBeGreaterThan(y('lower tunnels') + 2);
+  });
+
+  it('runs the walk from short to A over the way out of the defenders\' end, with room under it', () => {
+    const under = standIn(world, area('CT spawn'), true)!;
+    const over = standIn(world, area('CT spawn'), false)!;
+    expect(over.y - under.y).toBeGreaterThan(4);
+    // Somewhere both floors have room, one over the other.
+    let found = 0;
+    const a = area('CT spawn');
+    for (let x = a.minX; x < a.maxX; x += 0.5) {
+      for (let z = a.minZ; z < a.maxZ; z += 0.5) {
+        const tops = world.floorTops(x, z, 0.01);
+        if (tops.length === 2 && tops.every((y) => world.fits(x, y, z, 1.8)) && world.ceilingHeight(x, z, tops[0] + 0.1) - tops[0] > 2.5) found++;
+      }
+    }
+    expect(found).toBeGreaterThan(20);
+  });
+
+  it('roofs its tunnels', () => {
+    for (const name of ['upper tunnels', 'lower tunnels', 'B tunnels']) {
+      const s = spot(name);
+      expect(world.ceilingHeight(s.x, s.z, s.y + 0.1) - s.y, name).toBeLessThan(4);
+    }
+  });
+
+  it('stands its houses too high to climb from the floor beside them', () => {
+    const houses = CALABIANCA_2.walls.filter((w) => w.colour !== undefined && w.y0 < 4);
+    expect(houses.length).toBeGreaterThan(300);
     let checked = 0;
-    for (let x = Math.ceil(b.minX) + 0.5; x < b.maxX - 0.5; x++) {
-      for (let z = Math.ceil(b.minZ) + 0.5; z < b.maxZ - 0.5; z++) {
-        if (planned(x, z)) continue;
-        const top = 40 - world.raycast(x, 40, z, 0, -1, 0, 40);
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          if (!planned(x + dx, z + dz)) continue;
-          const beside = world.groundHeight(x + dx, z + dz, 9.5);
-          expect(top, `${x}, ${z} beside ${x + dx}, ${z + dz}`).toBeGreaterThan(beside + MANTLE_MAX_HEIGHT + 0.3);
-        }
+    for (const h of houses) {
+      for (const [x, z] of [[(h.minX + h.maxX) / 2, h.minZ - 0.5], [(h.minX + h.maxX) / 2, h.maxZ + 0.5], [h.minX - 0.5, (h.minZ + h.maxZ) / 2], [h.maxX + 0.5, (h.minZ + h.maxZ) / 2]]) {
+        const tops = world.floorTops(x, z, 0.01).filter((y) => y < h.y1 && world.fits(x, y, z, 1.8));
+        if (!tops.length) continue;
+        expect(h.y1, `${h.minX}, ${h.minZ} beside ${x}, ${z}`).toBeGreaterThan(Math.max(...tops) + MANTLE_MAX_HEIGHT + 0.3);
         checked++;
       }
     }
-    expect(checked).toBeGreaterThan(2000);
+    expect(checked).toBeGreaterThan(300);
   });
 
-  it('lets bots reach every place, and a player walk there by the same way', { timeout: 300_000 }, () => {
+  it('lets bots reach every place, and a player walk there by the same way', { timeout: 600_000 }, () => {
     const nav = new NavGrid(world);
     const from = world.spawns[0];
     for (const to of spots) {
+      if (!to) continue;
       const path = nav.findPath(from.x, from.z, to.x, to.z, from.y, to.y);
       expect(path, to.name).not.toBeNull();
       expect(Math.hypot(path!.at(-1)!.x - to.x, path!.at(-1)!.z - to.z), to.name).toBeLessThan(1.5);
       const p = spawnState(from.x, from.y, from.z);
       let k = 0;
-      for (let i = 0; k < path!.length && i < 180 / CMD_DT; i++) {
+      for (let i = 0; k < path!.length && i < 240 / CMD_DT; i++) {
         const wp = path![k];
         if (reached(wp, p.x, p.y, p.z)) {
           k++;
@@ -561,23 +569,21 @@ describe('Calabianca, after the three-lane map (Phase 10)', () => {
         applyCmd(world, p, { seq: i, buttons: Btn.Forward, yaw: yawToward(p.x, p.z, wp.x, wp.z), pitch: 0 }, CMD_DT);
       }
       expect(k, `${to.name}: walked to waypoint ${k} of ${path!.length}, stuck at ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`).toBe(path!.length);
-      expect(p.y, to.name).toBeCloseTo(to.y, 1);
+      // On its floor, or a step off it.
+      expect(Math.abs(p.y - to.y), to.name).toBeLessThan(0.3);
     }
   });
 
-  it('spreads 20 to 24 spawn points round the whole map, each on its place\'s ground and reached from the first', () => {
-    expect(world.spawns.length).toBeGreaterThanOrEqual(20);
-    expect(world.spawns.length).toBeLessThanOrEqual(24);
+  it('spreads 24 spawn points round the whole map, each on a floor and reached from the first', () => {
+    expect(world.spawns.length).toBe(24);
     const nav = new NavGrid(world);
     const from = world.spawns[0];
     for (const s of world.spawns) {
       const at = `spawn at ${s.x}, ${s.z}`;
-      const i = areas.length - 1 - [...areas].reverse().findIndex((a) => within(a, s.x, s.z));
-      expect(i, at).toBeLessThan(areas.length);
-      expect(s.y, at).toBeCloseTo(PLACES[i].y, 2);
+      expect(world.floorTops(s.x, s.z, 0.01), at).toContain(s.y);
       expect(world.inBounds(s.x, s.z, 1), at).toBe(true);
       expect(world.fits(s.x, s.y, s.z, 1.8), at).toBe(true);
-      expect(Math.min(...world.spawns.filter((t) => t !== s).map((t) => Math.hypot(t.x - s.x, t.z - s.z))), at).toBeGreaterThan(6);
+      expect(Math.min(...world.spawns.filter((t) => t !== s).map((t) => Math.hypot(t.x - s.x, t.z - s.z))), at).toBeGreaterThan(8);
       const path = nav.findPath(from.x, from.z, s.x, s.z, from.y, s.y);
       expect(path, at).not.toBeNull();
     }
@@ -590,7 +596,7 @@ describe('Calabianca, after the three-lane map (Phase 10)', () => {
   });
 
   it('sees and shoots through the gap between each pair of double doors, but not through their leaves', () => {
-    const doors = CALABIANCA_2.walls.filter((w) => (w.maxX - w.minX <= 0.25 || w.maxZ - w.minZ <= 0.25) && w.y1 - w.y0 > 2.5 && w.y1 - w.y0 < 4);
+    const doors = CALABIANCA_2.walls.filter((w) => w.look === 'doors');
     expect(doors.length).toBe(8);
     for (let i = 0; i < doors.length; i += 2) {
       const [a, c] = [doors[i], doors[i + 1]];

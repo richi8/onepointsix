@@ -154,17 +154,20 @@ for (const [name, query] of Object.entries(MAP)) {
 
 // The new Calabianca (see maps/calabianca2.ts), Deathmatch's map, in its
 // look: the town over the sea from offshore; the attackers' end from a
-// spawn, its houses pale blue, and the sea over its parapet; long A in ochre
-// and rose; mid up to its double doors; B in whitewash; the upper tunnels
-// lit by their lamps.
+// spawn, its houses pale blue, and the sea over its parapet; long A in rose;
+// mid's doors from mid; B in whitewash from the tunnels' way out; the upper
+// tunnels lit by their lamps; the way out of the defenders' end under the walk
+// to A; long's doors.
 const CALABIANCA: Record<string, string> = {
-  'calabianca-above': '0,70,348,0,0,248',
-  'calabianca-t-spawn': '-22,10.7,288,-20,9,263',
-  'calabianca-sea': '-22,10.7,287,-14,8,308',
-  'calabianca-long': '31,7.5,248,31,7,218',
-  'calabianca-mid': '-5,6,248,-5,5.5,238',
-  'calabianca-b': '-34,7.5,232,-26,8,218',
-  'calabianca-tunnels': '-24,9.5,253,-29,9.5,247',
+  'calabianca-above': '-0.78,90,330.88,-0.78,0,233.64',
+  'calabianca-t-spawn': '-24.47,13.8,285.05,-24.47,13,258.23',
+  'calabianca-sea': '-24.47,13.7,283.94,-24.47,11,302.94',
+  'calabianca-long': '42.58,10.5,238.12,42.58,10.5,207.94',
+  'calabianca-mid': '-5.47,7.5,226.94,-5.70,7,218.00',
+  'calabianca-b': '-45.48,11.5,218.00,-37.88,11,193.41',
+  'calabianca-tunnels': '-31.18,11.5,231.97,-46.82,11.5,230.29',
+  'calabianca-ct': '7.94,7.6,206.26,20.23,7.6,202.35',
+  'calabianca-long-doors': '21.13,10.6,238.12,21.13,10.5,258.23',
 };
 
 for (const [name, cam] of Object.entries(CALABIANCA)) {

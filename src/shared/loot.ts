@@ -81,11 +81,13 @@ export function runScore(value: number, kills: number, guardKills: number, contr
   return Math.max(value - EXTRACT_FEE, 0) + kills * KILL_SCORE_OPERATOR + guardKills * KILL_SCORE_GUARD + contracts;
 }
 
-/** Crates standing on the ground or on a building's upper floor, in outposts and out in the open; stacked ones are just cover. */
+/** Crates standing on the ground or on a building's upper floor (on a map of blocks, any walked floor), in outposts and out in the open; stacked ones are just cover. */
 export function lootCrates(world: World): { box: Box; rich: boolean }[] {
   const upper = new Set(world.buildings.flatMap((b) => b.uppers ?? [b.upper]));
   return world.props
-    .filter((p) => p.style === 'crate' && (p.box.minY < world.terrainHeight((p.box.minX + p.box.maxX) / 2, (p.box.minZ + p.box.maxZ) / 2) || upper.has(p.box.minY)))
+    .filter((p) => p.style === 'crate' && (p.box.minY < world.terrainHeight((p.box.minX + p.box.maxX) / 2, (p.box.minZ + p.box.maxZ) / 2) || upper.has(p.box.minY)
+      // On a map of blocks (no buildings), a crate on a walked floor too, but not one stacked on another.
+      || (!!world.map && !world.buildings.length && p.panel >= 0 && !world.panels[p.panel].restsOn.length)))
     .map(({ box }) => {
       const near = world.nearestOutpost((box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2);
       return { box, rich: !!near && near.dist < RICH_RADIUS };

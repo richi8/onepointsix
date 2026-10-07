@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CALABIANCA_2, PLACES } from '../src/shared/maps/calabianca2.ts';
+import { CALABIANCA_2, onIsland } from '../src/shared/maps/calabianca2.ts';
+import { area, standIn } from './calabianca.ts';
 import { pavingAt } from '../src/shared/maps/index.ts';
 import { World } from '../src/shared/world.ts';
 import { doorProps, dressBlocks, dressedBlocks } from '../src/client/blocks.ts';
@@ -14,25 +15,24 @@ import * as THREE from 'three';
 // The new Calabianca's look (chunk 68): its blocks plastered by part of the
 // map and dressed in stone, its doors drawn as wooden leaves, its ground
 // paved, its tunnels lit by lamps, and the sea in sight over the parapet.
-// The plan's metres are moved 44 m west and 208 m south onto the island.
 
 const world = new World(1, CALABIANCA_2);
-const [DX, DZ] = [-44, 208];
-const place = (name: string) => {
-  const i = PLACES.findIndex((p) => p.name === name);
-  const p = PLACES[i];
-  return { x: (p.minX + p.maxX) / 2 + DX, z: (p.minZ + p.maxZ) / 2 + DZ, y: p.y, ceiling: p.ceiling };
+const middle = (name: string) => {
+  const a = area(name);
+  return [(a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2] as const;
 };
 
 describe('the new Calabianca\'s look', () => {
   it('plasters its blocks by part of the map, and keeps the parapet along the sea and the cover in stone', () => {
     const blocks = dressedBlocks(world);
-    const sea = 83 + DZ;
-    const houses = blocks.filter((b) => b.y1 - b.y0 > 4 && b.minZ < sea);
-    expect(houses.length).toBeGreaterThan(50);
-    for (const b of houses) expect(b.colour, `${b.minX}, ${b.minZ}`).toBeDefined();
-    expect(blocks.filter((b) => b.minZ >= sea).every((b) => b.colour === undefined)).toBe(true);
+    const houses = blocks.filter((b) => b.colour !== undefined);
+    expect(houses.length).toBeGreaterThan(300);
     expect(new Set(houses.map((b) => b.colour)).size).toBe(5);
+    // The rest, stone: low, the parapet along the south edge and the cover.
+    const stone = blocks.filter((b) => b.colour === undefined);
+    expect(stone.length).toBeGreaterThan(10);
+    for (const b of stone) expect(b.y1 - world.terrainHeight((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2), `${b.minX}, ${b.minZ}`).toBeLessThan(12);
+    expect(stone.filter((b) => b.minZ > onIsland(0, 960)[1]).length).toBeGreaterThan(5);
     // Its plaster reaches the props, which are textured as plaster.
     const plastered = world.props.map((_, i) => i).filter((i) => world.props[i].colour !== undefined);
     expect(plastered.length).toBeGreaterThan(50);
@@ -40,17 +40,14 @@ describe('the new Calabianca\'s look', () => {
   });
 
   it('paves its lanes in flagstones, its squares and sites in cobbles, the pit in earth', () => {
-    const at = (name: string) => {
-      const p = place(name);
-      return pavingAt(CALABIANCA_2, p.x, p.z);
-    };
+    const at = (name: string) => pavingAt(CALABIANCA_2, ...middle(name));
     expect(at('long A')).toBe('flagstones');
     expect(at('mid')).toBe('flagstones');
     expect(at('T spawn')).toBe('cobbles');
     expect(at('CT spawn')).toBe('cobbles');
     expect(at('B site')).toBe('cobbles');
-    expect(at('A back')).toBe('cobbles');
-    expect(pavingAt(CALABIANCA_2, 68 + DX, 52 + DZ)).toBe('earth');
+    expect(at('A site')).toBe('cobbles');
+    expect(at('pit')).toBe('earth');
     for (const lane of CALABIANCA_2.lanes!) {
       for (const [x, z] of lane.points) expect(pavingAt(CALABIANCA_2, x, z), lane.name).not.toBeNull();
     }
@@ -89,22 +86,31 @@ describe('the new Calabianca\'s look', () => {
 
   it('hangs lamps in its tunnels, out of everyone\'s way', () => {
     const lamps = coveredLamps(world);
-    for (const name of ['upper tunnels', 'lower tunnels', 'tunnel stairs']) {
-      const p = place(name);
-      const i = PLACES.findIndex((q) => q.name === name);
-      const r = PLACES[i];
-      const inside = lamps.filter(([x, , z]) => x > r.minX + DX && x < r.maxX + DX && z > r.minZ + DZ && z < r.maxZ + DZ);
+    for (const name of ['upper tunnels', 'lower tunnels', 'B tunnels']) {
+      const r = area(name);
+      const inside = lamps.filter(([x, , z]) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
       expect(inside.length, name).toBeGreaterThan(0);
-      for (const [x, y, z] of inside) expect(y - 0.2 - world.groundHeight(x, z, p.y + 0.3), name).toBeGreaterThan(2);
     }
-    for (const [x, y, z] of lamps) expect(world.ceilingHeight(x, z, y)).toBeLessThan(y + 1);
+    for (const [x, y, z] of lamps) {
+      // Over a floor with room under it, and hung from a ceiling.
+      const floor = Math.max(...world.floorTops(x, z, 0.01).filter((f) => f < y));
+      expect(y - 0.2 - floor, `${x}, ${z}`).toBeGreaterThan(2);
+      expect(world.ceilingHeight(x, z, y)).toBeLessThan(y + 1);
+    }
   });
 
   it('lights its lower tunnels by their lamps', () => {
-    const input = bakeInput(world, () => 0xd8cfc0, [-0.23, 0.75, 0.62])!;
+    // Baked over 30 m round them alone, as the whole map takes long; with and without the lamps.
+    const full = bakeInput(world, () => 0xd8cfc0, [-0.23, 0.75, 0.62])!;
+    const p = standIn(world, area('lower tunnels'))!;
+    const [i0, k0] = [Math.floor((p.x - 15 - full.x0) / BAKE_CELL), Math.floor((p.z - 15 - full.z0) / BAKE_CELL)];
+    const n = Math.round(30 / BAKE_CELL);
+    const gw = 2 * full.nx + 1;
+    const ground = new Float32Array((2 * n + 1) * (2 * n + 1));
+    for (let k = 0; k <= 2 * n; k++) for (let i = 0; i <= 2 * n; i++) ground[k * (2 * n + 1) + i] = full.ground[(2 * k0 + k) * gw + 2 * i0 + i];
+    const input = { ...full, x0: full.x0 + i0 * BAKE_CELL, z0: full.z0 + k0 * BAKE_CELL, nx: n, nz: n, ground };
     const dark = bake({ ...input, lamps: new Float32Array() });
     const lit = bake(input);
-    const p = place('lower tunnels');
     const c = (Math.floor((p.z - input.z0) / BAKE_CELL) * input.ny + Math.floor((p.y + 1.5 - input.y0) / BAKE_CELL)) * input.nx + Math.floor((p.x - input.x0) / BAKE_CELL);
     // The sun's bounced on a face looking up, the floor's.
     const up = (b: typeof lit) => (b.skyUpDown[c * 4 + 2] / 255) ** 2 * SUN_RANGE;
@@ -112,14 +118,17 @@ describe('the new Calabianca\'s look', () => {
   });
 
   it('lets the attackers\' end see the sea over its parapet', () => {
-    const spawns = world.spawns.filter((s) => s.z > 77 + DZ && s.y > 8.5);
-    expect(spawns.length).toBeGreaterThan(1);
-    for (const s of spawns) {
-      // Looking south, a little down: over the parapet, the sea within 200 m.
-      const eye = s.y + 1.6;
-      const d = [0, -Math.sin(0.08), Math.cos(0.08)];
-      const t = world.raycast(s.x, eye, s.z, d[0], d[1], d[2], 200);
-      expect(eye + d[1] * t, `${s.x}, ${s.z}`).toBeLessThan(1);
+    // From across the attackers' end, 3 m back from the parapet, looking out.
+    for (const u of [150, 250, 350]) {
+      const [x, z0] = onIsland(u, 900);
+      let z = z0;
+      while (world.floorTops(x, z + 0.25, 0.01).length) z += 0.25;
+      z -= 3;
+      const eye = Math.max(...world.floorTops(x, z, 0.01)) + 1.6;
+      // A little down: over the parapet to the sea.
+      const d = [0, -Math.sin(0.06), Math.cos(0.06)];
+      const t = world.raycast(x, eye, z, d[0], d[1], d[2], 400);
+      expect(eye + d[1] * t, `${x}, ${z}`).toBeLessThan(1);
     }
   });
 });

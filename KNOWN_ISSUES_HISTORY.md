@@ -2302,6 +2302,14 @@ notes the chunk it came from.
   stone as houses (`client/blocks.ts`: plinths, cornices, quoins, lintels over the tunnels and
   doorways, shuttered windows high up, caps on the low walls); the ground is cobbled, flagged or
   earth by place and worn along the ways; the tunnels are lit by lanterns; the doors are wood.
+- **The new map's heights and joins are read off a picture** (chunk 67): the heights came from
+  the overview's shading, put in four steps, not the original's own; its slanted walls were
+  squared to whole metres; where the shading was unclear (the defenders' end beside short), a
+  wide flight was guessed from the defenders' end up to short and A, which wasn't how the
+  original joins them, and there was no way under the walk to A; the map was 86 m a side.
+  **Resolved** (2026-10-07, chunk 67 redone at the user's word that it was far from the
+  original): the layout is made from the original's navigation mesh, every floor at its own
+  height, at 2.54 cm a unit (114 m a side); see `scripts/calabianca.mjs`.
 
 ## Dropped
 

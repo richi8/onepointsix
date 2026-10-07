@@ -1219,8 +1219,12 @@ export class World {
       }
       const h = p.size / 2;
       const under = p.on === undefined ? -1 : panels[p.on];
-      const [lo, hi] = under >= 0 ? [this.panels[under].box.maxY, this.panels[under].box.maxY] : this.heightRange(p.x - h, p.z - h, p.x + h, p.z + h);
-      const bottom = under >= 0 ? lo : lo - 0.2;
+      // On the crate under it, a walked floor over the ground, or the ground, sunk a little into it where it's uneven.
+      // A map of buildings (the old town) sets its crates on the ground under its terraces, as it always has, until it goes (chunk 69).
+      const floor = surface(p.x, p.z);
+      const raised = under < 0 && !map.buildings.length && floor > this.terrainHeight(p.x, p.z) + 0.05;
+      const [lo, hi] = under >= 0 ? [this.panels[under].box.maxY, this.panels[under].box.maxY] : raised ? [floor, floor] : this.heightRange(p.x - h, p.z - h, p.x + h, p.z + h);
+      const bottom = under >= 0 || raised ? lo : lo - 0.2;
       panels.push(this.addPanel(p.x - h, bottom, p.z - h, p.x + h, hi + p.size, p.z + h, 'crate', under >= 0 ? [under] : [], rng()));
     }
   }

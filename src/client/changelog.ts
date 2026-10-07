@@ -11,6 +11,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    date: '2026-10-07',
+    title: 'Calabianca rebuilt, true to the classic',
+    notes: [
+      'Calabianca is laid out again, this time following the classic three-lane map exactly: every lane, corner, slope, step and box where it should be, and at its true size, about a third bigger each way than before.',
+      'The defenders start under the walk from short to A again, and the ways out of there run where you expect them.',
+      'A, short, the catwalk, long and its doors, the pit, the B tunnels, B’s doors and window are all as they were in the original, in the town’s plaster and stone.',
+      'Its boxes are stone you can climb onto; a few crates hold ammunition.',
+      'Long’s doors are two pairs of fixed wooden doors with a gap to get through, as at mid and B.',
+      'Spawn points are spread round the whole map.',
+    ],
+  },
+  {
     date: '2026-10-06',
     title: 'Calabianca plastered and lit',
     notes: [

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CALABIANCA } from '../src/shared/maps/calabianca.ts';
-import { CALABIANCA_2, PLACES } from '../src/shared/maps/calabianca2.ts';
+import { CALABIANCA_2 } from '../src/shared/maps/calabianca2.ts';
+import { area, standIn } from './calabianca.ts';
 import { World } from '../src/shared/world.ts';
 import { BAKE_CELL, bake, bakeInput, SKY_RANGE, SUN_RANGE, type BakeInput, type Baked } from '../src/client/townbake.ts';
 
@@ -150,9 +151,8 @@ describe('Calabianca\'s baked light', () => {
     expect(input.y0 + input.ny * BAKE_CELL).toBeGreaterThan(Math.max(...CALABIANCA_2.walls.map((w) => w.y1)));
     const baked = bake(input);
     const sky = (name: string) => {
-      const i = CALABIANCA_2.areas!.findIndex((p) => p.name === name);
-      const a = CALABIANCA_2.areas![i];
-      return read(input, baked, (a.minX + a.maxX) / 2, PLACES[i].y + 1.5, (a.minZ + a.maxZ) / 2, PY).sky;
+      const p = standIn(world, area(name))!;
+      return read(input, baked, p.x, p.y + 1.5, p.z, PY).sky;
     };
     expect(sky('lower tunnels')).toBeLessThan(sky('long A') * 0.25);
   });
