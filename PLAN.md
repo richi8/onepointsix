@@ -499,11 +499,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   doubled for a hand's breadth, and a dark stone counts as a joint and holds water in rain.
 - **The town's age costs up to 0.8 ms a frame** (chunk 61), most from above, where the
   buildings' boxes, drawn in no order, shade the same pixel many times over.
-- **Some features collide where nothing is drawn** (chunk 59): they're drawn over their boxes,
-  which are solid all through: the 0.3 m over the lorry's cab, the corners of the hauled-out
-  boats' boxes beside their hulls, the space under a cart's bed, a stall's under its counter's
-  edge. (Chunk 64's cars, whose boxes filled out past their bodies, were removed in chunk 66,
-  and its rubble heaps collide as three tiers, as drawn: their tiers' corners stand square.)
 - **The town's details are boxes** (chunk 59), **Resolved in part** (chunks 62, 63): leaves,
   flowers, window boxes and wheelhouses have real shapes, and the trees are real trees (chunk
   63), but the stalls, carts and the lorry's body are still boxes, and the ruined chapel is
@@ -514,14 +509,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   tiles it sees, and what's fine (see below) casts only into the near shadows; but building
   them, the signs and the rounded edges on the main thread still adds about 0.3 s to the
   town's load, and the tiles cost about 100 more draw calls a frame, 0.3–0.5 ms of the CPU's.
-- **Small things on the walls cast no shadow past 32 m** (chunk 64): what's under a quarter of
-  a metre across but along its length (sills, cables, string courses, flowers, leaves, a
-  shape's rings and rods) is drawn into the near shadow map alone, and left out of the far and
-  the still ones and out of the sea's reflection. A long cornice's shadow along a façade is
-  lost past 32 m, and a balcony's railing reflects without its bars.
-- **Rounded edges are only shading** (chunk 62): the silhouettes and shadows stay square, and an
-  edge open only part of its length (a wall's end beside a window, between sill and lintel)
-  stays sharp all along.
 - **The greenery costs 2–5 ms a frame** (chunk 63) on an M3 Pro at 1280 × 720: least in the
   market and from above, most looking at the hillside. Most of it is the trees' far tiles,
   which draw the plainer trees out to 145 m past a tile's edge (about 1,000 olives and 1,700
@@ -533,21 +520,10 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   from 3.1 to 1.4 million triangles. Their impostors are flat cards, so from a roof the near
   groves read a little flatter than before. Drawing the leaf pictures and baking six kinds'
   impostors adds about 0.35 s to a warm load.
-- **The trees are cards close up** (chunk 63): seen from under or beside a crown, its leaf
-  cards show flat and some edge on; the olives' nearest crowns read a little brushy, and a
-  plane's pale bark looks grey in its own crown's shade. The leaf pictures are drawn on a
-  canvas, not taken from photographs. Every map gets the same hillside, the kit yard too.
 - **The town's light is baked at every load** (chunk 60): about 3 s in a worker on an M3 Pro,
   longer on slower machines, with about 250 MB in use while it runs; until it's done the town
   is lit as if all of it were out in the open, then the light fades in over a second. It
   isn't kept between visits.
-- **The town's baked light doesn't change** (chunk 60): it's baked without crates, glass or
-  fences, so a broken window or a stack of crates leaves the light as it was. The trim and the features don't shade anything either, as
-  they're drawn only, and a cornice or a window's reveal, narrower than the light's half-metre
-  cells, isn't darkened beneath or within.
-- **Rooms in the town take the sky's blue** (chunk 60): the sky's light bounced off walls and
-  floors is counted only in brightness, so a room lit by its windows is bluish grey; only the
-  sun's light bounced takes the colour of what it's bounced off.
 - **The town's narrowest lanes may be too dark** (chunk 60): the stair in the west's alleys,
   in shade at its foot, is nearly black at the screenshots' size. Left for a playtest.
 
@@ -610,10 +586,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
   playtest stays the testers'.
 
 ### Deathmatch
-- **Picking Deathmatch on the menu reloads the page** (chunk 50): its world differs from the
-  other modes' (a fixed map since chunk 52), and the client builds one world per page load, so switching into or out of Deathmatch loads the page again, with its
-  loading screen and, on a cold cache, the shaders compiled again. Building the new world in
-  place would need everything made from it (the view, bodies, sound, HUDs) rebuilt with it.
 - **Respawns are still often near a fight** (chunk 54), **resolved in part** (chunk 58): with 16
   in the town, no spawn point is 30 m from everyone and out of sight in 24–43% of respawns, so
   the farthest out of sight is taken, and 27–33% of deaths come within 15 s of spawning (chunk
@@ -670,13 +642,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
   body pressed into a wall's notch stands up to 30 cm into its drawn face; a round may stop up
   to that far behind it. Stacked boxes, and boxes against a wall, are still drawn as their
   cells.
-- **The new map's ground floats a few centimetres over its floors** (2026-10-07): the floors
-  are boxes whose tops are planes fitted within 3 cm of the original's ground, so two meet at a
-  seam up to 6 cm out of true; the ground is drawn as one surface over them (`groundSurface` in
-  terrain.ts), the mean of the tops meeting at each point, lifted 3.5 cm so no box's side shows
-  through it, so feet stand up to about 6 cm into it. Walked floors' lips up to 10 cm count as
-  underfoot on a map (`World.lip`), as the seams would otherwise stop bodies fitting. Where the
-  original is steeper than 24°, its floor is a flight of 25 cm steps, as its stairs are.
 - **The new map's tunnels are lit by lamps that aren't there to the sound or the bots** (chunk
   68): the lamps' light is baked as the sun's bounced light, warm, and their lanterns are drawn
   only; they cast no shadows of their own, players and bodies under them are lit by the bake

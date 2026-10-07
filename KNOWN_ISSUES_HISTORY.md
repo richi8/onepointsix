@@ -3094,3 +3094,19 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   hides anyone, so cover is only what collides, and a player can't be shot through a plant or
   die to something they can't see. Making them solid would also need their placement moved into
   shared code (see "Things drawn on the walls are walked through").
+
+- **Picking Deathmatch on the menu reloads the page (50)**: **Accepted** (2026-10-07): the reload takes a second on a warm cache and happens only when switching into or out of Deathmatch; building a world in place would mean rebuilding the view, bodies, sound and HUDs for it.
+
+- **The town's baked light doesn't change (60)**: **Accepted** (2026-10-07): a broken window or a stack of crates changing the light is invisible at the half-metre cells it's baked in, and rebaking mid-game would cost seconds of a worker.
+
+- **Rounded edges are only shading (62)**: **Accepted** (2026-10-07): the bevel is a few centimetres, read in the shading; real geometry would multiply the town's triangles for an edge nobody sees against the sky.
+
+- **Small things on the walls cast no shadow past 32 m (64)**: **Accepted** (2026-10-07): at that distance they're under a pixel of shadow, and drawing them into the far maps was what cost the frame.
+
+- **The trees are cards close up (63)**: **Accepted** (2026-10-07): the near trees are real, and a crown seen from beneath is shaded dark; photographs would only change how they read, not how the game plays.
+
+- **Some features collide where nothing is drawn (59)**: **Accepted** (2026-10-07): these are a few tenths of a metre, and solid boxes keep the bots' nav and cover simple and fair; shaping them would shift paths for nothing seen.
+
+- **Rooms in the town take the sky's blue (60)**: **Accepted** (2026-10-07): a room lit only through windows is bluish, as in daylight; the tint is mild and the rooms are readable.
+
+- **The new map's ground floats a few centimetres over its floors (2026-10-07)**: **Accepted** (2026-10-07): 6 cm is inside a footstep's bounce, and the alternative, seams showing between floor boxes, looked worse.
