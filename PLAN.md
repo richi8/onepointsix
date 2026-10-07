@@ -517,15 +517,6 @@ in their side's colour. Its board is `board:calabianca-2:team`, apart from the D
 played on that map before. `sim:deathmatch` takes `team` as a third argument. What it lacks:
 Nothing open: the last was resolved on 2026-10-07 (see the history).
 ### Deathmatch
-- **Kills gather at the new map's chokes** (chunk 67, redone 2026-10-07): over six 10-minute
-  Team Deathmatch games on seeds 1–6, the busiest 6 m square takes 7–13% of kills (11–13% before
-  today), against the 3% the chunk asked: outside long, the T ramp, top mid, the lower tunnels.
-  Bots roamed only on the ground, so blue's half was almost never visited (94% of roam picks
-  fell in red's); fixed 2026-10-07 (floors count as outdoors on a map with no buildings), which
-  halved deaths within 15 s of spawning and spread the fights more, but 60–90% of kills are
-  still made in one half, whichever (it flips with the seed and with the bases swapped, so it's
-  the bots' pull toward a fight, not the map). Callouts and the range hunters follow gunfire
-  from were tried off and capped: no change. Chunk 70 tunes the rest.
 - **The new map's frames cost more and weren't measured cleanly** (chunk 67, redone): two runs
   of the town bench with 12 soldiers on 2026-10-07, with the sloping floors and the ground drawn
   as one surface with the terrain's material, gave 10.4–21.3 ms and 11.8–20.4 ms at the same
