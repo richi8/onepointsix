@@ -127,6 +127,7 @@ for (const seed of seeds) {
   const dry = new Set<number>();
   let ranDry = 0;
   const stateTicks = new Map<string, number>();
+  const friendGaps: number[] = [];
   /** Ticks bots spent alive on the ground (a ground floor included), upstairs and on the roofs. */
   const where = { ground: 0, upstairs: 0, roofs: 0 };
   /** Each bot's spot and time when it last moved STUCK_REACH, or started trying to; and where bots got stuck. */
@@ -182,6 +183,11 @@ for (const seed of seeds) {
       const s = b.state;
       stateTicks.set(b.bot.state, (stateTicks.get(b.bot.state) ?? 0) + 1);
       if (!s.dead) where[whereIs(server.world, s.x, s.y, s.z)]++;
+      if (mode === 'team' && !s.dead && b.side && Math.round(server.time * 20) % 20 === 0) {
+        let near = Infinity;
+        for (const o of bots) if (o !== b && !o.state.dead && o.side === b.side) near = Math.min(near, Math.hypot(o.state.x - s.x, o.state.z - s.z));
+        if (near < Infinity) friendGaps.push(near);
+      }
       if (writeFootfall && !s.dead && server.world.map?.paving) {
         walked ??= new FootfallCount(server.world.map.paving);
         walkedMap = server.world.map.id;
@@ -252,6 +258,7 @@ for (const seed of seeds) {
     const sided = spawns.filter((s) => s.side);
     const away = (side: Side) => sided.filter((s) => s.side === side && !s.own).length;
     console.log(`  sides: red ${sideKills.red} kills, blue ${sideKills.blue}; kills made in red's half ${halfKills.red}, in blue's ${halfKills.blue}`);
+    console.log(`  nearest friend: median ${median(friendGaps).toFixed(0)} m, ${Math.round((friendGaps.filter((g) => g < 15).length / (friendGaps.length || 1)) * 100)}% within 15 m`);
     console.log(`  respawns in the other side's half: red ${away('red')} of ${sided.filter((s) => s.side === 'red').length}, blue ${away('blue')} of ${sided.filter((s) => s.side === 'blue').length}; nearest enemy median ${median(sided.map((s) => s.foe!)).toFixed(0)} m, under 15 m ${sided.filter((s) => s.foe! < 15).length}; ${sided.filter((s) => s.foeSeen).length} in an enemy's sight`);
   }
   console.log(`  ran out of ammo ${ranDry} times; time spent: ${states.join(', ')}`);
@@ -259,7 +266,7 @@ for (const seed of seeds) {
   console.log(`  stuck ${stuck.length} times${stuck.length ? `: ${stuck.slice(0, 12).join('; ')}` : ''}`);
   console.log(`  where: ${Object.entries(where).map(([k, n]) => `${k} ${Math.round((n / alive) * 100)}%`).join(', ')}`);
   if (!server.world.map) continue;
-  console.log(`  watched from ${botTally.posts - told.posts} windows and roofs (${botTally.postsHeld - told.postsHeld} got to), ${botTally.streetSpots - told.streetSpots} street spots beside cover; ${botTally.joins - told.joins} fights joined`);
+  console.log(`  watched from ${botTally.posts - told.posts} windows and roofs (${botTally.postsHeld - told.postsHeld} got to), ${botTally.streetSpots - told.streetSpots} street spots beside cover; ${botTally.joins - told.joins} fights joined${mode === 'team' ? `, ${botTally.rallies - told.rallies} set off for a friend's sighting` : ''}`);
 
   // Where the kills came from.
   const n = killsAt.length;

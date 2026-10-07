@@ -333,6 +333,8 @@ export const tally = {
   bushWaits: 0,
   /** Fights between others gone to, and how far off the real shooter the guess was, summed. */
   joins: 0,
+  /** Times a bot set off for a friend's sighting, in Team Deathmatch. */
+  rallies: 0,
   guessOff: 0,
   /** Camps looked for, and of those given up as no spot out to CAMP_FARTHEST sees into the extraction point. */
   camps: 0,
@@ -609,6 +611,13 @@ export class Bot {
     this.lure = { x: at.x, y: at.y, z: at.z, at: now };
   }
 
+  /** A friend on its side spotted an enemy at `at`: if healthy and not already in a fight, it goes to see. */
+  friendCalled(self: Agent, at: Point, now: number): void {
+    if (this.state === 'engage' || health(self) < WOUNDED || this.contacts.size) return;
+    this.lure = { x: at.x, y: at.y, z: at.z, at: now };
+    tally.rallies++;
+  }
+
   /** A round from `shooter` passed close or hit nearby. */
   underFire(shooter: Agent, now: number): void {
     const c = this.contact(shooter.id, shooter);
@@ -821,7 +830,7 @@ export class Bot {
           c.y = a.y;
           c.z = a.z;
           c.seenAt = now;
-          if (was < 1 && self.team === 'guard') ctx.callout(self, a);
+          if (was < 1 && (self.team === 'guard' || self.side)) ctx.callout(self, a);
         } else if (c.level > 0.4) {
           // Something moved over there: turn to look.
           this.heard = { x: a.x, y: a.y, z: a.z, at: now };

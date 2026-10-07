@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Team bots call out enemies',
+    notes: ['In Team Deathmatch, a bot that spots an enemy now tells its side, and friends nearby come to look.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'The town’s light is remembered',
     notes: ['On a second visit, the town’s light is ready at once instead of settling in over a few seconds, and the page does less work while it loads.'],
   },

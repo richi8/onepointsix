@@ -1047,12 +1047,15 @@ export class GameServer {
     return false;
   }
 
-  /** Tell the guards near `from` where it saw an enemy. */
+  /** Tell the guards, or in Team Deathmatch the side, near `from` where it saw an enemy. */
   private callout(from: Agent, at: Point): void {
     const noise: Noise = { x: at.x, y: at.y, z: at.z, radius: CALLOUT_RANGE, source: from.id };
     for (const p of this.players.values()) {
-      if (p === from || p.team !== 'guard' || p.dead || !p.bot) continue;
-      if (Math.hypot(p.x - from.x, p.z - from.z) <= CALLOUT_RANGE) p.bot.hear(p, noise, this.time);
+      if (p === from || p.dead || !p.bot) continue;
+      if (Math.hypot(p.x - from.x, p.z - from.z) > CALLOUT_RANGE) continue;
+      if (from.side) {
+        if (p.side === from.side) p.bot.friendCalled(p, at, this.time);
+      } else if (p.team === 'guard') p.bot.hear(p, noise, this.time);
     }
   }
 

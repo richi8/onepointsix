@@ -526,9 +526,15 @@ spawn) first; a side's kills its score, at the top of the screen and on Tab, the
 by side; a chevron over each friend, their name within 40 m, through walls; the kill feed's names
 in their side's colour. Its board is `board:calabianca-2:team`, apart from the Deathmatch games
 played on that map before. `sim:deathmatch` takes `team` as a third argument. What it lacks:
-- **Bots don't play as a side** (2026-10-07): each hunts on its own as in Deathmatch, with no
-  calls to friends, grouping or holding a part of the map; they only leave friends alone and
-  don't shoot through them.
+- **Bots don't play as a side** (2026-10-07), **resolved in part** (2026-10-07): a bot that
+  first makes out an enemy now calls it to friends on its side within 60 m, and any of them not
+  in a fight and not hurt goes to look (the bounty's and fights' lure; 600–700 times in 5 minutes).
+  Over three 10-minute games it changed nothing the simulation measures (kills a minute, life
+  before dying, how close friends stand: median 9–11 m, 61–69% within 15 m, both before and
+  after), as bots on a side already spawn together and stay bunched. Still missing: no holding
+  a part of the map, no lanes. About 85–90% of kills are made in Red's half (Blue pushes in,
+  Red waits there), which is the map's lean the Deathmatch item below accepted; a side that
+  holds its own half and contests the middle would change that, and the tuning with it.
 ### Deathmatch
 - **Respawns are still often near a fight** (chunk 54), **resolved in part** (chunk 58): with 16
   in the town, no spawn point is 30 m from everyone and out of sight in 24–43% of respawns, so
