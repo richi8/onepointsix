@@ -486,12 +486,7 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 [KNOWN_ISSUES_HISTORY.md](KNOWN_ISSUES_HISTORY.md).
 
 ### Look and animation
-- **The façades' details cost about 1 ms a frame in the streets** (chunk 62), **resolved in
-  part** (chunk 64): about 570 k vertices of shapes (leaves, tiles, cables, rings, flowers)
-  and 14,000 boxes. Since chunk 64 they're split into 32 m tiles, so each pass draws only the
-  tiles it sees, and what's fine (see below) casts only into the near shadows; but building
-  them, the signs and the rounded edges on the main thread still adds about 0.3 s to the
-  town's load, and the tiles cost about 100 more draw calls a frame, 0.3–0.5 ms of the CPU's.
+Nothing open: the last was accepted on 2026-10-07 (see the history).
 
 ### Sound
 Nothing open: the last was resolved on 2026-10-02 (see the history).

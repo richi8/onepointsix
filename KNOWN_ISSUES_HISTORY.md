@@ -5,6 +5,17 @@ they are, kept with how each was resolved. Grouped by the same areas as in the p
 notes the chunk it came from.
 
 ### Look and animation
+- **The façades' details cost about 1 ms a frame in the streets** (chunk 62), **resolved in
+  part** (chunk 64): about 570 k vertices of shapes (leaves, tiles, cables, rings, flowers)
+  and 14,000 boxes. Since chunk 64 they're split into 32 m tiles, so each pass draws only the
+  tiles it sees, and what's fine (see below) casts only into the near shadows; but building
+  them, the signs and the rounded edges on the main thread still adds about 0.3 s to the
+  town's load, and the tiles cost about 100 more draw calls a frame, 0.3–0.5 ms of the CPU's.
+  **Accepted** (2026-10-07): tiles of 64 m instead of 32 (draw calls a frame down by 25–40, e.g.
+  284 to 258, triangles up about 5%) changed neither the CPU's 1.8–2.0 ms nor the GPU's time
+  beyond the run-to-run noise (best of two rounds alternating on an M3 Pro, `bench -g town`), so the
+  draw calls are not what the details cost; it's their vertices and shading, which the near-shadow
+  and coarse/fine split already trim. The 0.3 s of load stays.
 - **The town's narrowest lanes may be too dark** (chunk 60): the stair in the west's alleys,
   in shade at its foot, is nearly black at the screenshots' size. Left for a playtest.
   **Accepted** (2026-10-07): at the user's word the lanes stay as dark as they are.
