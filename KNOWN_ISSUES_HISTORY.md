@@ -2444,6 +2444,14 @@ notes the chunk it came from.
   **Resolved** (2f348b5, checked 2026-10-07): the plinth is laid a metre at a time, each piece
   tilted to the ground under it (`blocks.ts`), and left out where the ground steps; the
   `calabianca-mid` screenshot shows it running straight down the sloping road.
+- **The new map is made from another game's navigation mesh** (chunk 67, redone 2026-10-07):
+  its floors and heights come from Dust 2's mesh as the analysis library awpy (MIT) publishes it
+  for its tests, fetched by `scripts/calabianca.mjs` from a pinned commit and not committed
+  here; only the boxes made from it are. The layout is followed exactly, as the plan asks; none
+  of the original's textures, models or name are used. Whether following a layout this closely
+  is fine for a released game is a licensing question left open.
+  **Accepted** (2026-10-07): at the user's word, ignored for now; the map will be changed a
+  little from the original later.
 
 ### Team Deathmatch
 - **A game never ends** (Team Deathmatch, 2026-10-07): there's no score to reach, round or

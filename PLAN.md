@@ -683,13 +683,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
   spots, the GPU 7–17 ms, swinging by half between runs, against the island's 13.4 with 24. A
   cold first load was 14.1–14.5 s against the island's 13.1–13.6 before the slopes. Chunk 70
   measures it alternately with the island's.
-- **The new map is made from another game's navigation mesh** (chunk 67, redone 2026-10-07):
-  its floors and heights come from Dust 2's mesh as the analysis library awpy (MIT) publishes it
-  for its tests, fetched by `scripts/calabianca.mjs` from a pinned commit and not committed
-  here; only the boxes made from it are. The layout is followed exactly, as the plan asks; none
-  of the original's textures, models or name are used. Whether following a layout this closely
-  is fine for a released game is a licensing question left open.
-  **Easy: your call.** A licensing decision, not code.
 - **The new map's walls are where the mesh leaves off, its roofs by eye** (chunk 67, redone):
   the mesh keeps 0.41 m off every wall, so the floors are widened by that much, to the nearest
   25 cm; a wall thinner than about 0.5 m between two floors at one height can close up, and
