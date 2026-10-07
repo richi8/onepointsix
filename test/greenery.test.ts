@@ -48,7 +48,7 @@ describe('greenery', () => {
 
   it('grows olives in rows along the terraces, halfway up each, between dry-stone walls on the contours', () => {
     const olives = plants.filter((p) => p.kind === 'olive' && beyondTown(town, p.x, p.z) > 0);
-    expect(olives.length).toBeGreaterThan(300);
+    expect(olives.length).toBeGreaterThan(100);
     // Halfway between one contour and the next, give or take the ground's bends.
     const off = olives.map((p) => Math.abs((town.terrainHeight(p.x, p.z) / TERRACE_RISE) % 1 - 0.5));
     expect(off.filter((d) => d < 0.25).length / off.length).toBeGreaterThan(0.85);

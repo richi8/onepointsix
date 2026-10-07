@@ -520,6 +520,14 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   from 3.1 to 1.4 million triangles. Their impostors are flat cards, so from a roof the near
   groves read a little flatter than before. Drawing the leaf pictures and baking six kinds'
   impostors adds about 0.35 s to a warm load.
+  **Resolved in part** (2026-10-07): what no spot a player can stand on sees isn't planted or
+  drawn (`sightlines.ts`: a line of sight over the terrain from a viewpoint every 12 m on the
+  ground and on each walkable roof and floor, to a target's top, with 1.5 m's slack): of 3,348
+  trees 962 are left, of 6,744 terrace walls 1,379, of 195 rocks 88, the town's screenshots
+  unchanged, the benchmark's triangles down 12–15% (2.0 M to 1.8 M at its busiest spot), at
+  about 0.1 s more load. Its frame times didn't separate from the noise over two alternating
+  runs. Buildings aren't counted as hiding anything, only the ground, so a tree behind a house
+  is kept.
 - **The town's light is baked at every load** (chunk 60): about 3 s in a worker on an M3 Pro,
   longer on slower machines, with about 250 MB in use while it runs; until it's done the town
   is lit as if all of it were out in the open, then the light fades in over a second. It

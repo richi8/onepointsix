@@ -6,6 +6,7 @@ import { beyondTown, groveAt, maquisAt, slopeAt, TERRACE_RISE } from '../shared/
 import type { World } from '../shared/world.ts';
 import type { Assets } from './assets.ts';
 import { standsOn } from './features.ts';
+import { sightlines } from './sightlines.ts';
 import { species, type Kind } from './species.ts';
 import { surfaceMaterial } from './surfaces.ts';
 import { onTiles } from './terrain.ts';
@@ -186,7 +187,9 @@ export function plantings(world: World): Plant[] {
       add('shrub', px, ground(px, pz) + 0.05, pz, s);
     }
   }
-  return out;
+  // Nothing the town can't see is drawn.
+  const seen = sightlines(world, REACH);
+  return out.filter((p) => beyondTown(world, p.x, p.z) === 0 || seen(p.x, p.y + HEIGHT[p.kind] * p.s * 0.8, p.z));
 }
 
 /**
@@ -239,7 +242,8 @@ export function terraces(world: World): TerraceWall[] {
       }
     }
   }
-  return out;
+  const seen = sightlines(world, REACH);
+  return out.filter((w) => seen((w.x0 + w.x1) / 2, w.y1, (w.z0 + w.z1) / 2));
 }
 
 /** Outcrops of pale rock breaking through the hillside's steeper slopes and tops, a few rocks to each. */
@@ -268,7 +272,8 @@ export function outcrops(world: World): Outcrop[] {
       out.push({ x: rx, y: world.terrainHeight(rx, rz) - r * 0.25, z: rz, r, h, rot: rand() * Math.PI * 2 });
     }
   }
-  return out;
+  const seen = sightlines(world, REACH);
+  return out.filter((r) => seen(r.x, r.y + r.h * ROCK_SQUASH, r.z));
 }
 
 /** The stands of trees a map's world draws (see trees.ts), each kind its own. */
