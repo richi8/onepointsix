@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Damp where the walls really stand',
+    notes: ['In the old town, walls that stand on a terrace, a ramp or a lower roof are now damp and dirty at their foot, as the ones on the street are.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Lighter first load',
     notes: ['Extraction and the other island modes no longer download the old town’s textures, about 0.75 MB less to download on a first visit.'],
   },

@@ -488,10 +488,11 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 ### Look and animation
 - **The town's age is noise, not where water runs** (chunk 61): streaks run down from the top
   of each box the walls are built of, so a streak starts sharp where a sill's box ends and none
-  falls from the drawn-only trim (balconies, window boxes, awnings); damp rises from the
-  terrain, so a wall on a terrace, a ramp or a lower roof has none at its foot; fallen plaster
+  falls from the drawn-only trim (balconies, window boxes, awnings); fallen plaster
   lies flat in rounded blobs anywhere on a wall rather than at its corners and edges; two
-  buildings' fronts in one plane share a shade. Shapes that aren't boxes (wheels, crowns,
+  buildings' fronts in one plane share a shade (a per-building seed would split them from
+  their drawn trim, which `dressing.ts` makes without knowing its building). Damp now rises from
+  the ground a wall stands on (`footLifts`), but only for props' boxes, not the drawn-only trim. Shapes that aren't boxes (wheels, crowns,
   hulls, the bell tower's roof), the lorry and the containers aren't aged.
 - **The town's paving is worn by hand-drawn lanes** (chunk 61): along the dev view's lines,
   round doorways and at stairs' feet, not where players and bots actually walk (the
