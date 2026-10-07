@@ -3034,3 +3034,8 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
 - **Bots at a window stand in it** (58): a post was watched standing, never ducking between looks.
   **Resolved in part** (2026-10-07): a bot at a post ducks below the sill for the last second
   before each new look; changing window after firing stays open in Known Issues.
+
+- **Bots at a window don't change window after firing** (58, the rest of the one above): a bot
+  held its post after firing from it until its wait was up.
+  **Resolved** (2026-10-07): a hunter that fought while standing at its post gives it up
+  (`postFired`) and roams to another when the fight's over.

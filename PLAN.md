@@ -644,10 +644,6 @@ played on that map before. `sim:deathmatch` takes `team` as a third argument. Wh
   picked to watch from, 32–49 are got to; the rest are given up for someone seen on the way, a
   shot from somewhere else or a death. So bots are upstairs 10–15% of the time and on the roofs
   3–5%, not more.
-- **Bots at a window don't change window after firing** (chunk 58), **resolved in part**
-  (2026-10-07): a bot watching from a post now ducks below the sill for the last second before
-  each new look (`POST_DUCK`), but after firing from one it still holds it until its wait is up
-  or it's drawn into a fight.
 - **A spawn zone's points see each other** (chunk 57): the town's spawn points stand four to a
   zone, as the sketch has them, so one operator in a zone spoils all four; as a game starts,
   with 15 bots spread over the eight zones, nearly every point is seen, and a player joining

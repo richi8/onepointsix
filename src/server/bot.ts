@@ -461,6 +461,8 @@ export class Bot {
   private roamedLife = -1;
   /** The way a post's window or roof's edge looks out, or null. */
   private spotYaw: number | null = null;
+  /** It fired from its post, so the post is given up for another when the fight's over. */
+  private postFired = false;
   private spotUntil = 0;
   private heard: (Point & { at: number }) | null = null;
   private hurtAt = -Infinity;
@@ -1250,9 +1252,10 @@ export class Bot {
           break;
         }
         // Roam between places people pass, stopping to listen, until a fight is heard.
-        if (!this.spot || (this.waitUntil > 0 && now >= this.waitUntil)) {
+        if (!this.spot || this.postFired || (this.waitUntil > 0 && now >= this.waitUntil)) {
           this.spot = this.roamPoint(ctx, self);
           this.waitUntil = 0;
+          this.postFired = false;
         }
         const d = this.spot ? spotAway(this.spot, self) : 0;
         if (this.spot && d > arrival(this.spot, ARRIVE * 2)) {
@@ -1394,6 +1397,7 @@ export class Bot {
           break;
         }
         this.goTo(null);
+        if (this.spot?.post && spotAway(this.spot, self) <= arrival(this.spot, ARRIVE)) this.postFired = true;
         if (now >= this.strafeUntil) {
           const r = this.rand();
           this.strafe = r < 0.4 ? -1 : r < 0.8 ? 1 : 0;
