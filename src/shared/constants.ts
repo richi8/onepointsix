@@ -28,8 +28,8 @@ export const STEP_HEIGHT = 0.55;
 export const MAX_PITCH = 1.5;
 
 // Movement (Quake/GoldSrc style acceleration, so air strafing works)
-export const WALK_SPEED = 6;
-export const SPRINT_SPEED = 9.5;
+export const WALK_SPEED = 4.8;
+export const SPRINT_SPEED = 7.2;
 export const CROUCH_SPEED = 2.4;
 export const WATER_SPEED_MUL = 0.55;
 export const GROUND_ACCEL = 10;
