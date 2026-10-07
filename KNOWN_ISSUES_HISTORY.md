@@ -3121,4 +3121,6 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   left, of 6,744 terrace walls 1,379, of 195 rocks 88; the town's screenshots are unchanged and
   the benchmark's triangles are down 12-15%, at about 0.1 s more load. Frame times didn't separate
   from the noise over two alternating runs. Buildings aren't counted as hiding anything, only
-  the ground, so a tree behind a house is kept. Its leaf cards close up are the trees' own issue.
+  the ground, so a tree behind a house is kept. Its leaf cards close up are the trees' own issue. A later A/B with the trees hidden
+  altogether (two rounds, a temporary `?hide=trees`) fell inside the same noise: what's left is
+  80-370 k of the town's 1.2-1.8 M triangles, too little to show on an M3 Pro.
