@@ -1025,7 +1025,7 @@ export class GameServer {
     const sizes = new Map<Squad, number>();
     for (const o of this.players.values()) if (o.squad && o.side === p.side) sizes.set(o.squad, (sizes.get(o.squad) ?? 0) + 1);
     const open = [...sizes].filter(([q, n]) => n < q.size).map(([q]) => q);
-    p.squad = open.length ? open[Math.floor(this.botRng() * open.length)] : { size: 2 + Math.floor(this.botRng() * 2), goal: null, at: 0 };
+    p.squad = open.length ? open[Math.floor(this.botRng() * open.length)] : { size: 2 + Math.floor(this.botRng() * 2), goal: null, spots: [], at: 0 };
     return p.squad;
   }
 

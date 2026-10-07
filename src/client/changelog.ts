@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Team bots give each other room',
+    notes: ['In Team Deathmatch your bot teammates no longer stand or walk inside one another: a squad that sets off together spreads over several spots round its goal, and a bot steps away from a friend who is too close.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Slower on foot',
     notes: ['Everyone, you and the bots, now walks at 4.8 m/s instead of 6 and sprints at 7.2 instead of 9.5, in every mode, so fights are closer to the pace of a tactical shooter and a gunman is easier to track and to get away from.'],
   },

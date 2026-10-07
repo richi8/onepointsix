@@ -325,6 +325,11 @@ const CAMP_LINGER = 150;
 
 /** Seconds a squad keeps to the place it set off for before any of it picks another. */
 const SQUAD_HOLD = 45;
+/** Squad mates settle at least this far apart round their goal. */
+const SQUAD_GAP = 5;
+/** A friend this near is walked away from, and one nearer than SIDE_BY_SIDE is stepped away from even when standing. */
+const FRIEND_ROOM = 3.2;
+const SIDE_BY_SIDE = 2.2;
 
 /** Two or three bots on a side that roam to the same place together, in Team Deathmatch. */
 export interface Squad {
@@ -333,6 +338,8 @@ export interface Squad {
   /** Where it's going, and when that was picked. */
   goal: Spot | null;
   at: number;
+  /** The spots its members have taken round the goal, so that no two stand on one. */
+  spots: Point[];
 }
 
 /** What bots have been up to, summed over every bot, for the playtest. */
@@ -1540,11 +1547,14 @@ export class Bot {
     if (q?.goal && ctx.time - q.at < SQUAD_HOLD) {
       tally.follows++;
       this.spotYaw = null;
-      return this.streetSpot(ctx, q.goal);
+      const mine = this.streetSpot(ctx, q.goal, undefined, q.spots);
+      q.spots.push({ x: mine.x, y: mine.y, z: mine.z });
+      return mine;
     }
     const spot = this.pickRoam(ctx, self);
     if (q && spot) {
       q.goal = { x: spot.x, y: spot.y, z: spot.z };
+      q.spots = [{ x: spot.x, y: spot.y, z: spot.z }];
       q.at = ctx.time;
     }
     return spot;
@@ -1667,7 +1677,7 @@ export class Bot {
    * the spot within STREET_SEARCH with the most beside it, nearest `near`, of
    * those that see `watch` if given; or `near` itself.
    */
-  private streetSpot(ctx: BotContext, near: Point, watch?: Point): Spot {
+  private streetSpot(ctx: BotContext, near: Point, watch?: Point, avoid?: Point[]): Spot {
     const w = ctx.world;
     let best: Spot = near;
     let bestScore = Infinity;
@@ -1679,6 +1689,7 @@ export class Bot {
       if (!p || p.y !== undefined || !ctx.nav.dry(p.x, p.z)) continue;
       const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
       if (Math.abs(y - near.y) > 2) continue;
+      if (avoid?.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < SQUAD_GAP)) continue;
       if (watch && !w.hasLineOfSight(p.x, y + EYE_HEIGHT, p.z, watch.x, watch.y + 1, watch.z)) continue;
       let beside = 0;
       for (let k = 0; k < 8; k++) {
@@ -2095,7 +2106,7 @@ export class Bot {
     let buttons = 0;
 
     // Where to look: the target, a point of interest, the way ahead, or around.
-    const dir = this.moveDir(ctx, self, a);
+    const dir = this.apartFromFriends(ctx, self, this.moveDir(ctx, self, a));
     const eye = hitboxes(self);
     let wantYaw = this.yaw;
     let wantPitch = IDLE_PITCH;
@@ -2190,6 +2201,37 @@ export class Bot {
     if (buttons & (Btn.Fire | Btn.Aim)) buttons &= ~Btn.Sprint;
 
     return { seq, buttons, yaw: this.yaw, pitch: this.pitch, weapon: this.weapon };
+  }
+
+  /**
+   * Bodies don't block each other, so friends on a side would walk and stand inside one another:
+   * bend the way ahead away from any within FRIEND_ROOM, and step off one within SIDE_BY_SIDE even when standing.
+   */
+  private apartFromFriends(ctx: BotContext, self: Agent, dir: Waypoint | null): Waypoint | null {
+    if (!self.side) return dir;
+    let px = 0;
+    let pz = 0;
+    let closest = Infinity;
+    for (const a of ctx.agents) {
+      if (a === self || a.dead || a.side !== self.side || Math.abs(a.y - self.y) > 2) continue;
+      const dx = self.x - a.x;
+      const dz = self.z - a.z;
+      const d = Math.hypot(dx, dz);
+      if (d >= FRIEND_ROOM) continue;
+      closest = Math.min(closest, d);
+      // Exactly on top of one, the one with the lower id leaves to the left.
+      const [ux, uz] = d < 0.05 ? [self.id < a.id ? -1 : 1, 0] : [dx / d, dz / d];
+      px += ux * (FRIEND_ROOM - d);
+      pz += uz * (FRIEND_ROOM - d);
+    }
+    if (closest === Infinity) return dir;
+    if (!dir && closest >= SIDE_BY_SIDE) return dir;
+    const len = Math.hypot(px, pz) || 1;
+    let [x, z] = dir ? [dir.x + (px / len) * 0.9, dir.z + (pz / len) * 0.9] : [px / len, pz / len];
+    const m = Math.hypot(x, z);
+    if (m < 0.2) return dir;
+    [x, z] = [x / m, z / m];
+    return ctx.nav.stands(self.x + x * 1, self.y, self.z + z * 1) ? { x, z } : dir;
   }
 
   /** Unit direction to move in this command, or null to stand still. */

@@ -258,7 +258,7 @@ for (const seed of seeds) {
     const sided = spawns.filter((s) => s.side);
     const away = (side: Side) => sided.filter((s) => s.side === side && !s.own).length;
     console.log(`  sides: red ${sideKills.red} kills, blue ${sideKills.blue}; kills made in red's half ${halfKills.red}, in blue's ${halfKills.blue}`);
-    console.log(`  nearest friend: median ${median(friendGaps).toFixed(0)} m, ${Math.round((friendGaps.filter((g) => g < 15).length / (friendGaps.length || 1)) * 100)}% within 15 m`);
+    console.log(`  nearest friend: median ${median(friendGaps).toFixed(0)} m, ${Math.round((friendGaps.filter((g) => g < 15).length / (friendGaps.length || 1)) * 100)}% within 15 m, ${Math.round((friendGaps.filter((g) => g < 3).length / (friendGaps.length || 1)) * 100)}% within 3 m, ${Math.round((friendGaps.filter((g) => g < 1.5).length / (friendGaps.length || 1)) * 100)}% within 1.5 m`);
     console.log(`  respawns in the other side's half: red ${away('red')} of ${sided.filter((s) => s.side === 'red').length}, blue ${away('blue')} of ${sided.filter((s) => s.side === 'blue').length}; nearest enemy median ${median(sided.map((s) => s.foe!)).toFixed(0)} m, under 15 m ${sided.filter((s) => s.foe! < 15).length}; ${sided.filter((s) => s.foeSeen).length} in an enemy's sight`);
   }
   console.log(`  ran out of ammo ${ranDry} times; time spent: ${states.join(', ')}`);
