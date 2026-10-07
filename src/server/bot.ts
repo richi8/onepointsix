@@ -298,6 +298,8 @@ const WATCH_HIGH = 0.5;
 const POST_NOTICE = 10;
 /** A hunter roams to a post this near, if there's one. */
 const ROAM_POST = 50;
+/** A bot at a post ducks this many seconds before each new look. */
+const POST_DUCK = 1;
 /** Close enough to a post to watch from it. */
 const POST_ARRIVE = 0.6;
 const ROAM_HIGH = 0.4;
@@ -1259,7 +1261,7 @@ export class Bot {
           break;
         }
         this.goTo(null);
-        this.crouch = !this.spot?.post;
+        this.crouch = this.spot?.post ? this.ducksBetweenLooks(now) : true;
         if (this.waitUntil === 0 && this.spot?.post) tally.postsHeld++;
         if (this.waitUntil === 0) this.waitUntil = now + this.between(LOOK_AROUND) * 1.5;
         this.lookAround(now, this.spot?.post && this.spotYaw !== null ? this.spotYaw : this.yaw);
@@ -1336,7 +1338,7 @@ export class Bot {
           }
         } else {
           this.goTo(null);
-          this.crouch = !spot.post;
+          this.crouch = spot.post ? this.ducksBetweenLooks(now) : true;
           if (this.waitUntil === 0 && spot.post) tally.postsHeld++;
           if (this.waitUntil === 0) this.waitUntil = now + this.between(LOOK_AROUND) * 2;
           this.lookAround(now, yawToward(self.x, self.z, fight.x, fight.z));
@@ -1955,6 +1957,11 @@ export class Bot {
   }
 
   /** Glance about in the general direction `around`. */
+  /** At a post a bot stands to look and drops below the sill for the last second before it looks elsewhere. */
+  private ducksBetweenLooks(now: number): boolean {
+    return this.glanceUntil - now < POST_DUCK;
+  }
+
   private lookAround(now: number, around: number): void {
     if (now >= this.glanceUntil) {
       this.lookYaw = around + (this.rand() - 0.5) * 2.4;

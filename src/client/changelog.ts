@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Bots duck at windows',
+    notes: ['A bot watching from a window or a roof’s edge now drops below the sill for a moment before each new look, so it’s not always standing in plain sight.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'The sea wall',
     notes: ['In Calabianca DM you no longer start climbing the sea wall only to be stopped at the edge of the map: the wall holds you back, as the other edges do.'],
   },

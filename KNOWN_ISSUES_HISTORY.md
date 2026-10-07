@@ -3030,3 +3030,7 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   meets them, its rooms in that cell are lit as if outdoors.
   **Moot** (60): only the town has buildings meeting so, and it no longer uses the buildings'
   grids; the islands' outposts and huts stand apart.
+
+- **Bots at a window stand in it** (58): a post was watched standing, never ducking between looks.
+  **Resolved in part** (2026-10-07): a bot at a post ducks below the sill for the last second
+  before each new look; changing window after firing stays open in Known Issues.
