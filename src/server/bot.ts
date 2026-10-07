@@ -1578,8 +1578,9 @@ export class Bot {
       for (let i = 0; i < 6; i++) {
         const [x, z] = within(w.bounds, this.rand(), this.rand());
         const p = ctx.nav.nearestWalkable(x, z, 15);
-        if (!p || p.y !== undefined || !ctx.nav.dry(p.x, p.z)) continue;
-        return this.streetSpot(ctx, { x: p.x, y: w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z)), z: p.z });
+        const y = p && outdoors(ctx, p);
+        if (!p || y === null) continue;
+        return this.streetSpot(ctx, { x: p.x, y, z: p.z });
       }
       return null;
     }
@@ -1686,8 +1687,8 @@ export class Bot {
       const a = turn + i * 2.4;
       const r = i === 0 ? 0 : 1.5 + (i % 3) * ((STREET_SEARCH - 1.5) / 2);
       const p = ctx.nav.nearestWalkable(near.x + Math.sin(a) * r, near.z + Math.cos(a) * r, 1.5);
-      if (!p || p.y !== undefined || !ctx.nav.dry(p.x, p.z)) continue;
-      const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
+      const y = p && outdoors(ctx, p);
+      if (!p || y === null) continue;
       if (Math.abs(y - near.y) > 2) continue;
       if (avoid?.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < SQUAD_GAP)) continue;
       if (watch && !w.hasLineOfSight(p.x, y + EYE_HEIGHT, p.z, watch.x, watch.y + 1, watch.z)) continue;
@@ -1880,8 +1881,8 @@ export class Bot {
       const a = away + (this.rand() - 0.5) * 2.4;
       const r = this.between(FLEE_RANGE);
       const p = ctx.nav.nearestWalkable(self.x + Math.sin(a) * r, self.z + Math.cos(a) * r, 8);
-      if (!p || p.y !== undefined || !ctx.nav.dry(p.x, p.z)) continue;
-      const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
+      const y = p && outdoors(ctx, p);
+      if (!p || y === null) continue;
       const seen = threats.some((t) => w.hasLineOfSight(t.x, t.y + EYE_HEIGHT, t.z, p.x, y + CROUCH_EYE_HEIGHT, p.z));
       // Out of sight first, then away from the outposts and the threats.
       const score = (seen ? 100 : 0) + Math.max(0, from - outpost(p.x, p.z)) - Math.min(...threats.map((t) => Math.hypot(t.x - p.x, t.z - p.z))) * 0.3;
@@ -1972,8 +1973,8 @@ export class Bot {
       const r = MAP_FLANK[0] + this.rand() * (Math.min(d, MAP_FLANK[1]) - MAP_FLANK[0]);
       const a = yawToward(c.x, c.z, self.x, self.z) + turn;
       const p = ctx.nav.nearestWalkable(c.x - Math.sin(a) * r, c.z - Math.cos(a) * r, 4);
-      if (!p || p.y !== undefined) continue;
-      const y = w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z));
+      const y = p && outdoors(ctx, p);
+      if (!p || y === null) continue;
       if (!w.hasLineOfSight(p.x, y + EYE_HEIGHT, p.z, c.x, c.y + 1, c.z)) continue;
       spot = { x: p.x, y, z: p.z };
     }
@@ -2275,7 +2276,7 @@ export class Bot {
       if (this.strafe === 2) return { x: -dx / d, z: -dz / d };
       const sx = (-dz / d) * this.strafe;
       const sz = (dx / d) * this.strafe;
-      if (!ctx.nav.dry(self.x + sx * 1.5, self.z + sz * 1.5)) {
+      if (!ctx.nav.stands(self.x + sx * 1.5, self.y, self.z + sz * 1.5)) {
         this.strafe = -this.strafe;
         return null;
       }
@@ -2296,6 +2297,16 @@ export class Bot {
   private between([lo, hi]: [number, number]): number {
     return lo + this.rand() * (hi - lo);
   }
+}
+
+/**
+ * The height of a walkable spot if it's outdoors, else null: on the ground, dry, or on a floor of a map with
+ * no buildings (Dust 2's terraces and decks), where floors are the streets. In a town of houses a floor is a room's.
+ */
+function outdoors(ctx: BotContext, p: Waypoint): number | null {
+  const w = ctx.world;
+  if (p.y === undefined) return ctx.nav.dry(p.x, p.z) ? w.groundHeight(p.x, p.z, w.floorHeight(p.x, p.z)) : null;
+  return w.buildings.length === 0 && ctx.nav.stands(p.x, p.y, p.z) ? p.y : null;
 }
 
 /** How far a spot is to get to: up or down too, for a post. */

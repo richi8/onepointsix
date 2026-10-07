@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Bots use the whole Dust 2 map',
+    notes: ['On the new Team Deathmatch map the bots now roam, flank, flee and sidestep on its raised floors too, not only on its low ground; before, blue’s half was almost never visited and the fights piled up in one corner. People spawning into a fight within 15 s fell by about half.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Team bots give each other room',
     notes: ['In Team Deathmatch your bot teammates no longer stand or walk inside one another: a squad that sets off together spreads over several spots round its goal, and a bot steps away from a friend who is too close.'],
   },
