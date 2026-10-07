@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'Tidier washing lines',
+    notes: ['In the old town, cables and washing lines no longer cross each other over the lanes.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Bots duck at windows',
     notes: ['A bot watching from a window or a roof’s edge now drops below the sill for a moment before each new look, so it’s not always standing in plain sight, and one that’s fired from a window moves on to another afterwards.'],
   },

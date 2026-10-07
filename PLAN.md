@@ -533,9 +533,10 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   air conditioners, lanterns, downpipes, flat roofs' aerials and dishes and the signs standing
   out don't collide, so a body brushing a wall sinks into them. Downpipes run through
   cornices and string courses rather than round them.
-- **Cables and washing lines are strung by a straight look** (chunk 62): from anchors picked
-  at random, across to whatever wall a level ray meets, so a line may run from beside a
-  window to a blank wall or cross another; nothing sways.
+- **Cables and washing lines are strung by a straight look** (chunk 62), **resolved in part**
+  (2026-10-07): from anchors picked at random, across to whatever wall a level ray meets, so a
+  line may run from beside a window to a blank wall; nothing sways. A line that would cross one
+  already strung at about its height is no longer strung.
 - **The greenery costs 2–5 ms a frame** (chunk 63) on an M3 Pro at 1280 × 720: least in the
   market and from above, most looking at the hillside. Most of it is the trees' far tiles,
   which draw the plainer trees out to 145 m past a tile's edge (about 1,000 olives and 1,700

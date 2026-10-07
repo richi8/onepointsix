@@ -3047,3 +3047,8 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   respawns have fewer operators about, and the picker already takes the farthest unseen point.
   Starting bots two or three to a zone, or holding zones back for joins, would leave a zone free
   but change the opening for everyone.
+
+- **Cables and washing lines cross each other** (62, part of "strung by a straight look"): lines
+  were strung from random anchors to whatever wall a level ray met, so two could cross.
+  **Resolved** (2026-10-07): `Life.string` skips a line that crosses one already strung
+  within half a metre of its height; lines to blank walls and the lack of sway stay in Known Issues.

@@ -183,6 +183,7 @@ export class Life {
       const sag = kind === 'cable' ? 0.03 * t + 0.08 : 0.04 * t + 0.05;
       // High over the lane below, with room to walk under.
       if (mid.y - sag - world.groundHeight(mid.x, mid.z, mid.y - sag) < 2.4) continue;
+      if (this.strung.some((o) => crosses(o.from, o.to, from, end))) continue;
       this.strung.push({ from, to: end, sag, kind });
       if (kind === 'cable') {
         hang(this.shapes, from, end, sag, 0.009, CABLE, 10);
@@ -317,4 +318,16 @@ export class Life {
     const lnb = centre.clone().addScaledVector(look, 0.44);
     this.boxes.box(lnb.x - 0.04, lnb.y - 0.04, lnb.z - 0.04, lnb.x + 0.04, lnb.y + 0.04, lnb.z + 0.04, AC_DARK);
   }
+}
+
+/** Whether the lines a→b and c→d cross in plan, within half a metre of each other's height where they do. */
+function crosses(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3): boolean {
+  const [rx, rz, sx, sz] = [b.x - a.x, b.z - a.z, d.x - c.x, d.z - c.z];
+  const det = rx * sz - rz * sx;
+  if (Math.abs(det) < 1e-9) return false;
+  const [qx, qz] = [c.x - a.x, c.z - a.z];
+  const t = (qx * sz - qz * sx) / det;
+  const u = (qx * rz - qz * rx) / det;
+  if (t <= 0 || t >= 1 || u <= 0 || u >= 1) return false;
+  return Math.abs(a.y + (b.y - a.y) * t - (c.y + (d.y - c.y) * u)) < 0.5;
 }
