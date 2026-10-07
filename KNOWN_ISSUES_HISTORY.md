@@ -3091,6 +3091,13 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   fills half the view, its reflection still draws most of the town. The benchmark's GPU times
   come from timer queries, which on ANGLE's Metal disagree from run to run; only alternating
   runs of old and new code told a change apart.
+  Tried (2026-10-07, not kept): frames drawn back to back with the crowd, no vsync, at the
+  heavy spots (long, mid, b, tunnels) cost only 2.5–3.4 ms each at 720p on the M3 Pro; the 10–15
+  ms of the paced benchmark is mostly the GPU idling between frames. Of that 3 ms: the shadow
+  maps 0.7 ms, and drawing the far cascade every second frame took 0.3 ms of it (every fourth,
+  0.4); the weathering (age.ts) 0.1–0.3 ms and the rounded edges 0.15–0.3, 0.35–0.5 together.
+  The rest, about 2.2 ms, is the main pass's plain cost over 1.3–1.8 million triangles. No
+  change was worth its look or its risk, so none was kept.
   **Accepted** (2026-10-07): the town is the heavier map, with more to draw and shade; at the
   user's word there is little to be done and it stays as it is.
 - **Ramps are drawn as steps** (56): a ramp is steps of up to 0.25 m drawn as a stair's, 1–2 m
