@@ -96,8 +96,8 @@ describe('Calabianca\'s dressing', () => {
   it('draws each feature in place of its box and keeps every other prop, and its shapes whole', () => {
     const looks = new Set(['fountain', 'plane', 'olive', 'memorial', 'kiosk', 'boat', 'tank', 'tomb']);
     const replaced = replacedProps(town);
-    // Each feature's box, or the boxes it collides as in its place.
-    expect(replaced.size).toBe(CALABIANCA.walls.filter((w) => w.look && looks.has(w.look)).reduce((n, w) => n + (w.collides?.length ?? 1), 0));
+    // Each feature's box.
+    expect(replaced.size).toBe(CALABIANCA.walls.filter((w) => w.look && looks.has(w.look)).length);
     for (const i of replaced) expect(town.props[i].box.part).toBe('wall');
     expect(replacedProps(island).size).toBe(0);
     const boxes = new Boxes();

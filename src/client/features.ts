@@ -197,7 +197,7 @@ const REPLACED: ReadonlySet<MapLook> = new Set(['fountain', 'plane', 'olive', 'm
 export function replacedProps(world: World): Set<number> {
   const out = new Set<number>();
   if (!world.map) return out;
-  const looks = world.map.walls.filter((w) => w.look && REPLACED.has(w.look)).flatMap((w) => w.collides ?? [w]);
+  const looks = world.map.walls.filter((w) => w.look && REPLACED.has(w.look));
   if (!looks.length) return out;
   world.props.forEach((p, i) => {
     const b = p.box;

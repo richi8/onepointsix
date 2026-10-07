@@ -112,7 +112,7 @@ interface Front {
 
 /** The blocks a map dresses: solid, thick, drawn as they are. */
 export function dressedBlocks(world: World): MapBox[] {
-  return (world.map?.walls ?? []).filter((w) => !w.look && !w.walk && !w.collides && Math.min(w.maxX - w.minX, w.maxZ - w.minZ) > 0.6);
+  return (world.map?.walls ?? []).filter((w) => !w.look && !w.walk && Math.min(w.maxX - w.minX, w.maxZ - w.minZ) > 0.6);
 }
 
 /** The props drawn as door leaves (MapBox.look 'doors'), which take no cap. */

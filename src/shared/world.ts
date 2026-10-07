@@ -1235,13 +1235,11 @@ export class World {
       this.buildings.push({ ...rest, plan: 'kit', upper: uppers[0] ?? null, uppers, outpost: -1 });
     }
     for (const w of map.walls) {
-      for (const c of w.collides ?? [w]) {
-        const box = this.addWall(c.minX, c.y0, c.minZ, c.maxX, c.y1, c.maxZ);
-        box.walk = !!w.walk;
-        if (w.tilt) box.tilt = this.walls[this.walls.length - 1].tilt = { ...w.tilt };
-        if (w.ground) box.ground = true;
-        plaster(this.props.length - 1, w.colour);
-      }
+      const box = this.addWall(w.minX, w.y0, w.minZ, w.maxX, w.y1, w.maxZ);
+      box.walk = !!w.walk;
+      if (w.tilt) box.tilt = this.walls[this.walls.length - 1].tilt = { ...w.tilt };
+      if (w.ground) box.ground = true;
+      plaster(this.props.length - 1, w.colour);
     }
     for (const s of map.stairs) this.addStair(s);
     for (const r of map.ramps ?? []) this.addRamp(r);

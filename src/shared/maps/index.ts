@@ -198,8 +198,6 @@ export interface MapBox extends Rect {
   ground?: boolean;
   /** Its top sloping as a road does, rising `x` a metre toward +x and `z` toward +z, at `y1` at its highest corner (see World's Box.tilt). */
   tilt?: { x: number; z: number };
-  /** The boxes it collides as, in place of itself, where what's drawn isn't a box (a heap of rubble). */
-  collides?: (Rect & { y0: number; y1: number })[];
 }
 
 /**
@@ -422,7 +420,7 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
       flights: b.flights?.map(at),
       crates: b.crates?.map(at),
     })),
-    walls: map.walls.map((w) => ({ ...rect(w), ...(w.collides ? { collides: w.collides.map(rect) } : {}) })),
+    walls: map.walls.map((w) => rect(w)),
     stairs: map.stairs.map(at),
     ramps: map.ramps?.map(rect),
     props: map.props.map((p) => (p.kind === 'crate' ? at(p) : rect(p))),
