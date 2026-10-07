@@ -526,6 +526,10 @@ Nothing open: the last was resolved on 2026-10-07 (see the history).
   5 s. With bots living a median 22–25 s, much of the 15 s count is the pace of the game rather
   than where they come in. The corner points (the fish market's, the boat yard's) are taken 20–40
   times a game, as the farthest from everyone, against 4–10 for most.
+  Tried (chunk 65, not kept): preferring spawn points hidden and 70 m, then 50 m, from everyone
+  over the first that is 30 m clear. Over four 10-minute games, deaths within 15 s went from 181
+  to 171, within 5 s from 15 to 14, the nearest operator's median 36 m either way: no change
+  beyond the noise. The town is too small for 16 to keep apart.
 - **The town is heavier to draw than the island with nobody about** (chunk 64): the benchmark's
   empty frame takes 10–11.6 ms at the town's seven spots against 6.1 on the island, about
   6.5–8.6 ms of it the GPU's; with 16 soldiers 12.2–14.6 ms, against 13.2 for the island's 24.
