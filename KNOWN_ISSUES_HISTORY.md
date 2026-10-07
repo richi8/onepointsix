@@ -2460,6 +2460,19 @@ notes the chunk it came from.
   is fine for a released game is a licensing question left open.
   **Accepted** (2026-10-07): at the user's word, ignored for now; the map will be changed a
   little from the original later.
+- **Bots seldom reach the window or roof they set off for** (chunk 58): of 260–325 posts a game
+  picked to watch from, 32–49 were got to; the rest were given up for someone seen on the way, a
+  shot from somewhere else or a death. So bots were upstairs 10–15% of the time and on the roofs
+  3–5%, not more.
+  **Accepted** (2026-10-07): the old town's two 10-minute games (`sim:deathmatch`, now also
+  listing what each lost post was left for) showed 187 and 215 posts picked, 40 and 31 got to;
+  of the rest, about 70 a game were left to fight someone met on the way, 45–65 to look into a
+  noise or a sighting, about 20 to take cover, and 30–45 for another fight's post. Those are the
+  bots doing what they should, in a game where they live a median 26 s and sit in a fighting
+  state (stalk, engage, investigate) 80% of the time, hunting 3%. Sending a bot drawn off a post
+  back to it once the fight was over was tried, and reached it 7 times of 123 in one game and 0 of
+  173 in the other, as the bot is dead or at another fight before then; it was taken out again.
+  Bots are upstairs 13–16% of the time and on the roofs 5–7%, as the town's players would be.
 
 ### Team Deathmatch
 - **A game never ends** (Team Deathmatch, 2026-10-07): there's no score to reach, round or

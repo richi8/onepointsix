@@ -537,10 +537,6 @@ Nothing open: the last was resolved on 2026-10-07 (see the history).
   5 s. With bots living a median 22–25 s, much of the 15 s count is the pace of the game rather
   than where they come in. The corner points (the fish market's, the boat yard's) are taken 20–40
   times a game, as the farthest from everyone, against 4–10 for most.
-- **Bots seldom reach the window or roof they set off for** (chunk 58): of 260–325 posts a game
-  picked to watch from, 32–49 are got to; the rest are given up for someone seen on the way, a
-  shot from somewhere else or a death. So bots are upstairs 10–15% of the time and on the roofs
-  3–5%, not more.
 - **The town is heavier to draw than the island with nobody about** (chunk 64): the benchmark's
   empty frame takes 10–11.6 ms at the town's seven spots against 6.1 on the island, about
   6.5–8.6 ms of it the GPU's; with 16 soldiers 12.2–14.6 ms, against 13.2 for the island's 24.

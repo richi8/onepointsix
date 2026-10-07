@@ -381,6 +381,8 @@ export const tally = {
   streetSpots: 0,
   /** Of the posts, those got to. */
   postsHeld: 0,
+  /** Posts set off for and left before getting to, by what it was drawn off by. */
+  postLost: {} as Record<string, number>,
 };
 
 /**
@@ -423,6 +425,8 @@ export class Bot {
   private readonly rand: () => number;
   /** Server time as of the last think. */
   private now = 0;
+  private atX = 0;
+  private atZ = 0;
   private stateAt = 0;
   private readonly contacts = new Map<number, Contact>();
 
@@ -676,6 +680,8 @@ export class Bot {
   /** Look and listen, then decide. Called every few ticks with the seconds since the last call. */
   think(ctx: BotContext, self: Agent, dt: number): void {
     this.now = ctx.time;
+    this.atX = self.x;
+    this.atZ = self.z;
     if (this.born < 0) this.born = ctx.time;
     this.health = health(self);
     this.paid = (ctx.carried?.(self) ?? Infinity) >= EXTRACT_FEE;
@@ -1736,6 +1742,12 @@ export class Bot {
   /** Switch state; `again` restarts the current one. */
   private enter(state: BotState, again = false): void {
     if (state === this.state && !again) return;
+    // Set off for a post and not got to it: what it was drawn off by.
+    if (this.spot?.post && this.waitUntil === 0 && (this.state === 'hunt' || this.state === 'stalk')) {
+      const away = Math.hypot(this.spot.x - this.atX, this.spot.z - this.atZ);
+      const k = `${this.state}->${state}${state === this.state ? '(again)' : ''}${away < 6 ? ' (nearly there)' : ''}`;
+      tally.postLost[k] = (tally.postLost[k] ?? 0) + 1;
+    }
     this.state = state;
     this.stateAt = this.now;
     this.waitUntil = 0;

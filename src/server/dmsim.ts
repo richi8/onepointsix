@@ -166,7 +166,7 @@ for (const seed of seeds) {
   const halfOf = (x: number, z: number): Side | undefined =>
     bases && (Math.hypot(bases.red.x - x, bases.red.z - z) < Math.hypot(bases.blue.x - x, bases.blue.z - z) ? 'red' : 'blue');
   const picks = { ...arenaPicks };
-  const told = { ...botTally };
+  const told = { ...botTally, postLost: { ...botTally.postLost } };
 
   let worst = 0;
   let worstAt = 0;
@@ -266,6 +266,7 @@ for (const seed of seeds) {
   console.log(`  stuck ${stuck.length} times${stuck.length ? `: ${stuck.slice(0, 12).join('; ')}` : ''}`);
   console.log(`  where: ${Object.entries(where).map(([k, n]) => `${k} ${Math.round((n / alive) * 100)}%`).join(', ')}`);
   if (!server.world.map) continue;
+  console.log(`  posts left before getting there: ${Object.entries(botTally.postLost).map(([k, n]) => [k, n - (told.postLost[k] ?? 0)] as const).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}`);
   console.log(`  watched from ${botTally.posts - told.posts} windows and roofs (${botTally.postsHeld - told.postsHeld} got to), ${botTally.streetSpots - told.streetSpots} street spots beside cover; ${botTally.joins - told.joins} fights joined${mode === 'team' ? `, ${botTally.rallies - told.rallies} set off for a friend's sighting, ${botTally.follows - told.follows} roams with a squad` : ''}`);
 
   // Where the kills came from.
