@@ -13,7 +13,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
     title: 'Lighter first load',
-    notes: ['Extraction and the other island modes no longer download the old town’s textures, which about 0.75 MB less on a first visit.'],
+    notes: ['Extraction and the other island modes no longer download the old town’s textures, about 0.75 MB less to download on a first visit.'],
   },
   {
     date: '2026-10-07',
