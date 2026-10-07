@@ -19,7 +19,7 @@ import { angleDiff, clamp, yawToward } from '../shared/geom.ts';
 import { hitboxes, rayBody } from '../shared/hitbox.ts';
 import { ITEMS } from '../shared/loot.ts';
 import { CHANGE_MAX, coverOf, type Coming, type Senses, type Weather } from '../shared/weather.ts';
-import type { BagSnap, InputCmd, LootView, Team } from '../shared/protocol.ts';
+import type { BagSnap, InputCmd, LootView, Side, Team } from '../shared/protocol.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { PISTOL, spawnWeapons, WEAPONS, BOLT } from '../shared/weapons.ts';
 import { type Bush, CONCEALED, VEG_CELL, bagShows, vegetationOf } from '../shared/vegetation.ts';
@@ -42,6 +42,8 @@ import { vantageOver, vantages } from './vantage.ts';
 export interface Agent extends PlayerState {
   readonly id: number;
   team: Team;
+  /** In Team Deathmatch, the side it's on. */
+  side?: Side;
 }
 
 export interface Post extends Point {
@@ -121,9 +123,10 @@ function health(a: Agent | undefined): number {
   return a ? a.hp / (a.team === 'guard' ? GUARD_HP : MAX_HP) : 1;
 }
 
-/** Whether a would shoot b. Operators are each on their own side; guards stick together. */
+/** Whether a would shoot b. Operators are each on their own side, but in Team Deathmatch's two; guards stick together. */
 export function hostile(a: Agent, b: Agent): boolean {
   if (a === b) return false;
+  if (a.side && a.side === b.side) return false;
   return a.team === 'operator' || a.team !== b.team;
 }
 

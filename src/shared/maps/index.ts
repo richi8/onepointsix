@@ -1,4 +1,4 @@
-import type { Mode } from '../protocol.ts';
+import type { Mode, Side } from '../protocol.ts';
 import type { Rect } from '../world.ts';
 import { CALABIANCA } from './calabianca.ts';
 import { CALABIANCA_2 } from './calabianca2.ts';
@@ -343,6 +343,8 @@ export interface GameMap {
   ramps?: MapRamp[];
   props: MapProp[];
   spawns: MapSpawn[];
+  /** In Team Deathmatch, where each side's half of it is round: a side spawns nearer its own while it can. */
+  bases?: Record<Side, { x: number; z: number }>;
   paving?: MapPaving;
   /** Its lanes and streets, for the dev view. */
   lanes?: MapLane[];
@@ -368,7 +370,7 @@ export function pavingAt(map: GameMap, x: number, z: number): Paving | null {
 
 /** The fixed map a mode is played on, or null for the island made from the game's seed. */
 export function mapFor(mode: Mode): GameMap | null {
-  return mode === 'deathmatch' ? CALABIANCA_2 : mode === 'calabianca' ? CALABIANCA : null;
+  return mode === 'team' ? CALABIANCA_2 : mode === 'deathmatch' ? CALABIANCA : null;
 }
 
 /**
@@ -393,6 +395,7 @@ export function moved(map: GameMap, dx: number, dz: number): GameMap {
     ramps: map.ramps?.map(rect),
     props: map.props.map((p) => (p.kind === 'crate' ? at(p) : rect(p))),
     spawns: map.spawns.map(at),
+    ...(map.bases ? { bases: { red: at(map.bases.red), blue: at(map.bases.blue) } } : {}),
     ...(map.paving ? { paving: { area: rect(map.paving.area), patches: map.paving.patches.map(rect) } } : {}),
     lanes: map.lanes?.map((l) => ({ ...l, points: l.points.map(([x, z]) => [x + dx, z + dz] as const) })),
     plants: map.plants?.map(at),

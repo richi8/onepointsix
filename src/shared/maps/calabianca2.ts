@@ -4,7 +4,7 @@ import { BLOCKS, BOXES, COVERS, CRATES, DECKS, FACADES, FLOORS, GRID, LEAVES, PA
 import { moved, type GameMap, type MapBox, type MapFacade, type MapLane, type MapStone, type MapProp, type MapSpawn, type Paving } from './index.ts';
 import { levelGround } from './levels.ts';
 
-// Calabianca rebuilt (Phase 10): Deathmatch's map, laid out after the most
+// Calabianca rebuilt (Phase 10): Team Deathmatch's map, laid out after the most
 // played three-lane map there is, from its navigation mesh, at 1:1 with its
 // units taken as 2.54 cm, a player's height there as here. The geometry is
 // made by scripts/calabianca.mjs into calabianca2grid.ts: floors on a 25 cm
@@ -231,6 +231,8 @@ const PLAN: GameMap = {
   stairs: [],
   props: CRATE_PROPS,
   spawns: SPAWN_POINTS,
+  // Red at T spawn, Blue at CT spawn.
+  bases: { red: { x: 360 * PX, z: 875 * PX }, blue: { x: 628 * PX, z: 212 * PX } },
   sun: 110,
   paving: {
     area: { minX: 0, maxX: SIZE, minZ: 0, maxZ: SIZE },

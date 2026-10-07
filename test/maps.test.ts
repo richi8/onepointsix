@@ -91,8 +91,9 @@ function spotIn(w: World, flights: Rect[], room: Room): { x: number; z: number }
 }
 
 describe('Worlds by mode', () => {
-  it('plays Deathmatch on its map and every other mode on the island from the seed', () => {
-    expect(mapFor('deathmatch')).toBe(CALABIANCA_2);
+  it('plays the Deathmatches on their maps and every other mode on the island from the seed', () => {
+    expect(mapFor('team')).toBe(CALABIANCA_2);
+    expect(mapFor('deathmatch')).toBe(CALABIANCA);
     expect(mapFor('extraction')).toBeNull();
     expect(mapFor('range')).toBeNull();
   });
@@ -109,7 +110,7 @@ describe('Worlds by mode', () => {
   });
 
   it('builds the same map on the server as on the client, whatever the game\'s seed', () => {
-    const server = new GameServer(7, MODES.deathmatch.options);
+    const server = new GameServer(7, MODES.team.options);
     expect(server.world.map).toBe(CALABIANCA_2);
     expect(fingerprint(server.world)).toBe(fingerprint(new World(1, CALABIANCA_2)));
     expect(fingerprint(new World(99, CALABIANCA))).toBe(fingerprint(town));
@@ -491,8 +492,8 @@ describe('Calabianca, after the three-lane map (Phase 10)', () => {
   /** The places only climbed to, by mantling. */
   const CLIMBED = ['B window'];
 
-  it('is Deathmatch\'s, for 12 operators, with its own board', () => {
-    expect(mapFor('deathmatch')).toBe(CALABIANCA_2);
+  it('is Team Deathmatch\'s, for 12 operators, with its own board', () => {
+    expect(mapFor('team')).toBe(CALABIANCA_2);
     expect(CALABIANCA_2.id).toBe('calabianca-2');
     expect(CALABIANCA_2.name).toBe('Calabianca');
     expect(DEATHMATCH_CAPACITY).toBe(12);

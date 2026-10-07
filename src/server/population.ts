@@ -1,4 +1,5 @@
 import { EYE_HEIGHT, GUARD_PATROLS, GUARDS_PER_OUTPOST, INTERACT_REACH, PLAYER_HEIGHT } from '../shared/constants.ts';
+import type { Side } from '../shared/protocol.ts';
 import { yawToward } from '../shared/geom.ts';
 import { lootCrates } from '../shared/loot.ts';
 import { BOLT, RIFLE } from '../shared/weapons.ts';
@@ -206,11 +207,13 @@ export const FIGHT_CLEAR = 25;
  * map) or seeing it from within ARENA_SIGHT; on a map, nor within
  * FIGHT_CLEAR of `fights`, where shots were fired lately. If none turns up,
  * the farthest from them all of those tried that nobody sees, or failing
- * that of them all. Outposts are fair game, as nobody guards them.
+ * that of them all. Outposts are fair game, as nobody guards them. In Team
+ * Deathmatch `avoid` is the other side, and on a map with bases a `side`
+ * tries the spawn points on its own half first.
  */
-export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[], fights: readonly Point[] = []): Post {
+export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid: Point[], fights: readonly Point[] = [], side?: Side): Post {
   arenaPicks.picked++;
-  const spawns = world.map ? shuffled(world.spawns, rand) : null;
+  const spawns = world.map ? ownHalfFirst(world, shuffled(world.spawns, rand), side) : null;
   const clear = spawns ? MAP_CLEAR : ARENA_CLEAR;
   let best: Post | null = null;
   let bestD = -1;
@@ -244,6 +247,16 @@ export function arenaPoint(world: World, nav: NavGrid, rand: () => number, avoid
   if (best) return best;
   const at = world.randomLandPoint(rand);
   return { ...at, yaw: yawToward(at.x, at.z, 0, 0) };
+}
+
+/** `spawns` with those nearer `side`'s base than the other's first, each half in the order it was; as it is without a side or bases. */
+function ownHalfFirst<T extends Point>(world: World, spawns: T[], side: Side | undefined): T[] {
+  const bases = world.map?.bases;
+  if (!side || !bases) return spawns;
+  const own = bases[side];
+  const other = bases[side === 'red' ? 'blue' : 'red'];
+  const ours = (p: T) => Math.hypot(p.x - own.x, p.z - own.z) <= Math.hypot(p.x - other.x, p.z - other.z);
+  return [...spawns.filter(ours), ...spawns.filter((p) => !ours(p))];
 }
 
 /** A copy of `list` in an order drawn from `rand`. */

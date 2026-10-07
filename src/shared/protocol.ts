@@ -27,30 +27,39 @@ export interface InputCmd {
 
 /**
  * How a game is played. Extraction is a run against guards and 8 operators, where players who
- * join take bot operators' places. Deathmatch is 16 operators and no guards, everyone against
- * everyone, respawning, with only kills and deaths counted, on the map after Dust 2; Calabianca
- * is Deathmatch on the old town. The range is for trying things out: actors going through every
- * move round an outpost, and nobody to hurt you.
+ * join take bot operators' places. Deathmatch is 12 operators and no guards, everyone against
+ * everyone, respawning, with only kills and deaths counted, on the old town of Calabianca; Team
+ * Deathmatch is the same on the map after Dust 2, but two sides of 6, Red and Blue, and a side's
+ * kills its score. The range is for trying things out: actors going through every move round an
+ * outpost, and nobody to hurt you.
  */
-export type Mode = 'extraction' | 'deathmatch' | 'calabianca' | 'range';
+export type Mode = 'extraction' | 'deathmatch' | 'team' | 'range';
 
-/** Whether `m` is a Deathmatch, on either map. */
+/** Whether `m` is a Deathmatch, everyone for themselves or in sides. */
 export function isDeathmatch(m: Mode | null | undefined): boolean {
-  return m === 'deathmatch' || m === 'calabianca';
+  return m === 'deathmatch' || m === 'team';
 }
+
+/** A side in Team Deathmatch. */
+export type Side = 'red' | 'blue';
+export const SIDES: readonly Side[] = ['red', 'blue'];
 
 /** Whether `id` will do as a player's id in hello: letters, digits and dashes, 8 to 64 of them. */
 export function validPlayerId(id: unknown): id is string {
   return typeof id === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(id);
 }
 
-/** A mode named in a link or saved setting; Online, and Mixed and Offline before it, are now Extraction. */
+/**
+ * A mode named in a link or saved setting; Online, and Mixed and Offline before it, are now
+ * Extraction, and Calabianca, Deathmatch on the old town for a day, Deathmatch again.
+ */
 export function parseMode(m: string | null): Mode | null {
-  if (m === 'extraction' || m === 'deathmatch' || m === 'calabianca' || m === 'range') return m;
+  if (m === 'extraction' || m === 'deathmatch' || m === 'team' || m === 'range') return m;
+  if (m === 'calabianca') return 'deathmatch';
   return m === 'online' || m === 'mixed' || m === 'offline' ? 'extraction' : null;
 }
 
-/** Operators are players and fill bots, each on their own side; guards defend outposts together. */
+/** Operators are players and fill bots, each on their own side but in Team Deathmatch; guards defend outposts together. */
 export type Team = 'operator' | 'guard';
 
 /** How a body is moving: on its feet, in the air or climbing onto a ledge. */
@@ -85,6 +94,8 @@ export interface PlayerSnap {
   rounds?: number;
   /** A commander, the target of a contract. */
   commander: boolean;
+  /** In Team Deathmatch, their side. */
+  side?: Side;
 }
 
 export type ContractKind = 'intel' | 'cache' | 'commander';
@@ -142,6 +153,8 @@ export interface BoardRow {
   /** Their best run's score and all their runs' scores added up; only extracting scores. */
   best: number;
   total: number;
+  /** In Team Deathmatch, their side. */
+  side?: Side;
 }
 
 /** Something that happened during a server tick, sent reliably to whoever should hear. */
@@ -157,6 +170,9 @@ export type GameEvent =
       bounty?: boolean;
       /** The victim was an operator bot of this kind, told now that it's dead. */
       victimKind?: Personality;
+      /** In Team Deathmatch, the killer's and the victim's sides. */
+      killerSide?: Side;
+      victimSide?: Side;
       /**
        * Where the victim stood (feet), faced and how crouched, where the killing
        * round or blast struck, and the way it travelled, all to the centimetre.
@@ -169,7 +185,8 @@ export type GameEvent =
   // To everyone: `id` now carries the bounty, loot worth `value`, or with id 0, nobody does.
   | { k: 'bounty'; id: number; name: string; value: number }
   // To every player: the scoreboard, whenever it changes. Players only, bots left out, but in Deathmatch.
-  | { k: 'board'; rows: BoardRow[] }
+  // In Team Deathmatch, each side's score too: the kills it has made over the game.
+  | { k: 'board'; rows: BoardRow[]; teams?: Record<Side, number> }
   // To everyone: an operator left the island with loot worth `value`.
   | { k: 'extract'; id: number; name: string; value: number }
   // To everyone: someone called in a pickup at extraction point `index`.
@@ -241,8 +258,9 @@ export type ClientMsg =
 
 /**
  * Development shortcuts for browser tests. The rival is the nearest living
- * operator bot: `rival` brings it about 8 m in front of you, where a bag it
- * dropped would show (not in grass or behind cover), `kill` has you
+ * operator bot, on the other side in Team Deathmatch: `rival` brings it about
+ * 8 m in front of you, where a bag it dropped would show (not in grass or
+ * behind cover), `kill` has you
  * kill it, and `give` puts items in your pack or its. `end` ends your run now,
  * `killed` meaning by the rival, or with `self` (or no rival) by your own grenade.
  */

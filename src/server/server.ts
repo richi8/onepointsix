@@ -49,9 +49,9 @@ import { launchGrenade, stepGrenade, type Grenade } from '../shared/grenade.ts';
 import { hitboxes, rayBody, type Pose, type Zone } from '../shared/hitbox.ts';
 import { ITEMS, lootMass, lootValue, MEDKIT_HEAL, runScore } from '../shared/loot.ts';
 import type {
-  Action, BagSnap, BoardRow, BountyView, ClientMsg, Death, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Team,
+  Action, BagSnap, BoardRow, BountyView, ClientMsg, Death, DevCmd, ExtractView, GameEvent, GrenadeSnap, InputCmd, LootView, Mode, PlayerSnap, RunView, ServerMsg, Side, Team,
 } from '../shared/protocol.ts';
-import { validPlayerId } from '../shared/protocol.ts';
+import { SIDES, validPlayerId } from '../shared/protocol.ts';
 import { mulberry32 } from '../shared/rng.ts';
 import type { RunEndEvent } from '../shared/runstats.ts';
 import { applyCmd, copyState, eyePosition, motionOf, spawnState, type PlayerState } from '../shared/sim.ts';
@@ -130,6 +130,8 @@ interface Player extends PlayerState {
   id: number;
   name: string;
   team: Team;
+  /** In Team Deathmatch, the side they play on. */
+  side?: Side;
   send: (msg: ServerMsg) => void;
   /** Set once the client says hello; until then it gets no snapshots. */
   joined: boolean;
@@ -184,6 +186,11 @@ export interface ServerOptions {
    * and medkits, and the dead back in at a spot away from the others (default false).
    */
   deathmatch?: boolean;
+  /**
+   * With `deathmatch`, Team Deathmatch: the operators in two sides, Red and Blue, kept even, who
+   * can't hurt each other and spawn away from the other side, a side's kills its score (default false).
+   */
+  teams?: boolean;
   /** Post guards at the outposts and send patrols between them (default false). */
   guards?: boolean;
   /** Hold this weather all game, for tests and the playtest (default the island's own, changing). */
@@ -254,6 +261,8 @@ export class GameServer {
   private readonly tallies = new Map<string, Tally>();
   /** The scoreboard changed and goes out to every player this tick. */
   private boardChanged = false;
+  /** In Team Deathmatch, the kills each side has made over the game. */
+  private readonly teamScore: Record<Side, number> = { red: 0, blue: 0 };
   private nextId = 1;
   private nextGrenade = 1;
   /** How it was set up. */
@@ -328,11 +337,12 @@ export class GameServer {
   connect(send: (msg: ServerMsg) => void): number {
     const p = this.add('player', 'operator', send);
     p.run = newRun(this.time);
+    if (this.options.teams) p.side = this.sideToJoin(true);
     this.spawn(p);
     if (!this.options.range && !this.options.deathmatch) this.assignContracts(p);
-    // A human takes an operator slot from a bot: the one farthest from anyone.
+    // A human takes an operator slot from a bot, on their side in Team Deathmatch: the one farthest from anyone.
     while (this.operatorSlots > 0 && this.operatorCount() > this.operatorSlots) {
-      const bots = [...this.players.values()].filter((b) => b.team === 'operator' && b.plan);
+      const bots = [...this.players.values()].filter((b) => b.team === 'operator' && b.plan && b.side === p.side);
       if (!bots.length) break;
       const humans = [...this.players.values()].filter((h) => h.team === 'operator' && !h.plan);
       const away = (b: Player) => Math.min(...humans.map((h) => Math.hypot(h.x - b.x, h.z - b.z)));
@@ -395,7 +405,7 @@ export class GameServer {
     let nearest = Infinity;
     for (const o of this.players.values()) {
       const d = Math.hypot(o.x - p.x, o.z - p.z);
-      if (o.bot && o.team === 'operator' && !o.dead && d < nearest) (rival = o), (nearest = d);
+      if (o.bot && o.team === 'operator' && !o.dead && hostile(p, o) && d < nearest) (rival = o), (nearest = d);
     }
     switch (cmd.act) {
       case 'end':
@@ -450,8 +460,8 @@ export class GameServer {
   }
 
   /** Bots in the game, for tests and debugging. */
-  bots(): { id: number; name: string; team: Team; bot: Bot; state: PlayerState }[] {
-    return [...this.players.values()].filter((p) => p.bot).map((p) => ({ id: p.id, name: p.name, team: p.team, bot: p.bot!, state: p }));
+  bots(): { id: number; name: string; team: Team; side?: Side; bot: Bot; state: PlayerState }[] {
+    return [...this.players.values()].filter((p) => p.bot).map((p) => ({ id: p.id, name: p.name, team: p.team, side: p.side, bot: p.bot!, state: p }));
   }
 
   /** Operator bots partway through a run. */
@@ -554,7 +564,8 @@ export class GameServer {
     if (this.boardChanged) {
       this.boardChanged = false;
       const rows = this.board();
-      for (const p of joined) if (!p.plan) p.events.push({ k: 'board', rows });
+      const teams = this.options.teams ? { ...this.teamScore } : undefined;
+      for (const p of joined) if (!p.plan) p.events.push({ k: 'board', rows, ...(teams ? { teams } : {}) });
     }
     const players = joined.map(snapOf);
     let extracts: ExtractView[] | null = null;
@@ -835,7 +846,7 @@ export class GameServer {
     for (const p of this.players.values()) {
       if ((p.plan && !(dm && p.team === 'operator')) || !p.joined) continue;
       const t = this.tallies.get(p.player) ?? { kills: 0, deaths: 0, best: 0, total: 0 };
-      rows.push({ id: p.id, name: p.name, ...t });
+      rows.push({ id: p.id, name: p.name, ...t, ...(p.side ? { side: p.side } : {}) });
     }
     if (dm) return rows.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.id - b.id);
     return rows.sort((a, b) => b.total - a.total || b.best - a.best || b.kills - a.kills || a.deaths - b.deaths);
@@ -919,10 +930,11 @@ export class GameServer {
     return p;
   }
 
-  private addBot(plan: BotPlan, team: Team): Player {
+  private addBot(plan: BotPlan, team: Team, side?: Side): Player {
     const p = this.add(plan.name, team, () => {});
     p.joined = true;
     p.plan = plan;
+    if (side) p.side = side;
     // In Deathmatch a bot has a line on the scoreboard, for as long as it's in the game.
     if (this.options.deathmatch) {
       p.player = `bot-${p.id}`;
@@ -937,8 +949,23 @@ export class GameServer {
   private addOperatorBot(): void {
     const others = [...this.players.values()].filter((p) => p.team === 'operator' && !p.dead);
     const taken = new Set(others.map((p) => p.name));
-    if (this.options.deathmatch) this.addBot(planFighter(this.world, this.nav, this.botRng, others, taken), 'operator');
+    if (this.options.deathmatch) this.addBot(planFighter(this.world, this.nav, this.botRng, others, taken), 'operator', this.options.teams ? this.sideToJoin(false) : undefined);
     else this.addBot(planOperator(this.world, this.nav, this.botRng, others, taken, this.personality, this.options.thorough), 'operator');
+  }
+
+  /**
+   * The side someone joining Team Deathmatch plays on: a human the one with fewer humans, so
+   * players are spread over both, and otherwise, or with as many, the one with fewer operators.
+   */
+  private sideToJoin(human: boolean): Side {
+    const count = (side: Side, humans: boolean) => {
+      let n = 0;
+      for (const p of this.players.values()) if (p.team === 'operator' && p.side === side && (!humans || !p.plan)) n++;
+      return n;
+    };
+    const [red, blue] = SIDES;
+    if (human && count(red, true) !== count(blue, true)) return count(red, true) < count(blue, true) ? red : blue;
+    return count(blue, false) < count(red, false) ? blue : red;
   }
 
   /** Players and bots taking operator slots. */
@@ -965,8 +992,9 @@ export class GameServer {
     if (at) post = at;
     else if (this.options.deathmatch) {
       // Players and bots alike, anywhere nobody still standing is near or sees: on a map, at its spawn points.
-      const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead);
-      post = arenaPoint(this.world, this.nav, this.spawnRng, others, this.fights.filter((f) => this.time - f.at <= FIGHT_FRESH));
+      // In Team Deathmatch nobody on the other side, and on their own side's half while they can.
+      const others = [...this.players.values()].filter((o) => o !== p && o.team === 'operator' && !o.dead && (!p.side || o.side !== p.side));
+      post = arenaPoint(this.world, this.nav, this.spawnRng, others, this.fights.filter((f) => this.time - f.at <= FIGHT_FRESH), p.side);
     } else if (p.plan) post = p.plan.spawn;
     else if (this.rangeSpawn) post = this.rangeSpawn;
     else {
@@ -1212,6 +1240,8 @@ export class GameServer {
     // Thorough operator bots, for the playtest, are never hurt, and don't notice being shot.
     // Nor is anyone on the range, but the actors.
     const unhurt = (!!this.options.thorough && !!victim.plan && victim.team === 'operator') || (!!this.options.range && !victim.plan);
+    // In Team Deathmatch there's no hurting your own side, but yourself: a round stops in a friend unfelt.
+    if (attacker !== victim && victim.side && victim.side === attacker.side) return;
     if (victim.protection > 0 || unhurt) amount = 0;
     amount = Math.min(amount, victim.hp);
     victim.hp -= amount;
@@ -1236,10 +1266,15 @@ export class GameServer {
     if (tally) tally.kills++;
     const dying = this.tallyOf(victim);
     if (dying) dying.deaths++;
+    if (attacker.side && victim.side && attacker.side !== victim.side) {
+      this.teamScore[attacker.side]++;
+      this.boardChanged = true;
+    }
     const victimKind = kindOf(victim);
     this.broadcast({
       k: 'kill', killer: attacker.id, victim: victim.id, killerName: attacker.name, victimName: victim.name,
       weapon, head: zone === 'head', bounty: victim.id === this.bounty?.id, ...(victimKind ? { victimKind } : {}),
+      ...(attacker.side ? { killerSide: attacker.side } : {}), ...(victim.side ? { victimSide: victim.side } : {}),
       ...deathPose(victim, x, y, z, from),
     });
     if (victim.plan?.temporary) this.commanderDown(victim, attacker);
@@ -1330,7 +1365,7 @@ function snapOf(p: Player): PlayerSnap {
   return {
     id, team, x, y, z, yaw, pitch, duck, lean, dead, weapon,
     quiet: p.suppressed[weapon], motion: motionOf(p), act, actT: clamp(actT, 0, 1), commander: !!p.plan?.commander,
-    ...(rounds !== undefined && { rounds }),
+    ...(rounds !== undefined && { rounds }), ...(p.side && { side: p.side }),
   };
 }
 

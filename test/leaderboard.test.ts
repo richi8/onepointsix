@@ -51,6 +51,10 @@ describe('leaderboard', () => {
     expect(store.data.get('board:1:deathmatch')).toBe(JSON.stringify([{ ...run(9), deaths: 1 }]));
     expect(JSON.parse(store.data.get(`board:${mapFor('deathmatch')!.id}:deathmatch`)!)).toEqual([{ ...run(2), deaths: 5 }]);
     expect(board.entries(2, 'deathmatch')).toEqual([{ ...run(2), deaths: 5 }]);
+    // Team Deathmatch's, on the map after Dust 2, apart from it.
+    expect(board.entries(1, 'team')).toEqual([]);
+    board.add(1, 'team', { ...run(4), deaths: 3 });
+    expect(JSON.parse(store.data.get('board:calabianca-2:team')!)).toEqual([{ ...run(4), deaths: 3 }]);
   });
 
   it('drops the weather and time of day old scores were kept with', () => {

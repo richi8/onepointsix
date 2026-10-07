@@ -10,8 +10,8 @@ export const MODES: Record<Mode, { options: ServerOptions; capacity: number }> =
   extraction: { options: { mode: 'extraction', guards: true, operators: OPERATOR_CAPACITY }, capacity: OPERATOR_CAPACITY },
   // Every operator slot starts as a bot too, and no guards: everyone against everyone.
   deathmatch: { options: { mode: 'deathmatch', deathmatch: true, operators: DEATHMATCH_CAPACITY }, capacity: DEATHMATCH_CAPACITY },
-  // The same on the old town.
-  calabianca: { options: { mode: 'calabianca', deathmatch: true, operators: DEATHMATCH_CAPACITY }, capacity: DEATHMATCH_CAPACITY },
+  // The same in two sides.
+  team: { options: { mode: 'team', deathmatch: true, teams: true, operators: DEATHMATCH_CAPACITY }, capacity: DEATHMATCH_CAPACITY },
   // Actors going through every move round an outpost, and nobody to hurt you.
   range: { options: { mode: 'range', range: true }, capacity: OPERATOR_CAPACITY },
 };
@@ -20,7 +20,7 @@ export const MODES: Record<Mode, { options: ServerOptions; capacity: number }> =
  * Seconds a game with nobody in it is kept, so another run can join the same island state. A
  * Deathmatch has no runs to come back for: it closes as soon as its last player leaves.
  */
-const IDLE_TIME: Record<Mode, number> = { extraction: 120, deathmatch: 0, calabianca: 0, range: 120 };
+const IDLE_TIME: Record<Mode, number> = { extraction: 120, deathmatch: 0, team: 0, range: 120 };
 
 interface Entry {
   world: WorldConfig;

@@ -152,7 +152,7 @@ for (const [name, query] of Object.entries(MAP)) {
   });
 }
 
-// The new Calabianca (see maps/calabianca2.ts), Deathmatch's map, in its
+// The new Calabianca (see maps/calabianca2.ts), Team Deathmatch's map, in its
 // look: the town over the sea from offshore; the attackers' end from a
 // spawn, its houses pale blue, and the sea over its parapet; long A in rose;
 // mid's doors from mid; B in whitewash from the tunnels' way out; the upper
@@ -171,8 +171,8 @@ const CALABIANCA: Record<string, string> = {
 };
 
 for (const [name, cam] of Object.entries(CALABIANCA)) {
-  test(`deathmatch: ${name}`, async ({ page }) => {
-    await spot(page, cam, '&mode=deathmatch');
+  test(`team: ${name}`, async ({ page }) => {
+    await spot(page, cam, '&mode=team');
     await expect(page).toHaveScreenshot(`${name}.png`);
   });
 }

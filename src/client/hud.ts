@@ -167,8 +167,16 @@ export class Hud {
 
   kill(e: Extract<GameEvent, { k: 'kill' }>, me: number): void {
     const row = document.createElement('div');
-    const killer = e.killer === me ? 'You' : e.killerName;
-    const victim = e.victim === me ? 'you' : e.victimName;
+    // In Team Deathmatch, names in their side's colour.
+    const named = (text: string, side: string | undefined) => {
+      if (!side) return text;
+      const span = document.createElement('span');
+      span.className = side;
+      span.textContent = text;
+      return span;
+    };
+    const killer = named(e.killer === me ? 'You' : e.killerName, e.killerSide);
+    const victim = named(e.victim === me ? 'you' : e.victimName, e.victimSide);
     row.append(killer);
     const how = document.createElement('em');
     how.textContent = `${weaponName(e.weapon)}${e.head ? ' · headshot' : ''}`;

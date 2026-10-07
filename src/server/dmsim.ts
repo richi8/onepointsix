@@ -7,8 +7,9 @@
 // most (a room's storey, a roof, or a few metres of street), those that
 // killed most from afar, and the spawn points whose operators died soonest;
 // and a heat map of every game, written to test-results/deathmatch-<seed>.png
-// (see heatmap.ts). For tuning Deathmatch before and between playtests.
-// Usage: npm run sim:deathmatch [seconds] [seeds, comma-separated]
+// (see heatmap.ts). For tuning Deathmatch before and between playtests: on the
+// old town, or with `team` Team Deathmatch on the map after Dust 2.
+// Usage: npm run sim:deathmatch [seconds] [seeds, comma-separated] [deathmatch|team]
 
 import { DEATHMATCH_CAPACITY, EYE_HEIGHT, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
@@ -87,6 +88,7 @@ function placeOf(world: World, x: number, y: number, z: number): string {
 
 const seconds = Number(process.argv[2] ?? 600);
 const seeds = (process.argv[3] ?? String(DEFAULT_WORLD.seed)).split(',').map(Number);
+const mode = process.argv[4] === 'team' ? 'team' : 'deathmatch';
 
 function median(values: readonly number[]): number {
   const s = [...values].sort((a, b) => a - b);
@@ -94,7 +96,7 @@ function median(values: readonly number[]): number {
 }
 
 for (const seed of seeds) {
-  const server = new GameServer(seed, MODES.deathmatch.options);
+  const server = new GameServer(seed, MODES[mode].options);
   const kills: { killer: number; victim: number; head: boolean }[] = [];
   /** Where each kill by someone else happened, and from where, by the place the killer stood. */
   const killsAt: (KillAt & { place: string; range: number })[] = [];

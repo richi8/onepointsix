@@ -39,6 +39,7 @@ import { RunLog } from './runlog.ts';
 import { exportRuns, renderStats } from './stats.ts';
 import { RivalHud } from './rivalhud.ts';
 import { Scoreboard } from './scoreboard.ts';
+import { TeamHud } from './teamhud.ts';
 import { contractTitle, RunHud, type RunEnd } from './runhud.ts';
 import { Surfaces } from './surface.ts';
 import { surfaceMaterial } from './surfaces.ts';
@@ -66,7 +67,7 @@ const SHAKE_RANGE = 30;
 const SHAKE_DECAY = 5;
 /** Seconds before the loading screen offers to play without waiting for the textures. */
 const SKIP_LOADING_AFTER = 8;
-const MODE_NAMES: Record<Mode, string> = { extraction: 'Extraction', calabianca: 'Calabianca DM', deathmatch: 'Dust DM', range: 'Range' };
+const MODE_NAMES: Record<Mode, string> = { extraction: 'Extraction', deathmatch: 'Deathmatch', team: 'Team DM', range: 'Range' };
 /** Milliseconds a click on the run dashboard keeps trying to take the mouse back. */
 const RELOCK_RETRY = 2000;
 /** Seconds after Esc that Chrome won't give the mouse back, with some to spare. */
@@ -75,8 +76,8 @@ const RELOCK_COOLDOWN = 1.5;
 const BOARD_SHOWN = 5;
 const MODE_NOTES: Record<Mode, string> = {
   extraction: `Loot and get out, against guards and ${OPERATOR_CAPACITY - 1} other operators. Players who join take a bot's place.`,
-  calabianca: `Everyone against everyone in the old town of Calabianca: ${DEATHMATCH_CAPACITY} operators, no guards. Respawn when killed; crates hold ammo and medkits. Players who join take a bot's place.`,
-  deathmatch: `Everyone against everyone on the map after Dust 2: ${DEATHMATCH_CAPACITY} operators, no guards. Respawn when killed; crates hold ammo and medkits. Players who join take a bot's place.`,
+  deathmatch: `Everyone against everyone in the old town of Calabianca: ${DEATHMATCH_CAPACITY} operators, no guards. Respawn when killed; crates hold ammo and medkits. Players who join take a bot's place.`,
+  team: `Red against Blue on the map after Dust 2, ${DEATHMATCH_CAPACITY / 2} a side: every kill scores for your side, and you can't hurt your own. Respawn when killed, on your side's half while it's clear. Players who join take a bot's place.`,
   range: 'Try things out round the first outpost: soldiers going through every move, and nothing can hurt you. No scores.',
 };
 
@@ -107,7 +108,7 @@ try {
 const devMapName = import.meta.env.DEV ? new URLSearchParams(location.search).get('map') : null;
 const devMap = devMapName ? (await import('../shared/maps/dev.ts')).TEST_MAPS[devMapName] : undefined;
 if (devMap) mode = 'deathmatch';
-/** The island from the seed, or the mode's fixed map: Deathmatch's. */
+/** The island from the seed, or the mode's fixed map: the Deathmatches'. */
 const world = new World(config.seed, devMap ?? mapFor(mode));
 /** Its weather over a game, as the server works it out. */
 const forecast = new Forecast(config.seed);
@@ -165,6 +166,7 @@ const hud = new Hud();
 const runHud = new RunHud(world);
 const rivalHud = new RivalHud(world);
 const scoreboard = new Scoreboard(window, () => !!conn && !conn.over);
+const teamHud = new TeamHud();
 const contractProps = new ContractProps(scene, world);
 const sfx = new Sfx(world);
 view.onThunder = (distance) => sfx.thunder(distance);
@@ -505,7 +507,7 @@ function showBoard(): void {
   const empty = boardEl.querySelector('.empty') as HTMLElement;
   empty.hidden = rows.length > 0;
   boardEl.classList.toggle('none', rows.length === 0);
-  empty.textContent = isDeathmatch(mode) ? 'No games yet. Leave a Deathmatch game with a kill to post it.' : 'No scores yet. Get off the island with loot to post one.';
+  empty.textContent = isDeathmatch(mode) ? `No games yet. Leave a ${MODE_NAMES[mode]} game with a kill to post it.` : 'No scores yet. Get off the island with loot to post one.';
 }
 
 function shortDate(date: string): string {
@@ -1497,7 +1499,8 @@ renderer.setAnimationLoop(() => {
   }
   if (conn && !cam && me && !conn.over) rivalHud.update(conn.bags, conn.bounty, conn.id, camera.position, conn.lastTick * SERVER_DT, camera);
   else rivalHud.update([], null, 0, null, 0, camera);
-  scoreboard.update(conn?.board ?? [], conn?.id ?? 0, !!conn && !conn.over && !cam && !!paused.hidden, isDeathmatch(conn?.mode));
+  scoreboard.update(conn?.board ?? [], conn?.id ?? 0, !!conn && !conn.over && !cam && !!paused.hidden, isDeathmatch(conn?.mode), conn?.teams ?? null);
+  teamHud.update(conn?.teams ?? null, conn?.board ?? [], conn?.id ?? 0, players, conn && !cam && me && !conn.over ? camera.position : null, camera);
   const contracts = conn && !conn.over && !cam ? (conn.run?.contracts ?? []) : [];
   contractProps.update(contracts);
 

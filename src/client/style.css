@@ -335,6 +335,20 @@ canvas.fade-in {
   border-top: 1px solid rgb(255 255 255 / 0.08);
 }
 
+/* Team Deathmatch: a side's heading and score above its operators. */
+.scoreboard tr.heading td {
+  padding-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.scoreboard tr.heading b {
+  float: right;
+  font-size: 16px;
+}
+
 .scoreboard tr.you {
   font-weight: 700;
   color: #e8c35a;
@@ -1174,6 +1188,74 @@ canvas.fade-in {
 
 .clock.low {
   color: #ff5a3c;
+}
+
+/* Team Deathmatch: both sides' scores where the clock would be, yours on the left. */
+.teamscore {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  font-size: 20px;
+  font-weight: 700;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.teamscore span {
+  padding: 3px 12px;
+  background: rgb(0 0 0 / 0.4);
+}
+
+.teamscore b {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.teamscore .red,
+.friends .red,
+.killfeed .red,
+.scoreboard tr.heading.red td {
+  color: #ff6b57;
+}
+
+.teamscore .blue,
+.friends .blue,
+.killfeed .blue,
+.scoreboard tr.heading.blue td {
+  color: #5cb2ff;
+}
+
+.teamscore span:first-child {
+  border-bottom: 3px solid currentColor;
+}
+
+/* A marker over each friend, seen through walls: a chevron, and their name while near. */
+.friends div {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: -24px 0 0 -60px;
+  width: 120px;
+  padding-bottom: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+  pointer-events: none;
+}
+
+.friends div::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top: 7px solid currentColor;
+  border-bottom: 0;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.8));
 }
 
 /* Who carries the bounty, under the clock. */
