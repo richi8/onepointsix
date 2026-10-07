@@ -80,6 +80,7 @@ export class TownLight {
   /** The four volumes, one after another, as the texture holds them, once baked. */
   private data: Uint8Array | null = null;
   private worker: Worker | null = null;
+  private starting = false;
   private fadeFrom = -1;
   private disposed = false;
 
@@ -100,12 +101,25 @@ export class TownLight {
 
   /** Bake in a worker, the light fading in once it's done. */
   start(): void {
-    if (this.worker || this.data) return;
+    if (this.worker || this.data || this.starting) return;
+    this.starting = true;
+    const key = cacheKey(this.input);
+    void cached(key).then((hit) => {
+      this.starting = false;
+      if (this.disposed || this.worker || this.data) return;
+      if (hit) this.show(hit, false);
+      else this.bakeInWorker(key);
+    });
+  }
+
+  private bakeInWorker(key: string): void {
     this.worker = new Worker(new URL('./townworker.ts', import.meta.url), { type: 'module' });
     this.worker.onmessage = (e: MessageEvent<Baked>) => {
       this.worker?.terminate();
       this.worker = null;
-      if (!this.disposed) this.show(e.data, false);
+      if (this.disposed) return;
+      this.show(e.data, false);
+      keep(key, e.data);
     };
     this.worker.onerror = (e) => console.warn('The town\'s light failed to bake.', e.message);
     this.worker.postMessage(this.input);
@@ -177,6 +191,90 @@ export class TownLight {
     u.townGrid.value = blank();
     u.townMix.value = 0;
   }
+}
+
+// The bake is kept in the browser between visits, under a key hashed from
+// everything it's baked from and the bake's own code, so a changed map, sun
+// or bake simply misses.
+const CACHE_DB = 'town-light';
+const CACHE_STORE = 'bakes';
+/** Bakes kept; the oldest go first. */
+const CACHE_KEEP = 3;
+
+function cacheKey(input: BakeInput): string {
+  let h = 0x811c9dc5;
+  const mix = (bytes: Uint8Array) => {
+    for (let i = 0; i < bytes.length; i++) h = Math.imul(h ^ bytes[i], 0x01000193);
+  };
+  const nums = (a: ArrayLike<number>) => mix(new Uint8Array(Float64Array.from(a).buffer));
+  const { boxes, albedo, tilts, ground, horizon, lamps } = input;
+  nums([input.x0, input.y0, input.z0, input.nx, input.ny, input.nz, ...input.groundAlbedo, ...input.sun]);
+  for (const a of [boxes, albedo, tilts ?? [], ground, horizon, lamps ?? []]) {
+    nums([a.length]);
+    mix(new Uint8Array(Float32Array.from(a).buffer));
+  }
+  mix(new TextEncoder().encode(bake.toString() + BAKE_CELL + SKY_RANGE + SUN_RANGE));
+  return (h >>> 0).toString(16);
+}
+
+function openCache(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    try {
+      const r = indexedDB.open(CACHE_DB, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(CACHE_STORE);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = r.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function cached(key: string): Promise<Baked | null> {
+  const db = await openCache();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const r = db.transaction(CACHE_STORE).objectStore(CACHE_STORE).get(key);
+      r.onsuccess = () => {
+        const v = r.result as { baked?: Baked } | undefined;
+        resolve(v?.baked ?? null);
+        db.close();
+      };
+      r.onerror = () => {
+        resolve(null);
+        db.close();
+      };
+    } catch {
+      resolve(null);
+      db.close();
+    }
+  });
+}
+
+function keep(key: string, baked: Baked): void {
+  void openCache().then((db) => {
+    if (!db) return;
+    try {
+      const tx = db.transaction(CACHE_STORE, 'readwrite');
+      const store = tx.objectStore(CACHE_STORE);
+      store.put({ baked, at: Date.now() }, key);
+      const all = store.openCursor();
+      const seen: { key: IDBValidKey; at: number }[] = [];
+      all.onsuccess = () => {
+        const c = all.result;
+        if (c) {
+          seen.push({ key: c.key, at: (c.value as { at: number }).at });
+          c.continue();
+        } else {
+          seen.sort((a, b) => b.at - a.at).slice(CACHE_KEEP).forEach((e) => store.delete(e.key));
+        }
+      };
+      tx.oncomplete = tx.onerror = tx.onabort = () => db.close();
+    } catch {
+      db.close();
+    }
+  });
 }
 
 /** Trilinear blend of `value(cell * 4)` round fractional cell (cx, cy, cz). */

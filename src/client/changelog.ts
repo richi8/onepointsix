@@ -12,6 +12,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: '2026-10-07',
+    title: 'The town’s light is remembered',
+    notes: ['On a second visit, the town’s light is ready at once instead of settling in over a few seconds, and the page does less work while it loads.'],
+  },
+  {
+    date: '2026-10-07',
     title: 'Paving worn where people walk',
     notes: ['In both Calabianca maps, the paving is now darker and smoother along the routes people actually take through the town, instead of along a few hand-drawn lines.'],
   },

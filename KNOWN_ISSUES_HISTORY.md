@@ -916,6 +916,14 @@ notes the chunk it came from.
 - **The sky's photograph is soft close up** (chunk 60): 4096 pixels round, about 11 a degree
   against about 18 on screen, and the same sky in every game.
   **Accepted** (2026-10-07): Day only, one sky; a sharper one costs download for little.
+- **The town's light is baked at every load** (chunk 60): about 3 s in a worker on an M3 Pro,
+  longer on slower machines, with about 250 MB in use while it runs; it wasn't kept between
+  visits.
+  **Resolved** (2026-10-07): the baked volumes are kept in IndexedDB under a hash of everything
+  they're baked from (boxes, colours, ground, horizon, lamps, sun) and of the bake's own code, the
+  last three kept. A repeat visit to the same map shows the light at once, with no worker and no
+  250 MB; a changed map, sun or bake misses and bakes anew. Not measured in a browser yet; the
+  first visit is unchanged.
 
 ### Sound
 - **Every sound is still synthesized** (9), not recorded. The plan's CC0 asset sources have no

@@ -496,10 +496,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   tiles it sees, and what's fine (see below) casts only into the near shadows; but building
   them, the signs and the rounded edges on the main thread still adds about 0.3 s to the
   town's load, and the tiles cost about 100 more draw calls a frame, 0.3–0.5 ms of the CPU's.
-- **The town's light is baked at every load** (chunk 60): about 3 s in a worker on an M3 Pro,
-  longer on slower machines, with about 250 MB in use while it runs; until it's done the town
-  is lit as if all of it were out in the open, then the light fades in over a second. It
-  isn't kept between visits.
 - **The town's narrowest lanes may be too dark** (chunk 60): the stair in the west's alleys,
   in shade at its foot, is nearly black at the screenshots' size. Left for a playtest.
 
