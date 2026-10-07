@@ -5,6 +5,9 @@ they are, kept with how each was resolved. Grouped by the same areas as in the p
 notes the chunk it came from.
 
 ### Look and animation
+- **The town's narrowest lanes may be too dark** (chunk 60): the stair in the west's alleys,
+  in shade at its foot, is nearly black at the screenshots' size. Left for a playtest.
+  **Accepted** (2026-10-07): at the user's word the lanes stay as dark as they are.
 - **The town's details are boxes** (chunk 59), resolved in part (chunks 62, 63): leaves,
   flowers, window boxes and wheelhouses have real shapes, and the trees are real trees, but
   the stalls, carts and the lorry's body were still boxes, and the ruined chapel drawn whole.

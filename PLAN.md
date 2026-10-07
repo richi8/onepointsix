@@ -492,8 +492,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   tiles it sees, and what's fine (see below) casts only into the near shadows; but building
   them, the signs and the rounded edges on the main thread still adds about 0.3 s to the
   town's load, and the tiles cost about 100 more draw calls a frame, 0.3–0.5 ms of the CPU's.
-- **The town's narrowest lanes may be too dark** (chunk 60): the stair in the west's alleys,
-  in shade at its foot, is nearly black at the screenshots' size. Left for a playtest.
 
 ### Sound
 Nothing open: the last was resolved on 2026-10-02 (see the history).
