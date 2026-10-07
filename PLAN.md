@@ -499,10 +499,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   doubled for a hand's breadth, and a dark stone counts as a joint and holds water in rain.
 - **The town's age costs up to 0.8 ms a frame** (chunk 61), most from above, where the
   buildings' boxes, drawn in no order, shade the same pixel many times over.
-- **The town's dressing is only drawn** (chunk 59): shutters, window boxes, creepers, awnings,
-  stall canopies, the trees' crowns, the pots, the obelisk and the crosses neither stop rounds nor hide
-  anyone from bots, as the island's bushes don't. A player on a roof under a plane tree's crown
-  looks hidden and isn't.
 - **Some features collide where nothing is drawn** (chunk 59): they're drawn over their boxes,
   which are solid all through: the 0.3 m over the lorry's cab, the corners of the hauled-out
   boats' boxes beside their hulls, the space under a cart's bed, a stall's under its counter's
@@ -537,9 +533,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
   from 3.1 to 1.4 million triangles. Their impostors are flat cards, so from a roof the near
   groves read a little flatter than before. Drawing the leaf pictures and baking six kinds'
   impostors adds about 0.35 s to a warm load.
-- **The town's pots and plants are walked through** (chunk 63): pots, lemon trees, agaves,
-  bougainvillea and vines are drawn only, as the rest of the dressing; a lemon tree by a door
-  looks like something to crouch behind and hides nobody.
 - **The trees are cards close up** (chunk 63): seen from under or beside a crown, its leaf
   cards show flat and some edge on; the olives' nearest crowns read a little brushy, and a
   plane's pale bark looks grey in its own crown's shade. The leaf pictures are drawn on a

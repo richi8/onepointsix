@@ -3086,3 +3086,11 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   moving the placement into shared code (and re-baselining the bots' nav), for little: a body
   sinks 8 cm into a surround, lanterns hang above head height, air conditioners sit beside
   upper windows, and an aerial's mast is 3.6 cm thick. (Downpipes were already clear.)
+
+- **The town's dressing is only drawn** (59), and **its pots and plants are walked through** (63):
+  shutters, window boxes, creepers, awnings, stall canopies, the trees' crowns, pots, lemon trees,
+  agaves, the obelisk and the crosses neither stop rounds nor hide anyone from bots.
+  **Accepted** (2026-10-07), as the island's bushes are: nothing that's drawn to hide behind
+  hides anyone, so cover is only what collides, and a player can't be shot through a plant or
+  die to something they can't see. Making them solid would also need their placement moved into
+  shared code (see "Things drawn on the walls are walked through").
