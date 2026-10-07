@@ -526,9 +526,6 @@ stay here; once an item is fully **Resolved** (or **Moot**), it moves with how i
 - **Rounded edges are only shading** (chunk 62): the silhouettes and shadows stay square, and an
   edge open only part of its length (a wall's end beside a window, between sill and lintel)
   stays sharp all along.
-- **Things drawn on the walls are walked through** (chunk 62): window surrounds 8 cm proud,
-  air conditioners, lanterns, downpipes, flat roofs' aerials and dishes and the signs standing
-  out don't collide, so a body brushing a wall sinks into them.
 - **The greenery costs 2–5 ms a frame** (chunk 63) on an M3 Pro at 1280 × 720: least in the
   market and from above, most looking at the hillside. Most of it is the trees' far tiles,
   which draw the plainer trees out to 145 m past a tile's edge (about 1,000 olives and 1,700

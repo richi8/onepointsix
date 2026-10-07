@@ -3079,3 +3079,10 @@ duplicates. Those that only matter to a multiplayer server are marked **Moved to
   `ISLAND_LAYERS` = 10 layers, 1.37 MB together); `loadAssets` loads those unless it's a map,
   which loads the full arrays as before (the loading bar's `swap` swaps its expected sizes).
   The layer indices don't change, and the full files came out byte for byte as before.
+
+- **Things drawn on the walls are walked through** (62): window surrounds 8 cm proud, air
+  conditioners, lanterns, aerials, dishes and the signs standing out don't collide.
+  **Accepted** (2026-10-07): they're placed by client-only dressing code, so colliding would mean
+  moving the placement into shared code (and re-baselining the bots' nav), for little: a body
+  sinks 8 cm into a surround, lanterns hang above head height, air conditioners sit beside
+  upper windows, and an aerial's mast is 3.6 cm thick. (Downpipes were already clear.)
