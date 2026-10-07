@@ -11,7 +11,9 @@
 // old town, or with `team` Team Deathmatch on the map after Dust 2.
 // With `footfall` after the mode, it also writes where the bots stood outdoors, over all the seeds, into the map's
 // `-footfall.ts`, which wears the town's paving (see footfall.ts).
-// Usage: npm run sim:deathmatch [seconds] [seeds, comma-separated] [deathmatch|team] [footfall]
+// With MIRROR=1 in the environment, the sides' bases are swapped (the halves in the report are still the original ones),
+// to tell a map's lean toward one side from the bots'.
+// Usage: [MIRROR=1] npm run sim:deathmatch [seconds] [seeds, comma-separated] [deathmatch|team] [footfall]
 
 import { DEATHMATCH_CAPACITY, EYE_HEIGHT, SERVER_TICK_RATE } from '../shared/constants.ts';
 import { DEFAULT_WORLD } from '../shared/worldconfig.ts';
@@ -24,7 +26,7 @@ import { ARENA_SIGHT, arenaPicks } from './population.ts';
 import { tally as botTally } from './bot.ts';
 import { GameServer } from './server.ts';
 
-declare const process: { argv: string[] };
+declare const process: { argv: string[]; env: Record<string, string | undefined> };
 
 const fs = (await import('node:fs' as string)) as { mkdirSync(path: string, o: { recursive: boolean }): void; writeFileSync(path: string, data: Uint8Array): void };
 
@@ -154,7 +156,12 @@ for (const seed of seeds) {
   /** Which of the map's spawn points (x, z) is, if any. */
   const spawnPoint = (x: number, z: number): number => server.world.spawns.findIndex((p) => Math.hypot(p.x - x, p.z - z) < 1);
   /** Whose base (x, z) is nearer, on a map with bases. */
-  const bases = server.world.map?.bases;
+  const bases = server.world.map?.bases && { ...server.world.map.bases };
+  // MIRROR=1: the sides' bases swapped, to tell a map's lean from the bots'. The halves are still told by the original bases.
+  if (process.env.MIRROR && server.world.map?.bases) {
+    const b = server.world.map.bases;
+    [b.red, b.blue] = [b.blue, b.red];
+  }
   const halfOf = (x: number, z: number): Side | undefined =>
     bases && (Math.hypot(bases.red.x - x, bases.red.z - z) < Math.hypot(bases.blue.x - x, bases.blue.z - z) ? 'red' : 'blue');
   const picks = { ...arenaPicks };
